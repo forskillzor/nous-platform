@@ -5,6 +5,9 @@
 [![Compose](https://img.shields.io/badge/Compose-1.7.0-4285F4.svg)](https://github.com/JetBrains/compose-multiplatform)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)]()
 
+## Сервис сбора данных с бирж https://github.com/forskillzor/trade-collector-service
+## Сервис рыночных данных https://github.com/forskillzor/market-data-service
+
 ![Main Screen](screenshots/mainscreen.png)
 
 ## Оглавление
