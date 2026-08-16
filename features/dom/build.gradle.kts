@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2026 Sergey Orlov
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 plugins {
     id("conventions.kmp-feature")  // Теперь этот плагин применяет всё необходимое
     alias(libs.plugins.kotlin.serialization)  // только дополнительные плагины

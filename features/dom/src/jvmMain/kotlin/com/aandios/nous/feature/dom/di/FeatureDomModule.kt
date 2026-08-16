@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2026 Sergey Orlov
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
 // features/feature-dom/src/commonMain/kotlin/com/aandios/nous/feature/dom/di/FeatureDomModule.kt
 package com.aandios.nous.feature.dom.di
 
