@@ -85,7 +85,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "com.aandios.nous-platform"
-            packageVersion = "1.0.0"
+            packageVersion = version.toString()
 
             buildTypes.release.proguard {
                 obfuscate.set(false)
@@ -150,7 +150,9 @@ compose.desktop {
             windows {
                 menu = true
             }
-            macOS { }
+            macOS {
+                dmgPackageVersion = "1.0.0"
+            }
             linux {
                 shortcut = true
             }

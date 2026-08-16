@@ -1,5 +1,6 @@
-# Nous Platform v1.0
-## Профессиональная платформа для криптотрейдинга с интегрированной средой разработки
+# Nous Platform v0.1.0
+
+## Профессиональный крипто-терминал с Order Flow анализом и открытой средой для стратегий
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.0-7F52FF.svg)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Compose-1.7.0-4285F4.svg)](https://github.com/JetBrains/compose-multiplatform)
