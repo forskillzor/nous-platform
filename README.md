@@ -3,7 +3,7 @@
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.0-7F52FF.svg)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Compose-1.7.0-4285F4.svg)](https://github.com/JetBrains/compose-multiplatform)
-[![License](https://img.shields.io/badge/License-Proprietary-red.svg)]()
+[![License](https://img.shields.io/badge/License-AGPL%203.0--or--later-blue.svg)](LICENSE)
 
 #### Сервис сбора данных с бирж https://github.com/forskillzor/trade-collector-service
 #### Сервис рыночных данных https://github.com/forskillzor/market-data-service
@@ -1004,6 +1004,10 @@ CREATE TABLE candles (
     - API для интеграции с внутренними системами
     - Приоритетная поддержка 24/7
 
+> **Dual licensing:** the project is open-sourced under AGPL-3.0-or-later. Organizations that
+> wish to use it without the AGPL obligations can obtain a commercial license — see the
+> [License](#19) section.
+
 ### 15.4. Модель ценообразования
 - **Pro подписка:** $29.99/месяц или $299/год
 - **Комиссия с плагинов:** 30%
@@ -1086,3 +1090,34 @@ Nous Platform — это не просто очередной терминал. 
 **Nous Platform — создан для тех, кто не просто смотрит на графики, а строит своё будущее.**
 
 © 2026 Aandios Labs
+
+---
+
+## 19. License <a name="19"></a>
+
+Nous Platform is free and open-source software licensed under the
+**GNU Affero General Public License, version 3.0 or later (AGPL-3.0-or-later)**.
+
+The full license text is available in the [LICENSE](LICENSE) file.
+
+All source files carry the following notice:
+
+```text
+Copyright (C) 2026 Sergey Orlov
+SPDX-License-Identifier: AGPL-3.0-or-later
+```
+
+### Commercial license
+
+AGPL-3.0 is a copyleft license: if you run a modified version of this software as a
+network service, you must make your modifications available to its users under the same
+license. If these obligations do not fit your business model, a **commercial license**
+is available that removes them. Contact: <formyfrontend@gmail.com>.
+
+### Contributions
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for build
+instructions and the contribution workflow. By submitting a pull request, you
+agree to the terms of the individual [Contributor License Agreement](CLA.md)
+(CLA). The CLA allows Nous Platform to relicense contributions under the
+commercial license, keeping the dual-licensing model intact.
