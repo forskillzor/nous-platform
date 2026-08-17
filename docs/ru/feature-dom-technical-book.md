@@ -1,50 +1,50 @@
-# Technical Book of the `feature-dom` Module
+# Техническая книга модуля `feature-dom`
 
-## Developing a Depth of Market (DOM) Component with Kotlin + Compose Multiplatform
+## Разработка стакана заявок (DOM) на Kotlin + Compose Multiplatform
 
-**Level:** Junior → Middle  
-**Technologies:** Kotlin, Compose Multiplatform, Koin DI, LazyColumn, Canvas, Ktor, WebSocket  
-**Product version:** Nous Platform 1.0  
-**Author:** Nous Team
-
----
-
-# Table of Contents
-
-1. [Introduction: What Is DOM (Depth of Market)](#1-introduction-what-is-dom-depth-of-market)
-2. [Module Architecture](#2-module-architecture)
-3. [Entry Point: DomWindow and main()](#3-entry-point-domwindow-and-main)
-4. [Dependency Injection: How Koin Assembles the DOM](#4-dependency-injection-how-koin-assembles-the-dom)
-5. [DomViewModel: The Heart of Data Management](#5-domviewmodel-the-heart-of-data-management)
-6. [Incremental Data: SnapshotStateMap](#6-incremental-data-snapshotstatemap)
-7. [Handling DomEvent Events](#7-handling-domevent-events)
-8. [DomRepositoryImpl: Order Book Synchronization](#8-domrepositoryimpl-order-book-synchronization)
-9. [OrderBook: The Order Book Model](#9-orderbook-the-order-book-model)
-10. [DomAggregator: Price Level Aggregation](#10-domaggregator-price-level-aggregation)
-11. [AggregationLevel: Aggregation Levels](#11-aggregationlevel-aggregation-levels)
-12. [DomOptions: Unified Settings State](#12-domoptions-unified-settings-state)
-13. [TradingProvider and TradingSymbol](#13-tradingprovider-and-tradingsymbol)
-14. [DepthLimit: Depth Limitation](#14-depthlimit-depth-limitation)
-15. [OrderIntent: Intent to Place an Order](#15-orderintent-intent-to-place-an-order)
-16. [DomWindow: Building the UI](#16-domwindow-building-the-ui)
-17. [DomHeader: Settings Header](#17-domheader-settings-header)
-18. [DomContent and DomSection: Rendering the Order Book](#18-domcontent-and-domsection-rendering-the-order-book)
-19. [LevelRow: One Order Book Row](#19-levelrow-one-order-book-row)
-20. [OrderPlacementPanel: Order Placement Panel](#20-orderplacementpanel-order-placement-panel)
-21. [Automatic Scroll to Best Price](#21-automatic-scroll-to-best-price)
-22. [Formatting Utilities](#22-formatting-utilities)
-23. [Conclusion: How It All Works Together](#23-conclusion-how-it-all-works-together)
-24. [Appendix: Glossary](#24-appendix-glossary)
+**Уровень:** Junior → Middle  
+**Технологии:** Kotlin, Compose Multiplatform, Koin DI, LazyColumn, Canvas, Ktor, WebSocket  
+**Версия продукта:** Nous Platform 1.0  
+**Автор:** Команда Nous
 
 ---
 
-# 1. Introduction: What Is DOM (Depth of Market)
+# Оглавление
 
-## 1.1. Context and Purpose
+1. [Введение: Что такое DOM (Depth of Market)](#1-введение-что-такое-dom-depth-of-market)
+2. [Архитектура модуля](#2-архитектура-модуля)
+3. [Точка входа: DomWindow и main()](#3-точка-входа-domwindow-и-main)
+4. [Dependency Injection: Как Koin собирает DOM](#4-dependency-injection-как-koin-собирает-dom)
+5. [DomViewModel: Сердце управления данными](#5-domviewmodel-сердце-управления-данными)
+6. [Инкрементальные данные: SnapshotStateMap](#6-инкрементальные-данные-snapshotstatemap)
+7. [Обработка событий DomEvent](#7-обработка-событий-domevent)
+8. [DomRepositoryImpl: Синхронизация стакана](#8-domrepositoryimpl-синхронизация-стакана)
+9. [OrderBook: Модель стакана](#9-orderbook-модель-стакана)
+10. [DomAggregator: Агрегация ценовых уровней](#10-domaggregator-агрегация-ценовых-уровней)
+11. [AggregationLevel: Уровни агрегации](#11-aggregationlevel-уровни-агрегации)
+12. [DomOptions: Единый стейт настроек](#12-domoptions-единый-стейт-настроек)
+13. [TradingProvider и TradingSymbol](#13-tradingprovider-и-tradingsymbol)
+14. [DepthLimit: Ограничение глубины](#14-depthlimit-ограничение-глубины)
+15. [OrderIntent: Намерение разместить ордер](#15-orderintent-намерение-разместить-ордер)
+16. [DomWindow: Сборка UI](#16-domwindow-сборка-ui)
+17. [DomHeader: Шапка с настройками](#17-domheader-шапка-с-настройками)
+18. [DomContent и DomSection: Отображение стакана](#18-domcontent-и-domsection-отображение-стакана)
+19. [LevelRow: Одна строка стакана](#19-levelrow-одна-строка-стакана)
+20. [OrderPlacementPanel: Панель размещения ордеров](#20-orderplacementpanel-панель-размещения-ордеров)
+21. [Автоматический scroll-to-best-price](#21-автоматический-scroll-to-best-price)
+22. [Утилиты форматирования](#22-утилиты-форматирования)
+23. [Заключение: Как всё работает вместе](#23-заключение-как-всё-работает-вместе)
+24. [Приложение: Глоссарий](#24-приложение-глоссарий)
 
-**DOM** (Depth of Market), or the **order book**, is a table of all active orders to buy (bid) and sell (ask) for a particular trading instrument. Each row shows the price and the order volume at that price.
+---
 
-Visually, a DOM looks like this:
+# 1. Введение: Что такое DOM (Depth of Market)
+
+## 1.1. Контекст и назначение
+
+**DOM** (Depth of Market) или **стакан заявок** — это таблица всех активных ордеров на покупку (bid) и продажу (ask) для конкретного торгового инструмента. Каждая строка показывает цену и объём заявок на этой цене.
+
+Визуально DOM выглядит так:
 
 ```
 Bid Vol  │  Price  │  Ask Vol
@@ -56,37 +56,37 @@ Bid Vol  │  Price  │  Ask Vol
   0.800  │  67046  │  0.100
 ```
 
-Where:
-- **Bid (BID)** — buy orders (left, blue/green color)
-- **Ask (ASK)** — sell orders (right, red color)
-- **Price** — in the middle
-- **Spread** — the difference between the best bid and the best ask
+Где:
+- **Bid (BID)** — заявки на покупку (слева, синий/зелёный цвет)
+- **Ask (ASK)** — заявки на продажу (справа, красный цвет)
+- **Цена** — посередине
+- **Спред (Spread)** — разница между лучшим bid и лучшим ask
 
-## 1.2. What the feature-dom Module Does
+## 1.2. Что делает модуль feature-dom
 
-The module displays the order book in real time with support for:
+Модуль отображает стакан заявок в реальном времени с возможностью:
 
-- Viewing bid/ask levels with volumes
-- Visualizing volumes (horizontal bars)
-- Aggregating levels (grouping by price steps)
-- Selecting a data provider (Binance Spot, Coin-M Futures, Bybit, Kraken)
-- Selecting a trading pair
-- Configuring order book depth (20-1000 levels)
-- Clicking a price to select it
-- Placing market/limit orders
-- Automatic scrolling to the best price
-- Locally disabling/enabling trading
+- Просмотра bid/ask уровней с объёмами
+- Визуализации объёмов (горизонтальные бары)
+- Агрегации уровней (группировка по шагам цены)
+- Выбора провайдера данных (Binance Spot, Coin-M Futures, Bybit, Kraken)
+- Выбора торговой пары
+- Настройки глубины стакана (20-1000 уровней)
+- Клика по цене для выбора
+- Размещения рыночных/лимитных ордеров
+- Автоматического скролла к лучшей цене
+- Локального выключения/включения торговли
 
-## 1.3. Architecture: Data Flow
+## 1.3. Архитектура: Поток данных
 
 ```
 Binance WebSocket (REST Snapshot + WS @depth + WS @bookTicker)
        │
        ▼
-DomAdapter (in binance-provider)
+DomAdapter (в binance-provider)
        │
        ▼
-DomRepositoryImpl (synchronizes snapshots and increments)
+DomRepositoryImpl (синхронизация снапшота и инкрементов)
        │
        ▼  (Flow<DomEvent>)
 DomViewModel (SnapshotStateMap, processDomEvent)
@@ -98,7 +98,7 @@ DomWindow (derivedStateOf → buildDisplayOrderBook)
 DomSection → LazyColumn → LevelRow
 ```
 
-## 1.4. Module File Structure
+## 1.4. Структура файлов модуля
 
 ```
 features/feature-dom/
@@ -107,29 +107,29 @@ features/feature-dom/
     └── commonMain/
         └── kotlin/com/aandios/nous/feature/dom/
             ├── data/repository/
-            │   └── DomRepositoryImpl.kt        # Order book synchronization
+            │   └── DomRepositoryImpl.kt        # Синхронизация стакана
             ├── di/
             │   └── FeatureDomModule.kt          # Koin DI
             ├── domain/
-            │   ├── DomAggregator.kt             # Level aggregation
-            │   ├── DomOptions.kt                # Unified settings state
-            │   ├── OrderBook.kt                 # Order book model
-            │   ├── TradingProvider.kt           # Providers (Binance, Bybit...)
-            │   ├── TradingSymbol.kt             # Trading pairs
+            │   ├── DomAggregator.kt             # Агрегация уровней
+            │   ├── DomOptions.kt                # Единый стейт настроек
+            │   ├── OrderBook.kt                 # Модель стакана
+            │   ├── TradingProvider.kt           # Провайдеры (Binance, Bybit...)
+            │   ├── TradingSymbol.kt             # Торговые пары
             │   └── model/
-            │       ├── AggregationLevel.kt      # Aggregation levels (1×, 10×, 100×)
-            │       ├── DepthLimit.kt            # Order book depth
-            │       └── OrderIntent.kt           # Order intent
+            │       ├── AggregationLevel.kt      # Уровни агрегации (1×, 10×, 100×)
+            │       ├── DepthLimit.kt            # Глубина стакана
+            │       └── OrderIntent.kt           # Намерение ордера
             └── ui/
-                ├── DomUtils.kt                  # Utilities
+                ├── DomUtils.kt                  # Утилиты
                 ├── DomViewModel.kt              # ViewModel
-                ├── DomWindow.kt                 # Entry point + UI assembly
+                ├── DomWindow.kt                 # Точка входа + сборка UI
                 ├── content/
-                │   ├── DomContent.kt            # Order book content
-                │   ├── DomSection.kt            # Section with LazyColumn
-                │   └── LevelRow.kt              # A single DOM row
+                │   ├── DomContent.kt            # Контент стакана
+                │   ├── DomSection.kt            # Секция с LazyColumn
+                │   └── LevelRow.kt              # Одна строка DOM
                 ├── footer/
-                │   └── OrderPlacementPanel.kt   # Order panel
+                │   └── OrderPlacementPanel.kt   # Панель ордеров
                 └── header/
                     ├── AggregationLevelDropdown.kt
                     ├── CompactProviderSymbol.kt
@@ -142,7 +142,7 @@ features/feature-dom/
 
 ---
 
-# 2. Module Architecture
+# 2. Архитектура модуля
 
 ## 2.1. build.gradle.kts
 
@@ -176,17 +176,17 @@ kotlin {
 }
 ```
 
-### 2.1.1. Dependency on `:composeApp`
+### 2.1.1. Зависимость от `:composeApp`
 
-Unlike `feature-chart`, this module depends on `:composeApp`. This is legacy — `composeApp` contains the shared commands (TradingCommand, BuyMarketCommand, etc.) used in the order panel.
+В отличие от `feature-chart`, этот модуль зависит от `:composeApp`. Это legacy — `composeApp` содержит общие команды (TradingCommand, BuyMarketCommand и т.д.), которые используются в панели ордеров.
 
-**For Juniors**: `project(":composeApp")` is a reference to another module in the same multimodule Gradle project. We can use classes from `composeApp` as if they were in our module.
+**Для Junior**: `project(":composeApp")` — это ссылка на другой модуль в том же многомодульном (multimodule) Gradle проекте. Мы можем использовать классы из `composeApp` как если бы они были в нашем модуле.
 
 ---
 
-# 3. Entry Point: DomWindow and main()
+# 3. Точка входа: DomWindow и main()
 
-## 3.1. The main() Function
+## 3.1. Функция main()
 
 ```kotlin
 fun main() = application {
@@ -207,12 +207,12 @@ fun main() = application {
 }
 ```
 
-**Key differences from ChartWindow**:
-- Window size: 300×800 instead of 800×600 (a DOM is narrow and tall)
-- Uses `initKoinForPreview()` from `FeatureDomModule`
+**Ключевые отличия от ChartWindow**:
+- Размер окна: 300×800 вместо 800×600 (DOM — узкий высокий)
+- Использует `initKoinForPreview()` из `FeatureDomModule`
 - title = "DOM Preview"
 
-## 3.2. The DomWindow() Function
+## 3.2. Функция DomWindow()
 
 ```kotlin
 @Composable
@@ -224,7 +224,7 @@ fun DomWindow() {
     val symbolTickSize by domViewModel.symbolTickSize.collectAsState()
     val selectedPrice by domViewModel.selectedPrice.collectAsState()
 
-    // SnapshotStateMap — read directly
+    // SnapshotStateMap — читается напрямую
     val incrementalBids = domViewModel.incrementalBids
     val incrementalAsks = domViewModel.incrementalAsks
 
@@ -232,7 +232,7 @@ fun DomWindow() {
     val incrementalBestAsk by domViewModel.incrementalBestAsk.collectAsState()
     // ...
 
-    // Compute the displayed unified order book with aggregation
+    // Вычисляем отображаемый unified order book с агрегацией
     val displayUnifiedOrderBook by remember(domOptions.aggregation, symbolTickSize) {
         derivedStateOf {
             buildDisplayOrderBook(
@@ -263,46 +263,46 @@ fun DomWindow() {
 }
 ```
 
-### 3.2.1. Screen Layout
+### 3.2.1. Компоновка экрана
 
 ```
 ┌──────────────────────┐
-│     DomHeader         │  ← Provider, symbol, depth, aggregation
+│     DomHeader         │  ← Провайдер, символ, глубина, агрегация
 ├──────────────────────┤
 │                      │
-│     DomContent        │  ← LazyColumn with order book levels
+│     DomContent        │  ← LazyColumn с уровнями стакана
 │     (weight=1f)      │
 │                      │
 ├──────────────────────┤
-│  OrderPlacementPanel  │  ← Order buttons, Qty, Trade Off
+│  OrderPlacementPanel  │  ← Кнопки ордеров, Qty, Trade Off
 │  (height=180.dp)     │
 └──────────────────────┘
 ```
 
 ---
 
-# 4. Dependency Injection: How Koin Assembles the DOM
+# 4. Dependency Injection: Как Koin собирает DOM
 
-## 4.1. The `featureDomModule` Module
+## 4.1. Модуль `featureDomModule`
 
 ```kotlin
 val featureDomModule = module {
-    // 1. Provider configuration
+    // 1. Конфигурация провайдера
     single<ProviderConfig> { ProviderConfig(apiKey = null, secretKey = null, ...) }
 
-    // 2. Create the Provider via the factory
+    // 2. Создаём Provider через фабрику
     single<Provider> {
         val config = get<ProviderConfig>()
         val networkManager = get<NetworkManager>()
         BinanceProviderFactory().createProvider(config, networkManager)
     }
 
-    // 3. Adapters from the provider
+    // 3. Адаптеры из провайдера
     single<DomAdapter> { get<Provider>().dom ?: error("DOM adapter not available") }
     single<BookTickerAdapter> { get<Provider>().bookTicker ?: error("BookTicker adapter not available") }
     single<SymbolInfoAdapter> { get<Provider>().symbolInfo ?: error("SymbolInfo adapter not available") }
 
-    // 4. Repositories
+    // 4. Репозитории
     single<DomRepository> { DomRepositoryImpl(domAdapter = get(), bookTickerAdapter = get()) }
     single<BookTickerRepository> { BookTickerRepositoryImpl(bookTicker = get()) }
     single<SymbolInfoRepository> { SymbolInfoRepositoryImpl(symbolInfoAdapter = get()) }
@@ -312,13 +312,13 @@ val featureDomModule = module {
 }
 ```
 
-### 4.1.1. Three Adapters
+### 4.1.1. Три адаптера
 
-Unlike feature-chart (which only has ChartAdapter), the DOM uses three adapters:
+В отличие от feature-chart (только ChartAdapter), DOM использует три адаптера:
 
-1. **`DomAdapter`** — for the depth stream (snapshots + incremental updates)
-2. **`BookTickerAdapter`** — for the best bid/ask (best prices)
-3. **`SymbolInfoAdapter`** — for symbol information (tickSize)
+1. **`DomAdapter`** — для depth stream (снапшоты + инкрементальные обновления)
+2. **`BookTickerAdapter`** — для best bid/ask (лучшие цены)
+3. **`SymbolInfoAdapter`** — для информации о символе (tickSize)
 
 ### 4.1.2. `initKoinForPreview()`
 
@@ -331,13 +331,13 @@ fun initKoinForPreview() {
 }
 ```
 
-Stops the old Koin and starts a new one with only the core + DOM modules.
+Останавливает старый Koin и запускает новый только с core + DOM модулями.
 
 ---
 
-# 5. DomViewModel: The Heart of Data Management
+# 5. DomViewModel: Сердце управления данными
 
-## 5.1. Constructor and Dispatcher
+## 5.1. Конструктор и Dispatcher
 
 ```kotlin
 class DomViewModel(
@@ -351,23 +351,23 @@ class DomViewModel(
     private var subscriptionJob: Job? = null
 ```
 
-### 5.1.1. A Dedicated Thread Pool
+### 5.1.1. Отдельный thread pool
 
 ```kotlin
 Executors.newSingleThreadExecutor().asCoroutineDispatcher()
 ```
 
-The ViewModel uses a **single-threaded executor** instead of `Dispatchers.Main`. This ensures that all DOM event processing (parsing, SnapshotStateMap updates) happens on a dedicated background thread without blocking the UI.
+ViewModel использует **однопоточный executor** вместо `Dispatchers.Main`. Это сделано для того, чтобы вся обработка DOM-событий (парсинг, обновление SnapshotStateMap) происходила в выделенном фоновом потоке, не блокируя UI.
 
-### 5.1.2. `coroutineDispatcher` as a Parameter
+### 5.1.2. `coroutineDispatcher` как параметр
 
 ```kotlin
 private val coroutineDispatcher: CoroutineDispatcher? = null
 ```
 
-A parameter for **testing** — tests can pass `Dispatchers.Unconfined` or a `TestDispatcher`.
+Параметр для **тестирования** — в тестах можно передать `Dispatchers.Unconfined` или `TestDispatcher`.
 
-## 5.2. State (StateFlows)
+## 5.2. Состояния (StateFlows)
 
 ```kotlin
 private val _domOptions = MutableStateFlow(DomOptions.default())
@@ -380,12 +380,12 @@ private val _lastCommandResult = MutableStateFlow<CommandResult?>(null)
 private val _symbolTickSize = MutableStateFlow<Double?>(null)
 ```
 
-### 5.2.1. Loading tickSize
+### 5.2.1. Загрузка tickSize
 
 ```kotlin
 init {
     viewModelScope.launch {
-        delay(500) // a short delay so as not to block startup
+        delay(500) // небольшая задержка, чтобы не блокировать старт
         val defaultSymbol = _domOptions.value.symbol.symbol
         fetchSymbolTickSize(defaultSymbol)
     }
@@ -393,22 +393,22 @@ init {
 }
 ```
 
-On ViewModel initialization:
-1. Loads the tickSize (price step) for the default symbol
-2. Starts the WebSocket subscription
+При инициализации ViewModel:
+1. Загружает tickSize (шаг цены) для дефолтного символа
+2. Запускает WebSocket-подписку
 
 ---
 
-# 6. Incremental Data: SnapshotStateMap
+# 6. Инкрементальные данные: SnapshotStateMap
 
-## 6.1. The Problem
+## 6.1. Проблема
 
-The order book updates very frequently — hundreds of updates per second. Copying the entire level map every time would cause:
-- Many allocations (garbage for the GC)
-- UI delays
-- Unnecessary recompositions
+Стакан заявок обновляется очень часто — сотни обновлений в секунду. Если каждый раз копировать всю карту уровней, это вызовет:
+- Много аллокаций (мусора для GC)
+- Задержки в UI
+- Лишние рекомпозиции
 
-## 6.2. Solution: SnapshotStateMap
+## 6.2. Решение: SnapshotStateMap
 
 ```kotlin
 private val _incrementalBids = mutableStateMapOf<Double, Double>()
@@ -418,46 +418,46 @@ private val _incrementalAsks = mutableStateMapOf<Double, Double>()
 val incrementalAsks: Map<Double, Double> = _incrementalAsks
 ```
 
-### 6.2.1. What Is SnapshotStateMap?
+### 6.2.1. Что такое SnapshotStateMap?
 
-`mutableStateMapOf()` creates a mutable map that Compose "observes". 
+`mutableStateMapOf()` создаёт мутабельную мапу, за которой Compose "следит". 
 
-**Key feature**: Compose can track **changes to individual entries** (key-value pairs), not the map as a whole. If one element changes, Compose redraws only the composables that read that specific key.
+**Ключевая особенность**: Compose способен отслеживать **изменения отдельных entry** (ключ-значение), а не всей мапы. Если изменить один элемент, Compose перерисует только те Composable'ы, которые читают этот конкретный ключ.
 
-### 6.2.2. Advantages
+### 6.2.2. Преимущества
 
 ```kotlin
-// ❌ Without SnapshotStateMap — the whole map is copied
+// ❌ Без SnapshotStateMap — копируем всю мапу
 private val _bids = MutableStateFlow<Map<Double, Double>>(emptyMap())
-_bids.value = _bids.value + (price to newQty) // O(N) copy of the whole map!
+_bids.value = _bids.value + (price to newQty) // O(N) копия всей мапы!
 
-// ✅ With SnapshotStateMap — in-place mutation
-_incrementalBids[price] = newQty // O(1), no copies
+// ✅ С SnapshotStateMap — in-place мутация
+_incrementalBids[price] = newQty // O(1), без копий
 ```
 
-### 6.2.3. Comparison with StateFlow
+### 6.2.3. Сравнение с StateFlow
 
 | | StateFlow<Map<>> | SnapshotStateMap |
 |---|---|---|
-| Mutation | New map copy | In-place |
-| Recomposition | Entire list | Entry only |
-| GC pressure | High | Low |
-| Complexity | Simpler | Requires `derivedStateOf` |
+| Мутация | Новая копия мапы | In-place |
+| Рекомпозиция | Весь список | Только entry |
+| GC pressure | Высокий | Низкий |
+| Сложность | Проще | Требует `derivedStateOf` |
 
-## 6.3. How It Is Read in the UI
+## 6.3. Как читается в UI
 
 ```kotlin
-// In DomWindow.kt — directly, via a Map reference
-val incrementalBids = domViewModel.incrementalBids  // Returns Map<Double, Double>
+// В DomWindow.kt — напрямую, через ссылку на Map
+val incrementalBids = domViewModel.incrementalBids  // Выдаёт Map<Double, Double>
 val incrementalAsks = domViewModel.incrementalAsks
 
-// Whereas StateFlow requires collectAsState()
+// А StateFlow требует collectAsState()
 val incrementalBestBid by domViewModel.incrementalBestBid.collectAsState()
 ```
 
-**Why?** `SnapshotStateMap` is Compose state. Compose tracks reads of it automatically. No `collectAsState()` needed.
+**Почему так?** `SnapshotStateMap` — это compose-стейт. Compose отслеживает его чтение автоматически. Не нужно `collectAsState()`.
 
-## 6.4. Best Prices Stored Separately
+## 6.4. Best prices отдельно
 
 ```kotlin
 private val _incrementalBestBid = MutableStateFlow<Double?>(null)
@@ -466,13 +466,13 @@ private val _incrementalBestBidQuantity = MutableStateFlow<Double?>(null)
 private val _incrementalBestAskQuantity = MutableStateFlow<Double?>(null)
 ```
 
-The best prices (best bid/ask) are stored **not in the maps** but in separate StateFlows. This data comes from a separate WebSocket stream (`@bookTicker`), not from depth.
+Лучшие цены (best bid/ask) хранятся **не в картах**, а в отдельных StateFlow. Это данные из отдельного WebSocket-потока (`@bookTicker`), а не из depth.
 
 ---
 
-# 7. Handling DomEvent Events
+# 7. Обработка событий DomEvent
 
-## 7.1. Subscribing to Events
+## 7.1. Подписка на события
 
 ```kotlin
 private fun restartSubscription(options: DomOptions) {
@@ -483,7 +483,7 @@ private fun restartSubscription(options: DomOptions) {
 }
 
 private suspend fun subscribeToIncrementalDom(options: DomOptions) {
-    // Reset data
+    // Сброс данных
     _incrementalBids.clear()
     _incrementalAsks.clear()
     _incrementalBestBid.value = null
@@ -502,7 +502,7 @@ private suspend fun subscribeToIncrementalDom(options: DomOptions) {
 }
 ```
 
-### 7.1.1. Resubscribing on Settings Changes
+### 7.1.1. Переподписка при изменении настроек
 
 ```kotlin
 fun updateDomOptions(newOptions: DomOptions) {
@@ -518,7 +518,7 @@ fun updateDomOptions(newOptions: DomOptions) {
         if (subscriptionChanged) {
             restartSubscription(newOptions)
         }
-        // If the symbol changed — update tickSize
+        // Если изменился символ — обновляем tickSize
         if (oldOptions.symbol != newOptions.symbol) {
             fetchSymbolTickSize(newOptions.symbol.symbol)
         }
@@ -526,7 +526,7 @@ fun updateDomOptions(newOptions: DomOptions) {
 }
 ```
 
-Only a change to provider, symbol, or depth triggers a resubscription. A change to aggregation does not (aggregation is applied locally at the UI level).
+Только изменение provider, symbol или depth вызывает переподписку. Изменение агрегации — нет (агрегация применяется локально на уровне UI).
 
 ## 7.2. processDomEvent()
 
@@ -583,15 +583,15 @@ private fun processDomEvent(event: DomEvent) {
 }
 ```
 
-### 7.2.1. Event Types
+### 7.2.1. Типы событий
 
-| Event | Source | Description |
+| Событие | Источник | Описание |
 |---|---|---|
-| `Snapshot` | REST API | Full order book snapshot (initial load) |
-| `UpdateBid` | WebSocket | Volume change at a specific buy price |
-| `UpdateAsk` | WebSocket | Volume change at a specific sell price |
-| `BestPrices` | WebSocket (@bookTicker) | Best bid/ask prices |
-| `Reset` | Repository | Synchronization failure, reinitialization required |
+| `Snapshot` | REST API | Полный слепок стакана (начальная загрузка) |
+| `UpdateBid` | WebSocket | Изменение объёма на конкретной цене покупки |
+| `UpdateAsk` | WebSocket | Изменение объёма на конкретной цене продажи |
+| `BestPrices` | WebSocket (@bookTicker) | Лучшие bid/ask цены |
+| `Reset` | Repository | Сбой синхронизации, требуется переинициализация |
 
 ### 7.2.2. SnapshotStateMap.clear()
 
@@ -599,9 +599,9 @@ private fun processDomEvent(event: DomEvent) {
 _incrementalBids.clear()
 ```
 
-`clear()` on a SnapshotStateMap is an atomic operation. Compose will see the changes to all entries as a single change and redraw the UI once.
+`clear()` на SnapshotStateMap — атомарная операция. Compose увидит изменения всех entry как одно изменение и перерисует UI один раз.
 
-## 7.3. Commands (TradingCommand)
+## 7.3. Команды (TradingCommand)
 
 ```kotlin
 fun executeCommand(command: TradingCommand?) {
@@ -638,34 +638,34 @@ fun handleOrderIntent(intent: OrderIntent) {
 }
 ```
 
-The `OrderIntent` sealed class is converted into a `TradingCommand` (from composeApp). This is a separation of concerns: the UI only knows about `OrderIntent`, while the ViewModel creates the command.
+Sealed class `OrderIntent` конвертируется в `TradingCommand` (из composeApp). Это разделение: UI знает только об `OrderIntent`, а ViewModel создаёт команду.
 
 ---
 
-# 8. DomRepositoryImpl: Order Book Synchronization
+# 8. DomRepositoryImpl: Синхронизация стакана
 
-This is the most complex file in the module. It implements the Binance WebSocket synchronization protocol.
+Это самый сложный файл модуля. Он реализует протокол синхронизации Binance WebSocket.
 
-## 8.1. The Binance Depth Stream Protocol
+## 8.1. Протокол Binance Depth Stream
 
-Binance uses the following protocol to synchronize the order book:
+Binance использует следующий протокол для синхронизации стакана:
 
 ```
-1. Open the WebSocket @depth stream — buffer all events into a queue
-2. Fetch the snapshot via the REST API
-3. Discard events where u < lastUpdateId
-4. First event to process: U <= lastUpdateId+1 AND u >= lastUpdateId+1
-5. Each subsequent event: pu == previous u
-6. If pu != previous u — reset and repeat from step 1
+1. Открыть WebSocket @depth стрим — буферизировать все события в очередь
+2. Получить снапшот через REST API
+3. Отбросить события где u < lastUpdateId
+4. Первое обработанное: U <= lastUpdateId+1 AND u >= lastUpdateId+1
+5. Каждое следующее: pu == предыдущее u
+6. Если pu != previous u — сброс, повтор с шага 1
 ```
 
-Where:
-- `lastUpdateId` — ID of the last update in the snapshot
-- `U` — first update ID in the event
-- `u` — final update ID in the event
-- `pu` — previous update ID (stream only)
+Где:
+- `lastUpdateId` — ID последнего обновления в снапшоте
+- `U` — first update ID в событии
+- `u` — final update ID в событии
+- `pu` — previous update ID (только в stream)
 
-## 8.2. Implementation in DomRepositoryImpl
+## 8.2. Реализация в DomRepositoryImpl
 
 ```kotlin
 override suspend fun subscribeToDomEvents(symbol: String, depth: Int): Flow<DomEvent> = callbackFlow {
@@ -676,7 +676,7 @@ override suspend fun subscribeToDomEvents(symbol: String, depth: Int): Flow<DomE
         try {
             val state = OrderBookState()
 
-            // Step 1: Start the depth WebSocket and buffer events
+            // Шаг 1: Запускаем depth WebSocket и буферизируем события
             val depthJob = launch {
                 domAdapter.subscribeToDepthUpdates(symbol, depth)
                     .catch { e -> println("⚠️ Depth updates error: ${e.message}") }
@@ -685,24 +685,24 @@ override suspend fun subscribeToDomEvents(symbol: String, depth: Int): Flow<DomE
                     }
             }
 
-            // Give the WebSocket time to connect
+            // Даём время WebSocket подключиться
             delay(500)
 
-            // Step 2: Fetch the snapshot via REST
+            // Шаг 2: Получаем снапшот через REST
             val snapshot = domAdapter.getOrderBookSnapshot(symbol, depth)
             state.updateFromSnapshot(snapshot)
 
-            // Send Snapshot
+            // Отправляем Snapshot
             trySend(DomEvent.fromSnapshot(snapshot, symbol))
 
-            // Step 3: Apply the buffered events
+            // Шаг 3: Применяем буферизированные события
             if (!state.flushPendingEvents()) {
                 depthJob.cancel()
                 trySend(DomEvent.Reset)
                 continue
             }
 
-            // Steps 4+5: Keep listening to depth and bookTicker
+            // Шаг 4+5: Продолжаем слушать depth и bookTicker
             val bookTickerJob = launch {
                 bookTickerAdapter.subscribeToBookTicker(symbol)
                     .collect { bookTicker ->
@@ -710,7 +710,7 @@ override suspend fun subscribeToDomEvents(symbol: String, depth: Int): Flow<DomE
                     }
             }
 
-            // Switch depth to direct validation
+            // Переключаем depth на прямую валидацию
             depthJob.cancel()
             val depthDirectJob = launch {
                 domAdapter.subscribeToDepthUpdates(symbol, depth)
@@ -734,19 +734,19 @@ override suspend fun subscribeToDomEvents(symbol: String, depth: Int): Flow<DomE
 }
 ```
 
-### 8.2.1. `callbackFlow` — a Manual Flow
+### 8.2.1. `callbackFlow` — ручной Flow
 
 ```kotlin
 callbackFlow {
     // ...
-    trySend(event)  // ← send the event to the Flow
-    close()         // ← close the Flow
+    trySend(event)  // ← отправляем событие в Flow
+    close()         // ← закрываем Flow
 }
 ```
 
-`callbackFlow` is a Flow builder that allows sending events manually via `trySend()`. It is used to integrate callback-based APIs (WebSocket).
+`callbackFlow` — это builder для Flow, который позволяет отправлять события вручную через `trySend()`. Используется для интеграции callback-based API (WebSocket).
 
-### 8.2.2. Reconnection with Exponential Backoff
+### 8.2.2. Reconnection с exponential backoff
 
 ```kotlin
 catch (e: Exception) {
@@ -761,25 +761,25 @@ catch (e: Exception) {
 }
 ```
 
-On error:
-1. Increment the attempt counter
-2. If it exceeds 5 — close the Flow
-3. Otherwise: `delay(1000 * 2^(attempt-1))` — 1s, 2s, 4s, 8s, 16s (exponential backoff)
-4. Send `DomEvent.Reset`
+При ошибке:
+1. Увеличиваем счётчик попыток
+2. Если больше 5 — закрываем Flow
+3. Иначе: `delay(1000 * 2^(attempt-1))` — 1с, 2с, 4с, 8с, 16с (exponential backoff)
+4. Отправляем `DomEvent.Reset`
 
-### 8.2.3. Custom Exception for Reinitialization
+### 8.2.3. Custom exception для переинициализации
 
 ```kotlin
 private class ReinitializationException(message: String) : Exception(message)
 ```
 
-A private exception for control flow — when synchronization goes out of sync, `continue` restarts the loop.
+Приватное исключение для управления потоком — когда синхронизация сбивается, `continue` перезапускает цикл.
 
 ---
 
-# 9. OrderBook: The Order Book Model
+# 9. OrderBook: Модель стакана
 
-## 9.1. The OrderBook Class
+## 9.1. Класс OrderBook
 
 ```kotlin
 data class OrderBook(
@@ -808,7 +808,7 @@ data class OrderBook(
 
 ### 9.1.1. maxVolume()
 
-Finds the maximum volume among all levels to scale the visualization (the width of the horizontal bars).
+Находит максимальный объём среди всех уровней для масштабирования визуализации (ширины горизонтальных баров).
 
 ### 9.1.2. aggregate()
 
@@ -828,18 +828,18 @@ fun aggregate(aggregationLevel: AggregationLevel, baseTickSize: Double): OrderBo
 }
 ```
 
-Creates a new `OrderBook` with aggregated levels. The original object is not modified (a data class is immutable).
+Создаёт новый `OrderBook` с агрегированными уровнями. Исходный объект не меняется (data class — immutable).
 
 ---
 
-# 10. DomAggregator: Price Level Aggregation
+# 10. DomAggregator: Агрегация ценовых уровней
 
-## 10.1. Why Is Aggregation Needed?
+## 10.1. Зачем нужна агрегация?
 
-When prices have a small step (tickSize = 0.01), the order book contains hundreds of levels. Aggregation groups them:
+Когда цены имеют маленький шаг (tickSize = 0.01), стакан содержит сотни уровней. Агрегация группирует их:
 
 ```
-Without aggregation:    With aggregation (10×):
+Без агрегации:         С агрегацией (10×):
 67000.01  0.5          
 67000.02  0.3          
 67000.03  1.2          67000.0  1.5
@@ -848,7 +848,7 @@ Without aggregation:    With aggregation (10×):
 67000.06  0.9          67000.1  0.9
 ```
 
-## 10.2. Single-Pass Aggregation
+## 10.2. Single-pass агрегация
 
 ```kotlin
 object DomAggregator {
@@ -874,17 +874,17 @@ object DomAggregator {
 }
 ```
 
-### 10.2.1. `linkedMapOf` — Preserving Order
+### 10.2.1. `linkedMapOf` — сохранение порядка
 
-`LinkedHashMap` preserves insertion order. This matters because the source list is sorted, and we want to keep that sort order in the aggregated result.
+`LinkedHashMap` сохраняет порядок вставки. Это важно, потому что исходный список отсортирован, и мы хотим сохранить сортировку в агрегированном результате.
 
-### 10.2.2. `getOrPut` — the "Get or Create" Pattern
+### 10.2.2. `getOrPut` — паттерн "get or create"
 
 ```kotlin
 val bucket = aggregated.getOrPut(key) { AggregatedBucket() }
 ```
 
-Equivalent to:
+Эквивалентно:
 ```kotlin
 val bucket = aggregated[key]
 if (bucket == null) {
@@ -896,7 +896,7 @@ if (bucket == null) {
 }
 ```
 
-### 10.2.3. Internal Classes
+### 10.2.3. Внутренние классы
 
 ```kotlin
 private class AggregatedBucket {
@@ -906,17 +906,17 @@ private class AggregatedBucket {
 }
 ```
 
-Mutable classes for accumulation — without them, a new object would have to be created for every level.
+Мутабельные классы для аккумуляции — без них пришлось бы создавать новый объект для каждого уровня.
 
 ---
 
-# 11. AggregationLevel: Aggregation Levels
+# 11. AggregationLevel: Уровни агрегации
 
-## 11.1. Sealed Class
+## 11.1. Sealed class
 
 ```kotlin
 sealed class AggregationLevel(val multiplier: Double) {
-    object BaseTick : AggregationLevel(1.0)      // 1× — no aggregation
+    object BaseTick : AggregationLevel(1.0)      // 1× — без агрегации
     object TenTick : AggregationLevel(10.0)       // 10×
     object HundredTick : AggregationLevel(100.0)  // 100×
 
@@ -932,11 +932,11 @@ sealed class AggregationLevel(val multiplier: Double) {
 }
 ```
 
-### 11.1.1. Sealed Class vs. Sealed Interface
+### 11.1.1. Sealed class vs sealed interface
 
-A `sealed class` is used rather than a `sealed interface` because all subclasses share the `multiplier` field. A sealed class allows storing state in the parent.
+Используется `sealed class`, а не `sealed interface`, потому что у всех наследников есть общее поле `multiplier`. sealed class позволяет хранить состояние в родителе.
 
-## 11.2. Key Methods
+## 11.2. Ключевые методы
 
 **effectiveTickSize**: `baseTickSize * multiplier`
 
@@ -944,9 +944,9 @@ A `sealed class` is used rather than a `sealed interface` because all subclasses
 fun effectiveTickSize(baseTickSize: Double): Double = baseTickSize * multiplier
 ```
 
-Example: tickSize=0.01, TenTick → 0.01 * 10 = 0.1
+Пример: tickSize=0.01, TenTick → 0.01 * 10 = 0.1
 
-**roundDown**: rounding the price down
+**roundDown**: округление цены вниз
 
 ```kotlin
 fun roundDown(price: Double, baseTickSize: Double): Double {
@@ -956,9 +956,9 @@ fun roundDown(price: Double, baseTickSize: Double): Double {
 }
 ```
 
-Example: price=67000.05, tick=0.1 → (67000.05/0.1).toInt()*0.1 = 67000.0
+Пример: price=67000.05, tick=0.1 → (67000.05/0.1).toInt()*0.1 = 67000.0
 
-**aggregationKey**: a string key for grouping
+**aggregationKey**: строковый ключ для группировки
 
 ```kotlin
 fun aggregationKey(price: String, baseTickSize: Double): String {
@@ -972,12 +972,13 @@ fun aggregationKey(price: String, baseTickSize: Double): String {
 }
 ```
 
-Used in `DomAggregator` to group levels.
+Используется в `DomAggregator` для группировки уровней.
 
 ---
-# 12. DomOptions: Unified Settings State
 
-## 12.1. The Class
+# 12. DomOptions: Единый стейт настроек
+
+## 12.1. Класс
 
 ```kotlin
 data class DomOptions(
@@ -996,12 +997,12 @@ data class DomOptions(
 }
 ```
 
-### 12.1.1. Why a unified state?
+### 12.1.1. Зачем единый стейт?
 
-All DOM settings are stored in a single `StateFlow`. This simplifies:
-- Change tracking (one `collectAsState()` instead of five)
-- Transition validation
-- Save/restore
+Все настройки DOM хранятся в одном `StateFlow`. Это упрощает:
+- Отслеживание изменений (один `collectAsState()` вместо пяти)
+- Валидацию переходов
+- Сохранение/восстановление
 
 ### 12.1.2. subscriptionKey
 
@@ -1009,13 +1010,13 @@ All DOM settings are stored in a single `StateFlow`. This simplifies:
 val subscriptionKey: String get() = "${provider.name}:${symbol.symbol}:${depth.value}"
 ```
 
-A computed key used to determine whether resubscription is needed. If the provider, symbol, or depth has not changed, the subscription is not restarted.
+Вычисляемый ключ для определения необходимости переподписки. Если провайдер, символ или глубина не изменились — подписка не перезапускается.
 
 ---
 
-# 13. TradingProvider and TradingSymbol
+# 13. TradingProvider и TradingSymbol
 
-## 13.1. TradingProvider — an enum of providers
+## 13.1. TradingProvider — enum провайдеров
 
 ```kotlin
 enum class TradingProvider(
@@ -1036,15 +1037,15 @@ enum class TradingProvider(
 }
 ```
 
-### 13.1.1. Enum parameters
+### 13.1.1. Параметры enum
 
-Each enum can have properties:
+Каждый enum может иметь свойства:
 ```kotlin
 BINANCE("Binance", true)
 //        ↑ displayName   ↑ supportsFutures
 ```
 
-## 13.2. TradingSymbol — a data class for a pair
+## 13.2. TradingSymbol — data class пары
 
 ```kotlin
 data class TradingSymbol(
@@ -1054,9 +1055,9 @@ data class TradingSymbol(
 )
 ```
 
-### 13.2.1. Static symbol lists
+### 13.2.1. Статические списки символов
 
-Each provider has a predefined list of symbols:
+Каждый провайдер имеет предопределённый список символов:
 ```kotlin
 val BINANCE_COIN_M_FUTURES_SYMBOLS = listOf(
     TradingSymbol("BTCUSD_PERP", "BTCUSD Perp", TradingProvider.BINANCE_COIN_M),
@@ -1065,7 +1066,7 @@ val BINANCE_COIN_M_FUTURES_SYMBOLS = listOf(
 )
 ```
 
-### 13.2.2. Lookup by provider
+### 13.2.2. Поиск по провайдеру
 
 ```kotlin
 fun getSymbolsForProvider(provider: TradingProvider): List<TradingSymbol> {
@@ -1080,9 +1081,9 @@ fun getSymbolsForProvider(provider: TradingProvider): List<TradingSymbol> {
 
 ---
 
-# 14. DepthLimit: Depth Limitation
+# 14. DepthLimit: Ограничение глубины
 
-## 14.1. The Class
+## 14.1. Класс
 
 ```kotlin
 data class DepthLimit(val value: Int) {
@@ -1105,7 +1106,7 @@ data class DepthLimit(val value: Int) {
 }
 ```
 
-### 14.1.1. The `init` block — validation
+### 14.1.1. `init` блок — валидация
 
 ```kotlin
 init {
@@ -1113,16 +1114,16 @@ init {
 }
 ```
 
-`require` throws an `IllegalArgumentException` if the condition is not met. This protects against invalid values.
+`require` выбрасывает `IllegalArgumentException` если условие не выполнено. Это защита от некорректных значений.
 
-### 14.1.2. `create()` vs the constructor
+### 14.1.2. `create()` vs конструктор
 
-- `DepthLimit(50)` — may throw an exception
-- `DepthLimit.create(50)` — safely coerces into the range
+- `DepthLimit(50)` — может выбросить исключение
+- `DepthLimit.create(50)` — безопасно зажмёт в диапазон
 
 ---
 
-# 15. OrderIntent: Intent to Place an Order
+# 15. OrderIntent: Намерение разместить ордер
 
 ## 15.1. Sealed class
 
@@ -1138,9 +1139,9 @@ sealed class OrderIntent {
 }
 ```
 
-### 15.1.1. Why `sealed class` and not `sealed interface`?
+### 15.1.1. Почему `sealed class`, а не `sealed interface`?
 
-`OrderIntent` uses a `sealed class` because it has a `toOrderData()` method with shared conversion logic. But a sealed class is fine here either way — there is no functional difference.
+`OrderIntent` использует `sealed class`, так как есть метод `toOrderData()` с общей логикой конвертации. Но sealed class тоже подходит — разницы в функциональности нет.
 
 ### 15.1.2. `toOrderData()`
 
@@ -1153,13 +1154,13 @@ fun toOrderData(): OrderData? = when (this) {
 }
 ```
 
-Converts the intent into an `OrderData` from `composeApp` for execution via `TradingCommand`.
+Конвертирует намерение в `OrderData` из `composeApp` для выполнения через `TradingCommand`.
 
 ---
 
-# 16. DomWindow: Building the UI
+# 16. DomWindow: Сборка UI
 
-## 16.1. Optimization: derivedStateOf
+## 16.1. Оптимизация: derivedStateOf
 
 ```kotlin
 val displayUnifiedOrderBook by remember(domOptions.aggregation, symbolTickSize) {
@@ -1177,11 +1178,11 @@ val displayUnifiedOrderBook by remember(domOptions.aggregation, symbolTickSize) 
 }
 ```
 
-### 16.1.1. What is derivedStateOf?
+### 16.1.1. Что такое derivedStateOf?
 
-`derivedStateOf` is a Compose function that creates a **derived state**, which is recalculated only when the states it reads change.
+`derivedStateOf` — функция Compose, создающая **производное состояние**, которое пересчитывается только когда изменяются прочитанные им стейты.
 
-**Key point:** `remember` with keys determines when to recreate the `derivedStateOf`, but the `derivedStateOf` itself "lazily" reacts to changes in the states it reads.
+**Ключевая особенность:** `remember` с ключами определяет, когда пересоздавать `derivedStateOf`, но сам `derivedStateOf` внутри "лениво" реагирует на изменения прочитанных стейтов.
 
 ## 16.2. buildDisplayOrderBook()
 
@@ -1197,7 +1198,7 @@ private fun buildDisplayOrderBook(
 ): OrderBook {
     val priceMap = mutableMapOf<String, OrderBookLevel>()
 
-    // Add bids, filtering by bestBid
+    // Добавляем bids, фильтруя по bestBid
     bids.forEach { (price, quantity) ->
         if (bestBid != null && price > bestBid) return@forEach
         priceMap[price.toString()] = OrderBookLevel(
@@ -1206,13 +1207,13 @@ private fun buildDisplayOrderBook(
         )
     }
 
-    // Add asks, filtering by bestAsk
+    // Добавляем asks, фильтруя по bestAsk
     asks.forEach { (price, quantity) ->
         if (bestAsk != null && price < bestAsk) return@forEach
-        // merge with the existing bid level
+        // объединяем с существующим bid-уровнем
     }
 
-    // Sort by descending price
+    // Сортируем по убыванию цены
     val sortedLevels = priceMap.values.sortedByDescending {
         it.price.toDoubleOrNull() ?: 0.0
     }
@@ -1229,26 +1230,26 @@ private fun buildDisplayOrderBook(
 }
 ```
 
-### 16.2.1. Filtering by bestBid/bestAsk
+### 16.2.1. Фильтрация по bestBid/bestAsk
 
 ```kotlin
 if (bestBid != null && price > bestBid) return@forEach
 ```
 
-This is important: only levels **below** the best bid and **above** the best ask are displayed. Anything that "crosses" the spread is ignored.
+Это важно: отображаются только уровни **ниже** лучшего bid и **выше** лучшего ask. Всё, что "пересекает" спред, игнорируется.
 
-### 16.2.2. Bid/ask unification
+### 16.2.2. Unification bid/ask
 
-Each level can contain both bid and ask volume for the same price. This is called a **unified order book**:
+Каждый уровень может содержать и bid, и ask объём для одной цены. Это называется **unified order book**:
 
 ```
 Price    Bid Qty    Ask Qty
 67000.0  1.500
-67000.1  0.800      0.300  ← same price, both volumes
+67000.1  0.800      0.300  ← одна цена, оба объёма
 67000.2             1.200
 ```
 
-## 16.3. Building the BookTicker
+## 16.3. Сборка BookTicker
 
 ```kotlin
 val displayBookTicker = BookTicker(
@@ -1262,13 +1263,13 @@ val displayBookTicker = BookTicker(
 )
 ```
 
-Built from incremental data, without a separate repository.
+Собирается из инкрементальных данных, без отдельного репозитория.
 
 ---
 
-# 17. DomHeader: Settings Header
+# 17. DomHeader: Шапка с настройками
 
-## 17.1. Structure
+## 17.1. Структура
 
 ```
 ┌──────────────────────────────┐
@@ -1280,29 +1281,29 @@ Built from incremental data, without a separate repository.
 └──────────────────────────────┘
 ```
 
-### 17.1.1. Two modes
+### 17.1.1. Два режима
 
 ```kotlin
 @Composable
 fun DomHeader(...) {
     if (domOptions.collapsed) {
-        DomHeaderCompact(...)  // Provider + symbol only
+        DomHeaderCompact(...)  // Только provider + symbol
     } else {
-        ExpandedDomHeader(...) // All settings
+        ExpandedDomHeader(...) // Все настройки
     }
 }
 ```
 
-`collapsed` is a boolean field in `DomOptions`. It allows collapsing the header to free up space for the order book.
+`collapsed` — булево поле в `DomOptions`. Позволяет свернуть шапку, освобождая место для стакана.
 
 ### 17.1.2. ExpandedDomHeader
 
-Three rows:
+Три строки:
 1. **Provider + Live indicator + Collapse button**
 2. **Symbol + Depth Limit**
 3. **Aggregation Level**
 
-## 17.2. Compact mode (DomHeaderCompact)
+## 17.2. Компактный режим (DomHeaderCompact)
 
 ```kotlin
 @Composable
@@ -1314,12 +1315,12 @@ fun DomHeaderCompact(
     onToggleExpand: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // Provider name + symbol only
+    // Только provider имя + символ
     Row {
         Text(tradingProvider.displayName)
         Text(tradingSymbol.displayName)
         IconButton(onClick = onToggleExpand) {
-            Icon(Icons.Default.ArrowDropDown, ...) // downward arrow (expand)
+            Icon(Icons.Default.ArrowDropDown, ...) // стрелка вниз (развернуть)
         }
     }
 }
@@ -1327,9 +1328,9 @@ fun DomHeaderCompact(
 
 ---
 
-# 18. DomContent and DomSection: Rendering the Order Book
+# 18. DomContent и DomSection: Отображение стакана
 
-## 18.1. DomContent — the entry point for content
+## 18.1. DomContent — точка входа для контента
 
 ```kotlin
 @Composable
@@ -1354,11 +1355,11 @@ fun DomContent(
 }
 ```
 
-A simple wrapper over `DomSection`. Can be extended in the future (for example, to add a chart on top of the DOM).
+Простая обёртка над `DomSection`. Может быть расширена в будущем (например, для добавления графика поверх DOM).
 
-## 18.2. DomSection — a LazyColumn with the order book
+## 18.2. DomSection — LazyColumn со стаканом
 
-### 18.2.1. Header
+### 18.2.1. Заголовок
 
 ```kotlin
 Row {
@@ -1368,9 +1369,9 @@ Row {
 }
 ```
 
-Column headers: Bid Vol / Price / Ask Vol.
+Заголовок колонок: Bid Vol / Price / Ask Vol.
 
-### 18.2.2. LazyColumn with LevelRow
+### 18.2.2. LazyColumn с LevelRow
 
 ```kotlin
 LazyColumn(state = lazyListState, modifier = Modifier.weight(1f)) {
@@ -1392,19 +1393,19 @@ LazyColumn(state = lazyListState, modifier = Modifier.weight(1f)) {
 }
 ```
 
-### 18.2.3. `key` for items
+### 18.2.3. `key` для items
 
 ```kotlin
 key = { "level-${it.price}" }
 ```
 
-Keys help LazyColumn efficiently reuse items when data updates. Without keys, the entire list would be redrawn on any change.
+Ключи помогают LazyColumn эффективно переиспользовать элементы при обновлении данных. Без ключей весь список перерисовывался бы при любом изменении.
 
 ---
 
-# 19. LevelRow: One Order Book Row
+# 19. LevelRow: Одна строка стакана
 
-## 19.1. Visual structure of a row
+## 19.1. Визуальная структура строки
 
 ```
 ┌────────────────────────────────────────────┐
@@ -1413,7 +1414,7 @@ Keys help LazyColumn efficiently reuse items when data updates. Without keys, th
 └────────────────────────────────────────────┘
 ```
 
-## 19.2. Component
+## 19.2. Компонент
 
 ```kotlin
 @Composable
@@ -1434,12 +1435,12 @@ fun LevelRow(
     val bidQty = level.bidQty.toDoubleOrNull() ?: 0.0
     val askQty = level.askQty.toDoubleOrNull() ?: 0.0
 
-    // Determine: best price? selected price? hover?
+    // Определяем: это лучшая цена? выбранная цена? ховер?
     val isBestBid = bestBid?.let { comparePrices(it, price) } ?: false
     val isBestAsk = bestAsk?.let { comparePrices(it, price) } ?: false
     val isSelected = selectedPrice?.let { comparePrices(it, price) } ?: false
 
-    // Colors
+    // Цвета
     val backgroundColor = when {
         isSelected -> Color.Yellow.copy(alpha = 0.3f)
         isHovered -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -1456,7 +1457,7 @@ fun LevelRow(
         .border(if (isBestPrice) 1.dp else 0.dp, borderColor)
         .padding(horizontal = 8.dp, vertical = 1.dp)
     ) {
-        // Bid Volume (left) — horizontal bar
+        // Bid Volume (слева) — горизонтальный бар
         Box(Modifier.weight(0.8f).height(20.dp)) {
             if (bidQty > 0) {
                 val volumeWidth = (bidQty / maxVolume).coerceIn(0.0, 1.0)
@@ -1465,14 +1466,14 @@ fun LevelRow(
                     .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)))
             }
             if (bidQty > 0) {
-                Text(formatVolume(bidQty), ...)  // ← text on top of the bar
+                Text(formatVolume(bidQty), ...)  // ← текст поверх бара
             }
         }
 
-        // Price (center)
+        // Price (центр)
         Text(formatPrice(price), ...)
 
-        // Ask Volume (right) — horizontal bar
+        // Ask Volume (справа) — горизонтальный бар
         Box(Modifier.weight(0.8f).height(20.dp).align(CenterEnd)) {
             if (askQty > 0) {
                 val volumeWidth = (askQty / maxVolume).coerceIn(0.0, 1.0)
@@ -1489,53 +1490,53 @@ fun LevelRow(
 }
 ```
 
-## 19.3. Visualizing volumes
+## 19.3. Визуализация объёмов
 
-### 19.3.1. Bid Volume (left)
+### 19.3.1. Bid Volume (слева)
 
 ```kotlin
 val volumeWidth = (bidQty / maxVolume).coerceIn(0.0, 1.0)
 Box(Modifier.fillMaxWidth(volumeWidth.toFloat()).background(bidColor))
 ```
 
-A horizontal bar whose width is proportional to the volume. `maxVolume` is the maximum volume among all levels (from `OrderBook.maxVolume()`).
+Горизонтальный бар, ширина которого пропорциональна объёму. `maxVolume` — максимальный объём среди всех уровней (из `OrderBook.maxVolume()`).
 
-### 19.3.2. Ask Volume (right)
+### 19.3.2. Ask Volume (справа)
 
-Similar, but aligned to the right edge:
+Аналогично, но выровнен по правому краю:
 ```kotlin
 Box(Modifier.fillMaxWidth(volumeWidth.toFloat()).align(Alignment.CenterEnd))
 ```
 
-### 19.3.3. Highlighting the best prices
+### 19.3.3. Подсветка лучших цен
 
 ```kotlin
 val borderColor = when {
-    isBestBid -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)    // Blue
-    isBestAsk -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)  // Red
+    isBestBid -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)    // Синий
+    isBestAsk -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)  // Красный
     else -> Color.Transparent
 }
 ```
 
-The best bid is highlighted with a blue border, the best ask with a red one.
+Лучший bid подсвечивается синей границей, лучший ask — красной.
 
-### 19.3.4. Highlighting the selected price
+### 19.3.4. Подсветка выбранной цены
 
 ```kotlin
 val backgroundColor = when {
-    isSelected -> Color.Yellow.copy(alpha = 0.3f)  // Yellow background
+    isSelected -> Color.Yellow.copy(alpha = 0.3f)  // Жёлтый фон
     isHovered -> surfaceVariant
     else -> Transparent
 }
 ```
 
-When the user clicks a price, the row is highlighted in yellow.
+Когда пользователь кликает на цену, строка подсвечивается жёлтым.
 
 ---
 
-# 20. OrderPlacementPanel: Order Placement Panel
+# 20. OrderPlacementPanel: Панель размещения ордеров
 
-## 20.1. Panel structure
+## 20.1. Структура панели
 
 ```
 ┌──────────────────────────────┐
@@ -1549,7 +1550,7 @@ When the user clicks a price, the row is highlighted in yellow.
 └──────────────────────────────┘
 ```
 
-## 20.2. Market orders
+## 20.2. Market ордера
 
 ```kotlin
 Row {
@@ -1565,9 +1566,9 @@ Row {
 }
 ```
 
-**Market Order** — executes immediately at the current market price.
+**Рыночный ордер (Market Order)** — исполняется немедленно по текущей рыночной цене.
 
-## 20.3. Limit orders (at the selected price)
+## 20.3. Limit ордера (по выбранной цене)
 
 ```kotlin
 TerminalButton(onClick = {
@@ -1580,9 +1581,9 @@ TerminalButton(onClick = {
 }
 ```
 
-The button is inactive (gray text) until a price is selected.
+Кнопка неактивна (текст серый), пока не выбрана цена.
 
-## 20.4. Best Bid/Ask orders
+## 20.4. Best Bid/Ask ордера
 
 ```kotlin
 TerminalButton(onClick = {
@@ -1594,28 +1595,28 @@ TerminalButton(onClick = {
 }
 ```
 
-## 20.5. Trade Off button
+## 20.5. Trade Off кнопка
 
 ```kotlin
 TerminalButton(onClick = { onOrderIntent(OrderIntent.ToggleTrading) },
-    isActive = !isTradingEnabled  // Active when trading is OFF
+    isActive = !isTradingEnabled  // Активна когда торговля ВЫКЛЮЧЕНА
 ) {
     Text(if (isTradingEnabled) "⚠️ TRADE OFF" else "✅ TRADE ON",
          color = if (isTradingEnabled) Color.Red else Color.Green)
 }
 ```
 
-A local kill-switch — disables the ability to send orders without disabling the data subscription.
+Локальный kill-switch — отключает возможность отправлять ордера, не отключая подписку на данные.
 
 ---
 
-# 21. Automatic Scroll to Best Price
+# 21. Автоматический scroll-to-best-price
 
-## 21.1. The problem
+## 21.1. Проблема
 
-The best bid price constantly changes. If it moves outside the visible area, the user loses their reference point.
+Лучшая цена bid постоянно меняется. Если она уходит за пределы видимой области, пользователь теряет ориентир.
 
-## 21.2. The solution
+## 21.2. Решение
 
 ```kotlin
 val scrollTargetPrice = remember(orderBook, aggregationLevel, baseTickSize) {
@@ -1630,16 +1631,16 @@ val scrollTargetPrice = remember(orderBook, aggregationLevel, baseTickSize) {
 
 LaunchedEffect(scrollTargetPrice) {
     if (scrollTargetPrice == null) return@LaunchedEffect
-    if (lazyListState.isScrollInProgress) return@LaunchedEffect  // ← do NOT interfere with the user
+    if (lazyListState.isScrollInProgress) return@LaunchedEffect  // ← НЕ мешаем пользователю
 
     val targetIndex = levels.indexOfFirst { level ->
         val levelPrice = level.price.toDoubleOrNull() ?: return@indexOfFirst false
-        // Compare via aggregation
+        // Сравниваем через агрегацию
         aggregationLevel.aggregationKey(levelPrice.toString(), baseTickSize) ==
             aggregationLevel.aggregationKey(scrollTargetPrice.toString(), baseTickSize)
     }.takeIf { it >= 0 } ?: return@LaunchedEffect
 
-    // Check whether the target price is already visible
+    // Проверяем, видна ли уже целевая цена
     val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
     val isTargetVisible = visibleItems.any { visibleItem ->
         val visibleIndex = visibleItem.index
@@ -1656,38 +1657,38 @@ LaunchedEffect(scrollTargetPrice) {
 }
 ```
 
-### 21.2.1. Key points
+### 21.2.1. Ключевые моменты
 
-1. **Only when the user is NOT scrolling themselves**
+1. **Только если пользователь НЕ скроллит сам**
    ```kotlin
    if (lazyListState.isScrollInProgress) return@LaunchedEffect
    ```
 
-2. **Do not scroll if the price is already visible**
+2. **Не скроллим если цена уже видна**
    ```kotlin
    val isTargetVisible = visibleItems.any { ... }
    if (!isTargetVisible) { animateScrollToItem(...) }
    ```
 
-3. **Comparison via aggregation**
+3. **Сравнение через агрегацию**
    ```kotlin
    aggregationLevel.aggregationKey(price1, baseTickSize) ==
        aggregationLevel.aggregationKey(price2, baseTickSize)
    ```
 
-### 21.2.2. `remember` for scrollTargetPrice
+### 21.2.2. `remember` для scrollTargetPrice
 
 ```kotlin
 val scrollTargetPrice = remember(orderBook, aggregationLevel, baseTickSize) { ... }
 ```
 
-Recalculated only when the order book, aggregation level, or tickSize changes.
+Пересчитывается только при изменении стакана, уровня агрегации или tickSize.
 
 ---
 
-# 22. Formatting Utilities
+# 22. Утилиты форматирования
 
-## 22.1. formatPrice (for DomSection)
+## 22.1. formatPrice (для DomSection)
 
 ```kotlin
 fun formatPrice(price: Double): String {
@@ -1701,9 +1702,9 @@ fun formatPrice(price: Double): String {
 }
 ```
 
-Adaptive precision depending on the price. For BTC (~67000) — 2 decimal places, for small altcoins — up to 6.
+Адаптивная точность в зависимости от цены. Для BTC (~67000) — 2 знака, для мелких альткоинов — до 6 знаков.
 
-## 22.2. formatVolume (for DomSection)
+## 22.2. formatVolume (для DomSection)
 
 ```kotlin
 fun formatVolume(volume: Double): String {
@@ -1716,7 +1717,7 @@ fun formatVolume(volume: Double): String {
 }
 ```
 
-## 22.3. formatDomPrice (for OrderPlacementPanel)
+## 22.3. formatDomPrice (для OrderPlacementPanel)
 
 ```kotlin
 fun formatDomPrice(price: Double): String {
@@ -1730,19 +1731,19 @@ fun formatDomPrice(price: Double): String {
 }
 ```
 
-Similar to `formatPrice`, but located in the `DomUtils.kt` file and used in the footer.
+Аналогична `formatPrice`, но в файле `DomUtils.kt` и используется в футере.
 
 ---
 
-# 23. Conclusion: How It All Works Together
+# 23. Заключение: Как всё работает вместе
 
-## 23.1. Startup sequence
+## 23.1. Последовательность запуска
 
 ```
-1. main() in DomWindow.kt
+1. main() в DomWindow.kt
    │
 2. stopKoin() → initKoinForPreview()
-   │   Creates DI: FeatureDomModule + coreModule
+   │   Создаёт DI: FeatureDomModule + coreModule
    │
 3. Window(...) { DomWindow() }
    │
@@ -1751,16 +1752,16 @@ Similar to `formatPrice`, but located in the `DomUtils.kt` file and used in the 
    ├── koinInject() → DomViewModel
    │   │
    │   └── init():
-   │       ├── fetchSymbolTickSize("BTCUSD_PERP")    ← loading tickSize
-   │       └── restartSubscription(options)           ← starting WebSocket
+   │       ├── fetchSymbolTickSize("BTCUSD_PERP")    ←загрузка tickSize
+   │       └── restartSubscription(options)           ←запуск WebSocket
    │           │
    │           └── subscribeToIncrementalDom():
    │               │
    │               └── domRepository.subscribeToDomEvents(symbol, depth)
    │                   │
-   │                   ├── WebSocket @depth → buffer
+   │                   ├── WebSocket @depth → буфер
    │                   ├── REST snapshot → OrderBookState.updateFromSnapshot()
-   │                   ├── buffer flush → validation
+   │                   ├── flush буфера → валидация
    │                   ├── WebSocket @depth (direct) → applyUpdateWithValidation()
    │                   └── WebSocket @bookTicker → BestPrices
    │
@@ -1768,42 +1769,42 @@ Similar to `formatPrice`, but located in the `DomUtils.kt` file and used in the 
    │
    ├── derivedStateOf → buildDisplayOrderBook()
    │   │
-   │   └── Merges incrementalBids + incrementalAsks → OrderBook
-   │       └── Applies aggregation → aggregated OrderBook
+   │   └── Сливает incrementalBids + incrementalAsks → OrderBook
+   │       └── Применяет aggregation → агрегированный OrderBook
    │
    └── Column:
-       ├── DomHeader (provider, symbol, depth, aggregation selection)
-       ├── DomSection (LazyColumn with a LevelRow for each level)
-       └── OrderPlacementPanel (order buttons)
+       ├── DomHeader (выбор провайдера, символа, глубины, агрегации)
+       ├── DomSection (LazyColumn с LevelRow для каждого уровня)
+       └── OrderPlacementPanel (кнопки ордеров)
 ```
 
-## 23.2. Data update cycle
+## 23.2. Цикл обновления данных
 
 ```
 WebSocket @depth event
     │
     ▼
-DomAdapter → DomRepositoryImpl (validation) → callbackFlow
+DomAdapter → DomRepositoryImpl (валидация) → callbackFlow
     │
     ▼ trySend(DomEvent.UpdateBid)
 DomViewModel.processDomEvent()
     │
-    ├── _incrementalBids[price] = quantity  ← in-place mutation
+    ├── _incrementalBids[price] = quantity  ← in-place мутация
     │
-    ▼ Compose tracks the Entry change in SnapshotStateMap
+    ▼ Compose отслеживает изменение Entry в SnapshotStateMap
 derivedStateOf { buildDisplayOrderBook(...) }
     │
-    ▼ New OrderBook
+    ▼ Новый OrderBook
 DomSection → LazyColumn recomposition
     │
-    ▼ Compose compares keys and updates only the changed rows
-LevelRow redraw (only for the changed levels)
+    ▼ Compose сравнивает ключи и обновляет только изменившиеся строки
+LevelRow перерисовка (только для изменившихся уровней)
 ```
 
-## 23.3. Component interaction on click
+## 23.3. Взаимодействие компонентов при клике
 
 ```
-The user clicks a LevelRow at price 67000.0
+Пользователь кликает на LevelRow с ценой 67000.0
     │
     ▼
 onPriceClick(67000.0)
@@ -1813,11 +1814,11 @@ DomViewModel.selectPrice(67000.0)
     │
     ├── _selectedPrice.value = 67000.0
     │
-    ▼ Compose redraw
-OrderPlacementPanel: "Buy Limit" and "Sell Limit" buttons become active
-DomContent: the LevelRow at price 67000.0 is highlighted in yellow
+    ▼ Compose перерисовка
+OrderPlacementPanel: кнопки "Buy Limit" и "Sell Limit" активируются
+DomContent: LevelRow с ценой 67000.0 подсвечивается жёлтым
 
-The user presses "Buy Limit"
+Пользователь нажимает "Buy Limit"
     │
     ▼
 onOrderIntent(OrderIntent.LimitBuy("BTCUSD_PERP", 67000.0, 0.01))
@@ -1825,65 +1826,65 @@ onOrderIntent(OrderIntent.LimitBuy("BTCUSD_PERP", 67000.0, 0.01))
     ▼
 DomViewModel.handleOrderIntent(intent)
     │
-    ├── Creates BuyLimitCommand
+    ├── Создаёт BuyLimitCommand
     ├── executeCommand(command)
-    │   ├── Checks isTradingEnabled
-    │   ├── Checks command.canExecute()
-    │   └── command.execute() → sends the order to the exchange
+    │   ├── Проверка isTradingEnabled
+    │   ├── Проверка command.canExecute()
+    │   └── command.execute() → отправка ордера на биржу
 ```
 
-## 23.4. Key architectural decisions
+## 23.4. Ключевые архитектурные решения
 
-### 23.4.1. SnapshotStateMap for performance
-Instead of copying level maps on every update (hundreds of times per second), the DOM uses `mutableStateMapOf()` with in-place mutation.
+### 23.4.1. SnapshotStateMap для производительности
+Вместо копирования карт уровней при каждом обновлении (сотни раз в секунду), DOM использует `mutableStateMapOf()` с in-place мутацией.
 
-### 23.4.2. derivedStateOf instead of collectAsState
-`buildDisplayOrderBook` is called only when the data has actually changed, not on every recomposition.
+### 23.4.2. derivedStateOf вместо collectAsState
+`buildDisplayOrderBook` вызывается только когда реально изменились данные, а не при каждой рекомпозиции.
 
-### 23.4.3. A dedicated thread pool
-`Executors.newSingleThreadExecutor()` for the ViewModel — all DOM event processing happens off the UI thread.
+### 23.4.3. Выделенный thread pool
+`Executors.newSingleThreadExecutor()` для ViewModel — вся обработка DOM-событий происходит вне UI-потока.
 
-### 23.4.4. The Binance synchronization protocol
-Snapshot + incremental updates with validation. On error — reinitialization with exponential backoff.
+### 23.4.4. Протокол синхронизации Binance
+Снапшот + инкрементальные обновления с валидацией. При ошибке — переинициализация с exponential backoff.
 
-### 23.4.5. LazyColumn with keys
-Efficient redrawing of only the changed rows. The `"level-${price}"` keys help Compose understand which rows to update.
+### 23.4.5. LazyColumn с ключами
+Эффективная перерисовка только изменившихся строк. Ключи `"level-${price}"` помогают Compose понять, какие строки обновлять.
 
-### 23.4.6. Automatic scroll without conflicts
-Scroll-to-best-price does not interfere with the user (the `isScrollInProgress` check).
+### 23.4.6. Автоматический скролл без конфликтов
+Scroll-to-best-price не мешает пользователю (проверка `isScrollInProgress`).
 
 ---
 
-# 24. Appendix: Glossary
+# 24. Приложение: Глоссарий
 
-| Term | Meaning |
+| Термин | Значение |
 |---|---|
-| **DOM** | Depth of Market — the order book |
-| **Bid** | An order to buy |
-| **Ask** | An order to sell |
-| **Spread** | The difference between the best bid and the best ask |
-| **Order Book** | The book of orders — a table of all active orders |
-| **Depth** | The number of order book levels |
-| **Snapshot** | A full capture of the order book at a moment in time |
-| **Incremental update** | An incremental update (a change to a single level) |
-| **Tick Size** | The minimum price increment of an instrument |
-| **Level** | One order book level (price + volume) |
-| **Unified level** | A level containing both bid and ask volume |
-| **Aggregation** | Grouping levels by a price step |
-| **Best bid** | The highest buy price |
-| **Best ask** | The lowest sell price |
-| **BookTicker** | A real-time stream of best prices (best bid/ask) |
-| **Market order** | A market order — executes immediately |
-| **Limit order** | A limit order — executes at the specified price |
-| **Exponential backoff** | A retry strategy with an increasing delay |
-| **SnapshotStateMap** | A Compose-observable map with in-place mutation |
-| **derivedStateOf** | A derived state that is recalculated lazily |
-| **callbackFlow** | A Flow builder for callback-based APIs |
-| **LazyColumn** | A virtualized list in Compose (reuses items) |
-| **WebSocket** | A bidirectional real-time protocol |
-| **Reconnection** | Automatic reconnection when the connection drops |
-| **REST** | An HTTP API for fetching the order book snapshot |
-| **lastUpdateId** | The ID of the last update in the snapshot (for synchronization) |
-| **Coin-M Futures** | Futures with coin-margined collateral (BTC, ETH) |
-| **USD-M Futures** | Futures with USDT/USDC-margined collateral |
-| **Spot** | Spot trading (the actual coin) |
+| **DOM** | Depth of Market — стакан заявок |
+| **Bid** | Заявка на покупку |
+| **Ask** | Заявка на продажу |
+| **Spread** | Разница между лучшим bid и лучшим ask |
+| **Order Book** | Книга заявок — таблица всех активных ордеров |
+| **Depth** | Количество уровней стакана (глубина) |
+| **Snapshot** | Полный слепок стакана на момент времени |
+| **Incremental update** | Инкрементальное обновление (изменение одного уровня) |
+| **Tick Size** | Минимальный шаг цены инструмента |
+| **Level** | Один уровень стакана (цена + объём) |
+| **Unified level** | Уровень, содержащий и bid, и ask объём |
+| **Aggregation** | Группировка уровней по шагу цены |
+| **Best bid** | Самая высокая цена покупки |
+| **Best ask** | Самая низкая цена продажи |
+| **BookTicker** | Поток лучших цен (best bid/ask) в реальном времени |
+| **Market order** | Рыночный ордер — исполняется немедленно |
+| **Limit order** | Лимитный ордер — исполняется по указанной цене |
+| **Exponential backoff** | Стратегия повторных попыток с увеличивающейся задержкой |
+| **SnapshotStateMap** | Compose-отслеживаемая мапа с in-place мутацией |
+| **derivedStateOf** | Производное состояние, пересчитываемое лениво |
+| **callbackFlow** | Flow builder для callback-based API |
+| **LazyColumn** | Виртуализированный список в Compose (переиспользует элементы) |
+| **WebSocket** | Двунаправленный протокол реального времени |
+| **Reconnection** | Автоматическое переподключение при обрыве связи |
+| **REST** | HTTP API для получения снапшота стакана |
+| **lastUpdateId** | ID последнего обновления в снапшоте (для синхронизации) |
+| **Coin-M Futures** | Фьючерсы с обеспечением в монете (BTC, ETH) |
+| **USD-M Futures** | Фьючерсы с обеспечением в USDT/USDC |
+| **Spot** | Спотовая торговля (реальная монета) |
