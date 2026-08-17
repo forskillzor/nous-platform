@@ -1,112 +1,113 @@
 # Nous Platform v0.1.0
 
-## Профессиональный крипто-терминал с Order Flow анализом и открытой средой для стратегий
+## Professional crypto terminal with Order Flow analysis and an open environment for strategies
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.0-7F52FF.svg)](https://kotlinlang.org)
 [![Compose](https://img.shields.io/badge/Compose-1.7.0-4285F4.svg)](https://github.com/JetBrains/compose-multiplatform)
 [![License](https://img.shields.io/badge/License-AGPL%203.0--or--later-blue.svg)](LICENSE)
 
-#### Сервис сбора данных с бирж https://github.com/forskillzor/trade-collector-service
-#### Сервис рыночных данных https://github.com/forskillzor/market-data-service
-#### Спецификация платформы [Nous-Platform-Technical-Specification-v1.0.md](docs/Nous-Platform-Technical-Specification-v1.0.md)
+#### Exchange data collection service https://github.com/forskillzor/trade-collector-service
+#### Market data service https://github.com/forskillzor/market-data-service
+#### Platform specification [Nous-Platform-Technical-Specification-v1.0.md](docs/Nous-Platform-Technical-Specification-v1.0.md)
+#### Documentation in Russian: [README.ru.md](README.ru.md) · [docs/ru/](docs/ru/)
 
 ![Main Screen](screenshots/mainscreen.png)
 
-## Оглавление
-1. [Введение и видение продукта](#1)
-2. [Бизнес-требования и целевая аудитория](#2)
-3. [Ключевые фичи, выходящие за рамки стандартных терминалов](#3)
-4. [Этапы развития (Roadmap)](#4)
-5. [Архитектура платформы](#5)
-6. [Функциональные требования](#6)
-7. [Нефункциональные требования](#7)
-8. [Технический стек](#8)
-9. [Модульная структура проекта](#9)
-10. [Плагинная система и экосистема](#10)
-11. [Требования к безопасности](#11)
-12. [Требования к интерфейсу](#12)
-13. [Требования к данным и хранилищам](#13)
-14. [Интеграция с внешними системами](#14)
-15. [Монетизация и бизнес-модель](#15)
-16. [План разработки и оценка](#16)
-17. [Риски и пути их минимизации](#17)
+## Table of Contents
+1. [Introduction and product vision](#1)
+2. [Business requirements and target audience](#2)
+3. [Key features that go beyond standard terminals](#3)
+4. [Development stages (Roadmap)](#4)
+5. [Platform architecture](#5)
+6. [Functional requirements](#6)
+7. [Non-functional requirements](#7)
+8. [Tech stack](#8)
+9. [Project module structure](#9)
+10. [Plugin system and ecosystem](#10)
+11. [Security requirements](#11)
+12. [UI requirements](#12)
+13. [Data and storage requirements](#13)
+14. [Integration with external systems](#14)
+15. [Monetization and business model](#15)
+16. [Development plan and estimates](#16)
+17. [Risks and mitigation](#17)
 
 ---
 
-## 1. Введение и видение продукта <a name="1"></a>
+## 1. Introduction and product vision <a name="1"></a>
 
-### 1.1. Миссия
-Создать **профессиональную интегрированную среду разработки (IDE) для трейдинга**, объединяющую мощь анализа Order Flow с возможностями полноценной разработки торговых алгоритмов. Nous Platform — это не просто терминал, а **рабочее место трейдера-программиста**, где анализ рынка и создание стратегий происходят в едином пространстве.
+### 1.1. Mission
+Create a **professional integrated development environment (IDE) for trading** that combines the power of Order Flow analysis with full-fledged trading algorithm development. Nous Platform is not just a terminal — it is a **workspace for the trader-programmer**, where market analysis and strategy creation happen in a single space.
 
-### 1.2. Видение
-Nous Platform — это экосистема, построенная вокруг **трёх китов**:
+### 1.2. Vision
+Nous Platform is an ecosystem built around **three pillars**:
 
-1. **Аналитическое ядро** — профессиональные инструменты для анализа Order Flow: стакан (DOM), лента сделок (Time & Sales), Volume Profile, кластерные графики, дельта-бары.
-2. **Среда разработки (IDE)** — встроенный редактор кода, REPL-консоли для Python, JavaScript и Kotlin, DSL для индикаторов и стратегий.
-3. **Плагинная экосистема** — открытое API для сообщества, маркетплейс плагинов, возможность создавать и продавать свои индикаторы, стратегии и даже целые торговые роботы.
+1. **Analytical core** — professional Order Flow analysis tools: order book (DOM), Time & Sales (tape), Volume Profile, cluster charts, delta bars.
+2. **Development environment (IDE)** — built-in code editor, REPL consoles for Python, JavaScript and Kotlin, DSL for indicators and strategies.
+3. **Plugin ecosystem** — an open API for the community, a plugin marketplace, the ability to create and sell your own indicators, strategies and even complete trading bots.
 
-### 1.3. Ключевые отличия от конкурентов
+### 1.3. Key differentiators from competitors
 
-| Конкурент | Недостатки | Наше преимущество |
-|-----------|------------|-------------------|
-| **ATAS / CScalp** | Не оптимизированы для крипты, закрытая архитектура, нет API для разработки | Родная поддержка криптобирж, открытое API, возможность писать свои индикаторы |
-| **TradingView** | Недостаточно глубок для Order Flow, нет прямой торговли, Pine Script ограничен | Полноценный стакан, лента сделок, REPL на Python/JS/Kotlin, прямая торговля |
-| **MetaTrader** | Устаревший стек, MQL4/5, сложность интеграции с криптой | Современный Kotlin, REPL, мультиязычность, крипто-ориентированность |
-| **Jupyter + Binance API** | Нет готового UI, нужно всё собирать самому | Готовый интерфейс с графиками, стаканом, интеграция "из коробки" |
-
----
-
-## 2. Бизнес-требования и целевая аудитория <a name="2"></a>
-
-### 2.1. Целевая аудитория
-
-#### Сегмент A: Профессиональные криптотрейдеры
-- **Характеристики:** Торгуют на споте и фьючерсах, используют Volume Profile, Cluster Charts, DOM, Delta
-- **Потребности:** Высокая производительность, стабильность, прямой доступ к рынку, кастомизация интерфейса
-- **Боли:** ATAS не оптимизирован для крипты, TradingView недостаточно глубок для Order Flow анализа
-
-#### Сегмент B: Алготрейдеры и разработчики
-- **Характеристики:** Пишут на Kotlin, Python, JS; создают и тестируют стратегии
-- **Потребности:** Понятный API, возможность быстрой проверки гипотез, бэктестинг
-- **Боли:** Нет единой среды, где можно одновременно смотреть график и писать код
-
-#### Сегмент C: Технические аналитики
-- **Характеристики:** Глубоко анализируют рынок, создают сложные индикаторы
-- **Потребности:** Доступ к сырым данным (стакан, лента), возможность быстро прототипировать индикаторы
-- **Боли:** Jupyter неудобен для real-time, готовые терминалы не дают сырых данных
-
-### 2.2. Ключевые пользовательские сценарии
-
-1. **Сценарий аналитика:** Открыл стакан, ленту, график → настроил отображение → анализирует рыночную микроструктуру
-2. **Сценарий разработчика:** Открыл редактор → написал индикатор на Python → проверил в REPL → добавил на график
-3. **Сценарий алготрейдера:** Написал стратегию на Kotlin → запустил бэктест → увидел результаты на графике → запустил в paper trading
-4. **Сценарий исследователя:** Открыл REPL → запросил исторические данные → построил модель → визуализировал на графике
-
-### 2.3. Бизнес-цели
-- **Краткосрочные (2026):** Запуск MVP с поддержкой Binance и Bybit, привлечение первых 1000 активных пользователей
-- **Среднесрочные (2027):** Создание экосистемы плагинов, запуск маркетплейса, выход на самоокупаемость
-- **Долгосрочные (2028+):** Стать стандартом для крипто-алготрейдинга, поддержка всех основных бирж через плагины сообщества
+| Competitor | Weaknesses | Our advantage |
+|-----------|------------|---------------|
+| **ATAS / CScalp** | Not optimized for crypto, closed architecture, no development API | Native support for crypto exchanges, open API, ability to write your own indicators |
+| **TradingView** | Not deep enough for Order Flow, no direct trading, limited Pine Script | Full order book, Time & Sales, Python/JS/Kotlin REPL, direct trading |
+| **MetaTrader** | Outdated stack, MQL4/5, difficult crypto integration | Modern Kotlin, REPL, multi-language, crypto-first |
+| **Jupyter + Binance API** | No ready-made UI, you have to build everything yourself | Ready interface with charts and order book, out-of-the-box integration |
 
 ---
 
-## 3. Ключевые фичи, выходящие за рамки стандартных терминалов <a name="3"></a>
+## 2. Business requirements and target audience <a name="2"></a>
 
-### 3.1. Интегрированная среда разработки (IDE)
+### 2.1. Target audience
 
-#### 3.1.1. Редактор кода с подсветкой синтаксиса
-- На базе **Monaco Editor** (ядро VS Code)
-- Поддержка Kotlin, Python, JavaScript
-- Автодополнение, навигация, рефакторинг
-- Подсветка ошибок в реальном времени
+#### Segment A: Professional crypto traders
+- **Profile:** Trade spot and futures, use Volume Profile, Cluster Charts, DOM, Delta
+- **Needs:** High performance, stability, direct market access, UI customization
+- **Pain points:** ATAS is not optimized for crypto, TradingView is not deep enough for Order Flow analysis
 
-#### 3.1.2. REPL-консоли для трёх языков
-- **Python REPL** на базе Jupyter Kernel (xeus-python)
-- **JavaScript REPL** на базе Node.js + VM2
-- **Kotlin REPL** на базе Kotlin Scripting
-- Общий интерфейс, история команд, экспорт
-- Доступ к текущим рыночным данным прямо из консоли
+#### Segment B: Algo traders and developers
+- **Profile:** Write in Kotlin, Python, JS; create and test strategies
+- **Needs:** Clear API, ability to quickly test hypotheses, backtesting
+- **Pain points:** No single environment where you can view a chart and write code at the same time
 
-#### 3.1.3. DSL для индикаторов и стратегий
+#### Segment C: Technical analysts
+- **Profile:** Analyze the market in depth, create complex indicators
+- **Needs:** Access to raw data (order book, tape), ability to quickly prototype indicators
+- **Pain points:** Jupyter is inconvenient for real-time, ready-made terminals don't provide raw data
+
+### 2.2. Key user scenarios
+
+1. **Analyst scenario:** Opened the order book, tape and chart → customized the display → analyzes market microstructure
+2. **Developer scenario:** Opened the editor → wrote an indicator in Python → tested it in the REPL → added it to the chart
+3. **Algo trader scenario:** Wrote a strategy in Kotlin → ran a backtest → saw the results on the chart → launched it in paper trading
+4. **Researcher scenario:** Opened the REPL → requested historical data → built a model → visualized it on the chart
+
+### 2.3. Business goals
+- **Short-term (2026):** MVP launch with Binance and Bybit support, attracting the first 1000 active users
+- **Mid-term (2027):** Building a plugin ecosystem, launching the marketplace, reaching self-sustainability
+- **Long-term (2028+):** Becoming the standard for crypto algo trading, supporting all major exchanges through community plugins
+
+---
+
+## 3. Key features that go beyond standard terminals <a name="3"></a>
+
+### 3.1. Integrated Development Environment (IDE)
+
+#### 3.1.1. Code editor with syntax highlighting
+- Based on **Monaco Editor** (the core of VS Code)
+- Support for Kotlin, Python, JavaScript
+- Autocompletion, navigation, refactoring
+- Real-time error highlighting
+
+#### 3.1.2. REPL consoles for three languages
+- **Python REPL** based on the Jupyter Kernel (xeus-python)
+- **JavaScript REPL** based on Node.js + VM2
+- **Kotlin REPL** based on Kotlin Scripting
+- Shared interface, command history, export
+- Access to current market data directly from the console
+
+#### 3.1.3. DSL for indicators and strategies
 ```kotlin
 indicator("Volume Profile") {
     val period = parameter("period", 14)
@@ -122,33 +123,33 @@ indicator("Volume Profile") {
 }
 ```
 
-### 3.2. Профессиональный Order Flow анализ
+### 3.2. Professional Order Flow analysis
 
-#### 3.2.1. Кластерные графики (Cluster Charts)
-- Отображение объёмов в каждой свече по ценовым уровням
-- Цветовое кодирование дельты
-- Настраиваемая глубина кластеризации
+#### 3.2.1. Cluster Charts
+- Display of volumes at each price level within every candle
+- Color coding of delta
+- Configurable clustering depth
 
-#### 3.2.2. Дельта-бары (Delta Bars)
-- Бары, построенные на основе дельты, а не времени
-- Возможность задать целевое значение дельты
+#### 3.2.2. Delta Bars
+- Bars built on delta rather than time
+- Ability to set a target delta value
 
-#### 3.2.3. Объёмный профиль (Volume Profile)
-- Горизонтальные объёмы за период
-- Точка контроля (POC)
-- Зона справедливой стоимости (Value Area)
-- Возможность наложения нескольких профилей
+#### 3.2.3. Volume Profile
+- Horizontal volumes over a period
+- Point of Control (POC)
+- Value Area
+- Ability to overlay multiple profiles
 
-### 3.3. Плагинная система как основа экосистемы
+### 3.3. Plugin system as the foundation of the ecosystem
 
-#### 3.3.1. Типы плагинов
-- **Биржевые провайдеры** — добавляют поддержку новых бирж
-- **Индикаторы** — кастомные индикаторы для графиков
-- **Стратегии** — торговые стратегии для бэктестинга и live trading
-- **UI-виджеты** — кастомные окна и панели
-- **Торговые роботы** — полностью автоматизированные системы
+#### 3.3.1. Plugin types
+- **Exchange providers** — add support for new exchanges
+- **Indicators** — custom indicators for charts
+- **Strategies** — trading strategies for backtesting and live trading
+- **UI widgets** — custom windows and panels
+- **Trading bots** — fully automated systems
 
-#### 3.3.2. Пример плагина-индикатора
+#### 3.3.2. Example of an indicator plugin
 ```kotlin
 class SuperTrend : Indicator {
     override val name = "SuperTrend"
@@ -159,7 +160,7 @@ class SuperTrend : Indicator {
     
     override fun calculate(context: IndicatorContext): IndicatorResult {
         val atr = calculateATR(context.candles, context.period)
-        // ... расчёт SuperTrend
+        // ... SuperTrend calculation
         return IndicatorResult.line(values, color = when {
             isUptrend -> Color.GREEN
             else -> Color.RED
@@ -168,95 +169,95 @@ class SuperTrend : Indicator {
 }
 ```
 
-### 3.4. Бэктестинг с визуализацией
+### 3.4. Backtesting with visualization
 
-#### 3.4.1. Загрузка исторических данных
-- Автоматическая загрузка с бирж
-- Локальное кэширование в SQLDelight
-- Поддержка любых таймфреймов
+#### 3.4.1. Loading historical data
+- Automatic download from exchanges
+- Local caching in SQLDelight
+- Support for any timeframes
 
-#### 3.4.2. Запуск стратегий на истории
-- Настраиваемые комиссии и проскальзывание
-- Детальный отчёт: все сделки, кривая капитала, просадки
-- Визуализация сделок прямо на графике
+#### 3.4.2. Running strategies on history
+- Configurable fees and slippage
+- Detailed report: all trades, equity curve, drawdowns
+- Visualization of trades directly on the chart
 
-#### 3.4.3. Оптимизация параметров
-- Grid search по заданным диапазонам
-- Визуализация поверхности результатов
-- Автоматический выбор лучших параметров
+#### 3.4.3. Parameter optimization
+- Grid search over specified ranges
+- Visualization of the results surface
+- Automatic selection of the best parameters
 
-### 3.5. Торговый дневник нового поколения
+### 3.5. Next-generation trading journal
 
-#### 3.5.1. Автоматический импорт сделок
-- Все сделки автоматически сохраняются
-- Привязка к скриншотам графиков
-- Добавление заметок и тегов
+#### 3.5.1. Automatic trade import
+- All trades are saved automatically
+- Linking to chart screenshots
+- Adding notes and tags
 
-#### 3.5.2. Расширенная статистика
-- Винрейт, профит-фактор, Sharpe ratio
-- Распределение по времени, дням недели
-- Анализ эффективности стратегий
+#### 3.5.2. Advanced statistics
+- Win rate, profit factor, Sharpe ratio
+- Distribution by time and days of the week
+- Strategy performance analysis
 
-#### 3.5.3. Экспорт отчётов
-- PDF с графиками
-- CSV для анализа в Excel
-- JSON для внешних систем
+#### 3.5.3. Report export
+- PDF with charts
+- CSV for analysis in Excel
+- JSON for external systems
 
 ---
 
-## 4. Этапы развития (Roadmap) <a name="4"></a>
+## 4. Development stages (Roadmap) <a name="4"></a>
 
-### 4.1. Этап 0: Фундамент (Q1-Q2 2026) — **ТЕКУЩИЙ**
-- Настройка модульной архитектуры согласно утверждённой структуре
-- Создание `public-api` модулей с базовыми интерфейсами и моделями
-- Реализация `platform-core` с бизнес-логикой
-- Разработка первых feature-модулей (`feature-dom`, `feature-chart`, `feature-trades`)
-- Миграция существующего кода в новые модули
+### 4.1. Stage 0: Foundation (Q1-Q2 2026) — **CURRENT**
+- Setting up the modular architecture according to the approved structure
+- Creating `public-api` modules with base interfaces and models
+- Implementing `platform-core` with business logic
+- Developing the first feature modules (`feature-dom`, `feature-chart`, `feature-trades`)
+- Migrating existing code into the new modules
 
-### 4.2. Этап 1: MVP — Чтение данных и базовый UI (Q2-Q3 2026)
-- **Цель:** Рабочее приложение для анализа рынка в реальном времени
-- **Функционал:**
-    - Подключение к Binance и Bybit (WebSocket + REST)
-    - Отображение стакана (DOM) с визуализацией объёмов
-    - Отображение ленты сделок (Time & Sales)
-    - Отображение свечного графика с базовыми индикаторами (SMA, EMA, VWAP)
-    - Перетаскиваемые и изменяемые в размере окна
-    - Сохранение настроек интерфейса
+### 4.2. Stage 1: MVP — Data reading and basic UI (Q2-Q3 2026)
+- **Goal:** A working application for real-time market analysis
+- **Features:**
+    - Connection to Binance and Bybit (WebSocket + REST)
+    - Order book (DOM) display with volume visualization
+    - Time & Sales (tape) display
+    - Candlestick chart with basic indicators (SMA, EMA, VWAP)
+    - Draggable and resizable windows
+    - Saving UI settings
 
-### 4.3. Этап 2: IDE и плагинная система (Q4 2026 - Q1 2027)
-- **Цель:** Создание среды разработки и экосистемы для разработчиков
-- **Функционал:**
-    - Интеграция Monaco Editor с подсветкой Kotlin/Python/JS
+### 4.3. Stage 2: IDE and plugin system (Q4 2026 - Q1 2027)
+- **Goal:** Creating a development environment and ecosystem for developers
+- **Features:**
+    - Monaco Editor integration with Kotlin/Python/JS highlighting
     - Python REPL (Jupyter kernel)
     - JavaScript REPL (Node.js + VM2)
     - Kotlin REPL (Kotlin Scripting)
-    - Загрузка внешних плагинов
-    - SDK и документация для разработчиков
-    - Примеры плагинов (индикаторы, стратегии)
+    - Loading external plugins
+    - SDK and documentation for developers
+    - Plugin examples (indicators, strategies)
 
-### 4.4. Этап 3: DSL и бэктестинг (Q2-Q4 2027)
-- **Цель:** Полноценная платформа для разработки и тестирования стратегий
-- **Функционал:**
-    - Предметно-ориентированный язык (DSL) для индикаторов и стратегий
-    - Встроенный редактор с подсветкой синтаксиса
-    - Бэктестинг на исторических данных
-    - Визуализация сделок на графике
-    - Торговый дневник с автоматическим импортом сделок
+### 4.4. Stage 3: DSL and backtesting (Q2-Q4 2027)
+- **Goal:** A full-fledged platform for developing and testing strategies
+- **Features:**
+    - Domain-specific language (DSL) for indicators and strategies
+    - Built-in editor with syntax highlighting
+    - Backtesting on historical data
+    - Visualization of trades on the chart
+    - Trading journal with automatic trade import
 
-### 4.5. Этап 4: Live Trading и экосистема (2028+)
-- **Цель:** Полноценная торговая платформа с маркетплейсом
-- **Функционал:**
-    - Live Trading с реальными ордерами
-    - Управление рисками (стоп-лосс, тейк-профит)
-    - Маркетплейс плагинов с системой рейтингов
-    - Монетизация (комиссия с продаж плагинов)
-    - Поддержка новых бирж через плагины сообщества
+### 4.5. Stage 4: Live Trading and ecosystem (2028+)
+- **Goal:** A full-fledged trading platform with a marketplace
+- **Features:**
+    - Live trading with real orders
+    - Risk management (stop-loss, take-profit)
+    - Plugin marketplace with a rating system
+    - Monetization (commission on plugin sales)
+    - Support for new exchanges through community plugins
 
 ---
 
-## 5. Архитектура платформы <a name="5"></a>
+## 5. Platform architecture <a name="5"></a>
 
-### 5.1. Общая архитектура
+### 5.1. Overall architecture
 
 ```mermaid
 graph TB
@@ -319,49 +320,49 @@ graph TB
     APP --> CORE
 ```
 
-### 5.2. Ключевые архитектурные решения
+### 5.2. Key architectural decisions
 
-#### 5.2.1. Модульность как основа
-- Каждая фича — отдельный Gradle-модуль
-- Чёткое разделение на публичные API и закрытые реализации
-- Возможность замены любой фичи без изменения ядра
+#### 5.2.1. Modularity as the foundation
+- Each feature is a separate Gradle module
+- Clear separation of public APIs and closed implementations
+- Ability to replace any feature without changing the core
 
-#### 5.2.2. Единый источник правды для моделей
-Все модели данных живут **только в `public-api` модулях**. Это обеспечивает:
-- Консистентность данных во всей платформе
-- Возможность использования одних и тех же моделей в плагинах
-- Отсутствие дублирования и маппинга
+#### 5.2.2. Single source of truth for models
+All data models live **only in the `public-api` modules**. This ensures:
+- Data consistency across the entire platform
+- The ability to use the same models in plugins
+- No duplication or mapping
 
-#### 5.2.3. Инверсия зависимостей
-- Feature-модули зависят только от `public-api` и `platform-core`
-- Providers реализуют интерфейсы из `public-api`
-- App модуль собирает всё вместе через DI
+#### 5.2.3. Dependency inversion
+- Feature modules depend only on `public-api` and `platform-core`
+- Providers implement interfaces from `public-api`
+- The App module wires everything together through DI
 
-#### 5.2.4. Мультиплатформенность с фокусом на десктоп
-- `commonMain` — бизнес-логика, модели, интерфейсы
-- `jvmMain` — платформозависимый код (сеть, файловая система)
-- iOS и Android — в будущем, только для просмотра данных
+#### 5.2.4. Multiplatform with a desktop focus
+- `commonMain` — business logic, models, interfaces
+- `jvmMain` — platform-dependent code (network, file system)
+- iOS and Android — in the future, for data viewing only
 
 ---
 
-## 6. Функциональные требования <a name="6"></a>
+## 6. Functional requirements <a name="6"></a>
 
-### 6.1. Модуль подключения к данным (Data Providers)
+### 6.1. Data connection module (Data Providers)
 
-#### 6.1.1. Базовые требования
-- Поддержка публичных WebSocket и REST API
-- Автоматическое переподключение при обрывах связи
-- Обработка rate limits бирж
-- Кэширование данных для снижения нагрузки
+#### 6.1.1. Base requirements
+- Support for public WebSocket and REST APIs
+- Automatic reconnection on connection loss
+- Handling exchange rate limits
+- Data caching to reduce load
 
-#### 6.1.2. Поддерживаемые биржи (MVP)
+#### 6.1.2. Supported exchanges (MVP)
 - **Binance** (Spot & Futures)
-    - WebSocket: стакан, сделки, свечи
-    - REST: исторические свечи, информация об инструментах
+    - WebSocket: order book, trades, candles
+    - REST: historical candles, instrument information
 - **Bybit** (Spot & Futures)
-    - Аналогичный функционал
+    - Similar functionality
 
-#### 6.1.3. API провайдеров (интерфейсы в `public-api`)
+#### 6.1.3. Provider API (interfaces in `public-api`)
 ```kotlin
 interface MarketDataProvider {
     fun getSymbols(): Flow<List<Symbol>>
@@ -372,161 +373,161 @@ interface MarketDataProvider {
 }
 ```
 
-### 6.2. Модуль редактора кода (`feature-editor`)
+### 6.2. Code editor module (`feature-editor`)
 
-#### 6.2.1. Техническая реализация
-- Встраивание Monaco Editor через WebView
-- Двусторонняя коммуникация через JavaScript Bridge
-- Сохранение файлов в локальной файловой системе
+#### 6.2.1. Technical implementation
+- Embedding Monaco Editor via WebView
+- Two-way communication through a JavaScript Bridge
+- Saving files to the local file system
 
-#### 6.2.2. Функциональность
-- Подсветка синтаксиса для Kotlin, Python, JavaScript
-- Автодополнение для встроенных API
-- Навигация по коду (переход к определению)
-- Подсветка ошибок
-- Несколько вкладок
-- Сохранение/загрузка файлов
-- Настраиваемая тема (светлая/тёмная)
+#### 6.2.2. Functionality
+- Syntax highlighting for Kotlin, Python, JavaScript
+- Autocompletion for built-in APIs
+- Code navigation (go to definition)
+- Error highlighting
+- Multiple tabs
+- Saving/loading files
+- Configurable theme (light/dark)
 
-#### 6.2.3. Интеграция с платформой
-- Доступ к текущим рыночным данным через глобальные переменные
-- Возможность запуска кода в REPL прямо из редактора
-- Шаблоны для индикаторов и стратегий
+#### 6.2.3. Platform integration
+- Access to current market data via global variables
+- Ability to run code in the REPL directly from the editor
+- Templates for indicators and strategies
 
-### 6.3. Модуль REPL-консолей (`feature-repl-*`)
+### 6.3. REPL console modules (`feature-repl-*`)
 
-#### 6.3.1. Общие требования
-- Единый интерфейс для всех трёх языков
-- История команд (с сохранением между сессиями)
-- Подсветка синтаксиса
-- Автодополнение
-- Таймаут выполнения (защита от бесконечных циклов)
-- Изоляция выполнения (песочница)
+#### 6.3.1. Common requirements
+- A single interface for all three languages
+- Command history (persisted between sessions)
+- Syntax highlighting
+- Autocompletion
+- Execution timeout (protection against infinite loops)
+- Execution isolation (sandbox)
 
 #### 6.3.2. Python REPL
-- Базовый интерпретатор на основе Jupyter Kernel (xeus-python)
-- Поддержка matplotlib для вывода графиков
-- Доступ к рыночным данным через встроенные переменные
+- Base interpreter based on the Jupyter Kernel (xeus-python)
+- matplotlib support for chart output
+- Access to market data via built-in variables
 
 #### 6.3.3. JavaScript REPL
-- Node.js с изоляцией через VM2
-- Поддержка асинхронного кода
-- Доступ к тем же данным
+- Node.js with isolation via VM2
+- Support for asynchronous code
+- Access to the same data
 
 #### 6.3.4. Kotlin REPL
-- Kotlin Scripting с ограничением reflection и доступа к файловой системе
-- Поддержка корутин
-- Доступ к встроенным API
+- Kotlin Scripting with restricted reflection and file system access
+- Coroutines support
+- Access to built-in APIs
 
-### 6.4. Модуль отображения (UI Features)
+### 6.4. Display module (UI Features)
 
-#### 6.4.1. Модульное окно "График" (`feature-chart`)
-- Отображение свечного графика с поддержкой таймфреймов: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
-- Масштабирование и панорамирование
-- Отображение дельта-баров
-- Базовые индикаторы (SMA, EMA, VWAP, Volume Profile)
-- Кроссхаир с информацией о свече
-- Рисование трендовых линий и уровней
+#### 6.4.1. Modular "Chart" window (`feature-chart`)
+- Candlestick chart display with timeframe support: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
+- Zooming and panning
+- Delta bars display
+- Basic indicators (SMA, EMA, VWAP, Volume Profile)
+- Crosshair with candle information
+- Drawing trend lines and levels
 
-#### 6.4.2. Модульное окно "Стакан" (DOM) (`feature-dom`)
-- Отображение бидов и асков с динамическим обновлением
-- Визуализация объёмов (горизонтальные бары)
-- Настройка глубины стакана (10-50 уровней)
-- Выделение лучших цен
-- Отображение спреда
+#### 6.4.2. Modular "Order Book" (DOM) window (`feature-dom`)
+- Display of bids and asks with dynamic updates
+- Volume visualization (horizontal bars)
+- Order book depth setting (10-50 levels)
+- Best price highlighting
+- Spread display
 
-#### 6.4.3. Модульное окно "Order Flow" (`feature-trades`)
-- Таблица потока сделок в реальном времени
-- Цветовое кодирование: покупки (зелёный), продажи (красный)
-- Выделение крупных сделок
-- Агрегация сделок по секундам/минутам
+#### 6.4.3. Modular "Order Flow" window (`feature-trades`)
+- Real-time trade flow table
+- Color coding: buys (green), sells (red)
+- Highlighting large trades
+- Trade aggregation by seconds/minutes
 
-### 6.5. Модуль бэктестинга (`feature-backtest`)
+### 6.5. Backtesting module (`feature-backtest`)
 
-#### 6.5.1. Загрузка данных
-- Автоматическая загрузка исторических свечей с биржи
-- Локальное кэширование в SQLDelight
-- Поддержка любых таймфреймов
+#### 6.5.1. Data loading
+- Automatic download of historical candles from the exchange
+- Local caching in SQLDelight
+- Support for any timeframes
 
-#### 6.5.2. Запуск стратегий
-- Загрузка стратегии из файла
-- Настройка комиссий и проскальзывания
-- Прогресс выполнения
-- Детальный отчёт
+#### 6.5.2. Running strategies
+- Loading a strategy from a file
+- Configuring fees and slippage
+- Execution progress
+- Detailed report
 
-#### 6.5.3. Визуализация результатов
-- Отображение сделок на графике
-- Кривая капитала
-- Таблица всех сделок
-- Статистика (винрейт, профит-фактор, просадка)
-
----
-
-## 7. Нефункциональные требования <a name="7"></a>
-
-### 7.1. Производительность
-- **Задержка от события на бирже до UI:** < 100 мс (в идеале < 50 мс)
-- **FPS графика:** 60 FPS при нормальной нагрузке
-- **Обновление стакана:** каждое обновление должно отображаться не более чем за 16 мс
-- **Память:** не более 512 MB RAM при стандартной нагрузке
-- **Запуск приложения:** не более 5 секунд
-- **Запуск REPL:** не более 2 секунд до готовности
-
-### 7.2. Надёжность
-- **Uptime:** 99.9% (исключая проблемы бирж и интернет-соединения)
-- **WebSocket соединения:** автоматическое переподключение с экспоненциальной задержкой
-- **Обработка ошибок:** все ошибки должны логироваться и не приводить к падению приложения
-- **Graceful degradation:** при отказе одного компонента остальные должны продолжать работу
-
-### 7.3. Безопасность
-- **Плагины:** изоляция в песочнице, проверка цифровых подписей
-- **API-ключи:** хранятся только локально в зашифрованном виде (AES-256)
-- **Сеть:** все соединения только по HTTPS/WSS с certificate pinning
-- **REPL:** таймауты выполнения, запрет на доступ к файловой системе вне песочницы
-
-### 7.4. Масштабируемость
-- **Горизонтальная:** возможность добавления новых провайдеров без изменения ядра
-- **Вертикальная:** возможность добавления новых фич через плагины
-- **Нагрузка:** поддержка до 100 одновременно открытых окон с данными
+#### 6.5.3. Result visualization
+- Displaying trades on the chart
+- Equity curve
+- Table of all trades
+- Statistics (win rate, profit factor, drawdown)
 
 ---
 
-## 8. Технический стек <a name="8"></a>
+## 7. Non-functional requirements <a name="7"></a>
 
-### 8.1. Клиентская часть
+### 7.1. Performance
+- **Latency from an exchange event to the UI:** < 100 ms (ideally < 50 ms)
+- **Chart FPS:** 60 FPS under normal load
+- **Order book updates:** each update must be rendered in no more than 16 ms
+- **Memory:** no more than 512 MB RAM under standard load
+- **Application startup:** no more than 5 seconds
+- **REPL startup:** no more than 2 seconds to readiness
 
-| Компонент | Технология | Обоснование |
-|-----------|------------|-------------|
-| **Язык** | Kotlin Multiplatform | Единый код для всех платформ, безопасность, корутины |
-| **UI** | JetBrains Compose Desktop | Современный реактивный UI, единый код |
-| **Архитектура** | Clean Architecture + MVI | Чёткое разделение ответственности |
-| **DI** | Koin Annotations | Простота и производительность |
-| **Асинхронность** | Kotlin Coroutines + Flow | Встроенная поддержка |
-| **Сеть** | Ktor Client | Мультиплатформенность, простота |
-| **WebSocket** | Ktor Client WebSockets | Единый API с HTTP |
-| **Сериализация** | kotlinx.serialization | Мультиплатформенность, типобезопасность |
-| **Локальное хранение** | SQLDelight | Типобезопасные SQL-запросы |
-| **Редактор кода** | Monaco Editor (через WebView) | Ядро VS Code, мощнейший редактор |
-| **Python REPL** | Jupyter Kernel (xeus-python) | Стандарт, проверенное решение |
-| **JavaScript REPL** | Node.js + VM2 | Изоляция, производительность |
-| **Kotlin REPL** | Kotlin Scripting | Официальный API |
+### 7.2. Reliability
+- **Uptime:** 99.9% (excluding exchange and internet connection issues)
+- **WebSocket connections:** automatic reconnection with exponential backoff
+- **Error handling:** all errors must be logged and must not crash the application
+- **Graceful degradation:** if one component fails, the rest must keep working
 
-### 8.2. Лицензирование (всё совместимо с закрытым ядром)
+### 7.3. Security
+- **Plugins:** sandbox isolation, digital signature verification
+- **API keys:** stored only locally in encrypted form (AES-256)
+- **Network:** all connections over HTTPS/WSS only, with certificate pinning
+- **REPL:** execution timeouts, no file system access outside the sandbox
 
-| Компонент | Лицензия | Условия |
-|-----------|----------|---------|
-| Kotlin | Apache 2.0 | Можно закрывать |
-| Compose Desktop | Apache 2.0 | Можно закрывать |
-| Monaco Editor | MIT | Можно закрывать |
-| Jupyter Kernels | BSD-3 | Можно закрывать |
-| VM2 | MIT | Можно закрывать |
-| Kotlin Scripting | Apache 2.0 | Можно закрывать |
+### 7.4. Scalability
+- **Horizontal:** ability to add new providers without changing the core
+- **Vertical:** ability to add new features through plugins
+- **Load:** support for up to 100 simultaneously open data windows
 
 ---
 
-## 9. Модульная структура проекта <a name="9"></a>
+## 8. Tech stack <a name="8"></a>
 
-### 9.1. Полная структура
+### 8.1. Client side
+
+| Component | Technology | Rationale |
+|-----------|------------|-----------|
+| **Language** | Kotlin Multiplatform | Single codebase for all platforms, safety, coroutines |
+| **UI** | JetBrains Compose Desktop | Modern reactive UI, single codebase |
+| **Architecture** | Clean Architecture + MVI | Clear separation of concerns |
+| **DI** | Koin Annotations | Simplicity and performance |
+| **Async** | Kotlin Coroutines + Flow | Built-in support |
+| **Network** | Ktor Client | Multiplatform, simplicity |
+| **WebSocket** | Ktor Client WebSockets | Unified API with HTTP |
+| **Serialization** | kotlinx.serialization | Multiplatform, type safety |
+| **Local storage** | SQLDelight | Type-safe SQL queries |
+| **Code editor** | Monaco Editor (via WebView) | The core of VS Code, the most powerful editor |
+| **Python REPL** | Jupyter Kernel (xeus-python) | Industry standard, proven solution |
+| **JavaScript REPL** | Node.js + VM2 | Isolation, performance |
+| **Kotlin REPL** | Kotlin Scripting | Official API |
+
+### 8.2. Licensing (all compatible with the closed core)
+
+| Component | License | Terms |
+|-----------|---------|-------|
+| Kotlin | Apache 2.0 | Can be closed-source |
+| Compose Desktop | Apache 2.0 | Can be closed-source |
+| Monaco Editor | MIT | Can be closed-source |
+| Jupyter Kernels | BSD-3 | Can be closed-source |
+| VM2 | MIT | Can be closed-source |
+| Kotlin Scripting | Apache 2.0 | Can be closed-source |
+
+---
+
+## 9. Project module structure <a name="9"></a>
+
+### 9.1. Full structure
 
 ```
 Nous-Platform/
@@ -581,7 +582,7 @@ Nous-Platform/
 │       ├── di/
 │       └── theme/
 │
-├── plugins/                    # Папка для JAR-плагинов (runtime)
+├── plugins/                    # Folder for JAR plugins (runtime)
 │
 ├── docs/
 │   ├── api/
@@ -629,9 +630,9 @@ class KmpFeatureConvention : Plugin<Project> {
 
 ---
 
-## 10. Плагинная система и экосистема <a name="10"></a>
+## 10. Plugin system and ecosystem <a name="10"></a>
 
-### 10.1. Архитектура плагинной системы
+### 10.1. Plugin system architecture
 
 ```mermaid
 graph TB
@@ -672,28 +673,28 @@ graph TB
     PR --> STR
 ```
 
-### 10.2. Процесс загрузки плагина
-1. Сканирование папки `/plugins` при запуске
-2. Проверка цифровой подписи (если требуется)
-3. Создание изолированного ClassLoader'а
-4. Загрузка классов плагина
-5. Поиск классов, реализующих интерфейсы из `public-api`
-6. Регистрация плагина в реестре
-7. Инициализация плагина в песочнице
+### 10.2. Plugin loading process
+1. Scanning the `/plugins` folder at startup
+2. Verifying the digital signature (if required)
+3. Creating an isolated ClassLoader
+4. Loading the plugin classes
+5. Finding classes that implement interfaces from `public-api`
+6. Registering the plugin in the registry
+7. Initializing the plugin in the sandbox
 
-### 10.3. SDK для разработчиков
+### 10.3. SDK for developers
 
-#### 10.3.1. Документация
-- Полное описание всех API в `public-api`
-- Примеры для каждого типа плагинов
-- Гайд по публикации в маркетплейсе
+#### 10.3.1. Documentation
+- Complete description of all APIs in `public-api`
+- Examples for each plugin type
+- Guide to publishing on the marketplace
 
-#### 10.3.2. Инструменты
-- Шаблон проекта для нового плагина
-- Локальный тестовый раннер
-- Инструмент для подписи JAR
+#### 10.3.2. Tools
+- Project template for a new plugin
+- Local test runner
+- JAR signing tool
 
-#### 10.3.3. Пример индикатора (готовый к публикации)
+#### 10.3.3. Example indicator (ready for publication)
 ```kotlin
 // build.gradle.kts
 plugins {
@@ -723,173 +724,173 @@ class SuperTrendIndicator : Indicator {
     )
     
     override fun calculate(context: IndicatorContext): IndicatorResult {
-        // реализация
+        // implementation
     }
 }
 ```
 
 ---
 
-## 11. Требования к безопасности <a name="11"></a>
+## 11. Security requirements <a name="11"></a>
 
-### 11.1. Безопасность на уровне приложения
-- **Шифрование данных:** Все локальные данные (API-ключи, настройки) шифруются AES-256
-- **Минимальные привилегии:** Приложение не запрашивает прав, выходящих за рамки необходимости
-- **Обновления:** Автоматическая проверка обновлений с верификацией подписей
+### 11.1. Application-level security
+- **Data encryption:** All local data (API keys, settings) is encrypted with AES-256
+- **Least privilege:** The application does not request permissions beyond what is necessary
+- **Updates:** Automatic update checks with signature verification
 
-### 11.2. Безопасность сети
-- **TLS:** Все соединения только по HTTPS/WSS
-- **Certificate pinning:** Для соединений с биржами
-- **Проверка сертификатов:** Отсутствие самоподписанных сертификатов в production
+### 11.2. Network security
+- **TLS:** All connections over HTTPS/WSS only
+- **Certificate pinning:** For exchange connections
+- **Certificate validation:** No self-signed certificates in production
 
-### 11.3. Безопасность API-ключей
-- **Хранение:** Ключи хранятся в системном хранилище ключей (Keychain на macOS, Credential Manager на Windows)
-- **Использование:** Ключи никогда не передаются на серверы Nous Platform
-- **Управление:** Возможность добавить/удалить/отозвать ключи
+### 11.3. API key security
+- **Storage:** Keys are stored in the system key store (Keychain on macOS, Credential Manager on Windows)
+- **Usage:** Keys are never transmitted to Nous Platform servers
+- **Management:** Ability to add/remove/revoke keys
 
-### 11.4. Безопасность REPL
-| Язык | Механизм защиты |
-|------|-----------------|
-| **Python** | Изолированный процесс, ограничение времени выполнения, запрет на file I/O |
-| **JavaScript** | VM2 с ограниченными правами, запрет на require |
-| **Kotlin** | Kotlin Scripting с ограничением reflection и доступа к файловой системе |
+### 11.4. REPL security
+| Language | Protection mechanism |
+|----------|---------------------|
+| **Python** | Isolated process, execution time limit, no file I/O |
+| **JavaScript** | VM2 with restricted permissions, no `require` |
+| **Kotlin** | Kotlin Scripting with restricted reflection and file system access |
 
-**Запрещённые операции во всех REPL:**
-- Чтение/запись файлов вне рабочей директории
-- Выполнение системных команд
-- Создание сетевых соединений (кроме API терминала)
-- Бесконечные циклы (таймаут 5 секунд)
+**Operations forbidden in all REPLs:**
+- Reading/writing files outside the working directory
+- Executing system commands
+- Creating network connections (except the terminal API)
+- Infinite loops (5-second timeout)
 
 ---
 
-## 12. Требования к интерфейсу <a name="12"></a>
+## 12. UI requirements <a name="12"></a>
 
-### 12.1. Общие принципы
+### 12.1. General principles
 
-- **Тёмная тема** используется по умолчанию, как у всех профессиональных торговых терминалов. Пользователь может переключиться на светлую тему.
-- **Кастомизация** — возможность настройки цветовой схемы, шрифтов и раскладки окон.
-- **Профили** — сохранение и загрузка нескольких профилей настроек интерфейса.
-- **Моноширинный шрифт** используется для всех числовых данных и таблиц, обеспечивая единообразие отображения.
+- **Dark theme** is used by default, as in all professional trading terminals. The user can switch to a light theme.
+- **Customization** — ability to configure the color scheme, fonts and window layout.
+- **Profiles** — saving and loading multiple UI settings profiles.
+- **Monospace font** is used for all numeric data and tables, ensuring display consistency.
 
-### 12.2. Структура главного окна
+### 12.2. Main window structure
 
-Главное окно терминала организовано по принципу **модульных окон (MDI)**, которые можно перемещать, изменять их размер, закрывать и открывать заново. Окно состоит из следующих зон:
+The terminal's main window is organized on the principle of **modular windows (MDI)** that can be moved, resized, closed and reopened. The window consists of the following areas:
 
-- **Верхняя панель инструментов** — содержит:
-  - Выбор биржи (Binance, Bybit)
-  - Выбор торгового инструмента (символа) с поиском и избранным
-  - Выбор таймфрейма (от 1 минуты до 1 недели)
-  - Кнопки быстрого доступа к инструментам (график, стакан, лента сделок, настройки)
-  - Индикатор статуса подключения к бирже
+- **Top toolbar** — contains:
+  - Exchange selection (Binance, Bybit)
+  - Trading instrument (symbol) selection with search and favorites
+  - Timeframe selection (from 1 minute to 1 week)
+  - Quick access buttons for tools (chart, order book, Time & Sales, settings)
+  - Exchange connection status indicator
 
-- **Основная рабочая область** — разделена на модульные окна:
-  - **График** — свечной график с индикаторами и инструментами рисования
-  - **Стакан (DOM)** — отображение бидов и асков с визуализацией объёмов
-  - **Лента сделок (Time & Sales)** — поток сделок в реальном времени
-  - Дополнительные окна: портфель, настройки, история сделок
+- **Main workspace** — divided into modular windows:
+  - **Chart** — candlestick chart with indicators and drawing tools
+  - **Order book (DOM)** — display of bids and asks with volume visualization
+  - **Time & Sales (tape)** — real-time trade flow
+  - Additional windows: portfolio, settings, trade history
 
-- **Нижняя панель состояния** — отображает:
-  - Статус подключения к бирже
-  - Задержку (латентность) в миллисекундах
-  - Текущую версию приложения
+- **Bottom status bar** — displays:
+  - Exchange connection status
+  - Latency in milliseconds
+  - Current application version
 
-### 12.3. Модульные окна
+### 12.3. Modular windows
 
-Все окна в терминале являются модульными и обладают следующими свойствами:
+All windows in the terminal are modular and have the following properties:
 
-- Окна можно **откреплять** от главного окна и перемещать на другие мониторы (поддержка multi-monitor).
-- Окна можно **перетаскивать** мышью и изменять их размер.
-- Окна можно **сворачивать** в панель инструментов.
-- Окна можно **закрывать** и открывать заново через меню.
-- **Состояние окон** (положение, размер, открытые/закрытые) **сохраняется** между сессиями.
+- Windows can be **undocked** from the main window and moved to other monitors (multi-monitor support).
+- Windows can be **dragged** with the mouse and resized.
+- Windows can be **collapsed** into the toolbar.
+- Windows can be **closed** and reopened through the menu.
+- **Window state** (position, size, open/closed) **is persisted** between sessions.
 
-### 12.4. Цветовая схема
+### 12.4. Color scheme
 
-Используется тёмная тема (по умолчанию) с акцентными цветами для быстрого визуального восприятия:
+A dark theme is used (by default) with accent colors for fast visual perception:
 
-| Элемент | Цвет | Назначение |
-|---------|------|------------|
-| **Бычий (рост)** | Зелёный (#00C853) | Покупки, восходящий тренд, прибыль |
-| **Медвежий (падение)** | Красный (#D32F2F) | Продажи, нисходящий тренд, убыток |
-| **Фон** | Почти чёрный (#0A0A0A) | Основной фон приложения |
-| **Поверхности** | Тёмно-серый (#121212) | Карточки, панели, окна |
-| **Текст** | Светло-серый (#CCCCCC) | Основной текст |
-| **Второстепенный текст** | Серый (#888888) | Подписи, вспомогательная информация |
-| **Линии сетки** | Тёмно-серый (#333333) | Сетка на графике |
+| Element | Color | Purpose |
+|---------|-------|---------|
+| **Bullish (up)** | Green (#00C853) | Buys, uptrend, profit |
+| **Bearish (down)** | Red (#D32F2F) | Sells, downtrend, loss |
+| **Background** | Near-black (#0A0A0A) | Main application background |
+| **Surfaces** | Dark gray (#121212) | Cards, panels, windows |
+| **Text** | Light gray (#CCCCCC) | Main text |
+| **Secondary text** | Gray (#888888) | Labels, auxiliary information |
+| **Grid lines** | Dark gray (#333333) | Chart grid |
 
-### 12.5. Типографика
+### 12.5. Typography
 
-- **Основной шрифт** — моноширинный (JetBrains Mono, Fira Code, Consolas).
-- **Размеры шрифтов:**
-  - Заголовки окон: 16–20 px
-  - Основной текст (таблицы, цены): 13–14 px
-  - Вспомогательный текст (подписи, метки): 11–12 px
-  - График: 10–12 px (подписи осей)
+- **Primary font** — monospace (JetBrains Mono, Fira Code, Consolas).
+- **Font sizes:**
+  - Window titles: 16–20 px
+  - Main text (tables, prices): 13–14 px
+  - Auxiliary text (labels, captions): 11–12 px
+  - Chart: 10–12 px (axis labels)
 
-### 12.6. Горячие клавиши
+### 12.6. Hotkeys
 
-Все основные действия имеют горячие клавиши для быстрого доступа:
+All main actions have hotkeys for quick access:
 
-| Комбинация | Действие |
-|------------|----------|
-| `Ctrl+N` | Открыть новый график |
-| `Ctrl+D` | Открыть стакан (DOM) |
-| `Ctrl+T` | Открыть ленту сделок (Time & Sales) |
-| `Ctrl+Tab` | Переключение между открытыми окнами |
-| `Ctrl+S` | Сохранить настройки / скриншот |
-| `Ctrl+Z` | Отмена последнего действия (Undo) |
-| `Ctrl+Y` | Повтор действия (Redo) |
-| `F1` | Открыть справку |
-| `Esc` | Закрыть активное окно / снять выделение |
+| Combination | Action |
+|-------------|--------|
+| `Ctrl+N` | Open a new chart |
+| `Ctrl+D` | Open the order book (DOM) |
+| `Ctrl+T` | Open Time & Sales |
+| `Ctrl+Tab` | Switch between open windows |
+| `Ctrl+S` | Save settings / screenshot |
+| `Ctrl+Z` | Undo the last action |
+| `Ctrl+Y` | Redo the action |
+| `F1` | Open help |
+| `Esc` | Close the active window / clear selection |
 
-Пользователь может настроить горячие клавиши в разделе настроек.
+The user can customize hotkeys in the settings section.
 
-### 12.7. Интернационализация
+### 12.7. Internationalization
 
-- Поддержка **английского** и **русского** языков.
-- Переключение языка происходит через настройки без перезапуска приложения.
-- Все числовые данные форматируются в соответствии с локалью пользователя (разделители тысяч, десятичные разделители).
+- Support for **English** and **Russian** languages.
+- Language switching happens through settings without restarting the application.
+- All numeric data is formatted according to the user's locale (thousands separators, decimal separators).
 
-### 12.8. Интерактивные элементы
+### 12.8. Interactive elements
 
-- **Клик** по цене в стакане открывает окно быстрого ордера.
-- **Двойной клик** на элементе в ленте сделок показывает детальную информацию.
-- **Перетаскивание (Drag & Drop)** панелей между областями экрана.
-- **Скролл** на графике — масштабирование.
-- **Ctrl + Скролл** — плавное изменение масштаба.
-- **Правый клик** на графике открывает контекстное меню с инструментами рисования и индикаторами.
+- **Click** on a price in the order book opens the quick order window.
+- **Double click** on an item in Time & Sales shows detailed information.
+- **Drag & Drop** of panels between screen areas.
+- **Scroll** on the chart — zooming.
+- **Ctrl + Scroll** — smooth zooming.
+- **Right click** on the chart opens a context menu with drawing tools and indicators.
 
-### 12.9. Адаптивность
+### 12.9. Adaptivity
 
-- Интерфейс оптимизирован для разрешений от **1280x720** до **4K**.
-- Элементы UI масштабируются в зависимости от DPI экрана.
-- Поддерживается работа на нескольких мониторах (окна можно выносить на дополнительные экраны).
+- The interface is optimized for resolutions from **1280x720** to **4K**.
+- UI elements scale according to the screen DPI.
+- Multi-monitor setups are supported (windows can be moved to additional screens).
 ```
-## 13. Требования к данным и хранилищам <a name="13"></a>
+## 13. Data and storage requirements <a name="13"></a>
 
-### 13.1. Локальное хранилище
+### 13.1. Local storage
 
-#### 13.1.1. Настройки
-- **Формат:** JSON
-- **Место:** `~/.nous/settings.json`
-- **Содержит:** Настройки интерфейса, список избранных инструментов, горячие клавиши
+#### 13.1.1. Settings
+- **Format:** JSON
+- **Location:** `~/.nous/settings.json`
+- **Contains:** UI settings, list of favorite instruments, hotkeys
 
-#### 13.1.2. История сделок (дневник)
-- **Технология:** SQLDelight (SQLite)
-- **Таблицы:**
-    - `trades` — все сделки
-    - `notes` — заметки к сделкам
-    - `tags` — теги для категоризации
-    - `screenshots` — скриншоты графиков
+#### 13.1.2. Trade history (journal)
+- **Technology:** SQLDelight (SQLite)
+- **Tables:**
+    - `trades` — all trades
+    - `notes` — notes on trades
+    - `tags` — tags for categorization
+    - `screenshots` — chart screenshots
 
-#### 13.1.3. Кэш исторических данных
-- **Технология:** SQLDelight с индексацией по времени
-- **Хранение:** Минутные бары за последние 30 дней для всех избранных инструментов
+#### 13.1.3. Historical data cache
+- **Technology:** SQLDelight with time-based indexing
+- **Storage:** Minute bars for the last 30 days for all favorite instruments
 
-### 13.2. Структура БД для истории
+### 13.2. DB schema for history
 
 ```sql
--- Сделки
+-- Trades
 CREATE TABLE trades (
     id TEXT PRIMARY KEY,
     symbol TEXT NOT NULL,
@@ -904,7 +905,7 @@ CREATE TABLE trades (
     note_id TEXT
 );
 
--- Заметки
+-- Notes
 CREATE TABLE notes (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -912,14 +913,14 @@ CREATE TABLE notes (
     updated_at INTEGER NOT NULL
 );
 
--- Теги
+-- Tags
 CREATE TABLE tags (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     color TEXT
 );
 
--- Связь сделок с тегами
+-- Link between trades and tags
 CREATE TABLE trade_tags (
     trade_id TEXT NOT NULL,
     tag_id TEXT NOT NULL,
@@ -927,7 +928,7 @@ CREATE TABLE trade_tags (
     FOREIGN KEY(tag_id) REFERENCES tags(id)
 );
 
--- Кэш свечей
+-- Candle cache
 CREATE TABLE candles (
     symbol TEXT NOT NULL,
     interval TEXT NOT NULL,
@@ -943,13 +944,13 @@ CREATE TABLE candles (
 
 ---
 
-## 14. Интеграция с внешними системами <a name="14"></a>
+## 14. Integration with external systems <a name="14"></a>
 
-### 14.1. Биржи (MVP)
+### 14.1. Exchanges (MVP)
 - **Binance** (Spot & Futures) — WebSocket + REST
 - **Bybit** (Spot & Futures) — WebSocket + REST
 
-### 14.2. Биржи (планируемые через плагины)
+### 14.2. Exchanges (planned via plugins)
 - OKX
 - Kraken
 - Coinbase
@@ -957,138 +958,138 @@ CREATE TABLE candles (
 - Bitget
 - HTX (Huobi)
 
-### 14.3. Экспорт данных
-- **CSV** — сделки, свечи, индикаторы
-- **JSON** — для внешних API
-- **PNG/JPEG** — скриншоты графиков
-- **PDF** — отчёты и статистика
+### 14.3. Data export
+- **CSV** — trades, candles, indicators
+- **JSON** — for external APIs
+- **PNG/JPEG** — chart screenshots
+- **PDF** — reports and statistics
 
-### 14.4. Импорт данных
-- **CSV** — исторические данные из других платформ
-- **JSON** — настройки, профили, стратегии
+### 14.4. Data import
+- **CSV** — historical data from other platforms
+- **JSON** — settings, profiles, strategies
 
 ---
 
-## 15. Монетизация и бизнес-модель <a name="15"></a>
+## 15. Monetization and business model <a name="15"></a>
 
-### 15.1. Бесплатная модель (Freemium)
-- **Бесплатно:**
-    - Чтение данных с Binance и Bybit
-    - Базовые графики и индикаторы (SMA, EMA, VWAP)
-    - Стакан (до 10 уровней)
-    - Лента сделок
-    - Python REPL (ограниченное время выполнения)
+### 15.1. Freemium model
+- **Free:**
+    - Reading data from Binance and Bybit
+    - Basic charts and indicators (SMA, EMA, VWAP)
+    - Order book (up to 10 levels)
+    - Time & Sales
+    - Python REPL (limited execution time)
 
-- **Платно (подписка "Pro"):**
-    - Расширенный Volume Profile
-    - Кластерные графики
-    - Бэктестинг
-    - Kotlin и JavaScript REPL
-    - Плагинная система
-    - Приоритетная поддержка
+- **Paid ("Pro" subscription):**
+    - Advanced Volume Profile
+    - Cluster charts
+    - Backtesting
+    - Kotlin and JavaScript REPL
+    - Plugin system
+    - Priority support
 
-### 15.2. Маркетплейс плагинов
-- **Для разработчиков:**
-    - Публикация платных плагинов
-    - Комиссия платформы 30%
-    - Возможность бесплатных плагинов
+### 15.2. Plugin marketplace
+- **For developers:**
+    - Publishing paid plugins
+    - 30% platform commission
+    - Free plugins are allowed
 
-- **Для пользователей:**
-    - Покупка плагинов напрямую у разработчиков
-    - Рейтинги и отзывы
-    - Бесплатный пробный период
+- **For users:**
+    - Buying plugins directly from developers
+    - Ratings and reviews
+    - Free trial period
 
-### 15.3. Корпоративные лицензии
-- **Для фондов и проп-фирм:**
-    - White-label решения
-    - Выделенные серверы для агрегации данных
-    - API для интеграции с внутренними системами
-    - Приоритетная поддержка 24/7
+### 15.3. Enterprise licenses
+- **For funds and prop firms:**
+    - White-label solutions
+    - Dedicated servers for data aggregation
+    - API for integration with internal systems
+    - 24/7 priority support
 
 > **Dual licensing:** the project is open-sourced under AGPL-3.0-or-later. Organizations that
 > wish to use it without the AGPL obligations can obtain a commercial license — see the
 > [License](#19) section.
 
-### 15.4. Модель ценообразования
-- **Pro подписка:** $29.99/месяц или $299/год
-- **Комиссия с плагинов:** 30%
-- **Корпоративная лицензия:** от $5000/год
+### 15.4. Pricing model
+- **Pro subscription:** $29.99/month or $299/year
+- **Plugin commission:** 30%
+- **Enterprise license:** from $5000/year
 
 ---
 
-## 16. План разработки и оценка <a name="16"></a>
+## 16. Development plan and estimates <a name="16"></a>
 
-### 16.1. Команда (идеальная)
+### 16.1. Team (ideal)
 - **1 Lead Developer / Architect**
 - **2 Backend/Kotlin Developers**
 - **1 Frontend/Compose Developer**
-- **1 DevOps (частичная занятость)**
+- **1 DevOps (part-time)**
 - **1 QA Engineer**
 
-### 16.2. Оценка по этапам (человеко-часы)
+### 16.2. Stage estimates (person-hours)
 
-| Этап | Задачи | ЧЧ |
-|------|--------|-----|
-| **Этап 0** | Настройка архитектуры, convention plugins, базовые модули | 200 |
-| **Этап 1** | Data providers, UI фичи, стабильная работа | 600 |
-| **Этап 2** | Редактор, REPL, плагинная система | 500 |
-| **Этап 3** | DSL, бэктестинг, дневник | 400 |
-| **Этап 4** | Live Trading, маркетплейс, масштабирование | 300 |
-| **ИТОГО** | | **2000** |
+| Stage | Tasks | PH |
+|-------|-------|----|
+| **Stage 0** | Architecture setup, convention plugins, base modules | 200 |
+| **Stage 1** | Data providers, UI features, stable operation | 600 |
+| **Stage 2** | Editor, REPL, plugin system | 500 |
+| **Stage 3** | DSL, backtesting, journal | 400 |
+| **Stage 4** | Live Trading, marketplace, scaling | 300 |
+| **TOTAL** | | **2000** |
 
-### 16.3. Детальный план Этапа 2 (IDE и плагины)
+### 16.3. Detailed Stage 2 plan (IDE and plugins)
 
-| Неделя | Задачи |
-|--------|--------|
-| 1 | Интеграция Monaco Editor, настройка WebView |
-| 2 | Создание `feature-editor`, сохранение файлов |
+| Week | Tasks |
+|------|-------|
+| 1 | Monaco Editor integration, WebView setup |
+| 2 | Creating `feature-editor`, file saving |
 | 3 | Python REPL (Jupyter kernel) |
 | 4 | JavaScript REPL (Node.js + VM2) |
 | 5 | Kotlin REPL (Kotlin Scripting) |
-| 6 | Плагинная система: загрузка JAR |
-| 7 | Плагинная система: песочница и безопасность |
-| 8 | SDK и документация, примеры плагинов |
+| 6 | Plugin system: JAR loading |
+| 7 | Plugin system: sandbox and security |
+| 8 | SDK and documentation, plugin examples |
 
 ---
 
-## 17. Риски и пути их минимизации <a name="17"></a>
+## 17. Risks and mitigation <a name="17"></a>
 
-### 17.1. Технические риски
+### 17.1. Technical risks
 
-| Риск | Вероятность | Влияние | Митигация |
-|------|-------------|---------|-----------|
-| Производительность графика в Compose | Высокая | Высокое | Прототипирование, бенчмарки, fallback на легковесную библиотеку |
-| Сложность интеграции Jupyter | Средняя | Среднее | Использование готовых решений (xeus-python) |
-| Проблемы с WebSocket | Средняя | Среднее | Автоматические reconnect, мониторинг |
-| Утечки памяти в REPL | Средняя | Высокое | Изоляция процессов, таймауты, тесты |
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Chart performance in Compose | High | High | Prototyping, benchmarks, fallback to a lightweight library |
+| Complexity of Jupyter integration | Medium | Medium | Using ready-made solutions (xeus-python) |
+| WebSocket issues | Medium | Medium | Automatic reconnect, monitoring |
+| Memory leaks in REPL | Medium | High | Process isolation, timeouts, tests |
 
-### 17.2. Бизнес-риски
+### 17.2. Business risks
 
-| Риск | Вероятность | Влияние | Митигация |
-|------|-------------|---------|-----------|
-| Низкий спрос | Средняя | Высокое | Раннее MVP с обратной связью, фокус на нише |
-| Конкуренция | Высокая | Среднее | Фокус на уникальных возможностях (IDE + плагины) |
-| Изменения в API бирж | Средняя | Среднее | Абстракция провайдеров, быстрое реагирование |
-| Регуляторные риски | Низкая | Высокое | Фокус на non-custodial решения |
-
----
-
-## 18. Заключение
-
-Nous Platform — это не просто очередной терминал. Это **профессиональная рабочая среда для трейдера-разработчика**, где анализ рынка и создание алгоритмов происходят в едином пространстве.
-
-Ключевые преимущества, заложенные в архитектуре:
-- **Модульность** — каждый компонент можно разрабатывать и тестировать независимо
-- **Открытость** — сообщество может расширять функционал через плагины
-- **Производительность** — современный стек обеспечивает высокую скорость работы
-- **Гибкость** — REPL на трёх языках позволяет быстро проверять гипотезы
-- **Масштабируемость** — архитектура готова к росту функционала
-
-Данное Техническое Задание будет служить основным документом для разработки и должно регулярно обновляться по мере принятия новых архитектурных решений.
+| Risk | Probability | Impact | Mitigation |
+|------|-------------|--------|------------|
+| Low demand | Medium | High | Early MVP with feedback, niche focus |
+| Competition | High | Medium | Focus on unique capabilities (IDE + plugins) |
+| Exchange API changes | Medium | Medium | Provider abstraction, fast response |
+| Regulatory risks | Low | High | Focus on non-custodial solutions |
 
 ---
 
-**Nous Platform — создан для тех, кто не просто смотрит на графики, а строит своё будущее.**
+## 18. Conclusion
+
+Nous Platform is not just another terminal. It is a **professional working environment for the trader-developer**, where market analysis and algorithm creation happen in a single space.
+
+Key advantages built into the architecture:
+- **Modularity** — each component can be developed and tested independently
+- **Openness** — the community can extend functionality through plugins
+- **Performance** — the modern stack ensures high speed of operation
+- **Flexibility** — REPL in three languages allows quickly testing hypotheses
+- **Scalability** — the architecture is ready for functionality growth
+
+This Technical Specification will serve as the primary development document and must be regularly updated as new architectural decisions are made.
+
+---
+
+**Nous Platform — built for those who don't just look at charts, but build their own future.**
 
 © 2026 Aandios Labs
 

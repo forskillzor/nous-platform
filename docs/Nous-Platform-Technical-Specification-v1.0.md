@@ -1,195 +1,195 @@
-# Nous Platform v1.0 — Полная техническая спецификация (актуализированная)
+# Nous Platform v1.0 — Complete Technical Specification (updated)
 
-## Оглавление
+## Table of Contents
 
-1. [Введение и видение продукта](#1)  
-2. [Бизнес-требования и целевая аудитория](#2)  
-3. [Этапы развития (Roadmap) — ОБНОВЛЕНО](#3)  
-4. [Архитектура платформы](#4)  
-5. [Функциональные требования](#5)  
-6. [Нефункциональные требования](#6)  
-7. [Технический стек](#7)  
-8. [Модульная структура проекта](#8)  
-9. [Плагинная система и экосистема — ОТЛОЖЕНО](#9)  
-10. [Требования к безопасности](#10)  
-11. [Требования к интерфейсу](#11)  
-12. [Требования к данным и хранилищам](#12)  
-13. [Интеграция с внешними системами](#13)  
-14. [Монетизация и бизнес-модель](#14)  
-15. [План разработки (соло, 15 дней/мес) — ОБНОВЛЕНО](#15)  
-16. [Риски и пути их минимизации — РАСШИРЕНО](#16)  
-17. [Заключение](#17)  
-
----
-
-## 1. Введение и видение продукта <a name="1"></a>
-
-### 1.1. Миссия
-Создать современную, модульную и открытую платформу для профессионального криптотрейдинга, которая объединит лучшие практики ATAS, CScalp и MetaTrader, но с фокусом на крипторынки, предоставляя беспрецедентные возможности для кастомизации и алгоритмической торговли.
-
-### 1.2. Видение
-Nous Platform — это не просто терминал, а экосистема, состоящая из:
-- **Мощного десктопного приложения** для анализа Order Flow, Volume Profile и кластерных графиков
-- **Открытого API** для создания плагинов сообществом (после инвестиций)
-- **Предметно-ориентированного языка (DSL)** для написания индикаторов и стратегий (после инвестиций)
-- **Маркетплейса** для распространения платных и бесплатных плагинов (после инвестиций)
-
-### 1.3. Ключевые отличия от конкурентов
-1. **Live Trading с первого дня** — пользователи могут торговать сразу, а не только анализировать
-2. **Фокус на крипту** — оптимизация под Binance/Bybit, индикатор ликвидаций, дельта-профиль
-3. **Современный технологический стек** — Kotlin Multiplatform + Compose Desktop
-4. **Кроссплатформенность** — один код для Windows, macOS и Linux
-5. **Соло-френдли** — проект построен так, что один разработчик может дойти до первых 1000 пользователей
+1. [Introduction and product vision](#1)  
+2. [Business requirements and target audience](#2)  
+3. [Development stages (Roadmap) — UPDATED](#3)  
+4. [Platform architecture](#4)  
+5. [Functional requirements](#5)  
+6. [Non-functional requirements](#6)  
+7. [Technology stack](#7)  
+8. [Modular project structure](#8)  
+9. [Plugin system and ecosystem — POSTPONED](#9)  
+10. [Security requirements](#10)  
+11. [UI requirements](#11)  
+12. [Data and storage requirements](#12)  
+13. [Integration with external systems](#13)  
+14. [Monetization and business model](#14)  
+15. [Development plan (solo, 15 days/month) — UPDATED](#15)  
+16. [Risks and mitigation strategies — EXTENDED](#16)  
+17. [Conclusion](#17)  
 
 ---
 
-## 2. Бизнес-требования и целевая аудитория <a name="2"></a>
+## 1. Introduction and product vision <a name="1"></a>
 
-### 2.1. Целевая аудитория
+### 1.1. Mission
+To create a modern, modular, and open platform for professional crypto trading that combines the best practices of ATAS, CScalp, and MetaTrader, with a focus on crypto markets, delivering unprecedented customization and algorithmic trading capabilities.
 
-#### Сегмент A: Профессиональные криптотрейдеры
-- **Характеристики:** Торгуют на споте и фьючерсах, используют Volume Profile, Cluster Charts, DOM, Delta
-- **Потребности:** Высокая производительность, стабильность, прямой доступ к рынку, кастомизация интерфейса
-- **Боли:** ATAS не оптимизирован для крипты, TradingView недостаточно глубок для Order Flow анализа
+### 1.2. Vision
+Nous Platform is not just a terminal, but an ecosystem consisting of:
+- **A powerful desktop application** for Order Flow analysis, Volume Profile, and cluster charts
+- **An open API** for community-created plugins (after investment)
+- **A domain-specific language (DSL)** for writing indicators and strategies (after investment)
+- **A marketplace** for distributing paid and free plugins (after investment)
 
-#### Сегмент B: Трейдеры, которым нужен Live Trading
-- **Характеристики:** Хотят торговать прямо из терминала, а не переключаться между биржей и графиками
-- **Потребности:** Быстрое выставление ордеров, управление позициями, риск-менеджмент
-- **Боли:** CScalp ограничен, ATAS сложен в настройке
-
-### 2.2. Бизнес-цели (обновлено)
-1. **Краткосрочные (2026):** Запуск Live Trading, привлечение первых 1000 активных пользователей, 50+ платных
-2. **Среднесрочные (2027):** Привлечение Pre-Seed/Seed инвестиций, расширение команды до 3-4 человек
-3. **Долгосрочные (2028+):** Создание экосистемы плагинов, выход на ARR $2M+
-
-### 2.3. Ключевые показатели успеха (KPI)
-- Количество активных пользователей в день (DAU) — целевые 500 к концу 2026
-- **Live Trading ордеров в день** — целевые 1000 к концу 2026
-- Среднее время от получения данных с биржи до отображения в UI — менее 300 мс
-- Конверсия в платную подписку — 5-10%
+### 1.3. Key differentiators from competitors
+1. **Live Trading from day one** — users can trade immediately, not just analyze
+2. **Crypto focus** — optimized for Binance/Bybit, liquidation indicator, delta profile
+3. **Modern technology stack** — Kotlin Multiplatform + Compose Desktop
+4. **Cross-platform** — one codebase for Windows, macOS, and Linux
+5. **Solo-friendly** — the project is structured so that a single developer can reach the first 1000 users
 
 ---
 
-## 3. Этапы развития (Roadmap) — ОБНОВЛЕНО <a name="3"></a>
+## 2. Business requirements and target audience <a name="2"></a>
 
-**Ключевое изменение:** Live Trading на Этапе 1. Плагины, DSL, маркетплейс — только после инвестиций.
+### 2.1. Target audience
 
-### 3.1. Этап 0: Фундамент (Q2 2026) — ЗАВЕРШЁН
-- ✅ Настройка модульной архитектуры согласно утверждённой структуре
-- ✅ Создание `public-api` модулей с базовыми интерфейсами и моделями
-- ✅ Реализация `platform-core` с бизнес-логикой
-- ✅ Разработка feature-модулей (`feature-dom`, `feature-chart`, `feature-trades`, `feature-localstorage`, `feature-settings`)
-- ✅ Миграция существующего кода из `composeApp` в новые модули
-- ✅ Добавление WASM/JS таргетов в convention-плагины (Kotlin Multiplatform)
-- ✅ Переход Koin/ktor-client-cio из `commonMain` в `jvmMain` для WASM-совместимости
-- ✅ `expect`/`actual` паттерны: HttpClientFactory, Platform.currentTimeMillis, ConcurrentMapFactory, Fonts
-- ✅ Обновление зависимостей: kotlinx-coroutines 1.9.0, kotlinx-serialization 1.7.3, kotlinx-datetime 0.6.1
+#### Segment A: Professional crypto traders
+- **Characteristics:** Trade spot and futures, use Volume Profile, Cluster Charts, DOM, Delta
+- **Needs:** High performance, stability, direct market access, UI customization
+- **Pain points:** ATAS is not optimized for crypto, TradingView is not deep enough for Order Flow analysis
 
-### 3.2. Этап 1: MVP с Bidasker (Q2-Q3 2026) — В ПРОЦЕССЕ
+#### Segment B: Traders who need Live Trading
+- **Characteristics:** Want to trade directly from the terminal instead of switching between the exchange and charts
+- **Needs:** Fast order placement, position management, risk management
+- **Pain points:** CScalp is limited, ATAS is hard to configure
+
+### 2.2. Business goals (updated)
+1. **Short-term (2026):** Launch Live Trading, attract the first 1000 active users, 50+ paying
+2. **Mid-term (2027):** Attract Pre-Seed/Seed investment, expand the team to 3–4 people
+3. **Long-term (2028+):** Build a plugin ecosystem, reach $2M+ ARR
+
+### 2.3. Key performance indicators (KPI)
+- Daily active users (DAU) — target 500 by end of 2026
+- **Live Trading orders per day** — target 1000 by end of 2026
+- Average time from exchange data receipt to UI display — under 300 ms
+- Conversion to paid subscription — 5–10%
+
+---
+
+## 3. Development stages (Roadmap) — UPDATED <a name="3"></a>
+
+**Key change:** Live Trading in Stage 1. Plugins, DSL, marketplace — only after investment.
+
+### 3.1. Stage 0: Foundation (Q2 2026) — COMPLETED
+- ✅ Modular architecture set up according to the approved structure
+- ✅ Creation of `public-api` modules with base interfaces and models
+- ✅ Implementation of `platform-core` with business logic
+- ✅ Development of feature modules (`feature-dom`, `feature-chart`, `feature-trades`, `feature-localstorage`, `feature-settings`)
+- ✅ Migration of existing code from `composeApp` to the new modules
+- ✅ Adding WASM/JS targets to convention plugins (Kotlin Multiplatform)
+- ✅ Moving Koin/ktor-client-cio from `commonMain` to `jvmMain` for WASM compatibility
+- ✅ `expect`/`actual` patterns: HttpClientFactory, Platform.currentTimeMillis, ConcurrentMapFactory, Fonts
+- ✅ Dependency updates: kotlinx-coroutines 1.9.0, kotlinx-serialization 1.7.3, kotlinx-datetime 0.6.1
+
+### 3.2. Stage 1: MVP with Bidasker (Q2–Q3 2026) — IN PROGRESS
 
 **Bidasker SaaS (freemium footprint chart):**
-- ✅ `bidasker-web` модуль — Compose Multiplatform → Kotlin/JS (IR)
-- ✅ Vue 3 Landing Page с iframe-интеграцией WASM/JS чарта
-- ✅ Тарифная система (Free/Registered/Pro) с JSON-конфигом
-- ✅ Email-регистрация (localStorage, подготовка к API)
-- ✅ GitHub Actions deploy на GitHub Pages
-- ✅ 10x агрегация ценовых уровней для производительности
-- ✅ Загрузка через `onWasmReady()` — устранение race condition с Skiko WASM
+- ✅ `bidasker-web` module — Compose Multiplatform → Kotlin/JS (IR)
+- ✅ Vue 3 Landing Page with iframe integration of the WASM/JS chart
+- ✅ Tier system (Free/Registered/Pro) with JSON config
+- ✅ Email registration (localStorage, prepared for API)
+- ✅ GitHub Actions deploy to GitHub Pages
+- ✅ 10x price-level aggregation for performance
+- ✅ Loading via `onWasmReady()` — eliminating the race condition with Skiko WASM
 
-**Live Trading + Анализ:**
-- Подключение к Binance и Bybit (WebSocket + REST) ✅ (Binance)
-- Отображение стакана (DOM) с визуализацией объёмов ✅
-- Отображение ленты сделок (Time & Sales) ✅
-- Отображение свечного/футпринт графика ✅
-- Перетаскиваемые окна ✅
-- Базовые индикаторы (SMA, EMA, VWAP) ✅
-- Инструменты рисования на графике (Trend Line, Horizontal, Rectangle, Ruler) ✅
+**Live Trading + Analysis:**
+- Connection to Binance and Bybit (WebSocket + REST) ✅ (Binance)
+- Order book (DOM) display with volume visualization ✅
+- Time & Sales display ✅
+- Candlestick/footprint chart display ✅
+- Draggable windows ✅
+- Basic indicators (SMA, EMA, VWAP) ✅
+- Chart drawing tools (Trend Line, Horizontal, Rectangle, Ruler) ✅
 - Undo/Redo (Ctrl+Z/Y) ✅
-- **Paper trading** (симуляция торговли)
-- Поддержка ликвидаций (forceOrder) — клиент и сервер ✅
-- CORS на market-data-server ✅
-- Сохранение настроек интерфейса
+- **Paper trading** (trade simulation)
+- Liquidation support (forceOrder) — client and server ✅
+- CORS on market-data-server ✅
+- Saving UI settings
 
-### 3.2b. Этап 1.5: Workspace & Tab System (Q3 2026) — ПЛАН
+### 3.2b. Stage 1.5: Workspace & Tab System (Q3 2026) — PLANNED
 
-**Цель:** IDE-подобный workspace manager для трейдинга
+**Goal:** An IDE-like workspace manager for trading
 
-**Концепция:** Пользователь работает с Workspace — аналогом файла проекта. Каждый workspace описывает: биржу, инструмент, набор панелей (chart, DOM, trades), их расположение, индикаторы, объекты рисования. Workspace'ы сгруппированы в Project Tree слева, открываются в Tab Bar вверху, могут быть detached в отдельное окно.
+**Concept:** The user works with a Workspace — analogous to a project file. Each workspace describes: the exchange, the instrument, a set of panels (chart, DOM, trades), their layout, indicators, drawing objects. Workspaces are grouped in the Project Tree on the left, opened in the Tab Bar at the top, and can be detached into a separate window.
 
-**Архитектура:**
-| Компонент | Роль |
+**Architecture:**
+| Component | Role |
 |-----------|------|
-| **WorkspaceConfig** (JSON) | Сериализуемый документ: провайдеры, layout, panels, drawings, indicators |
-| **LayoutNode** | Рекурсивное дерево H/V сплитов (Split/Leaf) — без ограничения вложенности |
-| **ProjectTree** | Левая панель: группы + workspace'ы, drag-and-drop переупорядочивание |
-| **TabManager** | Управление вкладками: open/close/activate/detach-to-window |
-| **ProviderPool** | Глобальный пул WebSocket-соединений с reference counting |
-| **WorkspaceViewModel** | Один workspace = одна ViewModel с провайдерами и панелями |
+| **WorkspaceConfig** (JSON) | Serializable document: providers, layout, panels, drawings, indicators |
+| **LayoutNode** | Recursive H/V split tree (Split/Leaf) — unlimited nesting depth |
+| **ProjectTree** | Left panel: groups + workspaces, drag-and-drop reordering |
+| **TabManager** | Tab management: open/close/activate/detach-to-window |
+| **ProviderPool** | Global WebSocket connection pool with reference counting |
+| **WorkspaceViewModel** | One workspace = one ViewModel with providers and panels |
 
-**Фазы реализации:**
-1. **Foundation:** Модели данных (`@Serializable`), SQLite через SQLDelight, CRUD
+**Implementation phases:**
+1. **Foundation:** Data models (`@Serializable`), SQLite via SQLDelight, CRUD
 2. **Core:** ProviderPool, WorkspaceVM, PanelVM, TabManager
-3. **UI:** TerminalShell, ProjectTree, TabBar, LayoutRenderer (рекурсивные сплиты), SplitHandle
-4. **Interaction:** Compose Drag & Drop, Floating Window, WelcomeScreen, контекстное меню
-5. **Integration:** Замена `MainScreen` на `TerminalShell`, backward compatibility
+3. **UI:** TerminalShell, ProjectTree, TabBar, LayoutRenderer (recursive splits), SplitHandle
+4. **Interaction:** Compose Drag & Drop, Floating Window, WelcomeScreen, context menu
+5. **Integration:** Replacing `MainScreen` with `TerminalShell`, backward compatibility
 
-**Гибкость:**
-- **Scalping setup:** Chart (1m) + DOM (20 уровней) + Trades в одном workspace
-- **12x DOM Grid:** 12 панелей DOM с разными инструментами в одном workspace
-- **Multi-provider:** Binance BTC chart + Bybit BTC DOM в одном workspace
+**Flexibility:**
+- **Scalping setup:** Chart (1m) + DOM (20 levels) + Trades in one workspace
+- **12x DOM Grid:** 12 DOM panels with different instruments in one workspace
+- **Multi-provider:** Binance BTC chart + Bybit BTC DOM in one workspace
 
-**Хранение:** JSON в SQLite + экспорт в `.workspace.json` для шаринга.
+**Storage:** JSON in SQLite + export to `.workspace.json` for sharing.
 
-**Почему JSON, а не Kotlin DSL:** drawings, indicators, references к дневнику/скриптам естественно хранятся в JSON-документе. SQLite даёт транзакционность и атомарность. Миграции при обновлении — добавить поле с default.
+**Why JSON and not a Kotlin DSL:** drawings, indicators, references to the journal/scripts are naturally stored in a JSON document. SQLite provides transactionality and atomicity. Migrations on update — add a field with a default.
 
-### 3.3. Этап 2: Live Trading + Профессиональный анализ (Q4 2026 - Q1 2027)
-**Цель:** Полноценный торговый терминал с реальными деньгами
+### 3.3. Stage 2: Live Trading + Professional analysis (Q4 2026 – Q1 2027)
+**Goal:** A full-fledged trading terminal with real money
 
-**Функционал:**
-- **Реальная торговля на Binance/Bybit** (размещение ордеров, отмена)
-- **Авторизация по API-ключам** (локальное зашифрованное хранение)
-- **Модуль портфеля** (балансы, открытые позиции, активные ордера, PnL)
-- **Footprint / Delta** (кластерный график с дельтой по ценам)
-- **Delta Profile** (профиль объёма с разделением на покупки/продажи)
-- **Индикатор ликвидаций** (оценка ликвидаций по аномальным свечам)
-- Улучшенная обработка ошибок и авто-переподключение WebSocket
+**Features:**
+- **Real trading on Binance/Bybit** (order placement, cancellation)
+- **API key authorization** (locally encrypted storage)
+- **Portfolio module** (balances, open positions, active orders, PnL)
+- **Footprint / Delta** (cluster chart with per-price delta)
+- **Delta Profile** (volume profile split into buys/sells)
+- **Liquidation indicator** (estimation of liquidations from abnormal candles)
+- Improved error handling and automatic WebSocket reconnection
 
-### 3.4. Этап 3: Первые пользователи и монетизация (Q2 2027)
-**Цель:** Привлечь 1000 MAU и 50+ платных подписчиков
+### 3.4. Stage 3: First users and monetization (Q2 2027)
+**Goal:** Attract 1000 MAU and 50+ paying subscribers
 
-**Функционал:**
-- **Публичный релиз** (сайт, документация, onboarding)
-- **Freemium модель**:
-  - Бесплатно: базовый анализ, paper trading
-  - Pro ($29.9/мес или $299/год): Live Trading, Footprint, Delta Profile, ликвидации
-- Сбор обратной связи, быстрые итерации
-- Контент-маркетинг (YouTube, Twitter, Telegram)
+**Features:**
+- **Public release** (website, documentation, onboarding)
+- **Freemium model**:
+  - Free: basic analysis, paper trading
+  - Pro ($29.9/month or $299/year): Live Trading, Footprint, Delta Profile, liquidations
+- Feedback collection, fast iterations
+- Content marketing (YouTube, Twitter, Telegram)
 
-### 3.5. Этап 4: Привлечение инвестиций (Pre-Seed/Seed) — Q3-Q4 2027
-**Цель:** Получить $100k–$500k для расширения команды
+### 3.5. Stage 4: Raising investment (Pre-Seed/Seed) — Q3–Q4 2027
+**Goal:** Raise $100k–$500k to expand the team
 
-**Что дают инвестиции:**
-- Найм 2-3 разработчиков (ускорение в 3-4 раза)
-- Профессиональный маркетинг
-- Юридическое оформление (международное)
+**What investment provides:**
+- Hiring 2–3 developers (3–4x acceleration)
+- Professional marketing
+- Legal structuring (international)
 
-### 3.6. Этап 5: Экосистема (2028+) — ПОСЛЕ ИНВЕСТИЦИЙ
-**Цель:** Стать платформой для разработчиков
+### 3.6. Stage 5: Ecosystem (2028+) — AFTER INVESTMENT
+**Goal:** Become a platform for developers
 
-**Функционал (отложен до найма команды):**
-- Плагинная система (загрузка JAR, песочница)
-- SDK и документация для разработчиков
-- DSL для индикаторов и стратегий (как Pine Script)
-- Редактор кода с подсветкой синтаксиса
-- Бэктестинг на исторических данных
-- Маркетплейс плагинов
-- AI-интеграции
+**Features (deferred until the team is hired):**
+- Plugin system (JAR loading, sandbox)
+- SDK and developer documentation
+- DSL for indicators and strategies (like Pine Script)
+- Code editor with syntax highlighting
+- Backtesting on historical data
+- Plugin marketplace
+- AI integrations
 
 ---
 
-## 4. Архитектура платформы <a name="4"></a>
+## 4. Platform architecture <a name="4"></a>
 
-### 4.1. Общая архитектура
+### 4.1. Overall architecture
 
 ```mermaid
 graph TB
@@ -238,79 +238,79 @@ graph TB
     APP --> CORE
 ```
 
-### 4.2. Слои внутри модулей
+### 4.2. Layers within modules
 
-Каждый feature-модуль имеет чёткое разделение на слои:
+Each feature module has a clear separation into layers:
 
 ```
 feature-*/src/commonMain/kotlin/com/aandios/nous/feature/xxx/
-├── domain/                      # Бизнес-логика и интерфейсы
-│   ├── models/                  # Модели данных (если специфичны для фичи)
-│   ├── repository/              # Интерфейсы репозиториев (расширяют public-api)
-│   └── usecases/                # Use cases (если сложная логика)
+├── domain/                      # Business logic and interfaces
+│   ├── models/                  # Data models (if feature-specific)
+│   ├── repository/              # Repository interfaces (extend public-api)
+│   └── usecases/                # Use cases (if complex logic)
 │
-├── data/                        # Реализации репозиториев
-│   ├── repository/               # Конкретные реализации
-│   ├── datasource/               # Источники данных (локальные, удалённые)
-│   └── mappers/                  # Мапперы между моделями
+├── data/                        # Repository implementations
+│   ├── repository/               # Concrete implementations
+│   ├── datasource/               # Data sources (local, remote)
+│   └── mappers/                  # Mappers between models
 │
-├── presentation/                 # UI слой
-│   ├── viewmodel/                # ViewModel'и
-│   ├── state/                    # Состояния UI
-│   ├── components/               # UI компоненты
-│   └── navigation/                # Навигация внутри фичи
+├── presentation/                 # UI layer
+│   ├── viewmodel/                # ViewModels
+│   ├── state/                    # UI states
+│   ├── components/               # UI components
+│   └── navigation/                # Navigation within the feature
 │
-└── di/                           # DI модуль для фичи
+└── di/                           # DI module for the feature
     └── XxxModule.kt
 ```
 
-### 4.3. Ключевые архитектурные решения
+### 4.3. Key architectural decisions
 
-#### 4.3.1. Единый источник правды для моделей
-Все модели данных живут **только в `public-api` модулях**. Это обеспечивает:
-- Консистентность данных во всей платформе
-- Возможность использования одних и тех же моделей в плагинах
-- Отсутствие дублирования и маппинга
+#### 4.3.1. Single source of truth for models
+All data models live **only in `public-api` modules**. This ensures:
+- Data consistency across the entire platform
+- The ability to use the same models in plugins
+- No duplication or mapping
 
-#### 4.3.2. Разделение интерфейсов и реализаций
-- **Интерфейсы** — в `public-api` (видны сообществу)
-- **Реализации** — в `features/*/data` и `providers/*` (закрыты или открыты по необходимости)
+#### 4.3.2. Separation of interfaces and implementations
+- **Interfaces** — in `public-api` (visible to the community)
+- **Implementations** — in `features/*/data` and `providers/*` (closed or open as needed)
 
-#### 4.3.3. Инверсия зависимостей
-- Feature-модули зависят только от `public-api` и `platform-core`
-- Providers реализуют интерфейсы из `public-api`
-- App модуль собирает всё вместе через DI
+#### 4.3.3. Dependency inversion
+- Feature modules depend only on `public-api` and `platform-core`
+- Providers implement interfaces from `public-api`
+- The App module assembles everything together via DI
 
-#### 4.3.4. Мультиплатформенность и KMP-таргеты
-- `commonMain` — бизнес-логика, модели, интерфейсы, рендеринг чартов
-- `jvmMain` — десктоп: Compose Desktop, Ktor CIO, Koin DI
-- `jsMain` — веб: Compose Multiplatform → Kotlin/JS (IR), Ktor fetch engine
-- `wasmJsMain` — веб (эксп.): Compose Multiplatform → WASM, Ktor WASM engine
-- iOS и Android — в будущем
+#### 4.3.4. Multiplatform support and KMP targets
+- `commonMain` — business logic, models, interfaces, chart rendering
+- `jvmMain` — desktop: Compose Desktop, Ktor CIO, Koin DI
+- `jsMain` — web: Compose Multiplatform → Kotlin/JS (IR), Ktor fetch engine
+- `wasmJsMain` — web (experimental): Compose Multiplatform → WASM, Ktor WASM engine
+- iOS and Android — in the future
 
-**Текущий статус:**
-- JVM (десктоп): ✅ Production
+**Current status:**
+- JVM (desktop): ✅ Production
 - Kotlin/JS (web): ✅ Production (Bidasker SaaS)
-- Kotlin/WASM (web): ⚠️ Эксп. (Skiko WASM нестабилен)
-- iOS/Android: не начато
+- Kotlin/WASM (web): ⚠️ Experimental (Skiko WASM is unstable)
+- iOS/Android: not started
 
 ---
 
-## 5. Функциональные требования <a name="5"></a>
+## 5. Functional requirements <a name="5"></a>
 
-### 5.1. Модуль подключения к данным (Data Providers)
+### 5.1. Data connection module (Data Providers)
 
-#### 5.1.1. Базовые требования
-- Поддержка публичных WebSocket и REST API
-- Автоматическое переподключение при обрывах связи
-- Обработка rate limits бирж
-- Кэширование данных для снижения нагрузки
+#### 5.1.1. Base requirements
+- Support for public WebSocket and REST APIs
+- Automatic reconnection on connection loss
+- Exchange rate-limit handling
+- Data caching to reduce load
 
-#### 5.1.2. Поддерживаемые биржи (MVP)
+#### 5.1.2. Supported exchanges (MVP)
 - **Binance** (Spot & Futures)
 - **Bybit** (Spot & Futures)
 
-#### 5.1.3. API провайдеров (интерфейсы в `public-api`)
+#### 5.1.3. Provider APIs (interfaces in `public-api`)
 
 ```kotlin
 interface MarketDataProvider {
@@ -321,7 +321,7 @@ interface MarketDataProvider {
     fun getBestPrices(symbol: String): Flow<BestPrices>
 }
 
-// Добавлено для Live Trading
+// Added for Live Trading
 interface TradingProvider {
     fun placeOrder(order: Order): Flow<OrderResult>
     fun cancelOrder(orderId: String): Flow<Boolean>
@@ -331,184 +331,184 @@ interface TradingProvider {
 }
 ```
 
-### 5.2. Модуль отображения (UI Features)
+### 5.2. Display module (UI Features)
 
-#### 5.2.1. Главное окно (`feature-terminal`)
-- Панель инструментов с иконками для открытия модульных окон
-- Панель выбора биржи (Binance/Bybit) и типа рынка (Spot/Futures)
-- Панель выбора торгового инструмента с поиском и избранным
-- Панель выбора таймфрейма
-- Строка состояния с информацией о подключении и задержках
+#### 5.2.1. Main window (`feature-terminal`)
+- Toolbar with icons for opening modular windows
+- Exchange selection panel (Binance/Bybit) and market type (Spot/Futures)
+- Trading instrument selection panel with search and favorites
+- Timeframe selection panel
+- Status bar with connection and latency information
 
-#### 5.2.2. Модульное окно "График" (`feature-chart`)
-- Отображение свечного графика с поддержкой таймфреймов: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
-- Масштабирование (scroll wheel) и панорамирование (drag) ✅
-- **Footprint Chart** (кластерный режим: bid/ask объём по ценовым уровням) ✅
-- **Индикатор ликвидаций** (треугольные маркеры на свечах: красный вниз — лонг-ликвидация, зелёный вверх — шорт) ✅
-- Базовые индикаторы: SMA, EMA, VWAP ✅
-- Переключение между режимами: свечи, кластеры (footprint) ✅
-- Кроссхаир с отображением O/H/L/C и объёма свечи ✅
-- **Рисование на графике** (6 инструментов): ✅
-  - **Trend Line** (линия тренда с ручками на концах)
-  - **Horizontal Level** (горизонтальный уровень с ценой)
-  - **Vertical Line** (вертикальная линия на таймстемпе)
-  - **Rectangle** (прямоугольная зона)
-  - **Ruler** (линейка: Δцена + Δвремя + проценты)
+#### 5.2.2. Modular "Chart" window (`feature-chart`)
+- Candlestick chart display with timeframe support: 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w
+- Zooming (scroll wheel) and panning (drag) ✅
+- **Footprint Chart** (cluster mode: bid/ask volume by price level) ✅
+- **Liquidation indicator** (triangular markers on candles: red down — long liquidation, green up — short) ✅
+- Basic indicators: SMA, EMA, VWAP ✅
+- Mode switching: candles, clusters (footprint) ✅
+- Crosshair with O/H/L/C and candle volume display ✅
+- **Chart drawing** (6 tools): ✅
+  - **Trend Line** (trend line with handles at the ends)
+  - **Horizontal Level** (horizontal level with price)
+  - **Vertical Line** (vertical line at a timestamp)
+  - **Rectangle** (rectangular zone)
+  - **Ruler** (ruler: Δprice + Δtime + percentages)
 - **Undo/Redo** (Ctrl+Z / Ctrl+Y) ✅
-- NaN-защита: `priceToY`/`priceFromY` не падают при нулевом ценовом диапазоне ✅
-- **Pluggable renderers** (в разработке): интерфейс `ChartRenderer` для замены типа свечей (CandleStick/Footprint/Bar) без изменения кода графика
+- NaN protection: `priceToY`/`priceFromY` do not crash on a zero price range ✅
+- **Pluggable renderers** (in development): a `ChartRenderer` interface to swap candle types (CandleStick/Footprint/Bar) without changing the chart code
 
-#### 5.2.3. Модульное окно "Стакан" (DOM) (`feature-dom`)
-- Отображение бидов и асков с динамическим обновлением
-- Визуализация объёмов (горизонтальные бары)
-- Настройка глубины стакана (10-50 уровней)
-- Выделение лучших цен (best bid/ask)
-- Отображение спреда в процентах и абсолютном значении
-- **Возможность быстрого выставления ордера** (клик по цене)
+#### 5.2.3. Modular "Order Book" (DOM) window (`feature-dom`)
+- Bid and ask display with dynamic updates
+- Volume visualization (horizontal bars)
+- Order book depth setting (10–50 levels)
+- Best price highlighting (best bid/ask)
+- Spread display in percent and absolute value
+- **Quick order placement** (click on a price)
 
-#### 5.2.4. Модульное окно "Order Flow / Time & Sales" (`feature-trades`)
-- Таблица потока сделок в реальном времени
-- Цветовое кодирование: покупки (зелёный), продажи (красный)
-- Выделение крупных сделок (блоков)
-- Фильтрация по минимальному объёму
+#### 5.2.4. Modular "Order Flow / Time & Sales" window (`feature-trades`)
+- Real-time trade flow table
+- Color coding: buys (green), sells (red)
+- Highlighting of large trades (blocks)
+- Filtering by minimum volume
 
-#### 5.2.5. Модульное окно "Портфель" (`feature-portfolio`) — Этап 2
-- Отображение балансов по активам
-- Список открытых позиций с PnL
-- Список активных ордеров с возможностью отмены
-- История сделок
-- Графики PnL и статистика
+#### 5.2.5. Modular "Portfolio" window (`feature-portfolio`) — Stage 2
+- Balance display by asset
+- List of open positions with PnL
+- List of active orders with cancellation
+- Trade history
+- PnL charts and statistics
 
-#### 5.2.6. Workspace & Tab System (Этап 1.5) — ПЛАН
-- **Project Tree** — левая панель с иерархическим списком workspace'ов, сгруппированных по папкам
-- **Tab Bar** — вкладки (одна вкладка = один workspace), переключение, закрытие, detach в отдельное окно
-- **Layout Engine** — рекурсивная сетка H/V сплитов (`Split/Leaf`). Без ограничения вложенности: можно 12 DOM в гриде, или chart+DOM+trades в стандартном скальпинг-layout
-- **Split Resizer** — перетаскиваемая ручка для изменения пропорций сплитов
-- **Panel Drag & Drop** — перетаскивание панелей между сплитами и workspace'ами (Compose DragAndDrop API)
-- **Floating Window** — detach панели или целого таба в отдельное Compose `Window`
-- **Workspace Config** — JSON-документ, описывающий провайдеров, layout, панели, drawings, indicators
-- **Шаблоны** — предопределённые конфигурации: Scalping, DOM Grid, Order Flow, Empty
-- **Welcome Screen** — стартовый экран с шаблонами, недавними workspace'ами, подсказками
-- **Provider Pool** — глобальный пул WebSocket-соединений с reference counting. Один провайдер (Binance+BTCUSDT) шарится между всеми workspace'ами
-- **Персистенс** — сохранение открытых табов между сессиями, восстановление при запуске
-- **Экспорт** — `.workspace.json` файлы для шаринга между инсталляциями
+#### 5.2.6. Workspace & Tab System (Stage 1.5) — PLANNED
+- **Project Tree** — left panel with a hierarchical list of workspaces grouped into folders
+- **Tab Bar** — tabs (one tab = one workspace), switching, closing, detaching into a separate window
+- **Layout Engine** — recursive H/V split grid (`Split/Leaf`). Unlimited nesting: a 12-DOM grid, or chart+DOM+trades in a standard scalping layout
+- **Split Resizer** — draggable handle for changing split proportions
+- **Panel Drag & Drop** — dragging panels between splits and workspaces (Compose DragAndDrop API)
+- **Floating Window** — detaching a panel or an entire tab into a separate Compose `Window`
+- **Workspace Config** — a JSON document describing providers, layout, panels, drawings, indicators
+- **Templates** — predefined configurations: Scalping, DOM Grid, Order Flow, Empty
+- **Welcome Screen** — start screen with templates, recent workspaces, tips
+- **Provider Pool** — global WebSocket connection pool with reference counting. One provider (Binance+BTCUSDT) is shared across all workspaces
+- **Persistence** — saving open tabs between sessions, restoring on startup
+- **Export** — `.workspace.json` files for sharing between installations
 
-### 5.3. Модуль Live Trading (добавлен)
+### 5.3. Live Trading module (added)
 
-#### 5.3.1. Выставление ордеров
-- Лимитные ордера (цена + количество)
-- Рыночные ордера (количество)
-- Стоп-лосс и тейк-профит (прикреплённые к позиции)
+#### 5.3.1. Order placement
+- Limit orders (price + quantity)
+- Market orders (quantity)
+- Stop-loss and take-profit (attached to a position)
 
-#### 5.3.2. Управление рисками
-- Максимальный размер позиции
-- Дневной лимит убытка
-- Подтверждение перед отправкой ордера
+#### 5.3.2. Risk management
+- Maximum position size
+- Daily loss limit
+- Confirmation before order submission
 
-#### 5.3.3. Безопасность
-- API-ключи хранятся в системном хранилище (Keychain/Credential Manager)
-- Ключи никогда не передаются на серверы Nous Platform
-- Возможность удалить/отозвать ключи
-
----
-
-## 6. Нефункциональные требования <a name="6"></a>
-
-### 6.1. Производительность
-- **Задержка от события на бирже до UI:** < 300 мс (в идеале < 100 мс)
-- **FPS графика:** 60 FPS при нормальной нагрузке
-- **Обновление стакана:** каждое обновление должно отображаться не более чем за 16 мс
-- **Память:** не более 512 MB RAM при стандартной нагрузке
-- **Запуск приложения:** не более 5 секунд
-
-### 6.2. Надежность
-- **Uptime:** 99.9% (исключая проблемы бирж и интернет-соединения)
-- **WebSocket соединения:** автоматическое переподключение с экспоненциальной задержкой
-- **Обработка ошибок:** все ошибки должны логироваться и не приводить к падению приложения
-- **Graceful degradation:** при отказе одного компонента остальные должны продолжать работу
-
-### 6.3. Масштабируемость
-- **Горизонтальная:** возможность добавления новых провайдеров без изменения ядра
-- **Вертикальная:** возможность добавления новых фич через плагины
-- **Нагрузка:** поддержка до 100 одновременно открытых окон с данными
-
-### 6.4. Безопасность
-- **Плагины:** изоляция в песочнице, проверка цифровых подписей
-- **API-ключи:** хранятся только локально в зашифрованном виде
-- **Сеть:** все соединения только по HTTPS/WSS
-- **Данные пользователя:** никакой телеметрии без согласия
-
-### 6.5. Юзабилити
-- **Интерфейс:** настраиваемый, с возможностью сохранения профилей
-- **Горячие клавиши:** полная поддержка для всех действий
-- **Интернационализация:** поддержка как минимум английского и русского языков
-- **Документация:** встроенная контекстная помощь
-
-### 6.6. Качество кода
-- **Тестовое покрытие:** не менее 70% для core-модулей
-- **Code style:** единый стандарт (ktlint)
-- **Документация:** все публичные API должны быть документированы
-- **CI/CD:** автоматическая сборка и тестирование при каждом коммите
+#### 5.3.3. Security
+- API keys are stored in the system key store (Keychain/Credential Manager)
+- Keys are never transmitted to Nous Platform servers
+- Ability to delete/revoke keys
 
 ---
 
-## 7. Технический стек <a name="7"></a>
+## 6. Non-functional requirements <a name="6"></a>
 
-### 7.1. Клиентская часть
+### 6.1. Performance
+- **Latency from exchange event to UI:** < 300 ms (ideally < 100 ms)
+- **Chart FPS:** 60 FPS under normal load
+- **Order book updates:** each update must render in no more than 16 ms
+- **Memory:** no more than 512 MB RAM under standard load
+- **Application startup:** no more than 5 seconds
 
-| Компонент | Технология | Версия | Обоснование |
+### 6.2. Reliability
+- **Uptime:** 99.9% (excluding exchange and internet connection issues)
+- **WebSocket connections:** automatic reconnection with exponential backoff
+- **Error handling:** all errors must be logged and must not crash the application
+- **Graceful degradation:** if one component fails, the rest must keep working
+
+### 6.3. Scalability
+- **Horizontal:** ability to add new providers without changing the core
+- **Vertical:** ability to add new features via plugins
+- **Load:** support for up to 100 simultaneously open data windows
+
+### 6.4. Security
+- **Plugins:** sandbox isolation, digital signature verification
+- **API keys:** stored only locally in encrypted form
+- **Network:** all connections over HTTPS/WSS only
+- **User data:** no telemetry without consent
+
+### 6.5. Usability
+- **Interface:** customizable, with the ability to save profiles
+- **Hotkeys:** full support for all actions
+- **Internationalization:** support for at least English and Russian
+- **Documentation:** built-in contextual help
+
+### 6.6. Code quality
+- **Test coverage:** at least 70% for core modules
+- **Code style:** unified standard (ktlint)
+- **Documentation:** all public APIs must be documented
+- **CI/CD:** automatic build and testing on every commit
+
+---
+
+## 7. Technology stack <a name="7"></a>
+
+### 7.1. Client side
+
+| Component | Technology | Version | Rationale |
 |-----------|------------|--------|-------------|
-| Язык | Kotlin Multiplatform | 2.3.0 | Единый код JVM + JS + WASM |
-| UI | JetBrains Compose Multiplatform | 1.7.3 | Реактивный UI, Canvas рендеринг |
-| Архитектура | Clean Architecture + MVI | — | Чёткое разделение ответственности |
-| DI | Koin | 3.5.6 | Простота, интеграция с Compose |
-| Асинхронность | Kotlin Coroutines + Flow | 1.9.0 | Встроенная поддержка |
-| Сеть | Ktor Client (CIO/fetch/WASM) | 3.4.1 | Мультиплатформенный HTTP + WS |
-| Сериализация | kotlinx.serialization | 1.7.3 | Кроссплатформенная типобезопасность |
-| Дата/время | kotlinx-datetime | 0.6.1 | Кроссплатформенные даты |
-| Локальное хранение | SQLDelight (JVM) + SQLite | — | Типобезопасные SQL-запросы |
-| Web rendering | Skiko (Canvas → WebGL2) | 1.7.3 | Compose → Canvas в браузере |
-| Web target | Kotlin/JS (IR) | 2.3.0 | Bidasker SaaS продакшен |
-| Web target (exp) | Kotlin/WASM | 2.3.0 | Экспериментальный |
+| Language | Kotlin Multiplatform | 2.3.0 | Single codebase for JVM + JS + WASM |
+| UI | JetBrains Compose Multiplatform | 1.7.3 | Reactive UI, Canvas rendering |
+| Architecture | Clean Architecture + MVI | — | Clear separation of concerns |
+| DI | Koin | 3.5.6 | Simplicity, Compose integration |
+| Async | Kotlin Coroutines + Flow | 1.9.0 | Built-in support |
+| Networking | Ktor Client (CIO/fetch/WASM) | 3.4.1 | Multiplatform HTTP + WS |
+| Serialization | kotlinx.serialization | 1.7.3 | Cross-platform type safety |
+| Date/time | kotlinx-datetime | 0.6.1 | Cross-platform dates |
+| Local storage | SQLDelight (JVM) + SQLite | — | Type-safe SQL queries |
+| Web rendering | Skiko (Canvas → WebGL2) | 1.7.3 | Compose → Canvas in the browser |
+| Web target | Kotlin/JS (IR) | 2.3.0 | Bidasker SaaS in production |
+| Web target (exp) | Kotlin/WASM | 2.3.0 | Experimental |
 | Vue.js | Vue 3 + Vite + TypeScript | 3.5 | Bidasker landing page |
 
-### 7.2. Серверная часть (бэкенд-инфраструктура)
+### 7.2. Server side (backend infrastructure)
 
-| Компонент | Технология | Версия | Обоснование |
+| Component | Technology | Version | Rationale |
 |-----------|------------|--------|-------------|
-| Trade Collector | Kotlin/JVM (Gradle) | 2.2.20 | Сбор данных с бирж |
-| HTTP сервер | Ktor Server (Jetty) | 3.2.0 | Мониторинг и REST API |
-| База данных | PostgreSQL 16 | — | Per-symbol таблицы, JSONB |
-| Connection Pool | HikariCP | 6.0.0 | Высокопроизводительный пул |
-| Статистика | t-Digest | 3.3 | Приближенные перцентили, O(log n) |
-| JSON (биржа) | Jackson | 2.15.0 | Парсинг WebSocket-фреймов Binance |
-| JSON (конфиг) | kotlinx.serialization | 1.6.0 | Типобезопасная конфигурация |
-| Market Data Server | Kotlin/JVM (Ktor/Jetty) | 2.2.20 | REST API для footprint данных |
-| Deploy | systemd + Makefile + SCP | — | Автоматический деплой на VPS |
+| Trade Collector | Kotlin/JVM (Gradle) | 2.2.20 | Exchange data collection |
+| HTTP server | Ktor Server (Jetty) | 3.2.0 | Monitoring and REST API |
+| Database | PostgreSQL 16 | — | Per-symbol tables, JSONB |
+| Connection Pool | HikariCP | 6.0.0 | High-performance pool |
+| Statistics | t-Digest | 3.3 | Approximate percentiles, O(log n) |
+| JSON (exchange) | Jackson | 2.15.0 | Binance WebSocket frame parsing |
+| JSON (config) | kotlinx.serialization | 1.6.0 | Type-safe configuration |
+| Market Data Server | Kotlin/JVM (Ktor/Jetty) | 2.2.20 | REST API for footprint data |
+| Deploy | systemd + Makefile + SCP | — | Automatic deployment to VPS |
 
-| Компонент | Технология | Обоснование |
+| Component | Technology | Rationale |
 |-----------|------------|-------------|
-| Бэкенд | Ktor | Единый стек с клиентом |
-| База данных | PostgreSQL + TimescaleDB | Оптимизация для временных рядов |
-| Кэш | Redis | Высокая производительность |
-| Очереди | RabbitMQ / Kafka | Для обработки потоковых данных |
+| Backend | Ktor | Single stack with the client |
+| Database | PostgreSQL + TimescaleDB | Optimization for time series |
+| Cache | Redis | High performance |
+| Queues | RabbitMQ / Kafka | For stream processing |
 
-### 7.3. Инструменты разработки
+### 7.3. Development tools
 
-| Инструмент | Назначение |
+| Tool | Purpose |
 |------------|------------|
-| Gradle | Сборка проекта |
-| Version Catalog | Централизованное управление версиями |
-| Convention plugins | Переиспользуемые конфигурации сборки |
-| ktlint | Статический анализ кода |
-| detekt | Дополнительный анализ |
+| Gradle | Project build |
+| Version Catalog | Centralized version management |
+| Convention plugins | Reusable build configurations |
+| ktlint | Static code analysis |
+| detekt | Additional analysis |
 | GitHub Actions | CI/CD |
 
 ---
 
-## 8. Модульная структура проекта <a name="8"></a>
+## 8. Modular project structure <a name="8"></a>
 
-### 8.1. Полная структура (актуальная)
+### 8.1. Full structure (current)
 
 ```
 Nous-Platform/
@@ -523,16 +523,16 @@ Nous-Platform/
 │       └── KmpApplicationConvention.kt                # + desktop app
 │
 ├── public-api/
-│   ├── api-market/                                    # Модели рынка: Candle, Trade, FootprintCandle
-│   ├── api-trading/                                   # Заглушки (будущая торговля)
-│   └── api-ui/                                        # Заглушки (будущие UI-виджеты)
+│   ├── api-market/                                    # Market models: Candle, Trade, FootprintCandle
+│   ├── api-trading/                                   # Stubs (future trading)
+│   └── api-ui/                                        # Stubs (future UI widgets)
 │
 ├── platform-core/
 │   ├── build.gradle.kts
 │   └── src/
 │       ├── commonMain/kotlin/com/aandios/nous/core/
 │       │   ├── domain/repository/                     # ChartRepository, DomRepository, TradesRepository
-│       │   ├── data/repository/                       # Реализации
+│       │   ├── data/repository/                       # Implementations
 │       │   ├── network/                               # NetworkManagerImpl, HttpClientFactory
 │       │   ├── storage/                               # StateStore interface
 │       │   └── ui/theme/                              # ChartColors, SymbolFormatter
@@ -544,9 +544,9 @@ Nous-Platform/
 │   └── core-dependencies/                             # Shared deps: Ktor, Compose, kotlinx
 │
 ├── features/
-│   ├── feature-dom/                                   # Стакан: DomViewModel, DomWindow
+│   ├── feature-dom/                                   # Order book: DomViewModel, DomWindow
 │   │   └── src/commonMain/                            # AggregationLevel, TradingSymbol
-│   ├── feature-chart/                                 # График: ChartViewModel, CandleStickChart
+│   ├── feature-chart/                                 # Chart: ChartViewModel, CandleStickChart
 │   │   └── src/commonMain/
 │   │       ├── ui/chart/                              # ChartInteraction, CandleStickChart, DrawingOverlay
 │   │       ├── rendering/                             # CandleRenderer, FootprintRenderer, Crosshair
@@ -555,7 +555,7 @@ Nous-Platform/
 │   │       ├── indicator/                             # LiquidationViewModel
 │   │       ├── model/                                 # ChartLayout, CandleMetrics, PriceRange
 │   │       └── utils/                                 # ChartCalculator, Format
-│   ├── feature-trades/                                # Лента сделок: TradesViewModel, TradesWindow
+│   ├── feature-trades/                                # Trade tape: TradesViewModel, TradesWindow
 │   ├── feature-localstorage/                          # SQLite storage (JVM only)
 │   └── feature-settings/                              # Settings window (JVM only)
 │
@@ -567,179 +567,179 @@ Nous-Platform/
 │       │   ├── App.kt                                 # BidaskerApp composable
 │       │   ├── Components.kt                          # FootprintToolbar, StatusBar
 │       │   ├── DataLoader.kt                          # Ktor → market-data-server
-│       │   └── TariffConfig.kt                        # Тарифные лимиты
+│       │   └── TariffConfig.kt                        # Tariff limits
 │       └── jsMain/resources/
 │           └── index.html                             # onWasmReady + Skiko init
 │
-├── chart2/                                            # ⭐ Новый pluggable chart API (в разработке)
-│   └── ChartRenderer.kt                               # Интерфейс: CandleStick/Footprint/Bar renderers
+├── chart2/                                            # ⭐ New pluggable chart API (in development)
+│   └── ChartRenderer.kt                               # Interface: CandleStick/Footprint/Bar renderers
 │
 ├── providers/
 │   ├── binance-provider/                              # Binance Futures adapters
 │   │   └── src/
 │   │       └── commonMain/                            # Chart, DOM, Trades, Liquidation adapters
 │
-├── composeApp/                                        # Десктопное приложение
+├── composeApp/                                        # Desktop application
 │   ├── build.gradle.kts
 │   └── src/jvmMain/                                   # Main.kt, AppModule, TerminalLayout
 │
 ├── docs/
-│   ├── Nous-Platform-Technical-Specification-v1.0.md  # Этот документ
+│   ├── Nous-Platform-Technical-Specification-v1.0.md  # This document
 │   ├── architecture/
 │   ├── decisions/
 │   └── vision/
 │
-├── plans/                                             # Планы разработки
-│   └── workspace-tab-system.md                        # IDE-подобные табы
+├── plans/                                             # Development plans
+│   └── workspace-tab-system.md                        # IDE-like tabs
 │
 ├── build.gradle.kts
 ├── settings.gradle.kts
 └── gradle.properties
 ```
 
-### 8.2. Описание модулей
+### 8.2. Module descriptions
 
 #### 8.2.1. `public-api/*` (Open Source)
-- **Назначение:** Единственное место, где живут публичные интерфейсы и модели
-- **Видимость:** Полностью открыт для сообщества
-- **Содержит:** Модели данных (Candle, Trade, FootprintCandle, LiquidationOrder), интерфейсы адаптеров, интерфейс Provider
-- **Зависимости:** Kotlin Multiplatform + kotlinx.serialization + Ktor Client Core
-- **Таргеты:** JVM ✅, JS ✅, WASM ✅
+- **Purpose:** The only place where public interfaces and models live
+- **Visibility:** Fully open to the community
+- **Contains:** Data models (Candle, Trade, FootprintCandle, LiquidationOrder), adapter interfaces, the Provider interface
+- **Dependencies:** Kotlin Multiplatform + kotlinx.serialization + Ktor Client Core
+- **Targets:** JVM ✅, JS ✅, WASM ✅
 
 #### 8.2.2. `platform-core` (Closed Source)
-- **Назначение:** Ядро платформы с бизнес-логикой, репозиториями, UI компонентами
-- **Содержит:** Domain repositories (Chart/DOM/Trades), data implementations, NetworkManager, HttpClientFactory (`expect`/`actual`), ChartColors, SymbolFormatter, Terminal UI components
-- **Зависимости:** `public-api`, `core-dependencies`, Compose Multiplatform
-- **Таргеты:** JVM ✅, JS ✅, WASM ✅
+- **Purpose:** Platform core with business logic, repositories, UI components
+- **Contains:** Domain repositories (Chart/DOM/Trades), data implementations, NetworkManager, HttpClientFactory (`expect`/`actual`), ChartColors, SymbolFormatter, Terminal UI components
+- **Dependencies:** `public-api`, `core-dependencies`, Compose Multiplatform
+- **Targets:** JVM ✅, JS ✅, WASM ✅
 
 #### 8.2.3. `features/*` (Closed Source)
-- **feature-chart:** Самый развитый модуль. FootprintChart, CandleStickChart, Drawing tools (TrendLine/Horizontal/Rectangle/Ruler), Undo/Redo (Ctrl+Z/Y), FootprintApiClient, LiquidationApiClient, crosshair, zoom/pan
-- **feature-dom:** DOM (стакан) с Binance sync protocol, aggregation levels
+- **feature-chart:** The most developed module. FootprintChart, CandleStickChart, Drawing tools (TrendLine/Horizontal/Rectangle/Ruler), Undo/Redo (Ctrl+Z/Y), FootprintApiClient, LiquidationApiClient, crosshair, zoom/pan
+- **feature-dom:** DOM (order book) with Binance sync protocol, aggregation levels
 - **feature-trades:** Time & Sales, size filter
 - **feature-localstorage:** SQLite persistence (JVM only)
 - **feature-settings:** Storage/settings UI (JVM only)
-- **Таргеты:** JVM ✅, JS ✅ (chart/dom/trades), WASM ✅
+- **Targets:** JVM ✅, JS ✅ (chart/dom/trades), WASM ✅
 
-#### 8.2.4. `bidasker-web` (Closed Source) — ⭐ новый
-- **Назначение:** SaaS footprint chart для Bidasker landing page
-- **Содержит:** BidaskerApp composable, FootprintToolbar, Ktor HTTP client → market-data-server, тарифные лимиты, URL-param parsing
-- **Переиспользует:** FootprintChart, FootprintRenderer, FootprintApiClient, AggregationLevel из features/chart и features/dom
-- **Таргет:** Kotlin/JS (IR) — компилируется в JS + Skiko WASM, встраивается в Vue.js через iframe
+#### 8.2.4. `bidasker-web` (Closed Source) — ⭐ new
+- **Purpose:** SaaS footprint chart for the Bidasker landing page
+- **Contains:** BidaskerApp composable, FootprintToolbar, Ktor HTTP client → market-data-server, tier limits, URL-param parsing
+- **Reuses:** FootprintChart, FootprintRenderer, FootprintApiClient, AggregationLevel from features/chart and features/dom
+- **Target:** Kotlin/JS (IR) — compiles to JS + Skiko WASM, embedded into Vue.js via iframe
 
-#### 8.2.5. `chart2/` — ⭐ новый (в разработке)
-- **Назначение:** Next-gen pluggable chart API
-- **Содержит:** `ChartRenderer` интерфейс (CandleStickRenderer, FootprintRendererV2, BarRenderer), `ChartOverlay` интерфейс, `CrosshairOverlay`
-- **Цель:** Универсальная библиотека чартов уровня TradingView — любые типы свечей/баров/футпринтов через плагинные рендереры
+#### 8.2.5. `chart2/` — ⭐ new (in development)
+- **Purpose:** Next-gen pluggable chart API
+- **Contains:** the `ChartRenderer` interface (CandleStickRenderer, FootprintRendererV2, BarRenderer), the `ChartOverlay` interface, `CrosshairOverlay`
+- **Goal:** A universal TradingView-grade chart library — any candle/bar/footprint types via pluggable renderers
 
 #### 8.2.6. `providers/*` (Open Source)
-- **Назначение:** Адаптеры для конкретных бирж
-- **Содержит:** WebSocket/REST клиенты для Binance Futures (aggTrade, forceOrder), модели данных Binance
-- **Таргеты:** JVM ✅, JS ✅, WASM ✅
+- **Purpose:** Adapters for specific exchanges
+- **Contains:** WebSocket/REST clients for Binance Futures (aggTrade, forceOrder), Binance data models
+- **Targets:** JVM ✅, JS ✅, WASM ✅
 
 #### 8.2.7. `composeApp` (Closed Source)
-- **Назначение:** Точка входа десктопного приложения
-- **Содержит:** `main.kt`, AppModule (Koin DI), TerminalLayout, MainScreen
-- **Таргет:** JVM ✅ (desktop only)
-- **Зависимости:** Все feature-модули, все provider-модули
+- **Purpose:** Desktop application entry point
+- **Contains:** `main.kt`, AppModule (Koin DI), TerminalLayout, MainScreen
+- **Target:** JVM ✅ (desktop only)
+- **Dependencies:** All feature modules, all provider modules
 
 ---
 
-## 9. Плагинная система и экосистема — ОТЛОЖЕНО <a name="9"></a>
+## 9. Plugin system and ecosystem — POSTPONED <a name="9"></a>
 
-**Статус:** Перенесено на пост-инвестиционный этап (2028+)
+**Status:** Moved to the post-investment stage (2028+)
 
-**Причина:** Сложность реализации (изоляция ClassLoader, безопасность, API-дизайн) неоправданно задержит выход Live Trading. Сначала нужно доказать спрос и получить первых платных пользователей.
-
----
-
-## 10. Требования к безопасности <a name="10"></a>
-
-### 10.1. Безопасность на уровне приложения
-- **Шифрование данных:** Все локальные данные (API-ключи, настройки) шифруются
-- **Минимальные привилегии:** Приложение не запрашивает прав, выходящих за рамки необходимости
-
-### 10.2. Безопасность сети
-- **TLS:** Все соединения только по HTTPS/WSS
-- **Проверка сертификатов:** Отсутствие самоподписанных сертификатов
-
-### 10.3. Безопасность API-ключей (критично для Live Trading)
-- **Хранение:** Ключи хранятся в системном хранилище ключей (Keychain на macOS, Credential Manager на Windows)
-- **Использование:** Ключи никогда не передаются на серверы Nous Platform
-- **Управление:** Возможность добавить/удалить/отозвать ключи
-
-### 10.4. GDPR и конфиденциальность
-- **Согласие:** Пользователь должен явно согласиться на сбор любой аналитики
-- **Минимизация данных:** Собираем только необходимые данные
-- **Право на забвение:** Возможность удалить все данные
+**Reason:** The implementation complexity (ClassLoader isolation, security, API design) would unjustifiably delay the Live Trading release. First, demand must be proven and the first paying users acquired.
 
 ---
 
-## 11. Требования к интерфейсу <a name="11"></a>
+## 10. Security requirements <a name="10"></a>
 
-### 11.1. Общие принципы
-- **Тёмная тема:** По умолчанию, с возможностью переключения
-- **Кастомизация:** Пользователь может настроить цвета, шрифты, раскладку
-- **Профили:** Сохранение и загрузка нескольких профилей настроек
+### 10.1. Application-level security
+- **Data encryption:** All local data (API keys, settings) is encrypted
+- **Least privilege:** The application does not request permissions beyond what is necessary
 
-### 11.2. Модульные окна
-- Все окна можно открепить от главного окна
-- Окна можно перетаскивать и менять размер
-- Окна можно сворачивать в панель инструментов
-- Состояние окон сохраняется между сессиями
+### 10.2. Network security
+- **TLS:** All connections over HTTPS/WSS only
+- **Certificate validation:** No self-signed certificates
 
-### 11.3. Цветовая схема
+### 10.3. API key security (critical for Live Trading)
+- **Storage:** Keys are stored in the system key store (Keychain on macOS, Credential Manager on Windows)
+- **Usage:** Keys are never transmitted to Nous Platform servers
+- **Management:** Ability to add/delete/revoke keys
+
+### 10.4. GDPR and privacy
+- **Consent:** The user must explicitly consent to any analytics collection
+- **Data minimization:** Only necessary data is collected
+- **Right to be forgotten:** Ability to delete all data
+
+---
+
+## 11. UI requirements <a name="11"></a>
+
+### 11.1. General principles
+- **Dark theme:** Default, with the option to switch
+- **Customization:** The user can customize colors, fonts, layout
+- **Profiles:** Saving and loading multiple settings profiles
+
+### 11.2. Modular windows
+- All windows can be detached from the main window
+- Windows can be dragged and resized
+- Windows can be collapsed into the toolbar
+- Window state is preserved between sessions
+
+### 11.3. Color scheme
 
 ```kotlin
-// Основные цвета
-primary = "#00C853"      // Зелёный (бычий)
-secondary = "#D32F2F"    // Красный (медвежий)
-background = "#0A0A0A"   // Почти чёрный
-surface = "#121212"      // Тёмно-серый
-onSurface = "#CCCCCC"    // Светло-серый текст
+// Base colors
+primary = "#00C853"      // Green (bullish)
+secondary = "#D32F2F"    // Red (bearish)
+background = "#0A0A0A"   // Almost black
+surface = "#121212"      // Dark gray
+onSurface = "#CCCCCC"    // Light gray text
 ```
 
-### 11.4. Типографика
-- **Моноширинный шрифт:** JetBrains Mono (по умолчанию)
-- **Размеры:** 
-  - Заголовки: 16-20px
-  - Основной текст: 13-14px
-  - Вспомогательный: 11-12px
+### 11.4. Typography
+- **Monospace font:** JetBrains Mono (default)
+- **Sizes:** 
+  - Headings: 16–20px
+  - Body text: 13–14px
+  - Secondary: 11–12px
 
-### 11.5. Горячие клавиши
-- `Ctrl+N` - Новый график
-- `Ctrl+D` - Новый стакан
-- `Ctrl+T` - Новый Order Flow
-- `Ctrl+Tab` - Переключение между окнами
-- `F1` - Помощь
-- Полная кастомизация горячих клавиш
+### 11.5. Hotkeys
+- `Ctrl+N` - New chart
+- `Ctrl+D` - New order book
+- `Ctrl+T` - New Order Flow
+- `Ctrl+Tab` - Switch between windows
+- `F1` - Help
+- Full hotkey customization
 
 ---
 
-## 12. Требования к данным и хранилищам <a name="12"></a>
+## 12. Data and storage requirements <a name="12"></a>
 
-### 12.1. Локальное хранилище
+### 12.1. Local storage
 
-#### 12.1.1. Настройки
-- **Формат:** JSON
-- **Место:** `~/.nous-platform/settings.json`
-- **Содержит:** Настройки интерфейса, список избранных инструментов, горячие клавиши
+#### 12.1.1. Settings
+- **Format:** JSON
+- **Location:** `~/.nous-platform/settings.json`
+- **Contains:** UI settings, list of favorite instruments, hotkeys
 
-#### 12.1.2. История сделок (дневник) — после инвестиций
-- **Формат:** SQLDelight (SQLite)
-- **Таблицы:** 
-  - `trades` — все сделки
-  - `notes` — заметки к сделкам
-  - `tags` — теги для категоризации
-  - `screenshots` — скриншоты графиков
+#### 12.1.2. Trade history (journal) — after investment
+- **Format:** SQLDelight (SQLite)
+- **Tables:** 
+  - `trades` — all trades
+  - `notes` — trade notes
+  - `tags` — tags for categorization
+  - `screenshots` — chart screenshots
 
-#### 12.1.3. Кэш исторических данных
-- **Формат:** SQLDelight с TimescaleDB-like расширениями
-- **Хранение:** Минутные бары за последние 30 дней (для будущего бэктестинга)
+#### 12.1.3. Historical data cache
+- **Format:** SQLDelight with TimescaleDB-like extensions
+- **Storage:** Minute bars for the last 30 days (for future backtesting)
 
-### 12.2. Структура БД для истории (после инвестиций)
+### 12.2. Database schema for history (after investment)
 
 ```sql
--- Сделки
+-- Trades
 CREATE TABLE trades (
     id TEXT PRIMARY KEY,
     symbol TEXT NOT NULL,
@@ -753,7 +753,7 @@ CREATE TABLE trades (
     strategy TEXT
 );
 
--- Заметки
+-- Notes
 CREATE TABLE notes (
     id TEXT PRIMARY KEY,
     content TEXT NOT NULL,
@@ -761,14 +761,14 @@ CREATE TABLE notes (
     updated_at INTEGER NOT NULL
 );
 
--- Теги
+-- Tags
 CREATE TABLE tags (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
     color TEXT
 );
 
--- Связь сделок с тегами
+-- Trade-to-tag relations
 CREATE TABLE trade_tags (
     trade_id TEXT NOT NULL,
     tag_id TEXT NOT NULL,
@@ -777,217 +777,217 @@ CREATE TABLE trade_tags (
 );
 ```
 
-### 12.3. Кэширование данных бирж
+### 12.3. Exchange data caching
 
-#### 12.3.1. Стакан
-- Кэшируется последний снапшот
-- Инкрементальные обновления применяются к кэшу
+#### 12.3.1. Order book
+- The latest snapshot is cached
+- Incremental updates are applied to the cache
 
-#### 12.3.2. Свечи
-- Кэшируются последние N свечей для каждого таймфрейма
-- При переключении таймфрейма загружаются недостающие данные
+#### 12.3.2. Candles
+- The last N candles are cached for each timeframe
+- When switching timeframes, missing data is loaded
 
-#### 12.3.3. Сделки
-- Кэшируются последние 1000 сделок
-- При обновлении добавляются в начало списка
+#### 12.3.3. Trades
+- The last 1000 trades are cached
+- On update, they are prepended to the list
 
 ---
 
-## 13. Интеграция с внешними системами <a name="13"></a>
+## 13. Integration with external systems <a name="13"></a>
 
-### 13.1. Биржи (MVP)
+### 13.1. Exchanges (MVP)
 - **Binance Futures** (REST + WebSocket) ✅ — `@aggTrade`, `@forceOrder`, `@kline`, `@depth@100ms`
-- **Bybit** (REST + WebSocket) — адаптер создан, не активирован в конфиге
+- **Bybit** (REST + WebSocket) — adapter created, not activated in config
 
-### 13.2. Биржи (после инвестиций)
-- OKX, Kraken, Coinbase, KuCoin, Bitget (через плагины сообщества)
+### 13.2. Exchanges (after investment)
+- OKX, Kraken, Coinbase, KuCoin, Bitget (via community plugins)
 
-### 13.3. Бэкенд-инфраструктура (собственные сервисы)
+### 13.3. Backend infrastructure (own services)
 
 #### 13.3.1. trade-collector (Kotlin/JVM daemon)
-- **Назначение:** Сбор, агрегация и статистический анализ криптовалютных сделок в реальном времени
-- **Биржи:** Binance Futures (50 perpetual symbols, top по дневному объёму)
-- **WebSocket:** Combined stream (aggTrade + forceOrder), 100 потоков в одном TCP-соединении
-- **Watchdog:** Многослойная защита — Ktor pingInterval + application watchdog + exponential backoff
-- **База:** PostgreSQL 16 (per-symbol таблицы: raw_trades, aggregates, filtered_trades, volume_windows, liquidations, liquidation_aggregates)
-- **Аналитика:** t-Digest (статистика объёмов), footprint агрегация (1m + 15m), whale detection (>98% перцентиль)
+- **Purpose:** Real-time collection, aggregation, and statistical analysis of crypto trades
+- **Exchanges:** Binance Futures (50 perpetual symbols, top by daily volume)
+- **WebSocket:** Combined stream (aggTrade + forceOrder), 100 streams in one TCP connection
+- **Watchdog:** Multi-layer protection — Ktor pingInterval + application watchdog + exponential backoff
+- **Database:** PostgreSQL 16 (per-symbol tables: raw_trades, aggregates, filtered_trades, volume_windows, liquidations, liquidation_aggregates)
+- **Analytics:** t-Digest (volume statistics), footprint aggregation (1m + 15m), whale detection (>98th percentile)
 - **Resilience:** Circuit Breaker, DiskBuffer, DeadLetterQueue, Watermark Recovery, Catch-up loop
-- **Мониторинг:** HTTP API (:8080) — /health, /metrics, /status, /api/logs, /api/instruments
-- **Деплой:** systemd на VPS, `make deploy` (JAR → SCP → restart → health check)
+- **Monitoring:** HTTP API (:8080) — /health, /metrics, /status, /api/logs, /api/instruments
+- **Deploy:** systemd on VPS, `make deploy` (JAR → SCP → restart → health check)
 
 #### 13.3.2. market-data-server (Ktor/Jetty REST API)
-- **Назначение:** REST API для выдачи пред-агрегированных footprint и liquidation данных
-- **База:** PostgreSQL (читает таблицы, созданные trade-collector)
-- **Эндпоинты:**
-  - `GET /api/footprint` — footprint свечи (bid/ask объём по ценовым уровням)
-  - `GET /api/instruments` — список доступных инструментов с количеством свечей
-  - `GET /api/liquidations` — сырые ликвидации (timestamp, price, quantity, isLong)
-  - `GET /api/liquidation-aggregates` — агрегированные ликвидации по минутам
+- **Purpose:** REST API for serving pre-aggregated footprint and liquidation data
+- **Database:** PostgreSQL (reads tables created by trade-collector)
+- **Endpoints:**
+  - `GET /api/footprint` — footprint candles (bid/ask volume by price level)
+  - `GET /api/instruments` — list of available instruments with candle counts
+  - `GET /api/liquidations` — raw liquidations (timestamp, price, quantity, isLong)
+  - `GET /api/liquidation-aggregates` — minute-aggregated liquidations
   - `GET /api/symbols`, `/api/timeframes`, `/health`
-- **Деплой:** systemd на VPS (порт 8085), `make deploy`
+- **Deploy:** systemd on VPS (port 8085), `make deploy`
 
 #### 13.3.3. Bidasker (Vue.js + Kotlin/JS SaaS)
-- **Назначение:** Freemium footprint chart сервис, воронка для Nous Platform
-- **Frontend:** Vue 3 + Vite, iframe-интеграция Kotlin/JS чарта
-- **Backend:** market-data-server REST API (тарифные лимиты через JSON-конфиг)
-- **Деплой:** GitHub Pages + GitHub Actions
+- **Purpose:** Freemium footprint chart service, a funnel into Nous Platform
+- **Frontend:** Vue 3 + Vite, iframe integration of the Kotlin/JS chart
+- **Backend:** market-data-server REST API (tier limits via JSON config)
+- **Deploy:** GitHub Pages + GitHub Actions
 
-### 13.4. Экспорт данных (Осторожно см. Пользовательские соглашения бирж)
-- CSV (сделки, свечи)
-- JSON (для API)
-- PNG/JPEG (скриншоты графиков)
-- PDF (отчёты)
+### 13.4. Data export (Caution: see exchange user agreements)
+- CSV (trades, candles)
+- JSON (for API)
+- PNG/JPEG (chart screenshots)
+- PDF (reports)
 
-### 13.5. Импорт данных
-- CSV (исторические данные из других платформ)
-- JSON (настройки, профили)
+### 13.5. Data import
+- CSV (historical data from other platforms)
+- JSON (settings, profiles)
 
 ---
 
-## 14. Монетизация и бизнес-модель <a name="14"></a>
+## 14. Monetization and business model <a name="14"></a>
 
-### 14.1. Бесплатная модель (Freemium)
-- **Бесплатно:**
-  - Чтение данных с бирж
-  - Базовые графики и индикаторы
-  - Стакан и Order Flow
+### 14.1. Free model (Freemium)
+- **Free:**
+  - Reading data from exchanges
+  - Basic charts and indicators
+  - Order book and Order Flow
   - Paper trading
 
-- **Платно (подписка "Pro"):**
-  - **Live Trading** (реальные ордера)
+- **Paid ("Pro" subscription):**
+  - **Live Trading** (real orders)
   - Footprint / Delta
   - Delta Profile
-  - Индикатор ликвидаций
-  - Расширенный модуль портфеля
-  - Приоритетная поддержка
+  - Liquidation indicator
+  - Advanced portfolio module
+  - Priority support
 
-### 14.2. Модель ценообразования
-- **Pro подписка:** $29.9/месяц или $299/год
-- **Бесплатный пробный период:** 7 дней
+### 14.2. Pricing model
+- **Pro subscription:** $29.9/month or $299/year
+- **Free trial period:** 7 days
 
-### 14.3. Маркетплейс и плагины — ПОСЛЕ ИНВЕСТИЦИЙ
+### 14.3. Marketplace and plugins — AFTER INVESTMENT
 
 ---
 
-## 15. План разработки (соло, 15 дней/мес) — ОБНОВЛЕНО <a name="15"></a>
+## 15. Development plan (solo, 15 days/month) — UPDATED <a name="15"></a>
 
-### 15.1. Ресурс
-- **15 дней в месяц × 7 часов = 105 часов кода**
-- Full-time эквивалент: 60%
+### 15.1. Resource
+- **15 days per month × 7 hours = 105 hours of code**
+- Full-time equivalent: 60%
 
-### 15.2. Детальный план по месяцам
+### 15.2. Detailed monthly plan
 
-| Месяц | Задачи | Часов | Результат |
+| Month | Tasks | Hours | Result |
 |-------|--------|-------|-----------|
-| 1 | Архитектура, public-api, platform-core, convention plugins | 100 | Модульная структура готова ✅ |
-| 2 | Binance WebSocket, модели, feature-dom (mock) | 100 | Данные с биржи идут ✅ |
-| 3 | Стакан + лента сделок + свечной график (реальные данные) | 110 | Базовый UI работает ✅ |
-| 4 | WASM/JS таргеты, Bidasker SaaS, trade-collector v3 | 110 | Web target + бэкенд ✅ |
-| 5 | Индикаторы (SMA, EMA, VWAP) + Footprint/Delta | 100 | Проф. анализ ✅ |
-| 6 | **Workspace & Tab System** (Phase 1-2: модели + ViewModels) | 110 | Модели, ProviderPool, TabManager |
-| 7 | **Workspace & Tab System** (Phase 3-4: UI + interaction) | 110 | TerminalShell, Drag&Drop, Floating Windows |
-| 8 | Инструменты рисования ✅ + полировка UI + исправление багов | 100 | Стабильная версия ✅ |
-| 9 | **Live Trading** (размещение ордеров, ключи, баланс, портфель) | 100 | Первая реальная торговля |
-| 10 | Индикатор ликвидаций ✅, workspace integration, публичный релиз | 80 | Продукт в мире |
-| 11-12 | Сбор обратной связи, фичи по запросу, оптимизация, рост | 100/мес | 1000 MAU, 50+ платных |
+| 1 | Architecture, public-api, platform-core, convention plugins | 100 | Modular structure ready ✅ |
+| 2 | Binance WebSocket, models, feature-dom (mock) | 100 | Exchange data flowing ✅ |
+| 3 | Order book + Time & Sales + candlestick chart (real data) | 110 | Basic UI working ✅ |
+| 4 | WASM/JS targets, Bidasker SaaS, trade-collector v3 | 110 | Web target + backend ✅ |
+| 5 | Indicators (SMA, EMA, VWAP) + Footprint/Delta | 100 | Professional analysis ✅ |
+| 6 | **Workspace & Tab System** (Phase 1–2: models + ViewModels) | 110 | Models, ProviderPool, TabManager |
+| 7 | **Workspace & Tab System** (Phase 3–4: UI + interaction) | 110 | TerminalShell, Drag&Drop, Floating Windows |
+| 8 | Drawing tools ✅ + UI polish + bug fixing | 100 | Stable version ✅ |
+| 9 | **Live Trading** (order placement, keys, balance, portfolio) | 100 | First real trading |
+| 10 | Liquidation indicator ✅, workspace integration, public release | 80 | Product in the wild |
+| 11–12 | Feedback collection, requested features, optimization, growth | 100/month | 1000 MAU, 50+ paying |
 
-### 15.3. Ключевые вехи
+### 15.3. Key milestones
 
-| Месяц | Веха |
+| Month | Milestone |
 |-------|------|
-| 3 | Прототип с данными ✅ |
+| 3 | Prototype with data ✅ |
 | 4 | Bidasker SaaS + WASM/JS targets ✅ |
-| 6 | **Workspace & Tab System (модели)** |
+| 6 | **Workspace & Tab System (models)** |
 | 7 | **Workspace & Tab System (UI)** |
 | 8 | Chart drawing tools ✅ |
-| 9 | **Live Trading готов** |
-| 10 | **Публичный релиз** |
-| 11 | Первые платные подписки |
-| 12 | **1000 MAU, 50+ платных** |
+| 9 | **Live Trading ready** |
+| 10 | **Public release** |
+| 11 | First paid subscriptions |
+| 12 | **1000 MAU, 50+ paying** |
 
-### 15.4. Что НЕ делаем на соло-этапе
-- Плагинную систему
-- DSL и редактор кода
-- Бэктестинг
-- Маркетплейс
-- Поддержку 5+ бирж (только Binance + Bybit)
-- Сложную анимацию
-- Свой график с нуля
+### 15.4. What we do NOT do at the solo stage
+- Plugin system
+- DSL and code editor
+- Backtesting
+- Marketplace
+- Support for 5+ exchanges (only Binance + Bybit)
+- Complex animation
+- Building our own chart from scratch
 
 ---
 
-## 16. Риски и пути их минимизации — РАСШИРЕНО <a name="16"></a>
+## 16. Risks and mitigation strategies — EXTENDED <a name="16"></a>
 
-### 16.1. Технические риски (соло)
+### 16.1. Technical risks (solo)
 
-| Риск | Вероятность | Влияние | Митигация |
+| Risk | Probability | Impact | Mitigation |
 |------|-------------|---------|------------|
-| **Выгорание** | Высокая (70%) | Критическое | Чёткий график, выходные, спорт, маленькие победы каждые 2 недели |
-| **Сложные баги в WebSocket** | Средняя (40%) | Высокое | Логирование, авто-переподключение, fallback на REST |
-| **Проблемы с производительностью графика** | Высокая (60%) | Высокое | Использовать легковесную библиотеку, не писать свой Canvas с нуля |
-| **Утечки памяти** | Средняя (30%) | Среднее | Профилирование раз в 2 недели |
-| **Безопасность API-ключей** | Низкая (10%) | Критическое | Использовать системное хранилище, никогда не логировать ключи |
-| **Ошибки в расчёте дельты/футпринта** | Средняя (40%) | Высокое | Модульные тесты, сравнение с эталонными данными |
-| **Проблемы с компиляцией KMP** | Средняя (40%) | Среднее | Использовать стабильные версии, не гнаться за обновлениями |
+| **Burnout** | High (70%) | Critical | Clear schedule, weekends, sports, small wins every 2 weeks |
+| **Complex WebSocket bugs** | Medium (40%) | High | Logging, auto-reconnection, REST fallback |
+| **Chart performance issues** | High (60%) | High | Use a lightweight library, do not write a custom Canvas from scratch |
+| **Memory leaks** | Medium (30%) | Medium | Profiling every 2 weeks |
+| **API key security** | Low (10%) | Critical | Use the system key store, never log keys |
+| **Errors in delta/footprint calculation** | Medium (40%) | High | Unit tests, comparison against reference data |
+| **KMP compilation issues** | Medium (40%) | Medium | Use stable versions, do not chase updates |
 
-### 16.2. Бизнес-риски
+### 16.2. Business risks
 
-| Риск | Вероятность | Влияние | Митигация |
+| Risk | Probability | Impact | Mitigation |
 |------|-------------|---------|------------|
-| **Низкий спрос** | Средняя (50%) | Высокое | Запустить MVP быстро, опросить трейдеров до начала |
-| **Пользователи не готовы платить за Live Trading** | Средняя (40%) | Высокое | Бесплатный пробный период 7 дней, собрать фидбек |
-| **Конкуренты (ATAS, CScalp, TradingView)** | Высокая (70%) | Среднее | Уникальное преимущество — Live Trading + крипта + футпринт |
-| **Изменение API бирж** | Низкая (10%) | Среднее | Абстракция провайдеров, быстрое реагирование |
-| **Регуляторные риски** | Низкая (5%) | Высокое | Не храним средства пользователей, только API-ключи |
-| **Блокировка API-ключей биржей** | Низкая (10%) | Среднее | Чётко соблюдать rate limits, не злоупотреблять |
+| **Low demand** | Medium (50%) | High | Launch the MVP quickly, survey traders beforehand |
+| **Users unwilling to pay for Live Trading** | Medium (40%) | High | 7-day free trial, collect feedback |
+| **Competitors (ATAS, CScalp, TradingView)** | High (70%) | Medium | Unique advantage — Live Trading + crypto + footprint |
+| **Exchange API changes** | Low (10%) | Medium | Provider abstraction, fast response |
+| **Regulatory risks** | Low (5%) | High | We do not hold user funds, only API keys |
+| **API keys blocked by the exchange** | Low (10%) | Medium | Strict rate-limit compliance, no abuse |
 
-### 16.3. Риски времени и фокуса
+### 16.3. Time and focus risks
 
-| Риск | Вероятность | Влияние | Митигация |
+| Risk | Probability | Impact | Mitigation |
 |------|-------------|---------|------------|
-| **Отвлечение на быт/работу** | Высокая (80%) | Среднее | Резервировать 2 полных дня в неделю только на код |
-| **Потеря мотивации** | Средняя (40%) | Высокое | Маленькие победы, ранний релиз, обратная связь |
-| **Перфекционизм** | Очень высокая (90%) | Критическое | "Грязный, но работающий" лучше идеального, но недоделанного |
-| **Оценка времени ошиблась** | Высокая (70%) | Среднее | Добавить 30% буфера к каждой оценке |
+| **Distraction by daily life/work** | High (80%) | Medium | Reserve 2 full days per week for code only |
+| **Loss of motivation** | Medium (40%) | High | Small wins, early release, feedback |
+| **Perfectionism** | Very high (90%) | Critical | "Dirty but working" beats perfect but unfinished |
+| **Wrong time estimates** | High (70%) | Medium | Add a 30% buffer to every estimate |
 
-### 16.4. Риски сообщества и маркетинга
+### 16.4. Community and marketing risks
 
-| Риск | Вероятность | Влияние | Митигация |
+| Risk | Probability | Impact | Mitigation |
 |------|-------------|---------|------------|
-| **Никто не узнает о продукте** | Высокая (60%) | Высокое | Сделать контент (YouTube, Twitter, Telegram) с 1-го месяца |
-| **Отрицательный фидбек** | Средняя (50%) | Среднее | Быстро фиксить баги, не игнорировать пользователей |
-| **Токсичное сообщество** | Низкая (20%) | Низкое | Модерация, чёткие правила |
+| **Nobody finds out about the product** | High (60%) | High | Produce content (YouTube, Twitter, Telegram) from month 1 |
+| **Negative feedback** | Medium (50%) | Medium | Fix bugs fast, do not ignore users |
+| **Toxic community** | Low (20%) | Low | Moderation, clear rules |
 
-### 16.5. Финансовые риски (до инвестиций)
+### 16.5. Financial risks (before investment)
 
-| Риск | Вероятность | Влияние | Митигация |
+| Risk | Probability | Impact | Mitigation |
 |------|-------------|---------|------------|
-| **Не хватает денег на жизнь** | Зависит от ситуации | Критическое | Иметь запас на 12 месяцев, подработка, фриланс |
-| **Никто не покупает Pro подписку** | Средняя (40%) | Высокое | Пересмотреть цену, добавить больше фич в бесплатную версию |
-| **Инвесторы не заходят** | Средняя (50%) | Высокое | Bootstrapping дольше, искать гранты, bounty-программы |
+| **Not enough money to live** | Depends on the situation | Critical | Have a 12-month reserve, side work, freelancing |
+| **Nobody buys the Pro subscription** | Medium (40%) | High | Reconsider pricing, add more features to the free tier |
+| **Investors do not come in** | Medium (50%) | High | Bootstrap longer, look for grants, bounty programs |
 
-### 16.6. Стратегия выхода из критических рисков
+### 16.6. Exit strategy for critical risks
 
-| Сценарий | Действие |
+| Scenario | Action |
 |----------|----------|
-| Выгорание | Взять паузу 1-2 недели, снизить expectations |
-| Продукт не взлетает через 6 месяцев после релиза | Pivot: сделать инструмент для конкретной ниши (например, только ликвидации) |
-| Конкуренты выпускают аналогичную фичу | Усилить уникальное преимущество (скорость, простота, поддержка) |
-| Нет платных пользователей | Сделать пожертвования (donation), открыть часть Pro кода |
+| Burnout | Take a 1–2 week break, lower expectations |
+| Product does not take off 6 months after release | Pivot: build a tool for a specific niche (e.g., liquidations only) |
+| Competitors ship a similar feature | Strengthen the unique advantage (speed, simplicity, support) |
+| No paying users | Accept donations, open part of the Pro code |
 
 ---
 
-## 17. Заключение <a name="17"></a>
+## 17. Conclusion <a name="17"></a>
 
-**Nous Platform v1.1** — это реалистичный план для соло-разработчика:
+**Nous Platform v1.1** is a realistic plan for a solo developer:
 
-- **6 месяцев** до первого Live Trading
-- **8 месяцев** до публичного релиза
-- **12 месяцев** до 1000 пользователей и 50+ платных подписок
-- **После этого** — привлечение инвестиций и масштабирование
+- **6 months** to first Live Trading
+- **8 months** to public release
+- **12 months** to 1000 users and 50+ paid subscriptions
+- **After that** — raising investment and scaling
 
-**Ключевой принцип:**  
-Сначала работающий продукт и живые пользователи.  
-Потом экосистема, плагины, DSL и маркетплейс.
+**Key principle:**  
+First a working product and live users.  
+Then the ecosystem, plugins, DSL, and marketplace.
 
-**Документ будет обновляться по мере прохождения этапов.**
+**The document will be updated as stages are completed.**
