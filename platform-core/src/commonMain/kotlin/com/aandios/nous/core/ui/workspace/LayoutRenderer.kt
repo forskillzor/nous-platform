@@ -56,45 +56,55 @@ fun LayoutRenderer(
                 // Sync mutable ratio to node for persistence
                 LaunchedEffect(ratio) { node.ratio = ratio }
 
-                if (node.direction == LayoutNode.Direction.HORIZONTAL) {
-                    Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
-                        node.children.forEachIndexed { index, child ->
-                            val weight = if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                        LayoutRenderer(
-                            node = child, modifier = Modifier.weight(weight),
-                            panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel,
-                            onRatioChange = onRatioChange, panelContent = panelContent
-                        )
-                            if (index < node.children.lastIndex) {
-                                SplitHandle(
-                                    direction = LayoutNode.Direction.HORIZONTAL,
-                                    parentSize = parentSizePx,
-                                    onResize = { delta ->
-                                        val newRatio = ratio + delta
-                                        if (newRatio in 0.15f..0.85f) { ratio = newRatio; onRatioChange?.invoke() }
-                                    }
+                when (node.direction ) {
+                    LayoutNode.Direction.HORIZONTAL -> {
+                        Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
+                            node.children.forEachIndexed { index, child ->
+                                val weight =
+                                    if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
+                                LayoutRenderer(
+                                    node = child, modifier = Modifier.weight(weight),
+                                    panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel,
+                                    onRatioChange = onRatioChange, panelContent = panelContent
                                 )
+                                if (index < node.children.lastIndex) {
+                                    SplitHandle(
+                                        direction = LayoutNode.Direction.HORIZONTAL,
+                                        parentSize = parentSizePx,
+                                        onResize = { delta ->
+                                            val newRatio = ratio + delta
+                                            if (newRatio in 0.15f..0.85f) {
+                                                ratio = newRatio; onRatioChange?.invoke()
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
-                } else {
-                    Column(modifier.onSizeChanged { parentSizePx = it.height.toFloat() }) {
-                        node.children.forEachIndexed { index, child ->
-                            val weight = if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                        LayoutRenderer(
-                            node = child, modifier = Modifier.weight(weight),
-                            panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel,
-                            onRatioChange = onRatioChange, panelContent = panelContent
-                        )
-                            if (index < node.children.lastIndex) {
-                                SplitHandle(
-                                    direction = LayoutNode.Direction.VERTICAL,
-                                    parentSize = parentSizePx,
-                                    onResize = { delta ->
-                                        val newRatio = ratio + delta
-                                        if (newRatio in 0.15f..0.85f) { ratio = newRatio; onRatioChange?.invoke() }
-                                    }
+
+                    LayoutNode.Direction.VERTICAL -> {
+                        Column(modifier.onSizeChanged { parentSizePx = it.height.toFloat() }) {
+                            node.children.forEachIndexed { index, child ->
+                                val weight =
+                                    if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
+                                LayoutRenderer(
+                                    node = child, modifier = Modifier.weight(weight),
+                                    panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel,
+                                    onRatioChange = onRatioChange, panelContent = panelContent
                                 )
+                                if (index < node.children.lastIndex) {
+                                    SplitHandle(
+                                        direction = LayoutNode.Direction.VERTICAL,
+                                        parentSize = parentSizePx,
+                                        onResize = { delta ->
+                                            val newRatio = ratio + delta
+                                            if (newRatio in 0.15f..0.85f) {
+                                                ratio = newRatio; onRatioChange?.invoke()
+                                            }
+                                        }
+                                    )
+                                }
                             }
                         }
                     }

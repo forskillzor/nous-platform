@@ -2,13 +2,12 @@ package com.aandios.nous.feature.dom.ui
 
 import androidx.compose.runtime.mutableStateMapOf
 import com.aandios.nous.api.market.commands.*
+import com.aandios.nous.api.market.model.orderbook.DomEvent
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.domain.repository.DomRepository
 import com.aandios.nous.core.domain.repository.SymbolInfoRepository
 import com.aandios.nous.feature.dom.domain.DomOptions
-import com.aandios.nous.feature.dom.domain.TradingProvider
 import com.aandios.nous.feature.dom.domain.TradingSymbol
-import com.aandios.nous.api.market.model.orderbook.DomEvent
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 import com.aandios.nous.feature.dom.ui.model.DomLevel
 import kotlinx.coroutines.*

@@ -19,8 +19,6 @@ import com.aandios.nous.core.ui.workspace.ProjectTree
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.viewmodel.TabManager
-import com.aandios.nous.core.ui.workspace.TabBar
-import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import kotlinx.coroutines.launch
 import nous_platform.composeapp.generated.resources.*
 

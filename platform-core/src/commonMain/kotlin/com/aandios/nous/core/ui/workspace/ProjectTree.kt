@@ -1,10 +1,13 @@
 package com.aandios.nous.core.ui.workspace
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -12,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
@@ -45,8 +49,15 @@ fun ProjectTree(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Project", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-            Text("+", color = Color(0xFF00C853), fontSize = 14.sp, fontWeight = FontWeight.Bold,
+            Text(
+                "Project",
+                color = Color(0xFF888888),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "+", color = Color(0xFF00C853), fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { onNewWorkspace() })
         }
 
@@ -71,15 +82,21 @@ fun ProjectTree(
 
 @Composable
 private fun GroupHeader(name: String) {
-    Text("▸ $name", color = Color(0xFF666666), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
-        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp))
+    Text(
+        "▸ $name", color = Color(0xFF666666), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+    )
 }
 
 @Composable
 private fun WorkspaceTreeItem(
-    name: String, isActive: Boolean, onClick: () -> Unit,
-    onRename: ((String) -> Unit)?, onDelete: (() -> Unit)?,
-    onExport: (() -> Unit)?, onDuplicate: (() -> Unit)?
+    name: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    onRename: ((String) -> Unit)?,
+    onDelete: (() -> Unit)?,
+    onExport: (() -> Unit)?,
+    onDuplicate: (() -> Unit)?
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
@@ -98,25 +115,36 @@ private fun WorkspaceTreeItem(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
                 ) {
-                    androidx.compose.material3.OutlinedTextField(
-                        value = editName, onValueChange = { editName = it },
+                    BasicTextField(
+                        value = editName,
+                        onValueChange = { editName = it },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
                             color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = FontFamily.Monospace
                         ),
-                        modifier = Modifier.weight(1f).height(36.dp),
-                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF00C853),
-                            unfocusedBorderColor = Color(0xFF444444),
-                            cursorColor = Color(0xFF00C853),
-                            focusedContainerColor = Color(0xFF1A1A1A),
-                            unfocusedContainerColor = Color(0xFF1A1A1A),
-                        )
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(28.dp)
+                            .background(Color(0xFF1A1A1A), RoundedCornerShape(4.dp))
+                            .border(1.dp, Color(0xFF00C853), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp),
+                        cursorBrush = SolidColor(Color(0xFF00C853)),
+                        decorationBox = { innerTextField ->
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                                innerTextField()
+                            }
+                        }
+
                     )
-                    Text("✓", color = Color(0xFF00C853), fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { onRename?.invoke(editName); editing = false }.padding(horizontal = 4.dp))
-                    Text("✗", color = Color(0xFF666666), fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { editing = false; editName = name }.padding(start = 2.dp))
+                    Text(
+                        "✓", color = Color(0xFF00C853), fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { onRename?.invoke(editName); editing = false }
+                            .padding(horizontal = 4.dp)
+                    )
+                    Text(
+                        "✗", color = Color(0xFF666666), fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable { editing = false; editName = name }.padding(start = 2.dp)
+                    )
                 }
             } else {
                 Text(
@@ -127,8 +155,10 @@ private fun WorkspaceTreeItem(
                 )
             }
             // Menu trigger
-            Text("⋮", color = Color(0xFF444444), fontSize = 14.sp, fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clickable { menuExpanded = true }.padding(start = 4.dp))
+            Text(
+                "⋮", color = Color(0xFF444444), fontSize = 14.sp, fontFamily = FontFamily.Monospace,
+                modifier = Modifier.clickable { menuExpanded = true }.padding(start = 4.dp)
+            )
         }
 
         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
