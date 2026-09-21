@@ -431,7 +431,8 @@ fun CandleStickChartInteraction(
                     chartHeight = layout.chartMainArea.height,
                     scrollOffset = clampedOffset,
                     candleWidth = candleMetrics.width,
-                    candleSpacing = candleMetrics.spacing
+                    candleSpacing = candleMetrics.spacing,
+                    textMeasurer = textMeasurer,
                 )
             }
             // Рисуем перекрестие если crosshair включен и есть позиция курсора

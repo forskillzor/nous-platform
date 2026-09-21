@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -20,10 +21,14 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.model.PriceRange
+import com.aandios.nous.feature.chart.tools.DrawingHistory
+import com.aandios.nous.feature.chart.tools.DrawingRepository
+import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
 import org.koin.compose.KoinContext
@@ -59,6 +64,8 @@ fun ChartWindow(
     modifier: Modifier = Modifier,
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
+    workspaceId: String? = null,
+    panelId: String? = null,
 ) {
     val liquidationViewModel: LiquidationViewModel = koinInject()
     ChartWindowContent(
@@ -67,6 +74,8 @@ fun ChartWindow(
         liquidationViewModel = liquidationViewModel,
         initialZoomLevel = initialZoomLevel,
         onZoomChange = onZoomChange,
+        workspaceId = workspaceId,
+        panelId = panelId,
     )
 }
 
@@ -77,6 +86,8 @@ private fun ChartWindowContent(
     liquidationViewModel: LiquidationViewModel,
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
+    workspaceId: String? = null,
+    panelId: String? = null,
 ) {
     val uiState by chartViewModel.state.collectAsState()
 
@@ -109,6 +120,22 @@ private fun ChartWindowContent(
     }
 
     var crosshairEnabled by remember { mutableStateOf(false) }
+
+    // Drawings: привязаны к workspace+panel и сохраняются на диск
+    val drawingStore: StateStore? = remember {
+        runCatching { org.koin.core.context.GlobalContext.getOrNull()?.get<StateStore>() }.getOrNull()
+    }
+    val drawingHistory = remember { DrawingHistory() }
+    var activeDrawingTool by remember { mutableStateOf(DrawingToolType.NONE) }
+
+    LaunchedEffect(workspaceId, panelId, drawingStore) {
+        val store = drawingStore
+        if (workspaceId == null || panelId == null || store == null) return@LaunchedEffect
+        val repository = DrawingRepository(store)
+        drawingHistory.replaceAll(repository.load(workspaceId, panelId))
+        snapshotFlow { drawingHistory.drawings.toList() }
+            .collect { repository.save(workspaceId, panelId, it) }
+    }
 
     Box(
         modifier = modifier
@@ -162,6 +189,9 @@ private fun ChartWindowContent(
                                 onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
                                 historyLoadCount = uiState.historyLoadCount,
                                 hasMoreHistory = uiState.hasMoreHistory,
+                                drawingHistory = drawingHistory,
+                                activeDrawingTool = activeDrawingTool,
+                                onActiveDrawingToolChange = { activeDrawingTool = it },
                                 modifier = Modifier.fillMaxSize(),
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
@@ -200,6 +230,9 @@ private fun ChartWindowContent(
                                     onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
                                     historyLoadCount = uiState.footprintHistoryLoadCount,
                                     hasMoreHistory = uiState.hasMoreFootprintHistory,
+                                    drawingHistory = drawingHistory,
+                                    activeDrawingTool = activeDrawingTool,
+                                    onActiveDrawingToolChange = { activeDrawingTool = it },
                                     modifier = Modifier.fillMaxSize(),
                                     initialZoomLevel = initialZoomLevel,
                                     onZoomChange = onZoomChange,
@@ -221,6 +254,12 @@ private fun ChartWindowContent(
                         symbolsWithFootprint = uiState.symbolsWithFootprint,
                         fpAggregation = uiState.fpAggregation,
                         onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
+                        drawingTool = activeDrawingTool,
+                        onDrawingToolChange = { activeDrawingTool = it },
+                        canUndoDrawing = drawingHistory.canUndo,
+                        canRedoDrawing = drawingHistory.canRedo,
+                        onUndoDrawing = { drawingHistory.undo() },
+                        onRedoDrawing = { drawingHistory.redo() },
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(8.dp)

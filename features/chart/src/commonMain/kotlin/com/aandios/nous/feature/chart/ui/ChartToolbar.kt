@@ -20,11 +20,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.ui.component.SymbolSearchDropdown
+import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
 private val timeframes = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w")
 private val toolbarBg = Color.Black.copy(alpha = 0.35f)
 private val accentColor = Color(0xFF5B9BD5)
+
+private val drawingTools = listOf(
+    DrawingToolType.TREND_LINE to "T",
+    DrawingToolType.HORIZONTAL to "H",
+    DrawingToolType.RECTANGLE to "R",
+    DrawingToolType.VERTICAL to "V",
+    DrawingToolType.RULER to "\u0394",
+)
 
 @Composable
 fun ChartToolbar(
@@ -40,6 +49,12 @@ fun ChartToolbar(
     symbolsWithFootprint: Set<String> = emptySet(),
     fpAggregation: AggregationLevel = AggregationLevel.BaseTick,
     onFpAggregationChange: (AggregationLevel) -> Unit = {},
+    drawingTool: DrawingToolType = DrawingToolType.NONE,
+    onDrawingToolChange: (DrawingToolType) -> Unit = {},
+    canUndoDrawing: Boolean = false,
+    canRedoDrawing: Boolean = false,
+    onUndoDrawing: () -> Unit = {},
+    onRedoDrawing: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -68,6 +83,60 @@ fun ChartToolbar(
         CrosshairToggleButton(enabled = crosshairEnabled, onToggle = onCrosshairToggle)
         Spacer(Modifier.width(8.dp))
         TimeframeSelector(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
+        Spacer(Modifier.width(8.dp))
+        DrawingToolsSelector(
+            activeTool = drawingTool,
+            onToolChange = onDrawingToolChange,
+            canUndo = canUndoDrawing,
+            canRedo = canRedoDrawing,
+            onUndo = onUndoDrawing,
+            onRedo = onRedoDrawing,
+        )
+    }
+}
+
+@Composable
+private fun DrawingToolsSelector(
+    activeTool: DrawingToolType,
+    onToolChange: (DrawingToolType) -> Unit,
+    canUndo: Boolean,
+    canRedo: Boolean,
+    onUndo: () -> Unit,
+    onRedo: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        drawingTools.forEach { (tool, label) ->
+            val isActive = tool == activeTool
+            Text(
+                text = label,
+                color = if (isActive) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal, fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .clickable { onToolChange(if (isActive) DrawingToolType.NONE else tool) }
+                    .background(
+                        if (isActive) accentColor.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(3.dp)
+                    )
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+            )
+            Spacer(Modifier.width(2.dp))
+        }
+
+        Text(
+            text = "\u21B6",
+            color = if (canUndo) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .clickable(enabled = canUndo) { onUndo() }
+                .padding(horizontal = 5.dp, vertical = 3.dp),
+        )
+        Text(
+            text = "\u21B7",
+            color = if (canRedo) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f),
+            fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+            modifier = Modifier
+                .clickable(enabled = canRedo) { onRedo() }
+                .padding(horizontal = 5.dp, vertical = 3.dp),
+        )
     }
 }
 

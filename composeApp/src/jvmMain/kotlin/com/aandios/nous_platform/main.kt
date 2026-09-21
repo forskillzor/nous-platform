@@ -226,7 +226,9 @@ fun main() = application {
                                                         onZoomChange = { zl ->
                                                             val curS = (currentPc.state as? PanelState.Chart) ?: PanelState.Chart()
                                                             panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(state = curS.copy(zoomLevel = zl))); persistConfig()
-                                                        }
+                                                        },
+                                                        workspaceId = ws.config.id,
+                                                        panelId = pc.id
                                                     )
                                                 }
                                                 com.aandios.nous.core.workspace.PanelType.DOM -> {

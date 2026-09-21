@@ -5,15 +5,18 @@
 
 package com.aandios.nous.feature.chart.tools
 
+import androidx.compose.runtime.mutableStateListOf
+
 /**
  * Undo/Redo stack for chart drawings.
- * Single-threaded (UI thread via Compose gestures).
+ * Список рисунков — Compose-состояние, поэтому добавление/удаление сразу
+ * триггерит перерисовку Canvas.
  * Supports Ctrl+Z (undo) and Ctrl+Y (redo).
  */
 class DrawingHistory(private val maxHistory: Int = 100) {
     private val undoStack = ArrayDeque<Drawing>(maxHistory)
     private val redoStack = ArrayDeque<Drawing>(maxHistory)
-    private val _drawings = mutableListOf<Drawing>()
+    private val _drawings = mutableStateListOf<Drawing>()
     val drawings: List<Drawing> get() = _drawings
 
     fun add(drawing: Drawing) {
@@ -44,6 +47,15 @@ class DrawingHistory(private val maxHistory: Int = 100) {
             undoStack.remove(drawing)
             redoStack.remove(drawing)
         }
+    }
+
+    /** Заменяет содержимое (загрузка из персистента). */
+    fun replaceAll(drawings: List<Drawing>) {
+        _drawings.clear()
+        undoStack.clear()
+        redoStack.clear()
+        _drawings.addAll(drawings)
+        undoStack.addAll(drawings)
     }
 
     fun clear() {
