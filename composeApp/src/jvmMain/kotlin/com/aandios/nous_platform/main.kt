@@ -19,6 +19,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.ChartWindow
+import com.aandios.nous.feature.chart.ui.ChartIntent
 import com.aandios.nous.feature.chart.ui.ChartMode
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.ui.DomViewModel
@@ -39,6 +40,8 @@ import com.aandios.nous.core.workspace.generateId
 import com.aandios.nous.core.workspace.PanelConfig
 import com.aandios.nous.core.workspace.PanelType
 import com.aandios.nous.core.workspace.PanelState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import com.aandios.nous.core.ui.workspace.TabBar
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
@@ -83,7 +86,7 @@ fun main() = application {
                 onSymbolSelected = { symbol ->
                     terminalStateViewModel.changeSymbol(symbol)
                     val timeframe = terminalStateViewModel.selectedTimeFrame.value
-                    chartViewModel.loadChart(symbol, timeframe)
+                    chartViewModel.dispatch(ChartIntent.LoadChart(symbol, timeframe))
                     val currentOptions = domViewModel.domOptions.value
                     domViewModel.updateDomOptions(
                         currentOptions.copy(
@@ -96,7 +99,7 @@ fun main() = application {
                 onTimeframeSelected = { timeframe ->
                     terminalStateViewModel.changeTimeFrame(timeframe)
                     val symbol = terminalStateViewModel.selectedSymbol.value
-                    chartViewModel.loadChart(symbol, timeframe)
+                    chartViewModel.dispatch(ChartIntent.LoadChart(symbol, timeframe))
                 },
             ) {
                 // Main content — workspace tabs or legacy MainScreen
@@ -186,25 +189,25 @@ fun main() = application {
                                                     LaunchedEffect(pc.id) {
                                                         val savedMode = state?.chartMode ?: "CANDLESTICK"
                                                         val target = try { ChartMode.valueOf(savedMode) } catch (e: Exception) { ChartMode.CANDLESTICK }
-                                                        if (vm.chartMode.value != target) vm.toggleChartMode()
+                                                        if (vm.state.value.chartMode != target) vm.dispatch(ChartIntent.ToggleChartMode)
                                                     }
                                                     // Only reload if symbol or timeframe changed since last load
                                                     LaunchedEffect(pc.symbol, tf) {
-                                                        val needReload = vm.currentSymbol.value != pc.symbol || vm.currentTimeframe.value != tf
-                                                        if (needReload) vm.loadChart(pc.symbol, tf)
+                                                        val needReload = vm.state.value.currentSymbol != pc.symbol || vm.state.value.currentTimeframe != tf
+                                                        if (needReload) vm.dispatch(ChartIntent.LoadChart(pc.symbol, tf))
                                                     }
                                                     // Sync back: when user changes symbol/timeframe/zoom/chartMode → update PanelConfig
                                                     val currentPc by rememberUpdatedState(pc)
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
-                                                        vm.currentSymbol.collect { s ->
+                                                        vm.state.map { it.currentSymbol }.distinctUntilChanged().collect { s ->
                                                             if (skipInitial) { skipInitial = false; return@collect }
                                                             panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(symbol = s)); persistConfig()
                                                         }
                                                     }
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
-                                                        vm.currentTimeframe.collect { tf2 ->
+                                                        vm.state.map { it.currentTimeframe }.distinctUntilChanged().collect { tf2 ->
                                                             if (skipInitial) { skipInitial = false; return@collect }
                                                             val curS = currentPc.state as? PanelState.Chart ?: PanelState.Chart()
                                                             panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(state = curS.copy(timeframe = tf2))); persistConfig()
@@ -212,7 +215,7 @@ fun main() = application {
                                                     }
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
-                                                        vm.chartMode.collect { mode ->
+                                                        vm.state.map { it.chartMode }.distinctUntilChanged().collect { mode ->
                                                             if (skipInitial) { skipInitial = false; return@collect }
                                                             val curS = currentPc.state as? PanelState.Chart ?: PanelState.Chart()
                                                             panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(state = curS.copy(chartMode = mode.name))); persistConfig()
