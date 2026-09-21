@@ -80,13 +80,6 @@ fun DrawScope.drawLiquidationMarkers(
     }
 }
 
-fun timeframeToMs(tf: String): Long = when (tf) {
-    "1m" -> 60_000L; "5m" -> 300_000L; "15m" -> 900_000L
-    "30m" -> 1_800_000L; "1h" -> 3_600_000L; "4h" -> 14_400_000L
-    "1d" -> 86_400_000L; "1w" -> 604_800_000L
-    else -> 3_600_000L
-}
-
 fun DrawScope.drawLiquidationHistogram(
     area: Rect,
     candles: List<Candle>,

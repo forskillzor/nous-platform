@@ -29,8 +29,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.feature.chart.model.ChartLayout
@@ -54,10 +52,7 @@ fun FootprintChart(
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    showPriceScale: Boolean = true,
-    priceScaleWidth: Dp = 60.dp,
     crosshairEnabled: Boolean = false,
-    onCrosshairEnabledChange: (Boolean) -> Unit = {},
 ) {
     val allCandles = remember(completedCandles, liveCandle) {
         if (liveCandle != null) completedCandles + liveCandle else completedCandles
@@ -82,7 +77,7 @@ fun FootprintChart(
     var isAltPressed by remember { mutableStateOf(false) }
     val maxScrollLeft = 300f
     val maxZoom = 10f
-    val minZoom = 0.15f
+    val minZoom = 0.05f
     val zoomStep = 1.25f
 
     val textMeasurer = rememberTextMeasurer()
@@ -145,7 +140,7 @@ fun FootprintChart(
                                 val rightEdge = scrollOffset + chartWidthPx
                                 rightEdge * actualFactor - chartWidthPx
                             }
-                            zoomLevel = newZoom; scrollOffset = newScrollOffset
+                            zoomLevel = newZoom; scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, maxScroll)
                             change.consume()
                         }
                     }
@@ -155,10 +150,10 @@ fun FootprintChart(
         val canvasWidth = maxWidth; val canvasHeight = maxHeight
         val density = LocalDensity.current
 
-        val layout = remember(priceScaleWidth, canvasWidth, canvasHeight) {
+        val layout = remember(config.priceScaleWidth, canvasWidth, canvasHeight) {
             val wp = with(density) { canvasWidth.toPx() }; val hp = with(density) { canvasHeight.toPx() }
             val cp = 8f; val tsh = (hp * 0.04f).coerceAtLeast(20f).coerceAtMost(40f)
-            val psw = with(density) { priceScaleWidth.toPx() }
+            val psw = with(density) { config.priceScaleWidth.toPx() }
             val chartMainArea = Rect(0f, 0f, wp - psw - cp, hp - tsh)
             val chartArea = Rect(0f, 0f, wp - psw - cp, hp)
             val priceScaleArea = Rect(wp - psw, 0f, wp, hp)
@@ -177,7 +172,7 @@ fun FootprintChart(
         val startIdx = (clampedOffset / totalW).toInt().coerceIn(0, max(0, allCandles.size - 1))
         val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, allCandles.size)
 
-        val visibleCandles = remember(startIdx, endIdx) {
+        val visibleCandles = remember(startIdx, endIdx, allCandles) {
             allCandles.subList(startIdx, endIdx.coerceAtMost(allCandles.size))
         }
         val basePriceRange = remember(visibleCandles) { calculatePriceRangeWithFootprint(visibleCandles) }
@@ -203,7 +198,7 @@ fun FootprintChart(
             }
 
             // Price scale
-            if (showPriceScale) {
+            if (config.showPriceScale) {
                 drawPriceScale(shiftedPriceRange, config, layout.priceScaleArea, currentPrice, textMeasurer)
                 drawLine(config.gridColor.copy(alpha = 0.5f), Offset(layout.chartArea.right + layout.chartPadding, 0f), Offset(layout.chartArea.right + layout.chartPadding, layout.canvasHeight), 1f)
             }

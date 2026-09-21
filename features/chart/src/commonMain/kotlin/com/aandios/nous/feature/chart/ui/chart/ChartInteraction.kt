@@ -70,10 +70,7 @@ fun CandleStickChartInteraction(
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    showPriceScale: Boolean = true,
-    priceScaleWidth: Dp = 60.dp,
     crosshairEnabled: Boolean = false,
-    onCrosshairEnabledChange: (Boolean) -> Unit = {},
     onNeedMoreHistory: () -> Unit = {},
     historyLoadCount: Int = 0,
     hasMoreHistory: Boolean = true,
@@ -83,6 +80,7 @@ fun CandleStickChartInteraction(
     indicatorHeightDp: Dp = 80.dp,
     drawingHistory: DrawingHistory? = null,
     activeDrawingTool: DrawingToolType = DrawingToolType.NONE,
+    onActiveDrawingToolChange: (DrawingToolType) -> Unit = {},
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
 ) {
@@ -100,7 +98,7 @@ fun CandleStickChartInteraction(
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
     val maxScrollLeft = 300f
     val maxZoom = if (footprintCandles != null) 30f else 4f
-    val minZoom = 0.15f
+    val minZoom = 0.05f
     val zoomStep = 1.25f
 
     // TextMeasurer для измерения текста
@@ -188,7 +186,7 @@ fun CandleStickChartInteraction(
                             }
 
                             zoomLevel = newZoom
-                            scrollOffset = newScrollOffset
+                            scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, maxScroll)
                             onZoomChange?.invoke(zoomLevel)
 
                             change.consume()
@@ -218,7 +216,7 @@ fun CandleStickChartInteraction(
 
         val density = LocalDensity.current
 
-        val layout = remember(priceScaleWidth, canvasWidth, canvasHeight, indicatorRenderers.size, indicatorHeightDp) {
+        val layout = remember(config.priceScaleWidth, canvasWidth, canvasHeight, indicatorRenderers.size, indicatorHeightDp) {
             val widthPx = with(density) { canvasWidth.toPx() }
             val heightPx = with(density) { canvasHeight.toPx() }
             val chartPadding = 8f
@@ -226,7 +224,7 @@ fun CandleStickChartInteraction(
             val timeScaleHeight = (heightPx * 0.04f).coerceAtLeast(20f).coerceAtMost(40f)
 
             val priceScaleWidthPx = with(density) {
-                priceScaleWidth.toPx()
+                config.priceScaleWidth.toPx()
             }
 
             val indicatorH = with(density) { indicatorHeightDp.toPx() }
@@ -306,7 +304,7 @@ fun CandleStickChartInteraction(
         val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, candles.size)
 
         // PriceRange только по видимым свечам (Y-масштаб адаптируется при зум/скролле)
-        val visibleCandles = remember(startIdx, endIdx) {
+        val visibleCandles = remember(startIdx, endIdx, candles) {
             candles.subList(startIdx, endIdx.coerceAtMost(candles.size))
         }
         val priceRange = remember(visibleCandles, currentPrice) {
@@ -401,7 +399,7 @@ fun CandleStickChartInteraction(
             }
 
             // Рисуем шкалу цен
-            if (showPriceScale) {
+            if (config.showPriceScale) {
                 drawPriceScale(
                     priceRange = priceRange,
                     config = config,
@@ -465,10 +463,10 @@ fun CandleStickChartInteraction(
                 candles = candles,
                 priceRange = priceRange,
                 layout = layout,
-                chartWidthPx = chartWidthPx,
                 scrollOffset = clampedOffset,
                 zoomLevel = zoomLevel,
-                onToolChange = {},
+                priceFormatter = config.priceFormatter,
+                onToolChange = onActiveDrawingToolChange,
             )
         }
     }

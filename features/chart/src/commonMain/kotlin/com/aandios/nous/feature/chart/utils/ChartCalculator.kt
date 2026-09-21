@@ -127,7 +127,6 @@ fun generatePriceLevels(min: Float, max: Float, count: Int): List<Float> {
 fun findNearestCandleIndex(
     mouseX: Float,
     candles: List<Candle>,
-    chartWidth: Float,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
 ): Int {

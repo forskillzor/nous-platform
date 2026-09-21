@@ -81,10 +81,13 @@ private fun ChartWindowContent(
     val uiState by chartViewModel.state.collectAsState()
 
     val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter) {
-        DefaultChartConfig.copy(footprintConfig = DefaultChartConfig.footprintConfig.copy(
-            aggregationLevel = uiState.fpAggregation,
-            tickSize = uiState.currentSymbolFormatter.tickSize
-        ))
+        DefaultChartConfig.copy(
+            footprintConfig = DefaultChartConfig.footprintConfig.copy(
+                aggregationLevel = uiState.fpAggregation,
+                tickSize = uiState.currentSymbolFormatter.tickSize
+            ),
+            priceFormatter = uiState.currentSymbolFormatter
+        )
     }
 
     // Liquidation state
@@ -156,7 +159,6 @@ private fun ChartWindowContent(
                                 liquidationOrders = liquidationState.orders,
                                 indicatorRenderers = indicatorRenderers,
                                 crosshairEnabled = crosshairEnabled,
-                                onCrosshairEnabledChange = { crosshairEnabled = it },
                                 onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
                                 historyLoadCount = uiState.historyLoadCount,
                                 hasMoreHistory = uiState.hasMoreHistory,
@@ -194,7 +196,6 @@ private fun ChartWindowContent(
                                     liquidationOrders = liquidationState.orders,
                                     indicatorRenderers = indicatorRenderers,
                                     crosshairEnabled = crosshairEnabled,
-                                    onCrosshairEnabledChange = { crosshairEnabled = it },
                                     footprintCandles = allFp,
                                     onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
                                     historyLoadCount = uiState.footprintHistoryLoadCount,

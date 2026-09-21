@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
 import com.aandios.nous.api.market.adapters.TradesAdapter
+import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.domain.repository.ChartRepository
 import com.aandios.nous.core.Disposable
@@ -29,6 +30,9 @@ class ChartViewModel(
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var currentJob: Job? = null
     private var isLoadingMore = false
+
+    /** Старые свечи, подгруженные вручную; мержатся с realtime-эмиссиями репозитория. */
+    private var historyPrefix: List<Candle> = emptyList()
 
     private val _state = MutableStateFlow(ChartUiState())
     val state: StateFlow<ChartUiState> = _state.asStateFlow()
@@ -193,43 +197,49 @@ class ChartViewModel(
             )
         }
         isLoadingMore = false
+        historyPrefix = emptyList()
 
-        viewModelScope.launch {
-            _state.update { it.copy(chartState = ChartState.Loading) }
-            delay(100)
-            currentJob?.cancel()
+        currentJob?.cancel()
+        _state.update { it.copy(chartState = ChartState.Loading) }
 
-            if (_state.value.chartState !is ChartState.Loading) {
-                _state.update { it.copy(chartState = ChartState.Loading) }
-            }
-
-            currentJob = launch {
-                try {
-                    chartRepository.getChart(ticker, timeframe)
-                        .catch { e -> _state.update { it.copy(chartState = ChartState.Error(e.message ?: "Unknown error")) } }
-                        .collect { candles ->
-                            if (candles.isNotEmpty()) {
-                                _state.update {
-                                    it.copy(
-                                        chartState = ChartState.Success(
-                                            candles = candles,
-                                            currentPrice = candles.last().close,
-                                        )
+        currentJob = viewModelScope.launch {
+            try {
+                chartRepository.getChart(ticker, timeframe)
+                    .catch { e -> _state.update { it.copy(chartState = ChartState.Error(e.message ?: "Unknown error")) } }
+                    .collect { candles ->
+                        if (candles.isNotEmpty()) {
+                            val merged = mergeWithHistory(candles)
+                            _state.update {
+                                it.copy(
+                                    chartState = ChartState.Success(
+                                        candles = merged,
+                                        currentPrice = merged.last().close,
                                     )
-                                }
+                                )
                             }
                         }
-                } catch (e: CancellationException) {
-                    println("Job cancelled: ${e.message}")
-                } catch (e: Exception) {
-                    _state.update { it.copy(chartState = ChartState.Error(e.message ?: "Unknown error")) }
-                }
-            }
-
-            if (_state.value.chartMode == ChartMode.FOOTPRINT) {
-                footprintController.start(_state.value.currentSymbol, _state.value.currentTimeframe)
+                    }
+            } catch (e: CancellationException) {
+                println("Job cancelled: ${e.message}")
+            } catch (e: Exception) {
+                _state.update { it.copy(chartState = ChartState.Error(e.message ?: "Unknown error")) }
             }
         }
+
+        if (_state.value.chartMode == ChartMode.FOOTPRINT) {
+            footprintController.start(_state.value.currentSymbol, _state.value.currentTimeframe)
+        }
+    }
+
+    /**
+     * Realtime-эмиссии репозитория содержат только его собственную историю + live-свечу,
+     * поэтому подгруженный вручную префикс нужно добавлять к каждой эмиссии.
+     */
+    private fun mergeWithHistory(candles: List<Candle>): List<Candle> {
+        if (historyPrefix.isEmpty()) return candles
+        return (historyPrefix + candles)
+            .distinctBy { it.timestamp }
+            .sortedBy { it.timestamp }
     }
 
     private fun loadMoreHistory() {
@@ -253,10 +263,15 @@ class ChartViewModel(
                     return@launch
                 }
 
-                val newCandles = historicalCandles + chart.candles
+                val newCandles = (historicalCandles + chart.candles)
+                    .distinctBy { it.timestamp }
+                    .sortedBy { it.timestamp }
                 val lastPrice = newCandles.last().close
 
-                currentJob?.cancel()
+                // Не отменяем realtime-подписку: префикс будет домешан к следующим эмиссиям.
+                historyPrefix = (historicalCandles + historyPrefix)
+                    .distinctBy { it.timestamp }
+                    .sortedBy { it.timestamp }
                 _state.update {
                     it.copy(
                         chartState = ChartState.Success(candles = newCandles, currentPrice = lastPrice),

@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.tools.Drawing
@@ -37,9 +38,9 @@ fun DrawingOverlay(
     candles: List<Candle>,
     priceRange: PriceRange,
     layout: ChartLayout,
-    chartWidthPx: Float,
     scrollOffset: Float,
     zoomLevel: Float,
+    priceFormatter: SymbolFormatter = SymbolFormatter.DEFAULT,
     onToolChange: (DrawingToolType) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -50,7 +51,6 @@ fun DrawingOverlay(
     val currentLayout by rememberUpdatedState(layout)
     val currentScroll by rememberUpdatedState(scrollOffset)
     val currentZoom by rememberUpdatedState(zoomLevel)
-    val currentWidthPx by rememberUpdatedState(chartWidthPx)
 
     Box(modifier = modifier.fillMaxSize().pointerInput(activeDrawingTool) {
         awaitEachGesture {
@@ -70,7 +70,7 @@ fun DrawingOverlay(
                         }
                     }
                     addDrawing(activeDrawingTool, startPos, startPos,
-                        currentCandles, currentPriceRange, currentLayout, currentWidthPx, currentScroll, currentZoom, drawingHistory)
+                        currentCandles, currentPriceRange, currentLayout, currentScroll, currentZoom, priceFormatter, drawingHistory)
                     onToolChange(DrawingToolType.NONE)
                 }
                 else -> {
@@ -89,7 +89,7 @@ fun DrawingOverlay(
                         }
                     }
                     addDrawing(activeDrawingTool, startPos, endPos,
-                        currentCandles, currentPriceRange, currentLayout, currentWidthPx, currentScroll, currentZoom, drawingHistory)
+                        currentCandles, currentPriceRange, currentLayout, currentScroll, currentZoom, priceFormatter, drawingHistory)
                 }
             }
         }
@@ -102,9 +102,9 @@ private fun addDrawing(
     candles: List<Candle>,
     priceRange: PriceRange,
     layout: ChartLayout,
-    chartWidthPx: Float,
     scrollOffset: Float,
     zoomLevel: Float,
+    priceFormatter: SymbolFormatter,
     history: DrawingHistory
 ) {
     val chartH = layout.chartMainArea.height
@@ -112,7 +112,7 @@ private fun addDrawing(
 
     val ts = com.aandios.nous.core.currentTimeMillis()
 
-    fun candleIdx(x: Float) = findNearestCandleIndex(x, candles, chartWidthPx, scrollOffset, zoomLevel)
+    fun candleIdx(x: Float) = findNearestCandleIndex(x, candles, scrollOffset, zoomLevel)
         .coerceIn(0, (candles.lastIndex).coerceAtLeast(0))
 
     fun candleTs(x: Float) = candles[candleIdx(x)].timestamp
@@ -123,7 +123,7 @@ private fun addDrawing(
             history.add(Drawing.HorizontalLevel(
                 id = "h_$ts", price = price,
                 color = androidx.compose.ui.graphics.Color(0xFF2196F3),
-                label = formatPrice(price)
+                label = formatPrice(price, priceFormatter)
             ))
         }
         DrawingToolType.VERTICAL -> {
@@ -166,7 +166,7 @@ private fun addDrawing(
                 id = "ruler_$ts", startPrice = p1, endPrice = p2,
                 startTimeMs = t1, endTimeMs = t2,
                 color = androidx.compose.ui.graphics.Color(0xFFFFEB00),
-                label = "Δ${formatPrice(priceDiff)} (${(pctChange * 100).toInt() / 100f}%) | $timeStr"
+                label = "Δ${formatPrice(priceDiff, priceFormatter)} (${(pctChange * 100).toInt() / 100f}%) | $timeStr"
             ))
         }
         else -> {}
