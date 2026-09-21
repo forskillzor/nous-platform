@@ -150,10 +150,13 @@ private fun StorageTab(storage: LocalStorage) {
                     onClick = {
                         scope.launch {
                             when {
-                                msg.startsWith("Footprint") -> storage.clearFootprint(symbol = msg.removePrefix("Footprint "), olderThan = null)
+                                msg.startsWith("Footprint") -> {
+                                    val parts = msg.removePrefix("Footprint ").split(" ")
+                                    storage.clearFootprint(exchange = parts.getOrNull(0), symbol = parts.getOrNull(1), olderThan = null)
+                                }
                                 msg.startsWith("Candles") -> {
                                     val parts = msg.removePrefix("Candles ").split(" ")
-                                    storage.clearCandles(symbol = parts[0], timeframe = parts.getOrNull(1), olderThan = null)
+                                    storage.clearCandles(exchange = parts.getOrNull(0), symbol = parts.getOrNull(1), timeframe = parts.getOrNull(2), olderThan = null)
                                 }
                                 msg.startsWith("delete_older") -> {
                                     val days = msg.removePrefix("delete_older_").removeSuffix("d").toIntOrNull() ?: 7

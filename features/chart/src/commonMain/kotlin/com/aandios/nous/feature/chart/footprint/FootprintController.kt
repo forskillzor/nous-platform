@@ -10,6 +10,7 @@ import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.MutableFootprintCandle
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.currentTimeMillis
+import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,6 +45,7 @@ data class FootprintUiState(
 class FootprintController(
     private val footprintApiClient: FootprintApiClient?,
     private val tradesAdapter: TradesAdapter?,
+    private val footprintCache: FootprintCacheStore? = null,
 ) : Disposable {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -81,6 +83,19 @@ class FootprintController(
         }
         isLoadingMore = false
 
+        // Быстрый показ из кэша, пока грузится свежий footprint
+        scope.launch {
+            val cache = footprintCache ?: return@launch
+            try {
+                val cached = cache.getFootprintCandles(EXCHANGE, symbol, CACHE_LIMIT)
+                if (cached.isNotEmpty() && _state.value.candles.isEmpty()) {
+                    _state.update { it.copy(candles = cached) }
+                }
+            } catch (_: Exception) {
+                // кэш не критичен
+            }
+        }
+
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
         val isLiveTrades = sourceTf == "1m" && tradesAdapter != null
         val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
@@ -90,6 +105,7 @@ class FootprintController(
                 // 1. Load history from server
                 val history = fetchHistoricalFootprint()
                 _state.update { it.copy(candles = history, loading = false) }
+                saveToCache(history)
 
                 if (isLiveTrades) {
                     // ---- Live trade accumulation (1m or 5m) ----
@@ -108,6 +124,7 @@ class FootprintController(
                             val completed = liveCandle?.toFootprintCandle(tickCount)
                             if (completed != null) {
                                 _state.update { it.copy(candles = it.candles + completed) }
+                                saveToCache(listOf(completed))
 
                                 // For 1m display: fetch authoritative version from server
                                 // For 5m: local trade accumulation is authoritative (no server override)
@@ -176,6 +193,7 @@ class FootprintController(
                                             if (existIdx >= 0) list[existIdx] = agg else list.add(agg)
                                             s.copy(candles = list.sortedBy { it.startTime })
                                         }
+                                        saveToCache(listOf(agg))
                                         break // one display candle per poll cycle
                                     }
                                 }
@@ -256,6 +274,7 @@ class FootprintController(
                         historyLoadCount = aggregated.size,
                     )
                 }
+                saveToCache(aggregated)
             } catch (e: Exception) {
                 println("Failed to load more footprint history: ${e.message}")
             } finally {
@@ -346,6 +365,25 @@ class FootprintController(
                     error = if (data.isEmpty()) "No footprint data in DB" else null,
                 )
             }
+            saveToCache(data)
         }
+    }
+
+    private fun saveToCache(candles: List<FootprintCandle>) {
+        val cache = footprintCache ?: return
+        if (candles.isEmpty()) return
+        val currentSymbol = symbol
+        scope.launch {
+            try {
+                cache.saveFootprintCandles(EXCHANGE, currentSymbol, candles)
+            } catch (_: Exception) {
+                // кэш не критичен
+            }
+        }
+    }
+
+    companion object {
+        private const val EXCHANGE = "Binance"
+        private const val CACHE_LIMIT = 200
     }
 }

@@ -9,8 +9,11 @@ import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
 import com.aandios.nous.api.market.adapters.TradesAdapter
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
+import com.aandios.nous.core.domain.cache.CandleCacheStore
+import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.domain.repository.ChartRepository
 import com.aandios.nous.core.domain.timeseries.TimeSeriesController
+import com.aandios.nous.core.currentTimeMillis
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.format.SymbolFormatter
@@ -27,6 +30,8 @@ class ChartViewModel(
     private val footprintApiClient: FootprintApiClient? = null,
     private val tradesAdapter: TradesAdapter? = null,
     stateStore: StateStore? = null,
+    private val candleCache: CandleCacheStore? = null,
+    footprintCache: FootprintCacheStore? = null,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
@@ -38,11 +43,13 @@ class ChartViewModel(
     private val footprintController = FootprintController(
         footprintApiClient = footprintApiClient,
         tradesAdapter = tradesAdapter,
+        footprintCache = footprintCache,
     )
     private val persistor = stateStore?.let { ChartStatePersistor(it) }
 
     private var candleController: TimeSeriesController<Candle>? = null
     private var candleStateJob: Job? = null
+    private var lastCacheWriteMs = 0L
 
     init {
         viewModelScope.launch {
@@ -213,6 +220,23 @@ class ChartViewModel(
 
         _state.update { it.copy(chartState = ChartState.Loading) }
 
+        // Быстрый показ из кэша, пока грузится свежая история с биржи
+        viewModelScope.launch {
+            val cache = candleCache ?: return@launch
+            try {
+                val cached = cache.getCandles(EXCHANGE, ticker, timeframe, CACHE_LIMIT)
+                if (cached.isNotEmpty() &&
+                    _state.value.currentSymbol == ticker &&
+                    _state.value.currentTimeframe == timeframe &&
+                    _state.value.chartState is ChartState.Loading
+                ) {
+                    _state.update { it.copy(chartState = ChartState.Success(cached, cached.last().close)) }
+                }
+            } catch (_: Exception) {
+                // кэш не критичен для работы графика
+            }
+        }
+
         val controller = TimeSeriesController(
             source = chartRepository.candleSource(ticker, timeframe),
             scope = viewModelScope,
@@ -235,9 +259,33 @@ class ChartViewModel(
                         historyLoadCount = series.loadCount,
                     )
                 }
+                scheduleCacheWrite(ticker, timeframe, series.items)
             }
         }
 
         controller.start()
+    }
+
+    /** Throttled-запись свечей в кэш (не чаще раза в 30 секунд). */
+    private fun scheduleCacheWrite(symbol: String, timeframe: String, candles: List<Candle>) {
+        val cache = candleCache ?: return
+        if (candles.isEmpty()) return
+        val now = currentTimeMillis()
+        if (now - lastCacheWriteMs < CACHE_WRITE_INTERVAL_MS) return
+        lastCacheWriteMs = now
+        val snapshot = candles.takeLast(CACHE_LIMIT)
+        viewModelScope.launch {
+            try {
+                cache.saveCandles(EXCHANGE, symbol, timeframe, snapshot)
+            } catch (_: Exception) {
+                // кэш не критичен для работы графика
+            }
+        }
+    }
+
+    companion object {
+        private const val EXCHANGE = "Binance"
+        private const val CACHE_LIMIT = 500
+        private const val CACHE_WRITE_INTERVAL_MS = 30_000L
     }
 }

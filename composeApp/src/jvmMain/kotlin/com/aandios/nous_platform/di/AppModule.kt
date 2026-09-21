@@ -19,6 +19,8 @@ import com.aandios.nous.core.data.repository.ChartRepositoryImpl
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.data.repository.TradesRepositoryImpl
 import com.aandios.nous.core.di.coreModule
+import com.aandios.nous.core.domain.cache.CandleCacheStore
+import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.domain.repository.BookTickerRepository
 import com.aandios.nous.core.domain.repository.ChartRepository
 import com.aandios.nous.core.domain.repository.DomRepository
@@ -124,6 +126,8 @@ val appModule = module {
     // 4.6 Local storage (SQLite)
     single<LocalStorage> { LocalStorage() }
     single<StateStore> { get<LocalStorage>() }
+    single<CandleCacheStore> { get<LocalStorage>() }
+    single<FootprintCacheStore> { get<LocalStorage>() }
 
     // 4.7 Workspace system
     single<WorkspaceRepository> { WorkspaceRepository(get()) }
@@ -138,6 +142,8 @@ val appModule = module {
             footprintApiClient = get(),
             tradesAdapter = get(),
             stateStore = get(),
+            candleCache = get(),
+            footprintCache = get(),
         )
     }
 
