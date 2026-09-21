@@ -33,54 +33,75 @@ object FootprintAggregator {
     }
 
     /**
-     * Агрегирует свечи по count штук: суммирует bid/ask объёмы и количества по ценовым уровням.
+     * Длительность source-свечи в миллисекундах.
      */
-    fun aggregateFootprintCandles(candles: List<FootprintCandle>, count: Int): List<FootprintCandle> {
-        if (count <= 1 || candles.isEmpty()) return candles
+    fun sourceTimeframeMs(sourceTimeframe: String): Long = when (sourceTimeframe) {
+        "1m" -> 60_000L
+        "15m" -> 900_000L
+        else -> 60_000L
+    }
+
+    /**
+     * Агрегирует свечи в бакеты по count source-свечей, выровненные по абсолютному
+     * времени: startTime / (sourceMs * count). Это гарантирует, что границы
+     * display-свечей не зависят от того, с какой свечи началась выборка.
+     *
+     * @param sourceMs длительность одной source-свечи в миллисекундах
+     */
+    fun aggregateFootprintCandles(
+        candles: List<FootprintCandle>,
+        count: Int,
+        sourceMs: Long,
+    ): List<FootprintCandle> {
+        if (count <= 1 || candles.isEmpty() || sourceMs <= 0L) return candles
 
         data class Acc(var bidVol: Float = 0f, var askVol: Float = 0f, var bidCnt: Int = 0, var askCnt: Int = 0)
 
-        return candles.chunked(count)
-            .filter { it.isNotEmpty() }
-            .map { group ->
-                val startTime = group.first().startTime
-                val endTime = group.last().endTime
-                val minPrice = group.minOfOrNull { it.minPrice.toDoubleOrNull() ?: Double.MAX_VALUE } ?: 0.0
-                val maxPrice = group.maxOfOrNull { it.maxPrice.toDoubleOrNull() ?: Double.MIN_VALUE } ?: 0.0
-                val totalTicks = group.sumOf { it.totalTicks }
+        val bucketMs = sourceMs * count
+        val groups = linkedMapOf<Long, MutableList<FootprintCandle>>()
+        for (candle in candles) {
+            val bucketStart = candle.startTime / bucketMs * bucketMs
+            groups.getOrPut(bucketStart) { mutableListOf() }.add(candle)
+        }
 
-                val levelMap = linkedMapOf<String, Acc>()
-                for (candle in group) {
-                    for (level in candle.levels) {
-                        val acc = levelMap.getOrPut(level.price) { Acc() }
-                        acc.bidVol += level.bidVolumeFloat
-                        acc.askVol += level.askVolumeFloat
-                        acc.bidCnt += level.bidCount
-                        acc.askCnt += level.askCount
-                    }
-                }
+        return groups.map { (bucketStart, group) ->
+            val endTime = bucketStart + bucketMs
+            val minPrice = group.minOfOrNull { it.minPrice.toDoubleOrNull() ?: Double.MAX_VALUE } ?: 0.0
+            val maxPrice = group.maxOfOrNull { it.maxPrice.toDoubleOrNull() ?: Double.MIN_VALUE } ?: 0.0
+            val totalTicks = group.sumOf { it.totalTicks }
 
-                val sorted = levelMap.entries.sortedByDescending { it.key.toDoubleOrNull() ?: 0.0 }
-                val levels = sorted.map { (price, acc) ->
-                    FootprintLevel(
-                        price = price,
-                        bidVolume = acc.bidVol.toString(),
-                        askVolume = acc.askVol.toString(),
-                        bidCount = acc.bidCnt,
-                        askCount = acc.askCnt
-                    )
+            val levelMap = linkedMapOf<String, Acc>()
+            for (candle in group) {
+                for (level in candle.levels) {
+                    val acc = levelMap.getOrPut(level.price) { Acc() }
+                    acc.bidVol += level.bidVolumeFloat
+                    acc.askVol += level.askVolumeFloat
+                    acc.bidCnt += level.bidCount
+                    acc.askCnt += level.askCount
                 }
-                FootprintCandle(
-                    exchange = group.first().exchange,
-                    symbol = group.first().symbol,
-                    timeframe = group.first().timeframe,
-                    startTime = startTime,
-                    endTime = endTime,
-                    totalTicks = totalTicks,
-                    minPrice = minPrice.toString(),
-                    maxPrice = maxPrice.toString(),
-                    levels = levels
+            }
+
+            val sorted = levelMap.entries.sortedByDescending { it.key.toDoubleOrNull() ?: 0.0 }
+            val levels = sorted.map { (price, acc) ->
+                FootprintLevel(
+                    price = price,
+                    bidVolume = acc.bidVol.toString(),
+                    askVolume = acc.askVol.toString(),
+                    bidCount = acc.bidCnt,
+                    askCount = acc.askCnt
                 )
             }
+            FootprintCandle(
+                exchange = group.first().exchange,
+                symbol = group.first().symbol,
+                timeframe = group.first().timeframe,
+                startTime = bucketStart,
+                endTime = endTime,
+                totalTicks = totalTicks,
+                minPrice = minPrice.toString(),
+                maxPrice = maxPrice.toString(),
+                levels = levels
+            )
+        }
     }
 }

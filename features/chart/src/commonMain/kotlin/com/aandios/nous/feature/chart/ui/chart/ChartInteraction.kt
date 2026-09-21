@@ -230,11 +230,19 @@ fun CandleStickChartInteraction(
             val indicatorH = with(density) { indicatorHeightDp.toPx() }
             val indicatorTotalH = indicatorH * indicatorRenderers.size
 
+            // Единое Y-пространство для свечей, crosshair и шкалы цен: chartMainArea
+            val chartMainArea = Rect(
+                left = 0f,
+                top = 0f,
+                right = widthPx - priceScaleWidthPx - chartPadding,
+                bottom = heightPx - timeScaleHeight - indicatorTotalH
+            )
+
             val priceScaleArea = Rect(
                 left = widthPx - priceScaleWidthPx,
-                top = 0f,
+                top = chartMainArea.top,
                 right = widthPx,
-                bottom = heightPx
+                bottom = chartMainArea.bottom
             )
 
             val timeScaleArea = Rect(
@@ -242,13 +250,6 @@ fun CandleStickChartInteraction(
                 top = heightPx - timeScaleHeight,
                 right = widthPx - priceScaleWidthPx - chartPadding,
                 bottom = heightPx
-            )
-
-            val chartMainArea = Rect(
-                left = 0f,
-                top = 0f,
-                right = widthPx - priceScaleWidthPx - chartPadding,
-                bottom = heightPx - timeScaleHeight - indicatorTotalH
             )
 
             val indicatorAreas = (0 until indicatorRenderers.size).map { i ->
@@ -260,18 +261,10 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            val chartArea = Rect(
-                left = 0f,
-                top = 0f,
-                right = widthPx - priceScaleWidthPx - chartPadding,
-                bottom = heightPx
-            )
-
             ChartLayout(
                 canvasWidth = widthPx,
                 canvasHeight = heightPx,
                 priceScaleWidth = priceScaleWidthPx,
-                chartArea = chartArea,
                 priceScaleArea = priceScaleArea,
                 chartPadding = chartPadding,
                 timeScaleHeight = timeScaleHeight,
@@ -340,7 +333,7 @@ fun CandleStickChartInteraction(
                     candles = footprintCandles,
                     priceRange = priceRange,
                     config = config,
-                    chartArea = layout.chartArea,
+                    chartArea = layout.chartMainArea,
                     textMeasurer = textMeasurer,
                     scrollOffset = clampedOffset,
                     zoomLevel = zoomLevel,
@@ -352,7 +345,7 @@ fun CandleStickChartInteraction(
                     candles = candles,
                     priceRange = priceRange,
                     config = config,
-                    chartArea = layout.chartArea,
+                    chartArea = layout.chartMainArea,
                     currentPrice = currentPrice,
                     textMeasurer = textMeasurer,
                     scrollOffset = clampedOffset,
@@ -411,8 +404,8 @@ fun CandleStickChartInteraction(
                 // Разделительная линия между графиком и шкалой
                 drawLine(
                     color = config.gridColor.copy(alpha = 0.5f),
-                    start = Offset(layout.chartArea.right + layout.chartPadding, 0f),
-                    end = Offset(layout.chartArea.right + layout.chartPadding, layout.canvasHeight),
+                    start = Offset(layout.priceScaleArea.left, layout.chartMainArea.top),
+                    end = Offset(layout.priceScaleArea.left, layout.chartMainArea.bottom),
                     strokeWidth = 1f
                 )
             }

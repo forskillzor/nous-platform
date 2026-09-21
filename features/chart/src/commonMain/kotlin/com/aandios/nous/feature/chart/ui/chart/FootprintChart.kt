@@ -155,10 +155,18 @@ fun FootprintChart(
             val cp = 8f; val tsh = (hp * 0.04f).coerceAtLeast(20f).coerceAtMost(40f)
             val psw = with(density) { config.priceScaleWidth.toPx() }
             val chartMainArea = Rect(0f, 0f, wp - psw - cp, hp - tsh)
-            val chartArea = Rect(0f, 0f, wp - psw - cp, hp)
-            val priceScaleArea = Rect(wp - psw, 0f, wp, hp)
+            val priceScaleArea = Rect(wp - psw, chartMainArea.top, wp, chartMainArea.bottom)
             val timeScaleArea = Rect(0f, hp - tsh, wp - psw - cp, hp)
-            ChartLayout(wp, hp, psw, chartArea, priceScaleArea, cp, tsh, chartMainArea, timeScaleArea)
+            ChartLayout(
+                canvasWidth = wp,
+                canvasHeight = hp,
+                priceScaleWidth = psw,
+                priceScaleArea = priceScaleArea,
+                chartPadding = cp,
+                timeScaleHeight = tsh,
+                chartMainArea = chartMainArea,
+                timeScaleArea = timeScaleArea
+            )
         }
 
         chartWidthPx = layout.chartMainArea.width; chartHeightPx = layout.chartMainArea.height
@@ -187,7 +195,7 @@ fun FootprintChart(
         ) {
             drawFootprintChart(
                 candles = allCandles, priceRange = shiftedPriceRange, config = config,
-                chartArea = layout.chartArea, textMeasurer = textMeasurer,
+                chartArea = layout.chartMainArea, textMeasurer = textMeasurer,
                 scrollOffset = clampedOffset, zoomLevel = zoomLevel,
                 visibleStartIndex = startIdx, visibleEndIndex = endIdx,
             )
@@ -200,7 +208,7 @@ fun FootprintChart(
             // Price scale
             if (config.showPriceScale) {
                 drawPriceScale(shiftedPriceRange, config, layout.priceScaleArea, currentPrice, textMeasurer)
-                drawLine(config.gridColor.copy(alpha = 0.5f), Offset(layout.chartArea.right + layout.chartPadding, 0f), Offset(layout.chartArea.right + layout.chartPadding, layout.canvasHeight), 1f)
+                drawLine(config.gridColor.copy(alpha = 0.5f), Offset(layout.priceScaleArea.left, layout.chartMainArea.top), Offset(layout.priceScaleArea.left, layout.chartMainArea.bottom), 1f)
             }
 
             // Time scale

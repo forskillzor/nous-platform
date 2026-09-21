@@ -83,11 +83,7 @@ class FootprintController(
 
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
         val isLiveTrades = sourceTf == "1m" && tradesAdapter != null
-        val sourceMs = when (sourceTf) {
-            "1m" -> 60_000L
-            "15m" -> 900_000L
-            else -> 60_000L
-        }
+        val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
 
         footprintJob = scope.launch {
             try {
@@ -101,10 +97,7 @@ class FootprintController(
                         "1m" -> 60_000L; "5m" -> 300_000L; else -> 60_000L
                     }
 
-                    val liveCandle = MutableFootprintCandle(
-                        symbol = this@FootprintController.symbol,
-                        startTime = 0L, endTime = 0L
-                    )
+                    var liveCandle: MutableFootprintCandle? = null
                     var lastCandleStart = 0L
                     var tickCount = 0L
 
@@ -112,37 +105,42 @@ class FootprintController(
                         val candleStart = trade.timestamp / displayMs * displayMs
 
                         if (lastCandleStart > 0L && candleStart != lastCandleStart) {
-                            val completed = liveCandle.toFootprintCandle(tickCount)
-                            _state.update { it.copy(candles = it.candles + completed) }
+                            val completed = liveCandle?.toFootprintCandle(tickCount)
+                            if (completed != null) {
+                                _state.update { it.copy(candles = it.candles + completed) }
 
-                            // For 1m display: fetch authoritative version from server
-                            // For 5m: local trade accumulation is authoritative (no server override)
-                            if (aggCount == 1) {
-                                val serverCandle = fetchCompletedCandle(lastCandleStart, candleStart)
-                                if (serverCandle != null && serverCandle.levels.isNotEmpty()) {
-                                    _state.update { s ->
-                                        val updated = s.candles.toMutableList()
-                                        if (updated.isNotEmpty()) updated[updated.lastIndex] = serverCandle
-                                        s.copy(candles = updated)
+                                // For 1m display: fetch authoritative version from server
+                                // For 5m: local trade accumulation is authoritative (no server override)
+                                if (aggCount == 1) {
+                                    val serverCandle = fetchCompletedCandle(lastCandleStart, candleStart)
+                                    if (serverCandle != null && serverCandle.levels.isNotEmpty()) {
+                                        _state.update { s ->
+                                            val updated = s.candles.toMutableList()
+                                            if (updated.isNotEmpty()) updated[updated.lastIndex] = serverCandle
+                                            s.copy(candles = updated)
+                                        }
                                     }
                                 }
                             }
-
-                            liveCandle.clear()
-                            liveCandle.addTrade(trade.price.toFloat(), trade.quantity.toFloat(), !trade.isBuyerMaker)
-                            tickCount = 1
-                        } else {
-                            liveCandle.addTrade(trade.price.toFloat(), trade.quantity.toFloat(), !trade.isBuyerMaker)
-                            tickCount++
+                            liveCandle = null
+                            tickCount = 0
                         }
+
+                        val candle = liveCandle ?: MutableFootprintCandle(
+                            symbol = this@FootprintController.symbol,
+                            startTime = candleStart,
+                            endTime = candleStart + displayMs,
+                        ).also { liveCandle = it }
+                        candle.addTrade(trade.price.toFloat(), trade.quantity.toFloat(), !trade.isBuyerMaker)
+                        tickCount++
 
                         lastCandleStart = candleStart
 
-                        val liveSnapshot = liveCandle.toFootprintCandle(tickCount)
+                        val liveSnapshot = candle.toFootprintCandle(tickCount)
                         _state.update {
                             it.copy(
                                 liveCandle = if (liveSnapshot.levels.isNotEmpty()) liveSnapshot else null,
-                                currentPrice = liveCandle.lastPrice.takeIf { p -> p > 0f },
+                                currentPrice = candle.lastPrice.takeIf { p -> p > 0f },
                             )
                         }
                     }
@@ -171,7 +169,7 @@ class FootprintController(
                                     val chunk = raw.subList(i, i + aggCount)
                                     val chunkStart = chunk.firstOrNull()?.startTime ?: continue
                                     if (chunkStart >= displayStart - sourceMs && chunkStart <= displayStart + sourceMs) {
-                                        val agg = FootprintAggregator.aggregateFootprintCandles(chunk, aggCount).firstOrNull() ?: continue
+                                        val agg = FootprintAggregator.aggregateFootprintCandles(chunk, aggCount, sourceMs).firstOrNull() ?: continue
                                         _state.update { s ->
                                             val list = s.candles.toMutableList()
                                             val existIdx = list.indexOfFirst { it.startTime == agg.startTime }
@@ -236,6 +234,7 @@ class FootprintController(
                     isLoadingMore = false; return@launch
                 }
                 val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
+                val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
 
                 val historical = (footprintApiClient?.getFootprint(
                     symbol = symbol,
@@ -250,7 +249,7 @@ class FootprintController(
                     return@launch
                 }
 
-                val aggregated = if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(historical, aggCount) else historical
+                val aggregated = if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(historical, aggCount, sourceMs) else historical
                 _state.update { s ->
                     s.copy(
                         candles = (aggregated + s.candles).distinctBy { it.startTime },
@@ -275,6 +274,7 @@ class FootprintController(
     private suspend fun fetchHistoricalFootprint(): List<FootprintCandle> {
         if (footprintApiClient == null) return emptyList()
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
+        val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
         return try {
             val raw = footprintApiClient.getFootprint(
                 symbol = symbol,
@@ -285,7 +285,7 @@ class FootprintController(
                     else -> 20
                 }
             ).reversed() // server returns DESC, we store ASC
-            if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(raw, aggCount) else raw
+            if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(raw, aggCount, sourceMs) else raw
         } catch (e: Exception) {
             emptyList()
         }
@@ -295,7 +295,7 @@ class FootprintController(
     private suspend fun fetchCompletedCandle(startTime: Long, endTime: Long): FootprintCandle? {
         if (footprintApiClient == null) return null
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
-        val sourceMs = when (sourceTf) { "1m" -> 60_000L; "15m" -> 900_000L; else -> 60_000L }
+        val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
 
         // Always request the source candles covering the display-tf window:
         // For 1m → 1 source candle; for 5m → 5 source 1m candles; for 1h → 4 source 15m candles
@@ -321,8 +321,8 @@ class FootprintController(
             for (i in 0..raw.size - aggCount) {
                 val chunk = raw.subList(i, i + aggCount)
                 val chunkStart = chunk.firstOrNull()?.startTime ?: continue
-                if (chunkStart == startTime || chunkStart == from) {
-                    return FootprintAggregator.aggregateFootprintCandles(chunk, aggCount).firstOrNull()
+                if (chunkStart >= startTime && chunkStart < startTime + sourceMs) {
+                    return FootprintAggregator.aggregateFootprintCandles(chunk, aggCount, sourceMs).firstOrNull()
                 }
             }
             null

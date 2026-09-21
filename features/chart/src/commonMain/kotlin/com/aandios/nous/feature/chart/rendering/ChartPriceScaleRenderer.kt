@@ -73,6 +73,7 @@ fun DrawScope.drawPriceScale(
                 price = currentPrice,
                 y = y,
                 priceScaleWidth = priceScaleArea.width,
+                priceScaleHeight = priceScaleArea.height,
                 textMeasurer = textMeasurer,
                 config = config
             )
@@ -87,6 +88,7 @@ fun DrawScope.drawCurrentPriceBadge(
     price: Float,
     y: Float,
     priceScaleWidth: Float,
+    priceScaleHeight: Float,
     textMeasurer: TextMeasurer,
     config: ChartConfig
 ) {
@@ -119,7 +121,7 @@ fun DrawScope.drawCurrentPriceBadge(
     // Проверяем, чтобы badge не выходил за границы шкалы
     val adjustedBadgeTop = when {
         badgeTop < 0f -> 0f
-        badgeTop + badgeHeight > size.height -> size.height - badgeHeight
+        badgeTop + badgeHeight > priceScaleHeight -> priceScaleHeight - badgeHeight
         else -> badgeTop
     }
 

@@ -34,13 +34,13 @@ class FootprintAggregatorTest {
     @Test
     fun `aggregateFootprintCandles returns input when count is not greater than one`() {
         val candles = listOf(candle(0L, 60_000L, level("100.0", "1.0", "2.0")))
-        assertEquals(candles, FootprintAggregator.aggregateFootprintCandles(candles, 1))
-        assertEquals(candles, FootprintAggregator.aggregateFootprintCandles(candles, 0))
+        assertEquals(candles, FootprintAggregator.aggregateFootprintCandles(candles, 1, 60_000L))
+        assertEquals(candles, FootprintAggregator.aggregateFootprintCandles(candles, 0, 60_000L))
     }
 
     @Test
     fun `aggregateFootprintCandles returns empty for empty input`() {
-        assertTrue(FootprintAggregator.aggregateFootprintCandles(emptyList(), 5).isEmpty())
+        assertTrue(FootprintAggregator.aggregateFootprintCandles(emptyList(), 5, 60_000L).isEmpty())
     }
 
     @Test
@@ -56,7 +56,7 @@ class FootprintAggregatorTest {
             level("102.0", "0.0", "3.0", bidCount = 0, askCount = 6),
         )
 
-        val result = FootprintAggregator.aggregateFootprintCandles(listOf(first, second), 2)
+        val result = FootprintAggregator.aggregateFootprintCandles(listOf(first, second), 2, 60_000L)
 
         assertEquals(1, result.size)
         val agg = result.first()
@@ -87,7 +87,7 @@ class FootprintAggregatorTest {
             candle(i * 60_000L, (i + 1) * 60_000L, level("100.0", "1.0", "1.0"))
         }
 
-        val result = FootprintAggregator.aggregateFootprintCandles(candles, 2)
+        val result = FootprintAggregator.aggregateFootprintCandles(candles, 2, 60_000L)
 
         assertEquals(3, result.size)
         assertEquals(0L, result[0].startTime)
@@ -95,7 +95,32 @@ class FootprintAggregatorTest {
         assertEquals(120_000L, result[1].startTime)
         assertEquals(240_000L, result[1].endTime)
         assertEquals(240_000L, result[2].startTime)
-        assertEquals(300_000L, result[2].endTime)
+        assertEquals(360_000L, result[2].endTime)
+    }
+
+    @Test
+    fun `aggregateFootprintCandles aligns buckets to absolute time boundaries`() {
+        // 05:26 and 05:27 source candles must fall into the 05:25–05:30 bucket
+        val fiveMinutes = 300_000L
+        val base = 1_500_000_000_000L
+        val first = candle(base + 26 * 60_000L, base + 27 * 60_000L, level("100.0", "1.0", "1.0"))
+        val second = candle(base + 27 * 60_000L, base + 28 * 60_000L, level("101.0", "2.0", "2.0"))
+        val alignedStart = first.startTime / fiveMinutes * fiveMinutes
+
+        val result = FootprintAggregator.aggregateFootprintCandles(listOf(first, second), 5, 60_000L)
+
+        assertEquals(1, result.size)
+        assertEquals(alignedStart, result.first().startTime)
+        assertEquals(alignedStart + fiveMinutes, result.first().endTime)
+        assertEquals(0L, result.first().startTime % fiveMinutes)
+        assertTrue(result.first().startTime < first.startTime)
+    }
+
+    @Test
+    fun `sourceTimeframeMs returns duration of source timeframe`() {
+        assertEquals(60_000L, FootprintAggregator.sourceTimeframeMs("1m"))
+        assertEquals(900_000L, FootprintAggregator.sourceTimeframeMs("15m"))
+        assertEquals(60_000L, FootprintAggregator.sourceTimeframeMs("unknown"))
     }
 
     @Test
@@ -105,7 +130,7 @@ class FootprintAggregatorTest {
             candle(60_000L, 120_000L, level("101.5", "1.0", "1.0", bidCount = 1, askCount = 1)),
         )
 
-        val agg = FootprintAggregator.aggregateFootprintCandles(candles, 2).first()
+        val agg = FootprintAggregator.aggregateFootprintCandles(candles, 2, 60_000L).first()
 
         assertEquals("99.5", agg.minPrice)
         assertEquals("101.5", agg.maxPrice)
