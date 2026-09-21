@@ -1799,14 +1799,23 @@ val layout = remember(config.priceScaleWidth, canvasWidth, canvasHeight,
 val visibleCandles = remember(startIdx, endIdx, candles) {
     candles.subList(startIdx, endIdx.coerceAtMost(candles.size))
 }
-val priceRange = remember(visibleCandles, currentPrice) {
-    calculatePriceRangeWithCurrentPrice(visibleCandles, currentPrice)
+// Y-масштаб — только по видимым свечам: текущая цена НЕ влияет на диапазон
+val priceRange = remember(visibleCandles) {
+    calculatePriceRangeWithCurrentPrice(visibleCandles, currentPrice = null)
 }
+// Линия и badge текущей цены рисуются, только если цена попадает в диапазон
+val visibleCurrentPrice = currentPrice?.takeIf { it in priceRange.visibleMin..priceRange.visibleMax }
 ```
 
 Раньше ключа `candles` не было, и `remember` возвращал `subList` **старого
 списка**. После смены символа график считал диапазон цен по BTC, а рисовал
 другой инструмент — получалась «горизонтальная линия». Теперь ключ есть.
+
+Вторая причина «горизонтальной линии» — `currentPrice` в диапазоне.
+Если уйти далеко в историю, текущая цена растягивала `PriceRange` на сотни
+процентов, и видимые свечи сжимались в полоску. Поэтому масштаб считается
+только по видимым свечам, а линия/badge цены показываются лишь когда цена
+в видимом диапазоне.
 
 ## 14.5. Порядок отрисовки Canvas
 
@@ -1885,23 +1894,36 @@ val oldZoom = zoomLevel
 val newZoom = (oldZoom * factor).coerceIn(minZoom, maxZoom)
 val actualFactor = newZoom / oldZoom
 
-val newScrollOffset = if (isCtrlPressed) {
-    // фиксируем свечу под курсором
-    val virtualPos = mouseX + scrollOffset
-    virtualPos * actualFactor - mouseX
-} else {
-    // фиксируем правый край (самую новую свечу)
-    val rightEdge = scrollOffset + chartWidthPx
-    rightEdge * actualFactor - chartWidthPx
-}
+val newScrollOffset = calculateZoomScrollOffset(
+    scrollOffset = scrollOffset,
+    chartWidth = chartWidthPx,
+    mouseX = change.position.x,
+    actualFactor = actualFactor,
+    anchorAtMouse = isCtrlPressed,
+)
+
+// maxScroll считаем для НОВОГО зума: кламп по устаревшему значению
+// ломает якорь (правый край/курсор) при приближении
+val newMaxScroll = calculateMaxScroll(
+    candleCount = currentCandles.size,
+    candleMetrics = calculateCandleMetrics(newZoom),
+    chartWidth = chartWidthPx,
+)
 
 zoomLevel = newZoom
-scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, newMaxScroll)
 ```
 
-Два режима зума: обычный (якорь — правый край) и `Ctrl+Zoom` (якорь —
-точка под курсором). Кламп `coerceIn` добавлен в рефакторинге: раньше
-`scrollOffset` мог уехать далеко за пределы, и картинка «дёргалась».
+Два режима зума:
+
+- **обычный** — якорь на правом краю (самая новая видимая свеча);
+- **`Ctrl+Zoom`** — якорь на точке под курсором.
+
+`calculateZoomScrollOffset` и `calculateMaxScroll` — чистые функции из
+`ChartCalculator` (см. главу 25.6), покрытые тестами. Ключевой момент:
+`maxScroll` для клампа считается **для нового зума**, иначе при
+приближении кламп по старому значению сдвигал якорь влево. Именно это
+ломало зум «от крайней правой свечи».
 
 ## 15.4. Crosshair
 
@@ -1934,6 +1956,37 @@ LaunchedEffect(historyLoadCount, candles.size) {
 срабатывает и при добавлении новой realtime-свечи (`candles.size` меняется),
 из-за чего скролл может корректироваться повторно. Правильнее завести
 отдельный счётчик «поколение истории» или одноразовый сигнал.
+
+## 15.6. Кнопка «к последней свече»
+
+В правом нижнем углу области графика — кнопка `⇥`:
+
+```kotlin
+val controlsBottomPadding = with(density) {
+    (layout.canvasHeight - layout.chartMainArea.bottom).toDp()
+} + 8.dp
+val isAtRightEdge = maxScroll - clampedOffset < 1f
+Box(
+    modifier = Modifier
+        .align(Alignment.BottomEnd)
+        .padding(end = config.priceScaleWidth + 10.dp, bottom = controlsBottomPadding)
+        .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+        .clickable { scrollOffset = maxScroll }
+        .padding(horizontal = 8.dp, vertical = 3.dp)
+) {
+    Text(
+        text = "\u21E5",
+        color = if (isAtRightEdge) Color(0xFF6B7A88) else Color(0xFF5B9BD5),
+        fontSize = 14.sp,
+        fontFamily = FontFamily.Monospace,
+    )
+}
+```
+
+- отступы учитывают ширину шкалы цен и высоту шкалы времени/индикаторов —
+  кнопка всегда в правом нижнем углу именно области графика;
+- клик — `scrollOffset = maxScroll` (переход к самой новой свече);
+- цвет: синий, когда есть куда листать; серый — когда график уже у края.
 
 ---
 
@@ -2454,8 +2507,9 @@ fun calculatePriceRangeWithCurrentPrice(candles: List<Candle>, currentPrice: Flo
 ```
 
 Диапазон считается **только по видимым свечам** — при скролле/зуме
-Y-масштаб подстраивается. `currentPrice` включается, чтобы линия цены
-не уезжала за экран.
+Y-масштаб подстраивается. Параметр `currentPrice` сохранён для тестов
+и обратной совместимости, но `ChartInteraction` передаёт `null`:
+текущая цена не должна растягивать масштаб (см. главу 14.4).
 
 `calculatePriceRangeWithFootprint` — то же для footprint-свечей, но
 учитывает `levels[].priceFloat` и не даёт `visibleMin` уйти ниже нуля.
@@ -2505,6 +2559,45 @@ fun findNearestCandleIndex(
 
 Используется crosshair'ом и рисованием. Параметр `chartWidth` удалён —
 он не участвовал в вычислении.
+
+## 25.6. Зум и максимальный скролл
+
+```kotlin
+/** Максимальный скролл: ширина всего ряда минус ширина области графика. */
+fun calculateMaxScroll(
+    candleCount: Int,
+    candleMetrics: CandleMetrics,
+    chartWidth: Float,
+): Float = max(0f, candleCount * (candleMetrics.width + candleMetrics.spacing) - chartWidth)
+
+/**
+ * Новое значение scrollOffset при зуме.
+ * anchorAtMouse = false — фиксируем правый край (самая новая свеча);
+ * anchorAtMouse = true  — фиксируем точку под курсором (Ctrl+zoom).
+ */
+fun calculateZoomScrollOffset(
+    scrollOffset: Float,
+    chartWidth: Float,
+    mouseX: Float,
+    actualFactor: Float,
+    anchorAtMouse: Boolean,
+): Float = if (anchorAtMouse) {
+    (mouseX + scrollOffset) * actualFactor - mouseX
+} else {
+    (scrollOffset + chartWidth) * actualFactor - chartWidth
+}
+```
+
+Обе функции покрыты тестами:
+
+- `zoom without ctrl keeps right edge fixed`;
+- `zoom with ctrl keeps point under cursor fixed`;
+- `zoom at latest candle keeps right edge after clamp`;
+- `calculateMaxScroll is zero when content fits`.
+
+Важно: в обработчике зума `maxScroll` для клампа считается от **нового**
+зума (`calculateCandleMetrics(newZoom)`), иначе кламп по устаревшему
+значению сдвигал якорь.
 
 ---
 
@@ -2778,7 +2871,7 @@ App start
 
 | Модуль | Файл | Что покрывает |
 |---|---|---|
-| `features:chart` | `ChartCalculatorTest` | метрики, `priceToY/priceFromY`, уровни, nearest index, PriceRange (включая низкие цены) |
+| `features:chart` | `ChartCalculatorTest` | метрики, `priceToY/priceFromY`, уровни, nearest index, PriceRange (включая низкие цены), якоря зума |
 | `features:chart` | `FootprintAggregatorTest` | source-ТФ, выровненная агрегация, суммы объёмов, чанки |
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |

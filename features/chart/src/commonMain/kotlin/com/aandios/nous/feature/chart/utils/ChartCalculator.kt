@@ -9,6 +9,7 @@ import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.PriceRange
+import kotlin.math.max
 
 /**
  * Рассчитывает метрики свечей на основе zoomLevel.
@@ -139,4 +140,36 @@ fun findNearestCandleIndex(
     val virtualX = mouseX + scrollOffset
     val index = (virtualX / totalWidthPerCandle).toInt()
     return index.coerceIn(0, candles.size - 1)
+}
+
+/**
+ * Максимальный скролл для текущего зума: ширина всего ряда минус ширина области графика.
+ */
+fun calculateMaxScroll(
+    candleCount: Int,
+    candleMetrics: CandleMetrics,
+    chartWidth: Float,
+): Float {
+    val totalW = candleMetrics.width + candleMetrics.spacing
+    return max(0f, candleCount * totalW - chartWidth)
+}
+
+/**
+ * Новое значение scrollOffset при зуме.
+ *
+ * @param anchorAtMouse false — фиксируем правый край (самая новая свеча);
+ *                      true — фиксируем точку под курсором (Ctrl+zoom).
+ */
+fun calculateZoomScrollOffset(
+    scrollOffset: Float,
+    chartWidth: Float,
+    mouseX: Float,
+    actualFactor: Float,
+    anchorAtMouse: Boolean,
+): Float {
+    return if (anchorAtMouse) {
+        (mouseX + scrollOffset) * actualFactor - mouseX
+    } else {
+        (scrollOffset + chartWidth) * actualFactor - chartWidth
+    }
 }

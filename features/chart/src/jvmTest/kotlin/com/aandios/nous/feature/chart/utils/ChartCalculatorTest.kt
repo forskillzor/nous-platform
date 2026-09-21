@@ -119,6 +119,68 @@ class ChartCalculatorTest {
         assertTrue(result.range > 0f)
     }
 
+    @Test
+    fun `zoom without ctrl keeps right edge fixed`() {
+        val scroll = 500f
+        val chartWidth = 800f
+        val rightEdgeBefore = scroll + chartWidth
+
+        val newScroll = calculateZoomScrollOffset(
+            scrollOffset = scroll,
+            chartWidth = chartWidth,
+            mouseX = 100f,
+            actualFactor = 1.25f,
+            anchorAtMouse = false,
+        )
+
+        assertEquals(rightEdgeBefore * 1.25f, newScroll + chartWidth, 0.001f)
+    }
+
+    @Test
+    fun `zoom with ctrl keeps point under cursor fixed`() {
+        val scroll = 500f
+        val mouseX = 200f
+        val virtualBefore = mouseX + scroll
+
+        val newScroll = calculateZoomScrollOffset(
+            scrollOffset = scroll,
+            chartWidth = 800f,
+            mouseX = mouseX,
+            actualFactor = 1.25f,
+            anchorAtMouse = true,
+        )
+
+        assertEquals(virtualBefore * 1.25f, mouseX + newScroll, 0.001f)
+    }
+
+    @Test
+    fun `zoom at latest candle keeps right edge after clamp`() {
+        val metrics = calculateCandleMetrics(1f)
+        val chartWidth = 800f
+        val candleCount = 500
+        val maxScrollBefore = calculateMaxScroll(candleCount, metrics, chartWidth)
+        val actualFactor = 0.8f
+
+        val newScroll = calculateZoomScrollOffset(
+            scrollOffset = maxScrollBefore,
+            chartWidth = chartWidth,
+            mouseX = 0f,
+            actualFactor = actualFactor,
+            anchorAtMouse = false,
+        )
+        val newMaxScroll = calculateMaxScroll(candleCount, calculateCandleMetrics(actualFactor), chartWidth)
+
+        assertEquals(newMaxScroll, newScroll.coerceIn(-300f, newMaxScroll), 0.001f)
+    }
+
+    @Test
+    fun `calculateMaxScroll is zero when content fits`() {
+        val metrics = calculateCandleMetrics(1f)
+
+        assertEquals(0f, calculateMaxScroll(candleCount = 10, candleMetrics = metrics, chartWidth = 10_000f))
+        assertTrue(calculateMaxScroll(candleCount = 1000, candleMetrics = metrics, chartWidth = 100f) > 0f)
+    }
+
     private fun footprintCandle(minPrice: String, maxPrice: String, levels: List<String>) = FootprintCandle(
         exchange = "Binance",
         symbol = "BTCUSDT",

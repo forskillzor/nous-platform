@@ -6,24 +6,32 @@
 package com.aandios.nous.feature.chart.ui.chart
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -33,9 +41,11 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
@@ -54,7 +64,9 @@ import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
+import com.aandios.nous.feature.chart.utils.calculateMaxScroll
 import com.aandios.nous.feature.chart.utils.calculatePriceRangeWithCurrentPrice
+import com.aandios.nous.feature.chart.utils.calculateZoomScrollOffset
 import kotlin.math.max
 
 /**
@@ -96,6 +108,8 @@ fun CandleStickChartInteraction(
     var isAltPressed by remember { mutableStateOf(false) }
     // Alt+hover popup position for footprint
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
+    // Актуальный список свечей для обработчиков жестов (pointerInput не перезапускается)
+    val currentCandles by rememberUpdatedState(candles)
     val maxScrollLeft = 300f
     val maxZoom = if (footprintCandles != null) 30f else 4f
     val minZoom = 0.05f
@@ -175,18 +189,24 @@ fun CandleStickChartInteraction(
                             val actualFactor = newZoom / oldZoom
 
                             val mouseX = change.position.x
-                            val newScrollOffset = if (isCtrlPressed) {
-                                // Ctrl+zoom: фиксируем свечу под курсором
-                                val virtualPos = mouseX + scrollOffset
-                                virtualPos * actualFactor - mouseX
-                            } else {
-                                // Обычный зум: фиксируем правый край (самую новую свечу)
-                                val rightEdge = scrollOffset + chartWidthPx
-                                rightEdge * actualFactor - chartWidthPx
-                            }
+                            val newScrollOffset = calculateZoomScrollOffset(
+                                scrollOffset = scrollOffset,
+                                chartWidth = chartWidthPx,
+                                mouseX = mouseX,
+                                actualFactor = actualFactor,
+                                anchorAtMouse = isCtrlPressed,
+                            )
+
+                            // maxScroll считаем для НОВОГО зума: кламп по устаревшему значению
+                            // ломает якорь (правый край/курсор) при приближении
+                            val newMaxScroll = calculateMaxScroll(
+                                candleCount = currentCandles.size,
+                                candleMetrics = calculateCandleMetrics(newZoom),
+                                chartWidth = chartWidthPx,
+                            )
 
                             zoomLevel = newZoom
-                            scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+                            scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, newMaxScroll)
                             onZoomChange?.invoke(zoomLevel)
 
                             change.consume()
@@ -296,13 +316,17 @@ fun CandleStickChartInteraction(
         val startIdx = (clampedOffset / totalW).toInt().coerceIn(0, max(0, candles.size - 1))
         val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, candles.size)
 
-        // PriceRange только по видимым свечам (Y-масштаб адаптируется при зум/скролле)
+        // PriceRange только по видимым свечам (Y-масштаб адаптируется при зум/скролле).
+        // Текущая цена НЕ влияет на диапазон: иначе при уходе в историю
+        // график вырождается в горизонтальную линию.
         val visibleCandles = remember(startIdx, endIdx, candles) {
             candles.subList(startIdx, endIdx.coerceAtMost(candles.size))
         }
-        val priceRange = remember(visibleCandles, currentPrice) {
-            calculatePriceRangeWithCurrentPrice(visibleCandles, currentPrice)
+        val priceRange = remember(visibleCandles) {
+            calculatePriceRangeWithCurrentPrice(visibleCandles, currentPrice = null)
         }
+        // Линия и badge текущей цены рисуются, только если цена попадает в видимый диапазон
+        val visibleCurrentPrice = currentPrice?.takeIf { it in priceRange.visibleMin..priceRange.visibleMax }
 
         // Lazy loading historical candles: когда пользователь скроллит левее первой свечи
         // (clampedOffset < 0) — появляется пустое место, вызываем загрузку истории
@@ -346,7 +370,7 @@ fun CandleStickChartInteraction(
                     priceRange = priceRange,
                     config = config,
                     chartArea = layout.chartMainArea,
-                    currentPrice = currentPrice,
+                    currentPrice = visibleCurrentPrice,
                     textMeasurer = textMeasurer,
                     scrollOffset = clampedOffset,
                     zoomLevel = zoomLevel,
@@ -397,7 +421,7 @@ fun CandleStickChartInteraction(
                     priceRange = priceRange,
                     config = config,
                     priceScaleArea = layout.priceScaleArea,
-                    currentPrice = currentPrice,
+                    currentPrice = visibleCurrentPrice,
                     textMeasurer = textMeasurer
                 )
 
@@ -448,6 +472,26 @@ fun CandleStickChartInteraction(
                     zoomLevel = zoomLevel,
                 )
             }
+        }
+        // Кнопка «к последней свече» в правом нижнем углу области графика
+        val controlsBottomPadding = with(density) {
+            (layout.canvasHeight - layout.chartMainArea.bottom).toDp()
+        } + 8.dp
+        val isAtRightEdge = maxScroll - clampedOffset < 1f
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = config.priceScaleWidth + 10.dp, bottom = controlsBottomPadding)
+                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                .clickable { scrollOffset = maxScroll }
+                .padding(horizontal = 8.dp, vertical = 3.dp)
+        ) {
+            Text(
+                text = "\u21E5",
+                color = if (isAtRightEdge) Color(0xFF6B7A88) else Color(0xFF5B9BD5),
+                fontSize = 14.sp,
+                fontFamily = FontFamily.Monospace,
+            )
         }
         // Drawing overlay (only when drawing tool active)
         if (activeDrawingTool != DrawingToolType.NONE) {

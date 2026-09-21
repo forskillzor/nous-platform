@@ -41,7 +41,9 @@ import com.aandios.nous.feature.chart.rendering.drawCurrentPriceLine
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
+import com.aandios.nous.feature.chart.utils.calculateMaxScroll
 import com.aandios.nous.feature.chart.utils.calculatePriceRangeWithFootprint
+import com.aandios.nous.feature.chart.utils.calculateZoomScrollOffset
 import com.aandios.nous.feature.chart.utils.priceToY
 import kotlin.math.max
 
@@ -57,6 +59,8 @@ fun FootprintChart(
     val allCandles = remember(completedCandles, liveCandle) {
         if (liveCandle != null) completedCandles + liveCandle else completedCandles
     }
+    // Актуальный список для обработчиков жестов (pointerInput не перезапускается)
+    val currentAllCandles by rememberUpdatedState(allCandles)
 
     if (allCandles.isEmpty()) {
         BoxWithConstraints(modifier = modifier.fillMaxSize()) {
@@ -132,15 +136,20 @@ fun FootprintChart(
                             val oldZoom = zoomLevel
                             val newZoom = (oldZoom * factor).coerceIn(minZoom, maxZoom)
                             val actualFactor = newZoom / oldZoom
-                            val newScrollOffset = if (isCtrlPressed) {
-                                val mouseX = change.position.x
-                                val virtualPos = mouseX + scrollOffset
-                                virtualPos * actualFactor - mouseX
-                            } else {
-                                val rightEdge = scrollOffset + chartWidthPx
-                                rightEdge * actualFactor - chartWidthPx
-                            }
-                            zoomLevel = newZoom; scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+                            val newScrollOffset = calculateZoomScrollOffset(
+                                scrollOffset = scrollOffset,
+                                chartWidth = chartWidthPx,
+                                mouseX = change.position.x,
+                                actualFactor = actualFactor,
+                                anchorAtMouse = isCtrlPressed,
+                            )
+                            val newMaxScroll = calculateMaxScroll(
+                                candleCount = currentAllCandles.size,
+                                candleMetrics = calculateCandleMetrics(newZoom),
+                                chartWidth = chartWidthPx,
+                            )
+                            zoomLevel = newZoom
+                            scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, newMaxScroll)
                             change.consume()
                         }
                     }
