@@ -42,5 +42,11 @@ kotlin {
             api(libs.koin.core)
             api(libs.koin.compose)
         }
+
+        jvmTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.junit.jupiter)
+            implementation(libs.kotlinx.coroutines.test)
+        }
     }
 }

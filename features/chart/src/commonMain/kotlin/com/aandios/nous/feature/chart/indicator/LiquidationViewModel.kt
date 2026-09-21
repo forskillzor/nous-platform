@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.indicator
 
 import com.aandios.nous.api.market.adapters.LiquidationAdapter
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
+import com.aandios.nous.core.domain.timeseries.TimeSeriesController
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 
@@ -16,61 +17,54 @@ data class LiquidationState(
     val error: String? = null
 )
 
+/**
+ * Состояние ликвидаций поверх обобщённого TimeSeriesController:
+ * история за последний час + realtime WebSocket.
+ */
 class LiquidationViewModel(
     private val liquidationAdapter: LiquidationAdapter?
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private var subscriptionJob: Job? = null
+    private var controller: TimeSeriesController<LiquidationOrder>? = null
+    private var stateJob: Job? = null
 
     private val _state = MutableStateFlow(LiquidationState())
     val state: StateFlow<LiquidationState> = _state.asStateFlow()
 
     fun subscribe(symbol: String) {
         unsubscribe()
-        if (liquidationAdapter == null) {
+        val adapter = liquidationAdapter
+        if (adapter == null) {
             _state.value = _state.value.copy(error = "Liquidation adapter not available")
             return
         }
 
         _state.value = LiquidationState(connected = true)
 
-        subscriptionJob = scope.launch {
-            try {
-                // 1. Load historical data first
-                val endTime = com.aandios.nous.core.currentTimeMillis()
-                val startTime = endTime - 60 * 60 * 1000L // last hour
-                val history = liquidationAdapter.getHistoricalLiquidations(
-                    symbol = symbol,
-                    startTime = startTime,
-                    endTime = endTime,
-                    limit = 100
-                )
-                _state.value = _state.value.copy(orders = history)
+        val seriesController = TimeSeriesController(
+            source = LiquidationSeriesSource(adapter, symbol),
+            scope = scope,
+        )
+        controller = seriesController
 
-                // 2. Then subscribe to real-time WebSocket
-                liquidationAdapter.subscribeToLiquidations(symbol)
-                    .catch { e ->
-                        _state.value = _state.value.copy(connected = false, error = e.message)
-                    }
-                    .collect { order ->
-                        val current = _state.value.orders.toMutableList()
-                        current.add(order)
-                        if (current.size > 1000) {
-                            current.removeAt(0)
-                        }
-                        _state.value = _state.value.copy(orders = current)
-                    }
-            } catch (e: CancellationException) {
-                // normal stop
-            } catch (e: Exception) {
-                _state.value = _state.value.copy(connected = false, error = e.message)
+        stateJob = scope.launch {
+            seriesController.state.collect { series ->
+                _state.value = _state.value.copy(
+                    orders = series.items,
+                    connected = series.error == null,
+                    error = series.error,
+                )
             }
         }
+
+        seriesController.start()
     }
 
     fun unsubscribe() {
-        subscriptionJob?.cancel()
-        subscriptionJob = null
+        stateJob?.cancel()
+        stateJob = null
+        controller?.dispose()
+        controller = null
         _state.value = LiquidationState()
     }
 

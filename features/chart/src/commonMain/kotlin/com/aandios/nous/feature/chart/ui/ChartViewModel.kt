@@ -10,6 +10,7 @@ import com.aandios.nous.api.market.adapters.TradesAdapter
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.domain.repository.ChartRepository
+import com.aandios.nous.core.domain.timeseries.TimeSeriesController
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.format.SymbolFormatter
@@ -28,11 +29,6 @@ class ChartViewModel(
     stateStore: StateStore? = null,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
-    private var currentJob: Job? = null
-    private var isLoadingMore = false
-
-    /** Старые свечи, подгруженные вручную; мержатся с realtime-эмиссиями репозитория. */
-    private var historyPrefix: List<Candle> = emptyList()
 
     private val _state = MutableStateFlow(ChartUiState())
     val state: StateFlow<ChartUiState> = _state.asStateFlow()
@@ -44,6 +40,9 @@ class ChartViewModel(
         tradesAdapter = tradesAdapter,
     )
     private val persistor = stateStore?.let { ChartStatePersistor(it) }
+
+    private var candleController: TimeSeriesController<Candle>? = null
+    private var candleStateJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -66,7 +65,8 @@ class ChartViewModel(
     }
 
     override fun dispose() {
-        currentJob?.cancel()
+        candleStateJob?.cancel()
+        candleController?.dispose()
         footprintController.dispose()
         viewModelScope.cancel()
     }
@@ -81,7 +81,7 @@ class ChartViewModel(
                 ticker = intent.symbol ?: _state.value.currentSymbol,
                 timeframe = intent.timeframe ?: _state.value.currentTimeframe,
             )
-            is ChartIntent.LoadMoreHistory -> loadMoreHistory()
+            is ChartIntent.LoadMoreHistory -> candleController?.loadMore()
             is ChartIntent.LoadMoreFootprintHistory -> footprintController.loadMore()
             is ChartIntent.RestoreState -> restoreState()
         }
@@ -196,35 +196,7 @@ class ChartViewModel(
                 historyLoadCount = 0,
             )
         }
-        isLoadingMore = false
-        historyPrefix = emptyList()
-
-        currentJob?.cancel()
-        _state.update { it.copy(chartState = ChartState.Loading) }
-
-        currentJob = viewModelScope.launch {
-            try {
-                chartRepository.getChart(ticker, timeframe)
-                    .catch { e -> _state.update { it.copy(chartState = ChartState.Error(e.message ?: "Unknown error")) } }
-                    .collect { candles ->
-                        if (candles.isNotEmpty()) {
-                            val merged = mergeWithHistory(candles)
-                            _state.update {
-                                it.copy(
-                                    chartState = ChartState.Success(
-                                        candles = merged,
-                                        currentPrice = merged.last().close,
-                                    )
-                                )
-                            }
-                        }
-                    }
-            } catch (e: CancellationException) {
-                println("Job cancelled: ${e.message}")
-            } catch (e: Exception) {
-                _state.update { it.copy(chartState = ChartState.Error(e.message ?: "Unknown error")) }
-            }
-        }
+        startCandleSeries(ticker, timeframe)
 
         if (_state.value.chartMode == ChartMode.FOOTPRINT) {
             footprintController.start(_state.value.currentSymbol, _state.value.currentTimeframe)
@@ -232,57 +204,40 @@ class ChartViewModel(
     }
 
     /**
-     * Realtime-эмиссии репозитория содержат только его собственную историю + live-свечу,
-     * поэтому подгруженный вручную префикс нужно добавлять к каждой эмиссии.
+     * Пересоздаёт контроллер свечей для символа/таймфрейма: история, realtime
+     * и пагинация — в одном TimeSeriesController (см. platform-core).
      */
-    private fun mergeWithHistory(candles: List<Candle>): List<Candle> {
-        if (historyPrefix.isEmpty()) return candles
-        return (historyPrefix + candles)
-            .distinctBy { it.timestamp }
-            .sortedBy { it.timestamp }
-    }
+    private fun startCandleSeries(ticker: String, timeframe: String) {
+        candleStateJob?.cancel()
+        candleController?.dispose()
 
-    private fun loadMoreHistory() {
-        if (isLoadingMore || !_state.value.hasMoreHistory) return
-        isLoadingMore = true
+        _state.update { it.copy(chartState = ChartState.Loading) }
 
-        viewModelScope.launch {
-            try {
-                val chart = _state.value.chartState
-                if (chart !is ChartState.Success) { isLoadingMore = false; return@launch }
+        val controller = TimeSeriesController(
+            source = chartRepository.candleSource(ticker, timeframe),
+            scope = viewModelScope,
+        )
+        candleController = controller
 
-                val oldestTime = chart.candles.firstOrNull()?.timestamp ?: run { isLoadingMore = false; return@launch }
-                val endTime = oldestTime - 1
-
-                val historicalCandles = chartRepository.loadHistoricalCandlesBefore(
-                    ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe, endTime = endTime, limit = 200
-                )
-                if (historicalCandles.isEmpty()) {
-                    _state.update { it.copy(hasMoreHistory = false) }
-                    isLoadingMore = false
-                    return@launch
-                }
-
-                val newCandles = (historicalCandles + chart.candles)
-                    .distinctBy { it.timestamp }
-                    .sortedBy { it.timestamp }
-                val lastPrice = newCandles.last().close
-
-                // Не отменяем realtime-подписку: префикс будет домешан к следующим эмиссиям.
-                historyPrefix = (historicalCandles + historyPrefix)
-                    .distinctBy { it.timestamp }
-                    .sortedBy { it.timestamp }
-                _state.update {
-                    it.copy(
-                        chartState = ChartState.Success(candles = newCandles, currentPrice = lastPrice),
-                        historyLoadCount = historicalCandles.size,
+        candleStateJob = viewModelScope.launch {
+            controller.state.collect { series ->
+                val error = series.error
+                _state.update { s ->
+                    val chartState = when {
+                        error != null && series.items.isEmpty() -> ChartState.Error(error)
+                        series.items.isNotEmpty() -> ChartState.Success(series.items, series.items.last().close)
+                        series.loading -> ChartState.Loading
+                        else -> s.chartState
+                    }
+                    s.copy(
+                        chartState = chartState,
+                        hasMoreHistory = series.hasMore,
+                        historyLoadCount = series.loadCount,
                     )
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                isLoadingMore = false
             }
         }
+
+        controller.start()
     }
 }
