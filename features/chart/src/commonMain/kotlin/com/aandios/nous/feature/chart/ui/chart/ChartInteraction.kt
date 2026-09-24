@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,32 +50,28 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
-import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
-import com.aandios.nous.feature.chart.rendering.drawChart
 import com.aandios.nous.feature.chart.rendering.drawCrosshair
-import com.aandios.nous.feature.chart.rendering.drawFootprintChart
+import com.aandios.nous.feature.chart.rendering.drawCrosshairForFootprint
+import com.aandios.nous.feature.chart.rendering.drawCurrentPriceLine
 import com.aandios.nous.feature.chart.rendering.drawFootprintPopup
 import com.aandios.nous.feature.chart.rendering.drawPriceScale
 import com.aandios.nous.feature.chart.rendering.drawTimeScale
+import com.aandios.nous.feature.chart.scale.PriceScale
+import com.aandios.nous.feature.chart.scale.TimeScale
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingRenderer.drawDrawings
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
-import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
-import com.aandios.nous.feature.chart.utils.calculateMaxScroll
-import com.aandios.nous.feature.chart.utils.calculatePriceRangeWithCurrentPrice
-import com.aandios.nous.feature.chart.utils.calculateZoomScrollOffset
 import kotlin.math.max
 
 /**
- * Композабл, управляющий интерактивным поведением графика: скролл, зум, crosshair,
- * ленивая загрузка истории, расчёт layout и рендеринг холста.
- *
- * Выделен из CandleStickChart для соблюдения SRP — сам график становится тонкой
- * обёрткой, а вся сложная логика взаимодействия находится здесь.
+ * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
+ * ленивая история и Canvas-конвейер. Работает с любой [ChartSeries] —
+ * свечи и footprint используют один и тот же код скролла/зума/шкал
+ * (архитектура в духе lightweight-charts: pane + price scale + time scale + series).
  */
 @Composable
 fun CandleStickChartInteraction(
@@ -100,20 +97,31 @@ fun CandleStickChartInteraction(
 
     var mousePosition by remember { mutableStateOf<Offset?>(null) }
     var isCrosshairVisible by remember { mutableStateOf(false) }
-    var scrollOffset by remember { mutableFloatStateOf(0f) }
-    var zoomLevel by remember { mutableFloatStateOf(initialZoomLevel) }
     var chartWidthPx by remember { mutableFloatStateOf(0f) }
-    var maxScroll by remember { mutableFloatStateOf(0f) }
+    var chartHeightPx by remember { mutableFloatStateOf(0f) }
+    var verticalScroll by remember { mutableFloatStateOf(0f) }
     var isCtrlPressed by remember { mutableStateOf(false) }
     var isAltPressed by remember { mutableStateOf(false) }
     // Alt+hover popup position for footprint
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
-    // Актуальный список свечей для обработчиков жестов (pointerInput не перезапускается)
+
+    // Шкалы и серия — единая модель для свечей и footprint
+    val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
+    val priceScale = remember { PriceScale() }
+    val series: ChartSeries = remember(candles, footprintCandles, config) {
+        if (footprintCandles != null) {
+            FootprintSeries(skeleton = candles, footprintCandles = footprintCandles, config = config)
+        } else {
+            CandlestickSeries(skeleton = candles, config = config)
+        }
+    }
+
+    // Актуальные данные для обработчиков жестов (pointerInput не перезапускается)
     val currentCandles by rememberUpdatedState(candles)
-    val maxScrollLeft = 300f
-    val maxZoom = if (footprintCandles != null) 30f else 4f
-    val minZoom = 0.05f
+
     val zoomStep = 1.25f
+    val minZoom = config.minZoom
+    val maxZoom = if (footprintCandles != null) config.maxZoomFootprint else config.maxZoom
 
     // TextMeasurer для измерения текста
     val textMeasurer = rememberTextMeasurer()
@@ -146,7 +154,7 @@ fun CandleStickChartInteraction(
                     else -> false
                 }
             }
-            // Обработка жестов: pan (crosshair off) или crosshair (crosshair on)
+            // Обработка жестов: pan / Alt+вертикаль (footprint) / crosshair
             .pointerInput(crosshairEnabled) {
                 if (crosshairEnabled) {
                     awaitEachGesture {
@@ -168,9 +176,15 @@ fun CandleStickChartInteraction(
                     }
                 } else {
                     detectDragGestures(
-                        onDrag = { change, _ ->
-                            val deltaX = change.position.x - change.previousPosition.x
-                            scrollOffset = (scrollOffset - deltaX).coerceIn(-maxScrollLeft, maxScroll)
+                        onDrag = { change, dragAmount ->
+                            if (footprintCandles != null && isAltPressed) {
+                                // Вертикальный скролл уровней footprint
+                                verticalScroll = (verticalScroll + dragAmount.y)
+                                    .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
+                            } else {
+                                val deltaX = change.position.x - change.previousPosition.x
+                                timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
+                            }
                         },
                     )
                 }
@@ -184,34 +198,29 @@ fun CandleStickChartInteraction(
                         val sd = change.scrollDelta
                         if (event.type == PointerEventType.Scroll && sd != Offset.Zero) {
                             val factor = if (sd.y < 0) zoomStep else 1f / zoomStep
-                            val oldZoom = zoomLevel
-                            val newZoom = (oldZoom * factor).coerceIn(minZoom, maxZoom)
-                            val actualFactor = newZoom / oldZoom
-
-                            val mouseX = change.position.x
-                            val newScrollOffset = calculateZoomScrollOffset(
-                                scrollOffset = scrollOffset,
-                                chartWidth = chartWidthPx,
-                                mouseX = mouseX,
-                                actualFactor = actualFactor,
+                            timeScale.zoomAt(
+                                factor = factor,
+                                mouseX = change.position.x,
                                 anchorAtMouse = isCtrlPressed,
-                            )
-
-                            // maxScroll считаем для НОВОГО зума: кламп по устаревшему значению
-                            // ломает якорь (правый край/курсор) при приближении
-                            val newMaxScroll = calculateMaxScroll(
-                                candleCount = currentCandles.size,
-                                candleMetrics = calculateCandleMetrics(newZoom),
                                 chartWidth = chartWidthPx,
+                                candleCount = currentCandles.size,
+                                minZoom = minZoom,
+                                maxZoom = maxZoom,
                             )
-
-                            zoomLevel = newZoom
-                            scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, newMaxScroll)
-                            onZoomChange?.invoke(zoomLevel)
-
+                            onZoomChange?.invoke(timeScale.zoomLevel)
                             change.consume()
                         }
                     }
+                }
+            }
+            // Double-tap: сброс зума/скролла (footprint)
+            .pointerInput(footprintCandles) {
+                if (footprintCandles != null) {
+                    detectTapGestures(onDoubleTap = {
+                        timeScale.setZoom(1f)
+                        timeScale.scrollToLatest(currentCandles.size, chartWidthPx)
+                        verticalScroll = 0f
+                    })
                 }
             }
             // Track mouse position for footprint popup (Alt+hover)
@@ -250,7 +259,7 @@ fun CandleStickChartInteraction(
             val indicatorH = with(density) { indicatorHeightDp.toPx() }
             val indicatorTotalH = indicatorH * indicatorRenderers.size
 
-            // Единое Y-пространство для свечей, crosshair и шкалы цен: chartMainArea
+            // Единое Y-пространство для серии, crosshair и шкалы цен: chartMainArea
             val chartMainArea = Rect(
                 left = 0f,
                 top = 0f,
@@ -294,42 +303,34 @@ fun CandleStickChartInteraction(
             )
         }
 
-        // Расчет метрик свечей и скролла
+        // Метрики свечей и скролл — из TimeScale
         chartWidthPx = layout.chartMainArea.width
-        val candleMetrics = remember(zoomLevel) {
-            calculateCandleMetrics(zoomLevel)
-        }
+        chartHeightPx = layout.chartMainArea.height
+        val candleMetrics = timeScale.metrics()
         val totalW = candleMetrics.width + candleMetrics.spacing
-        maxScroll = max(0f, candles.size * totalW - chartWidthPx)
+        val maxScroll = timeScale.maxScroll(candles.size, chartWidthPx)
 
         // Автоскролл к последней свече при добавлении новых (realtime flow или footprint)
         LaunchedEffect(candles.size) {
             if (historyLoadCount == 0) {
-                scrollOffset = maxScroll
+                timeScale.scrollToLatest(candles.size, chartWidthPx)
             }
         }
 
         // Клиппинг scrollOffset
-        val clampedOffset = scrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+        val clampedOffset = timeScale.scrollOffset.coerceIn(-TimeScale.MAX_SCROLL_LEFT, maxScroll)
 
         // Вычисление видимого диапазона свечей
         val startIdx = (clampedOffset / totalW).toInt().coerceIn(0, max(0, candles.size - 1))
         val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, candles.size)
 
-        // PriceRange только по видимым свечам (Y-масштаб адаптируется при зум/скролле).
-        // Текущая цена НЕ влияет на диапазон: иначе при уходе в историю
-        // график вырождается в горизонтальную линию.
-        val visibleCandles = remember(startIdx, endIdx, candles) {
-            candles.subList(startIdx, endIdx.coerceAtMost(candles.size))
-        }
-        val priceRange = remember(visibleCandles) {
-            calculatePriceRangeWithCurrentPrice(visibleCandles, currentPrice = null)
-        }
+        // Autoscale по видимым свечам (текущая цена НЕ влияет на диапазон)
+        priceScale.fit { series.priceRange(startIdx, endIdx) }
+        val priceRange = priceScale.range(verticalScroll, chartHeightPx)
         // Линия и badge текущей цены рисуются, только если цена попадает в видимый диапазон
         val visibleCurrentPrice = currentPrice?.takeIf { it in priceRange.visibleMin..priceRange.visibleMax }
 
         // Lazy loading historical candles: когда пользователь скроллит левее первой свечи
-        // (clampedOffset < 0) — появляется пустое место, вызываем загрузку истории
         LaunchedEffect(clampedOffset, hasMoreHistory) {
             if (hasMoreHistory && clampedOffset < 0f) {
                 onNeedMoreHistory()
@@ -339,12 +340,22 @@ fun CandleStickChartInteraction(
         // Коррекция scrollOffset после загрузки исторических свечей
         LaunchedEffect(historyLoadCount, candles.size) {
             if (historyLoadCount > 0) {
-                val oldScrollOffset = scrollOffset
-                val added = historyLoadCount * totalW
-                scrollOffset += added
-                scrollOffset = scrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+                timeScale.offsetAfterPrepend(historyLoadCount, candles.size, chartWidthPx)
             }
         }
+
+        // Контекст для серии и оверлеев
+        val chartCanvas = ChartCanvas(
+            layout = layout,
+            config = config,
+            textMeasurer = textMeasurer,
+            scrollOffset = clampedOffset,
+            zoomLevel = timeScale.zoomLevel,
+            priceRange = priceRange,
+            visibleStartIndex = startIdx,
+            visibleEndIndex = endIdx,
+            currentPrice = visibleCurrentPrice,
+        )
 
         // Основной Canvas для графика
         Canvas(
@@ -352,43 +363,33 @@ fun CandleStickChartInteraction(
                 .fillMaxSize()
                 .clipToBounds()
         ) {
-            if (footprintCandles != null) {
-                drawFootprintChart(
-                    candles = footprintCandles,
-                    priceRange = priceRange,
-                    config = config,
-                    chartArea = layout.chartMainArea,
-                    textMeasurer = textMeasurer,
-                    scrollOffset = clampedOffset,
-                    zoomLevel = zoomLevel,
-                    visibleStartIndex = startIdx,
-                    visibleEndIndex = endIdx,
-                )
-            } else {
-                drawChart(
-                    candles = candles,
-                    priceRange = priceRange,
-                    config = config,
-                    chartArea = layout.chartMainArea,
+            // 1. Серия (свечи или footprint)
+            series.draw(this, chartCanvas)
+
+            // 2. Пунктирная линия текущей цены в footprint-режиме
+            val footprintData = series.footprintCandles
+            if (footprintData != null && visibleCurrentPrice != null) {
+                drawCurrentPriceLine(
                     currentPrice = visibleCurrentPrice,
-                    textMeasurer = textMeasurer,
-                    scrollOffset = clampedOffset,
-                    zoomLevel = zoomLevel,
-                    visibleStartIndex = startIdx,
-                    visibleEndIndex = endIdx,
+                    priceRange = priceRange,
+                    config = config,
+                    chartHeight = layout.chartMainArea.height,
+                    chartWidth = layout.chartMainArea.width,
+                    alpha = 0.5f,
                 )
             }
 
+            // 3. Шкала времени (по каркасным свечам — общая для обоих режимов)
             drawTimeScale(
                 candles = candles,
                 config = config,
                 timeScaleArea = layout.timeScaleArea,
                 textMeasurer = textMeasurer,
                 scrollOffset = clampedOffset,
-                zoomLevel = zoomLevel,
+                zoomLevel = timeScale.zoomLevel,
             )
 
-            // Liquidation markers overlay
+            // 4. Liquidation markers overlay
             if (liquidationOrders.isNotEmpty()) {
                 val tfMs = if (candles.size >= 2) candles[1].timestamp - candles[0].timestamp else 3_600_000L
                 drawLiquidationMarkers(
@@ -399,13 +400,13 @@ fun CandleStickChartInteraction(
                     scrollOffset = clampedOffset,
                     candles = candles,
                     timeframeMs = tfMs.coerceAtLeast(1L),
-                    zoomLevel = zoomLevel
+                    zoomLevel = timeScale.zoomLevel
                 )
             }
 
-            // Indicator panels (below main chart, above timescale)
+            // 5. Indicator panels (below main chart, above timescale)
             layout.indicatorAreas.forEachIndexed { idx, area ->
-                indicatorRenderers.getOrNull(idx)?.invoke(this, area, candles, priceRange, clampedOffset, zoomLevel)
+                indicatorRenderers.getOrNull(idx)?.invoke(this, area, candles, priceRange, clampedOffset, timeScale.zoomLevel)
                 // Separator line below each indicator
                 drawLine(
                     color = config.gridColor.copy(alpha = 0.3f),
@@ -415,7 +416,7 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            // Рисуем шкалу цен
+            // 6. Шкала цен
             if (config.showPriceScale) {
                 drawPriceScale(
                     priceRange = priceRange,
@@ -433,20 +434,20 @@ fun CandleStickChartInteraction(
                     strokeWidth = 1f
                 )
             }
-            // Alt+hover popup for footprint
-            if (footprintCandles != null && isAltPressed && !crosshairEnabled && footprintHoverPos != null) {
+            // 7. Alt+hover popup for footprint
+            if (footprintData != null && isAltPressed && !crosshairEnabled && footprintHoverPos != null) {
                 drawFootprintPopup(
                     mousePosition = footprintHoverPos!!,
-                    candles = footprintCandles,
+                    candles = footprintData,
                     priceRange = priceRange,
                     config = config,
                     chartLayout = layout,
                     textMeasurer = textMeasurer,
                     scrollOffset = clampedOffset,
-                    zoomLevel = zoomLevel,
+                    zoomLevel = timeScale.zoomLevel,
                 )
             }
-            // Drawings
+            // 8. Drawings
             drawingHistory?.let { history ->
                 drawDrawings(
                     drawings = history.drawings, candles = candles,
@@ -459,31 +460,44 @@ fun CandleStickChartInteraction(
                     textMeasurer = textMeasurer,
                 )
             }
-            // Рисуем перекрестие если crosshair включен и есть позиция курсора
+            // 9. Crosshair: в footprint-режиме — footprint-панель, в свечах — свечная
             if (crosshairEnabled && isCrosshairVisible && mousePosition != null) {
-                drawCrosshair(
-                    mousePosition = mousePosition!!,
-                    candles = candles,
-                    priceRange = priceRange,
-                    config = config,
-                    chartLayout = layout,
-                    textMeasurer = textMeasurer,
-                    scrollOffset = clampedOffset,
-                    zoomLevel = zoomLevel,
-                )
+                if (footprintData != null) {
+                    drawCrosshairForFootprint(
+                        mousePosition = mousePosition!!,
+                        candles = footprintData,
+                        priceRange = priceRange,
+                        config = config,
+                        chartLayout = layout,
+                        textMeasurer = textMeasurer,
+                        scrollOffset = clampedOffset,
+                        zoomLevel = timeScale.zoomLevel,
+                    )
+                } else {
+                    drawCrosshair(
+                        mousePosition = mousePosition!!,
+                        candles = candles,
+                        priceRange = priceRange,
+                        config = config,
+                        chartLayout = layout,
+                        textMeasurer = textMeasurer,
+                        scrollOffset = clampedOffset,
+                        zoomLevel = timeScale.zoomLevel,
+                    )
+                }
             }
         }
         // Кнопка «к последней свече» в правом нижнем углу области графика
         val controlsBottomPadding = with(density) {
             (layout.canvasHeight - layout.chartMainArea.bottom).toDp()
         } + 8.dp
-        val isAtRightEdge = maxScroll - clampedOffset < 1f
+        val isAtRightEdge = timeScale.isAtLatest(candles.size, chartWidthPx)
         Box(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = config.priceScaleWidth + 10.dp, bottom = controlsBottomPadding)
                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-                .clickable { scrollOffset = maxScroll }
+                .clickable { timeScale.scrollToLatest(candles.size, chartWidthPx) }
                 .padding(horizontal = 8.dp, vertical = 3.dp)
         ) {
             Text(
@@ -502,7 +516,7 @@ fun CandleStickChartInteraction(
                 priceRange = priceRange,
                 layout = layout,
                 scrollOffset = clampedOffset,
-                zoomLevel = zoomLevel,
+                zoomLevel = timeScale.zoomLevel,
                 priceFormatter = config.priceFormatter,
                 onToolChange = onActiveDrawingToolChange,
             )

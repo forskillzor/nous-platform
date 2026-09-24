@@ -173,7 +173,11 @@ features/chart/
     │   ├── model/
     │   │   ├── CandleMetrics.kt               # width + spacing свечи
     │   │   ├── ChartLayout.kt                 # прямоугольники областей графика
+    │   │   ├── FootprintMapping.kt            # FootprintCandle.toSkeletonCandle()
     │   │   └── PriceRange.kt                  # диапазон цен
+    │   ├── scale/
+    │   │   ├── TimeScale.kt                   # горизонтальная шкала: скролл/зум/index↔x
+    │   │   └── PriceScale.kt                  # вертикальная шкала: fit/сдвиг/диапазон
     │   ├── rendering/
     │   │   ├── CandleRenderer.kt              # свечи, сетка, линия цены
     │   │   ├── ChartCrosshairRenderer.kt      # перекрестие и инфо-панель
@@ -195,9 +199,11 @@ features/chart/
     │   │   ├── ChartViewModel.kt              # оркестратор: state + dispatch
     │   │   └── chart/
     │   │       ├── CandleStickChart.kt        # тонкая обёртка (публичный API)
-    │   │       ├── ChartInteraction.kt        # вся интерактивность + Canvas
+    │   │       ├── ChartInteraction.kt        # единый движок: layout, жесты, Canvas-конвейер
+    │   │       ├── ChartCanvas.kt             # контекст отрисовки серий/оверлеев
+    │   │       ├── ChartSeries.kt             # ChartSeries + Candlestick/FootprintSeries
     │   │       ├── DrawingOverlay.kt          # перехват жестов при активном инструменте
-    │   │       ├── FootprintChart.kt          # альтернативный footprint-график (bidasker-web)
+    │   │       ├── FootprintChart.kt          # тонкая обёртка над движком (bidasker-web)
     │   │       └── LiquidationRenderer.kt     # маркеры и гистограмма ликвидаций
     │   └── utils/
     │       ├── ChartCalculator.kt             # чистые функции: priceToY, PriceRange и др.
@@ -228,11 +234,12 @@ features/localstorage/.../LocalStorage.kt    # SQLite: settings + candles_cache 
 
 | Пакет | Ответственность | Зависит от |
 |---|---|---|
-| `model/` | data class'ы без логики | Compose geometry (`Rect`) |
+| `model/` | data class'ы без логики + маппинг моделей | Compose geometry (`Rect`) |
 | `utils/` | чистые функции и константы | `api-market`, `model/` |
+| `scale/` | шкалы времени/цены (состояние + математика) | `utils/`, `model/`, Compose state |
 | `rendering/` | `DrawScope`-функции: рисуют, не решают | `model/`, `utils/`, `ui/ChartConfig` |
 | `tools/` | модели, история и персистент рисунков | `model/`, `utils/`, Compose, `platform-core` |
-| `ui/chart/` | composable'ы и интерактивность | всё выше + `platform-core` |
+| `ui/chart/` | движок, серии, composable'ы и интерактивность | всё выше + `platform-core` |
 | `ui/` | состояние (MVI), ViewModel, конфиг, toolbar | `platform-core`, `api-market` |
 | `footprint/` | сетевой клиент и footprint-логика | Ktor, `api-market`, `platform-core` |
 | `di/` (jvm) | сборка зависимостей для preview | Koin, `binance-provider` |
@@ -250,9 +257,11 @@ features/localstorage/.../LocalStorage.kt    # SQLite: settings + candles_cache 
 |---|---:|---|
 | `ui/ChartViewModel.kt` | ~300 | оркестрация: state, dispatch, контроллер свечей, кэш |
 | `footprint/FootprintController.kt` | ~400 | вся footprint-логика |
-| `ui/chart/ChartInteraction.kt` | ~470 | layout, жесты, Canvas-конвейер |
-| `rendering/FootprintRenderer.kt` | ~360 | footprint-рендеринг и popup |
+| `ui/chart/ChartInteraction.kt` | ~520 | единый движок: layout, жесты, Canvas-конвейер |
+| `rendering/FootprintRenderer.kt` | ~320 | footprint-рендеринг и popup |
 | `jvmMain/ui/ChartWindow.kt` | ~330 | экран графика + preview main() |
+| `scale/TimeScale.kt` | ~150 | скролл/зум/index↔x |
+| `ui/chart/ChartSeries.kt` | ~90 | контракт серии + свечи/footprint |
 | `platform-core/.../TimeSeries.kt` | ~150 | обобщённый контроллер пагинации/live |
 | `rendering/ChartCrosshairRenderer.kt` | ~300 | crosshair и панель |
 | `tools/DrawingRenderer.kt` | ~200 | рисунки и метки |
@@ -476,9 +485,10 @@ data class Candle(
 )
 ```
 
-Порядок полей важен: в коде часто встречается позиционный конструктор
-`Candle(it.open, it.high, it.close, it.low, it.startTime, it.maxVolume)`
-(например, при конвертации footprint-свечи в «каркасную» свечу).
+Порядок полей важен: в коде встречается позиционный конструктор
+`Candle(open, high, close, low, timestamp, volume)`. Конвертация
+footprint-свечи в «каркасную» — `FootprintCandle.toSkeletonCandle()`
+(`model/FootprintMapping.kt`).
 
 **Технический долг.** Цены — `Float`. Для большинства инструментов этого
 хватает, но на экстремально малых ценах (8+ знаков) точность ограничена.
@@ -1698,13 +1708,13 @@ val allFp = buildList {
     uiState.liveFootprintCandle?.let { add(it) }
 }
 val fpToCandle = remember(allFp) {
-    allFp.map { Candle(it.open, it.high, it.close, it.low, it.startTime, it.maxVolume) }
+    allFp.map { it.toSkeletonCandle() }
 }
 ```
 
 Live-свеча перетирает completed с тем же `startTime`, а из footprint-свечей
-строится «каркас» `Candle` — его использует `ChartInteraction` для скролла,
-зума и crosshair.
+строится «каркас» `Candle` (`toSkeletonCandle`) — его движок использует
+для скролла, зума, шкалы времени и autoscale.
 
 ### 13.2.6. Preview main()
 
@@ -1754,26 +1764,53 @@ fun CandleStickChart(
 - `onCrosshairEnabledChange` — не использовался;
 - `chartWidth` у `findNearestCandleIndex` — не использовался.
 
-## 14.2. Состояния ChartInteraction
+## 14.2. Модель движка: шкалы и серия
+
+По образцу lightweight-charts движок разделён на три части:
+
+```kotlin
+// Горизонтальная шкала: скролл/зум/index↔x (state — Compose snapshot)
+val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
+
+// Вертикальная шкала: базовый диапазон + сдвиг при вертикальном скролле
+val priceScale = remember { PriceScale() }
+
+// Серия: данные + рендер. Свечи и footprint — две реализации одного контракта
+val series: ChartSeries = remember(candles, footprintCandles, config) {
+    if (footprintCandles != null) {
+        FootprintSeries(skeleton = candles, footprintCandles = footprintCandles, config = config)
+    } else {
+        CandlestickSeries(skeleton = candles, config = config)
+    }
+}
+```
+
+UI-состояния жестов остались у движка:
 
 ```kotlin
 var mousePosition by remember { mutableStateOf<Offset?>(null) }
 var isCrosshairVisible by remember { mutableStateOf(false) }
-var scrollOffset by remember { mutableFloatStateOf(0f) }
-var zoomLevel by remember { mutableFloatStateOf(initialZoomLevel) }
 var chartWidthPx by remember { mutableFloatStateOf(0f) }
-var maxScroll by remember { mutableFloatStateOf(0f) }
+var chartHeightPx by remember { mutableFloatStateOf(0f) }
+var verticalScroll by remember { mutableFloatStateOf(0f) }   // footprint, Alt+drag
 var isCtrlPressed by remember { mutableStateOf(false) }
 var isAltPressed by remember { mutableStateOf(false) }
 var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
+```
 
-val maxScrollLeft = 300f
-val maxZoom = if (footprintCandles != null) 30f else 4f
-val minZoom = 0.05f
+Границы зума — из конфига (позже станут сериализуемыми):
+
+```kotlin
+val minZoom = config.minZoom                    // 0.05
+val maxZoom = if (footprintCandles != null) config.maxZoomFootprint else config.maxZoom  // 30 / 4
 ```
 
 `mutableFloatStateOf` — специализированное состояние для `Float`:
 меньше боксинга, чем `mutableStateOf<Float>`.
+
+**Почему так.** Раньше у footprint был собственный движок с копией
+скролла/зума/layout (`FootprintChart.kt`). Теперь `FootprintSeries` — это
+просто серия того же движка: «footprint расширяет chart», а не дублирует.
 
 ## 14.3. Layout
 
@@ -1793,63 +1830,61 @@ val layout = remember(config.priceScaleWidth, canvasWidth, canvasHeight,
 `priceScaleArea` выровнен по вертикали с `chartMainArea` — это и есть фикс
 «шкала цен не совпадает с crosshair».
 
-## 14.4. Кэш видимых свечей (исправленный)
+## 14.4. Видимые свечи и autoscale
 
 ```kotlin
-val visibleCandles = remember(startIdx, endIdx, candles) {
-    candles.subList(startIdx, endIdx.coerceAtMost(candles.size))
-}
-// Y-масштаб — только по видимым свечам: текущая цена НЕ влияет на диапазон
-val priceRange = remember(visibleCandles) {
-    calculatePriceRangeWithCurrentPrice(visibleCandles, currentPrice = null)
-}
-// Линия и badge текущей цены рисуются, только если цена попадает в диапазон
+val startIdx = (clampedOffset / totalW).toInt().coerceIn(0, max(0, candles.size - 1))
+val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, candles.size)
+
+// Autoscale по видимым свечам; текущая цена НЕ влияет на диапазон
+priceScale.fit { series.priceRange(startIdx, endIdx) }
+val priceRange = priceScale.range(verticalScroll, chartHeightPx)
+
+// Линия и badge текущей цены — только если цена попадает в видимый диапазон
 val visibleCurrentPrice = currentPrice?.takeIf { it in priceRange.visibleMin..priceRange.visibleMax }
 ```
 
-Раньше ключа `candles` не было, и `remember` возвращал `subList` **старого
-списка**. После смены символа график считал диапазон цен по BTC, а рисовал
-другой инструмент — получалась «горизонтальная линия». Теперь ключ есть.
+Почему autoscale именно так:
 
-Вторая причина «горизонтальной линии» — `currentPrice` в диапазоне.
-Если уйти далеко в историю, текущая цена растягивала `PriceRange` на сотни
-процентов, и видимые свечи сжимались в полоску. Поэтому масштаб считается
-только по видимым свечам, а линия/badge цены показываются лишь когда цена
-в видимом диапазоне.
+- Раньше ключа `candles` не было у `remember`, и график считал диапазон по
+  **старому** списку после смены символа — «горизонтальная линия».
+- Текущая цена в диапазоне: при уходе далеко в историю она растягивала
+  `PriceRange` на сотни процентов, и видимые свечи сжимались в полоску.
+  Поэтому масштаб — только по видимым свечам, а линия/badge цены
+  показываются лишь когда цена в диапазоне.
+- Сдвиг `verticalScroll` применяется только к диапазону (footprint).
 
 ## 14.5. Порядок отрисовки Canvas
 
 ```kotlin
 Canvas(Modifier.fillMaxSize().clipToBounds()) {
-    // 1. Свечи или footprint (в chartMainArea)
-    if (footprintCandles != null) drawFootprintChart(...) else drawChart(...)
+    // 1. Серия (свечи или footprint)
+    series.draw(this, chartCanvas)
 
-    // 2. Шкала времени
-    drawTimeScale(...)
-
-    // 3. Маркеры ликвидаций
-    if (liquidationOrders.isNotEmpty()) drawLiquidationMarkers(...)
-
-    // 4. Индикаторные панели + разделители
-    layout.indicatorAreas.forEachIndexed { ... }
-
-    // 5. Шкала цен (+ разделительная линия)
-    if (config.showPriceScale) { drawPriceScale(...); drawLine(...) }
-
-    // 6. Alt+hover popup footprint
-    // 7. Рисунки пользователя
-    // 8. Crosshair
+    // 2. Пунктирная линия текущей цены (только footprint, alpha 0.5)
+    // 3. Шкала времени (по каркасным свечам — общая для обоих режимов)
+    // 4. Маркеры ликвидаций
+    // 5. Индикаторные панели + разделители
+    // 6. Шкала цен (+ разделительная линия)
+    // 7. Alt+hover popup footprint
+    // 8. Рисунки пользователя
+    // 9. Crosshair: footprint-панель (O/H/L/C/Ticks) или свечная (Time/O/H/L)
 }
 ```
 
 Порядок важен: поздние слои рисуются поверх ранних. Crosshair — всегда
-последний, чтобы не перекрываться свечами.
+последний, чтобы не перекрываться свечами. Серия ничего не знает про
+порядок: она получает готовый `ChartCanvas` (layout + шкалы + диапазон).
 
 ## 14.6. Технический долг
 
-- `chartWidthPx = layout.chartMainArea.width` и `maxScroll = ...` пишутся
-  прямо в композиции. Правильнее — `derivedStateOf` или `remember`.
+- `chartWidthPx`/`chartHeightPx` пишутся прямо в композиции.
+  Правильнее — `derivedStateOf` или `remember`.
+- `priceScale.fit { ... }` — мутация в композиции (идемпотентная, но
+  не чистая).
 - `visibleCandles` создаёт новый `subList` при каждом изменении индексов.
+- Планы на фазу F: `ChartPanePrimitive` с zOrder/hitTest (рисунки,
+  ликвидации, линия цены, индикаторы) и multi-pane с общим `TimeScale`.
 
 ---
 
@@ -1862,56 +1897,54 @@ Canvas(Modifier.fillMaxSize().clipToBounds()) {
 смещение левого края видимой области.
 
 ```kotlin
-maxScroll = max(0f, candles.size * totalW - chartWidthPx)
-val clampedOffset = scrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+val maxScroll = timeScale.maxScroll(candles.size, chartWidthPx)
+val clampedOffset = timeScale.scrollOffset.coerceIn(-TimeScale.MAX_SCROLL_LEFT, maxScroll)
 ```
 
-`maxScrollLeft = 300f` — запас «пустой зоны» слева, в которую можно
-проскроллить, чтобы инициировать подгрузку истории.
+`TimeScale.MAX_SCROLL_LEFT = 300f` — запас «пустой зоны» слева, в которую
+можно проскроллить, чтобы инициировать подгрузку истории.
 
-## 15.2. Панорамирование
+## 15.2. Панорамирование и вертикальный скролл
 
 ```kotlin
 .pointerInput(crosshairEnabled) {
     if (crosshairEnabled) {
         // жест — crosshair
     } else {
-        detectDragGestures { change, _ ->
-            val deltaX = change.position.x - change.previousPosition.x
-            scrollOffset = (scrollOffset - deltaX).coerceIn(-maxScrollLeft, maxScroll)
+        detectDragGestures { change, dragAmount ->
+            if (footprintCandles != null && isAltPressed) {
+                // Вертикальный скролл уровней footprint (Alt+drag)
+                verticalScroll = (verticalScroll + dragAmount.y)
+                    .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
+            } else {
+                timeScale.panBy(
+                    deltaX = change.position.x - change.previousPosition.x,
+                    candleCount = currentCandles.size,
+                    chartWidth = chartWidthPx,
+                )
+            }
         }
     }
 }
 ```
 
 Когда crosshair включён, drag отдаётся ему, а не панорамированию.
+Вертикальный скролл активен только в footprint-режиме и сдвигает
+диапазон цен (`PriceScale.range`), не трогая данные.
 
 ## 15.3. Зум
 
 ```kotlin
 val factor = if (sd.y < 0) zoomStep else 1f / zoomStep
-val oldZoom = zoomLevel
-val newZoom = (oldZoom * factor).coerceIn(minZoom, maxZoom)
-val actualFactor = newZoom / oldZoom
-
-val newScrollOffset = calculateZoomScrollOffset(
-    scrollOffset = scrollOffset,
-    chartWidth = chartWidthPx,
+timeScale.zoomAt(
+    factor = factor,
     mouseX = change.position.x,
-    actualFactor = actualFactor,
     anchorAtMouse = isCtrlPressed,
-)
-
-// maxScroll считаем для НОВОГО зума: кламп по устаревшему значению
-// ломает якорь (правый край/курсор) при приближении
-val newMaxScroll = calculateMaxScroll(
-    candleCount = currentCandles.size,
-    candleMetrics = calculateCandleMetrics(newZoom),
     chartWidth = chartWidthPx,
+    candleCount = currentCandles.size,
+    minZoom = config.minZoom,
+    maxZoom = if (footprintCandles != null) config.maxZoomFootprint else config.maxZoom,
 )
-
-zoomLevel = newZoom
-scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, newMaxScroll)
 ```
 
 Два режима зума:
@@ -1919,16 +1952,17 @@ scrollOffset = newScrollOffset.coerceIn(-maxScrollLeft, newMaxScroll)
 - **обычный** — якорь на правом краю (самая новая видимая свеча);
 - **`Ctrl+Zoom`** — якорь на точке под курсором.
 
-`calculateZoomScrollOffset` и `calculateMaxScroll` — чистые функции из
-`ChartCalculator` (см. главу 25.6), покрытые тестами. Ключевой момент:
-`maxScroll` для клампа считается **для нового зума**, иначе при
-приближении кламп по старому значению сдвигал якорь влево. Именно это
-ломало зум «от крайней правой свечи».
+Внутри `TimeScale.zoomAt` вызывает чистые `calculateZoomScrollOffset` и
+`calculateMaxScroll` (глава 25.6), а главное — считает `maxScroll` для
+**нового** зума. Кламп по устаревшему значению сдвигал якорь влево при
+приближении — именно это ломало зум «от крайней правой свечи».
 
 ## 15.4. Crosshair
 
 - Включается кнопкой в тулбаре (кнопка `⧉`).
 - Пока включён — drag не панорамирует, а двигает перекрестие.
+- В footprint-режиме показывается footprint-панель `O/H/L/C/Ticks`
+  (`drawCrosshairForFootprint`), в свечах — `Time/O/H/L` (`drawCrosshair`).
 - При зажатом `Alt` и наведении на footprint-график показывается popup
   с таблицей bid/ask по уровням.
 - `Ctrl+Z` / `Ctrl+Y` — undo/redo рисунков (обрабатывается `onKeyEvent`).
@@ -1942,8 +1976,7 @@ LaunchedEffect(clampedOffset, hasMoreHistory) {
 
 LaunchedEffect(historyLoadCount, candles.size) {
     if (historyLoadCount > 0) {
-        scrollOffset += historyLoadCount * totalW
-        scrollOffset = scrollOffset.coerceIn(-maxScrollLeft, maxScroll)
+        timeScale.offsetAfterPrepend(historyLoadCount, candles.size, chartWidthPx)
     }
 }
 ```
@@ -1965,13 +1998,13 @@ LaunchedEffect(historyLoadCount, candles.size) {
 val controlsBottomPadding = with(density) {
     (layout.canvasHeight - layout.chartMainArea.bottom).toDp()
 } + 8.dp
-val isAtRightEdge = maxScroll - clampedOffset < 1f
+val isAtRightEdge = timeScale.isAtLatest(candles.size, chartWidthPx)
 Box(
     modifier = Modifier
         .align(Alignment.BottomEnd)
         .padding(end = config.priceScaleWidth + 10.dp, bottom = controlsBottomPadding)
         .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-        .clickable { scrollOffset = maxScroll }
+        .clickable { timeScale.scrollToLatest(candles.size, chartWidthPx) }
         .padding(horizontal = 8.dp, vertical = 3.dp)
 ) {
     Text(
@@ -1985,8 +2018,25 @@ Box(
 
 - отступы учитывают ширину шкалы цен и высоту шкалы времени/индикаторов —
   кнопка всегда в правом нижнем углу именно области графика;
-- клик — `scrollOffset = maxScroll` (переход к самой новой свече);
+- клик — `scrollToLatest` (переход к самой новой свече);
 - цвет: синий, когда есть куда листать; серый — когда график уже у края.
+
+## 15.7. Double-tap (footprint)
+
+```kotlin
+.pointerInput(footprintCandles) {
+    if (footprintCandles != null) {
+        detectTapGestures(onDoubleTap = {
+            timeScale.setZoom(1f)
+            timeScale.scrollToLatest(currentCandles.size, chartWidthPx)
+            verticalScroll = 0f
+        })
+    }
+}
+```
+
+Сброс зума/скролла/вертикального сдвига — поведение переехало из старого
+`FootprintChart` в общий движок.
 
 ---
 
@@ -2035,26 +2085,49 @@ private val drawingTools = listOf(
 
 ---
 
-# 17. FootprintChart: отдельный график для bidasker-web <a name="17"></a>
+# 17. FootprintChart: тонкая обёртка для bidasker-web <a name="17"></a>
 
-`ui/chart/FootprintChart.kt` — **второй** composable для footprint,
-используется только в `bidasker-web` (там нет DOM/Trades и не нужен общий
-`ChartInteraction`).
+`ui/chart/FootprintChart.kt` — composable для `bidasker-web` (там нет
+DOM/Trades и не нужен `ChartViewModel`). После фазы E это **тонкая обёртка
+над общим движком** — собственного скролла/зума/layout в ней больше нет:
 
-Отличия от основного движка:
+```kotlin
+@Composable
+fun FootprintChart(
+    completedCandles: List<FootprintCandle>,
+    liveCandle: FootprintCandle? = null,
+    currentPrice: Float? = null,
+    modifier: Modifier = Modifier,
+    config: ChartConfig = DefaultChartConfig,
+    crosshairEnabled: Boolean = false,
+) {
+    val allCandles = remember(completedCandles, liveCandle) {
+        if (liveCandle != null) completedCandles + liveCandle else completedCandles
+    }
+    if (allCandles.isEmpty()) { /* "No footprint data available." */ return }
 
-- принимает сразу `completedCandles: List<FootprintCandle>` и `liveCandle`;
-- имеет собственный вертикальный скролл (`verticalScroll`, `Alt+drag`);
-- двойной клик — сброс зума/скролла;
-- layout строит `chartMainArea`/`priceScaleArea`/`timeScaleArea` сам
-  (после рефакторинга — тоже с единым Y-пространством);
-- `showPriceScale`/`priceScaleWidth` берутся из `config`;
-- кэш и пагинация — на стороне `bidasker-web` (`DataLoader`).
+    // Footprint-свечи → каркасные Candle (модель/FootprintMapping)
+    val skeleton = remember(allCandles) { allCandles.map { it.toSkeletonCandle() } }
 
-**Технический долг.** Два движка взаимодействия (`ChartInteraction` и
-`FootprintChart`) дублируют жесты, layout и вызовы рендереров. Логичное
-развитие — свести `FootprintChart` к тому же `ChartInteraction` с
-footprint-параметрами.
+    CandleStickChart(
+        candles = skeleton,
+        currentPrice = currentPrice ?: skeleton.lastOrNull()?.close,
+        modifier = modifier,
+        config = config,
+        crosshairEnabled = crosshairEnabled,
+        footprintCandles = allCandles,   // включает footprint-режим движка
+        hasMoreHistory = false,          // пагинация — на стороне bidasker (DataLoader)
+    )
+}
+```
+
+Что это даёт:
+
+- вертикальный скролл (`Alt+drag`), double-tap сброс, zум с Ctrl и кнопка
+  `⇥` — автоматически работают и в bidasker, потому что живут в движке;
+- footprint-crosshair (O/H/L/C/Ticks), popup, пунктирная линия цены —
+  тоже из движка;
+- кэш и пагинация — по-прежнему на стороне `bidasker-web` (`DataLoader`).
 
 ---
 
@@ -2306,10 +2379,11 @@ fun aggregateLevels(
 
 ## 22.4. Вспомогательные рендереры
 
-- `drawTimeScaleForFootprint` — как `drawTimeScale`, но по `startTime`
-  footprint-свечей;
-- `drawCrosshairForFootprint` — crosshair с инфо-панелью
-  `O/H/L/C/Ticks`.
+- `drawCrosshairForFootprint` — crosshair с инфо-панелью `O/H/L/C/Ticks`;
+  движок вызывает его в footprint-режиме вместо свечного `drawCrosshair`.
+- Отдельной шкалы времени для footprint больше нет: движок рисует общую
+  `drawTimeScale` по каркасным свечам (`toSkeletonCandle`), поэтому
+  `drawTimeScaleForFootprint` удалён за ненадобностью.
 
 ---
 
@@ -2508,11 +2582,31 @@ fun calculatePriceRangeWithCurrentPrice(candles: List<Candle>, currentPrice: Flo
 
 Диапазон считается **только по видимым свечам** — при скролле/зуме
 Y-масштаб подстраивается. Параметр `currentPrice` сохранён для тестов
-и обратной совместимости, но `ChartInteraction` передаёт `null`:
-текущая цена не должна растягивать масштаб (см. главу 14.4).
+и обратной совместимости, но движок передаёт `null`: текущая цена не
+должна растягивать масштаб (см. главу 14.4).
 
-`calculatePriceRangeWithFootprint` — то же для footprint-свечей, но
-учитывает `levels[].priceFloat` и не даёт `visibleMin` уйти ниже нуля.
+Для footprint диапазон считается по тем же каркасным свечам —
+отдельной функции `calculatePriceRangeWithFootprint` больше нет (удалена
+в фазе E как дубль).
+
+Сдвиг диапазона при вертикальном скролле footprint:
+
+```kotlin
+fun shiftPriceRange(base: PriceRange, verticalScroll: Float, chartHeight: Float): PriceRange {
+    if (chartHeight <= 0f || verticalScroll == 0f) return base
+    val ratio = verticalScroll / chartHeight
+    val shift = base.range * ratio
+    return PriceRange(
+        max = base.max + shift,
+        min = base.min + shift,
+        visibleMax = base.visibleMax + shift,
+        visibleMin = base.visibleMin + shift,
+        range = base.range,
+    )
+}
+```
+
+Используется `PriceScale.range()`.
 
 ## 25.3. Преобразование цены в Y и обратно
 
@@ -2562,38 +2656,29 @@ fun findNearestCandleIndex(
 
 ## 25.6. Зум и максимальный скролл
 
-```kotlin
-/** Максимальный скролл: ширина всего ряда минус ширина области графика. */
-fun calculateMaxScroll(
-    candleCount: Int,
-    candleMetrics: CandleMetrics,
-    chartWidth: Float,
-): Float = max(0f, candleCount * (candleMetrics.width + candleMetrics.spacing) - chartWidth)
+Чистое ядро математики осталось в `ChartCalculator`, а состояние и
+удобный API — в `scale/TimeScale`:
 
-/**
- * Новое значение scrollOffset при зуме.
- * anchorAtMouse = false — фиксируем правый край (самая новая свеча);
- * anchorAtMouse = true  — фиксируем точку под курсором (Ctrl+zoom).
- */
-fun calculateZoomScrollOffset(
-    scrollOffset: Float,
-    chartWidth: Float,
-    mouseX: Float,
-    actualFactor: Float,
-    anchorAtMouse: Boolean,
-): Float = if (anchorAtMouse) {
-    (mouseX + scrollOffset) * actualFactor - mouseX
-} else {
-    (scrollOffset + chartWidth) * actualFactor - chartWidth
+```kotlin
+class TimeScale(initialZoom: Float = 1f) {
+    var scrollOffset by mutableFloatStateOf(0f)   // Compose snapshot state
+    var zoomLevel by mutableFloatStateOf(initialZoom)
+
+    fun maxScroll(candleCount: Int, chartWidth: Float): Float   // → calculateMaxScroll
+    fun indexToX(index: Int): Float
+    fun xToIndex(x: Float): Int
+    fun panBy(deltaX: Float, candleCount: Int, chartWidth: Float)
+    fun zoomAt(factor, mouseX, anchorAtMouse, chartWidth, candleCount, minZoom, maxZoom)
+    fun scrollToLatest(candleCount: Int, chartWidth: Float)
+    fun offsetAfterPrepend(addedCount: Int, candleCount: Int, chartWidth: Float)
+    fun isAtLatest(candleCount: Int, chartWidth: Float): Boolean
 }
 ```
 
-Обе функции покрыты тестами:
-
-- `zoom without ctrl keeps right edge fixed`;
-- `zoom with ctrl keeps point under cursor fixed`;
-- `zoom at latest candle keeps right edge after clamp`;
-- `calculateMaxScroll is zero when content fits`.
+`zoomAt` внутри вызывает `calculateZoomScrollOffset`/`calculateMaxScroll`.
+Покрыто тестами (`TimeScaleTest`): кламп панорамы, якоря зума
+(правый край/Ctrl), границы min/max, `indexToX ↔ xToIndex`, коррекция
+после prepend, `scrollToLatest`.
 
 Важно: в обработчике зума `maxScroll` для клампа считается от **нового**
 зума (`calculateCandleMetrics(newZoom)`), иначе кламп по устаревшему
@@ -2711,9 +2796,9 @@ maxHistory/replaceAll).
 
 | Система | Где используется | Как считается |
 |---|---|---|
-| Виртуальная лента | индексы свечей, скролл | `i * totalW`, `scrollOffset` |
+| Виртуальная лента | индексы свечей, скролл | `TimeScale.indexToX / xToIndex` |
 | Экранная (Canvas) | рисование | `virtualX − scrollOffset` |
-| Цена ↔ Y | всё вертикальное | `priceToY` / `priceFromY` |
+| Цена ↔ Y | всё вертикальное | `priceToY` / `priceFromY` (через `PriceScale`) |
 
 Ключевой инвариант: **все вертикальные вычисления идут в одном
 прямоугольнике** `chartMainArea` и с одним `PriceRange`.
@@ -2742,14 +2827,18 @@ priceScaleArea: top = chartMainArea.top
 
 | # | Слой | Кто рисует |
 |---|---|---|
-| 1 | Сетка + свечи/footprint | `drawChart` / `drawFootprintChart` |
-| 2 | Шкала времени | `drawTimeScale` |
-| 3 | Маркеры ликвидаций | `drawLiquidationMarkers` |
-| 4 | Индикаторные панели | `indicatorRenderers` |
-| 5 | Шкала цен + badge | `drawPriceScale` |
-| 6 | Popup footprint (Alt) | `drawFootprintPopup` |
-| 7 | Рисунки пользователя | `drawDrawings` |
-| 8 | Crosshair | `drawCrosshair` |
+| 1 | Сетка + серия (свечи/footprint) | `ChartSeries.draw` |
+| 2 | Линия текущей цены (footprint) | `drawCurrentPriceLine` |
+| 3 | Шкала времени | `drawTimeScale` |
+| 4 | Маркеры ликвидаций | `drawLiquidationMarkers` |
+| 5 | Индикаторные панели | `indicatorRenderers` |
+| 6 | Шкала цен + badge | `drawPriceScale` |
+| 7 | Popup footprint (Alt) | `drawFootprintPopup` |
+| 8 | Рисунки пользователя | `drawDrawings` |
+| 9 | Crosshair (свечный или footprint) | `drawCrosshair` / `drawCrosshairForFootprint` |
+
+В фазе F эти слои планируется перевести на `ChartPanePrimitive` с
+zOrder (`bottom/normal/top`), как в lightweight-charts.
 
 ## 28.4. Z-index и клиппинг
 
@@ -2851,7 +2940,7 @@ App start
 Оно использует:
 
 - `FootprintApiClient` — загрузка инструментов и свечей (`DataLoader`);
-- `FootprintChart` — альтернативный composable;
+- `FootprintChart` — тонкая обёртка над движком (глава 17);
 - `ChartConfig`/`FootprintConfig`/`DefaultChartConfig` — конфигурацию;
 - `AggregationLevel` (через `features:dom`).
 
@@ -2871,7 +2960,10 @@ App start
 
 | Модуль | Файл | Что покрывает |
 |---|---|---|
-| `features:chart` | `ChartCalculatorTest` | метрики, `priceToY/priceFromY`, уровни, nearest index, PriceRange (включая низкие цены), якоря зума |
+| `features:chart` | `ChartCalculatorTest` | метрики, `priceToY/priceFromY`, уровни, nearest index, PriceRange (включая низкие цены), якоря зума, `shiftPriceRange` |
+| `features:chart` | `TimeScaleTest` | кламп панорамы, якоря зума (правый край/Ctrl), min/max, `indexToX ↔ xToIndex`, prepend-коррекция, `scrollToLatest` |
+| `features:chart` | `PriceScaleTest` | fit, пропорциональный сдвиг, нулевая высота, идемпотентность |
+| `features:chart` | `FootprintMappingTest` | `toSkeletonCandle` (open/high/low/close/startTime/maxVolume) |
 | `features:chart` | `FootprintAggregatorTest` | source-ТФ, выровненная агрегация, суммы объёмов, чанки |
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |
@@ -2940,7 +3032,7 @@ val storage = LocalStorage(dir.resolve("storage.db").absolutePathString())
 
 # 32. Технический долг и известные проблемы <a name="32"></a>
 
-Сводка после рефакторинга фаз 0–D. Часть прежних проблем закрыта и
+Сводка после рефакторинга фаз 0–E. Часть прежних проблем закрыта и
 из списка убрана (мёртвый `chart2/`, stale `visibleCandles`, `30m/1w`,
 потеря realtime после истории, `delay(100)` в `loadChart`, кривые границы
 footprint, отсутствие меток у рисунков и т.д.).
@@ -2963,20 +3055,21 @@ footprint, отсутствие меток у рисунков и т.д.).
 | 7 | `FootprintApiClient` — конкретный класс с хардкодом IP; нет `FootprintAdapter` в `api-market` (MEXC-бэкенду некуда подключиться) | `FootprintApiClient.kt` |
 | 8 | Exchange в кэше — константа `"Binance"` в VM/контроллере | `ChartViewModel.kt`, `FootprintController.kt` |
 | 9 | `Koin GlobalContext` внутри UI для получения `StateStore` | `ChartWindow.kt` |
-| 10 | Два движка взаимодействия: `ChartInteraction` и `FootprintChart` | `ui/chart/` |
-| 11 | Список таймфреймов в тулбаре дублирует `Timeframes.supported` | `ChartToolbar.kt` |
-| 12 | `LiquidationViewModel` — не ViewModel (нет lifecycle-aware scope) | `indicator/` |
-| 13 | `FootprintController` всё ещё крупный: live + polling + история + кэш в одном классе | `footprint/` |
+| 10 | Список таймфреймов в тулбаре дублирует `Timeframes.supported` | `ChartToolbar.kt` |
+| 11 | `LiquidationViewModel` — не ViewModel (нет lifecycle-aware scope) | `indicator/` |
+| 12 | `FootprintController` всё ещё крупный: live + polling + история + кэш в одном классе | `footprint/` |
+| 13 | Оверлеи захардкожены в порядке отрисовки движка; нет `ChartPanePrimitive` с zOrder/hitTest и multi-pane (план фазы F) | `ChartInteraction.kt` |
+| 14 | Границы зума в `ChartConfig`, но конфиг ещё не сериализуется и нет окна настроек | `ChartConfig.kt` |
 
 ## 32.3. Производительность
 
 | # | Проблема | Где |
 |---|---|---|
-| 14 | `aggregateLevels` вызывается каждый кадр | `FootprintRenderer.kt` |
-| 15 | Текст меряется заново каждый кадр (crosshair, popup, метки рисунков) | рендереры |
-| 16 | Записи состояния прямо в композиции (`chartWidthPx`, `maxScroll`) | `ChartInteraction.kt` |
-| 17 | `visibleCandles` создаёт `subList` при каждом изменении индексов | `ChartInteraction.kt`, `FootprintChart.kt` |
-| 18 | Кэш перезаписывает до 500 свечей целиком раз в 30 c (можно инкрементально) | `ChartViewModel.kt` |
+| 15 | `aggregateLevels` вызывается каждый кадр | `FootprintRenderer.kt` |
+| 16 | Текст меряется заново каждый кадр (crosshair, popup, метки рисунков) | рендереры |
+| 17 | Записи состояния прямо в композиции (`chartWidthPx`, `chartHeightPx`) | `ChartInteraction.kt` |
+| 18 | `visibleCandles` создаёт `subList` при каждом изменении индексов | `ChartInteraction.kt` |
+| 19 | Кэш перезаписывает до 500 свечей целиком раз в 30 c (можно инкрементально) | `ChartViewModel.kt` |
 
 ## 32.4. Обработка ошибок
 
@@ -3106,6 +3199,6 @@ val indicatorRenderers = remember(candles) {
 
 ---
 
-*Документ актуализирован после рефакторинга фаз 0–D
+*Документ актуализирован после рефакторинга фаз 0–E
 (ветка `char-big-refactoring`).*
 

@@ -6,8 +6,6 @@
 package com.aandios.nous.feature.chart.utils
 
 import com.aandios.nous.api.market.model.Candle
-import com.aandios.nous.api.market.model.FootprintCandle
-import com.aandios.nous.api.market.model.FootprintLevel
 import com.aandios.nous.feature.chart.model.PriceRange
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -107,16 +105,30 @@ class ChartCalculatorTest {
     }
 
     @Test
-    fun `footprint price range uses levels`() {
-        val candles = listOf(
-            footprintCandle("99.0", "101.0", levels = listOf("99.0", "100.0", "101.0")),
-        )
+    fun `shiftPriceRange returns base for zero scroll or zero height`() {
+        assertEquals(range, shiftPriceRange(range, verticalScroll = 0f, chartHeight = 100f))
+        assertEquals(range, shiftPriceRange(range, verticalScroll = 50f, chartHeight = 0f))
+    }
 
-        val result = calculatePriceRangeWithFootprint(candles)
+    @Test
+    fun `shiftPriceRange shifts range proportionally to scroll`() {
+        val shifted = shiftPriceRange(range, verticalScroll = 50f, chartHeight = 100f)
 
-        assertEquals(101f, result.max, 0.001f)
-        assertEquals(99f, result.min, 0.001f)
-        assertTrue(result.range > 0f)
+        // ratio = 0.5, shift = range * 0.5 = 10
+        assertEquals(120f, shifted.max, 0.001f)
+        assertEquals(100f, shifted.min, 0.001f)
+        assertEquals(120f, shifted.visibleMax, 0.001f)
+        assertEquals(100f, shifted.visibleMin, 0.001f)
+        assertEquals(20f, shifted.range, 0.001f)
+    }
+
+    @Test
+    fun `shiftPriceRange handles negative scroll`() {
+        val shifted = shiftPriceRange(range, verticalScroll = -50f, chartHeight = 100f)
+
+        assertEquals(100f, shifted.max, 0.001f)
+        assertEquals(80f, shifted.min, 0.001f)
+        assertEquals(20f, shifted.range, 0.001f)
     }
 
     @Test
@@ -180,13 +192,4 @@ class ChartCalculatorTest {
         assertEquals(0f, calculateMaxScroll(candleCount = 10, candleMetrics = metrics, chartWidth = 10_000f))
         assertTrue(calculateMaxScroll(candleCount = 1000, candleMetrics = metrics, chartWidth = 100f) > 0f)
     }
-
-    private fun footprintCandle(minPrice: String, maxPrice: String, levels: List<String>) = FootprintCandle(
-        exchange = "Binance",
-        symbol = "BTCUSDT",
-        timeframe = "1m",
-        minPrice = minPrice,
-        maxPrice = maxPrice,
-        levels = levels.map { FootprintLevel(price = it, bidVolume = "1", askVolume = "1") },
-    )
 }

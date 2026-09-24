@@ -6,7 +6,6 @@
 package com.aandios.nous.feature.chart.utils
 
 import com.aandios.nous.api.market.model.Candle
-import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.PriceRange
 import kotlin.math.max
@@ -47,32 +46,6 @@ fun calculatePriceRangeWithCurrentPrice(
     val padding = priceRange * 0.05f
     val visibleMax = maxPrice + padding
     val visibleMin = minPrice - padding
-    val visibleRange = visibleMax - visibleMin
-
-    return PriceRange(
-        max = maxPrice,
-        min = minPrice,
-        visibleMax = visibleMax,
-        visibleMin = visibleMin,
-        range = visibleRange
-    )
-}
-
-/**
- * Вычисляет PriceRange по списку FootprintCandle свечей.
- * Добавляет 5% padding сверху и снизу.
- */
-fun calculatePriceRangeWithFootprint(candles: List<FootprintCandle>): PriceRange {
-    if (candles.isEmpty()) return PriceRange(0f, 0f, 0f, 0f, 0f)
-
-    val allPrices = candles.flatMap { c -> c.levels.map { it.priceFloat } }
-    val maxPrice = allPrices.maxOrNull() ?: 0f
-    val minPrice = allPrices.minOrNull() ?: 0f
-    val priceRange = maxPrice - minPrice
-
-    val padding = if (priceRange <= 0f) maxPrice * 0.01f else priceRange * 0.05f
-    val visibleMax = maxPrice + padding
-    val visibleMin = (minPrice - padding).coerceAtLeast(0f)
     val visibleRange = visibleMax - visibleMin
 
     return PriceRange(
@@ -140,6 +113,23 @@ fun findNearestCandleIndex(
     val virtualX = mouseX + scrollOffset
     val index = (virtualX / totalWidthPerCandle).toInt()
     return index.coerceIn(0, candles.size - 1)
+}
+
+/**
+ * Сдвигает диапазон цен при вертикальном скролле footprint.
+ * ratio = verticalScroll / chartHeight, сдвиг = range * ratio.
+ */
+fun shiftPriceRange(base: PriceRange, verticalScroll: Float, chartHeight: Float): PriceRange {
+    if (chartHeight <= 0f || verticalScroll == 0f) return base
+    val ratio = verticalScroll / chartHeight
+    val shift = base.range * ratio
+    return PriceRange(
+        max = base.max + shift,
+        min = base.min + shift,
+        visibleMax = base.visibleMax + shift,
+        visibleMin = base.visibleMin + shift,
+        range = base.range,
+    )
 }
 
 /**

@@ -187,16 +187,18 @@ fun DrawScope.drawCurrentPriceLine(
     priceRange: PriceRange,
     config: ChartConfig,
     chartHeight: Float,
-    chartWidth: Float
+    chartWidth: Float,
+    alpha: Float = 0.7f,
+    strokeWidth: Float = 1f
 ) {
     val y = priceToY(currentPrice, priceRange, chartHeight)
 
     // Пунктирная линия через весь график
     drawLine(
-        color = androidx.compose.ui.graphics.Color.Green.copy(alpha = 0.7f),
+        color = androidx.compose.ui.graphics.Color.Green.copy(alpha = alpha),
         start = Offset(0f, y),
         end = Offset(chartWidth, y),
-        strokeWidth = 1f,
+        strokeWidth = strokeWidth,
         pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
     )
 }

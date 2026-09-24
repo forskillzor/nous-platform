@@ -26,6 +26,7 @@ import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.model.PriceRange
+import com.aandios.nous.feature.chart.model.toSkeletonCandle
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingRepository
 import com.aandios.nous.feature.chart.tools.DrawingToolType
@@ -217,7 +218,7 @@ private fun ChartWindowContent(
                                     uiState.liveFootprintCandle?.let { add(it) }
                                 }
                                 val fpToCandle = remember(allFp) {
-                                    allFp.map { Candle(it.open, it.high, it.close, it.low, it.startTime, it.maxVolume) }
+                                    allFp.map { it.toSkeletonCandle() }
                                 }
                                 CandleStickChart(
                                     candles = fpToCandle,

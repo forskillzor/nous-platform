@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2026 Sergey Orlov
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
@@ -29,10 +29,8 @@ import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
 import com.aandios.nous.feature.chart.utils.priceFromY
 import com.aandios.nous.feature.chart.utils.priceToY
-import com.aandios.nous.feature.chart.utils.formatTime
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import kotlin.math.abs
-import kotlin.math.max
 import kotlin.math.min
 
 fun DrawScope.drawFootprintChart(
@@ -142,45 +140,6 @@ fun DrawScope.drawFootprintCandle(
     }
 }
 
-fun DrawScope.drawTimeScaleForFootprint(
-    candles: List<FootprintCandle>,
-    config: ChartConfig,
-    timeScaleArea: Rect,
-    textMeasurer: TextMeasurer,
-    scrollOffset: Float = 0f,
-    zoomLevel: Float = 1f,
-) {
-    if (candles.isEmpty()) return
-
-    withTransform({
-        translate(left = timeScaleArea.left, top = timeScaleArea.top)
-        clipRect(0f, 0f, timeScaleArea.width, timeScaleArea.height)
-    }) {
-        drawRect(config.backgroundColor, Offset(0f, 0f), Size(timeScaleArea.width, timeScaleArea.height))
-        drawLine(config.gridColor.copy(alpha = 0.5f), Offset(0f, 0f), Offset(timeScaleArea.width, 0f), 1f)
-
-        val candleMetrics = calculateCandleMetrics(zoomLevel)
-        val totalW = candleMetrics.width + candleMetrics.spacing
-
-        val visibleStartIdx = (scrollOffset / totalW).toInt().coerceIn(0, max(0, candles.size - 1))
-        val visibleEndIdx = ((scrollOffset + timeScaleArea.width) / totalW + 1).toInt().coerceIn(0, candles.size)
-        val visibleCount = visibleEndIdx - visibleStartIdx
-        val step = (visibleCount / 6).coerceAtLeast(1)
-        val firstLabelIdx = visibleStartIdx + (step - visibleStartIdx % step) % step
-
-        for (i in firstLabelIdx until visibleEndIdx step step) {
-            if (i in candles.indices) {
-                val x = i * totalW - scrollOffset + candleMetrics.width / 2
-                val timeText = formatTime(candles[i].startTime)
-                val textStyle = TextStyle(color = config.axisTextColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-                val textLayoutResult = textMeasurer.measure(AnnotatedString(timeText), textStyle)
-                drawLine(config.gridColor, Offset(x, 0f), Offset(x, 4f), 1f)
-                drawText(textLayoutResult, topLeft = Offset(x - textLayoutResult.size.width / 2, timeScaleArea.height - textLayoutResult.size.height - 2f))
-            }
-        }
-    }
-}
-
 fun DrawScope.drawCrosshairForFootprint(
     mousePosition: Offset,
     candles: List<FootprintCandle>,
@@ -221,7 +180,7 @@ fun DrawScope.drawCrosshairForFootprint(
 
 /**
  * Ctrl+hover popup: rectangle with compact bid/ask volume table for the candle under cursor.
- * When Ctrl pressed and mouse over footprint candle — shows price levels table.
+ * When Ctrl pressed and mouse over footprint candle вЂ” shows price levels table.
  */
 fun DrawScope.drawFootprintPopup(
     mousePosition: Offset,

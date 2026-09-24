@@ -44,7 +44,11 @@ data class ChartConfig(
     val priceScaleWidth: Dp = 60.dp,
     val candleStyle: CandleStyle = CandleStyle(),
     val footprintConfig: FootprintConfig = FootprintConfig(),
-    val priceFormatter: SymbolFormatter = SymbolFormatter.DEFAULT
+    val priceFormatter: SymbolFormatter = SymbolFormatter.DEFAULT,
+    // Границы зума (позже войдут в сериализуемый конфиг / окно настроек)
+    val minZoom: Float = 0.05f,
+    val maxZoom: Float = 4f,
+    val maxZoomFootprint: Float = 30f
 )
 
 // Дефолтные настройки
