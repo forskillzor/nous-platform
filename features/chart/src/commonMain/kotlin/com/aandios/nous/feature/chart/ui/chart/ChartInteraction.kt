@@ -61,9 +61,12 @@ import com.aandios.nous.feature.chart.rendering.drawPriceScale
 import com.aandios.nous.feature.chart.rendering.drawTimeScale
 import com.aandios.nous.feature.chart.scale.PriceScale
 import com.aandios.nous.feature.chart.scale.TimeScale
+import com.aandios.nous.feature.chart.tools.Drawing
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingRenderer.drawDrawings
 import com.aandios.nous.feature.chart.tools.DrawingToolType
+import com.aandios.nous.feature.chart.tools.hitTestDrawings
+import com.aandios.nous.feature.chart.tools.moveDrawing
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max
@@ -104,6 +107,9 @@ fun CandleStickChartInteraction(
     var isCtrlPressed by remember { mutableStateOf(false) }
     // Alt+hover popup position for footprint
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
+    // Превью фигуры во время рисования / последний диапазон для жестов
+    var previewDrawing by remember { mutableStateOf<Drawing?>(null) }
+    var currentPriceRange by remember { mutableStateOf<PriceRange>(PriceRange(0f, 0f, 0f, 0f, 0f)) }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -150,10 +156,10 @@ fun CandleStickChartInteraction(
                     else -> false
                 }
             }
-            // Обработка жестов: pan / Alt+вертикаль (footprint) / crosshair.
+            // Обработка жестов: move/resize рисунков, pan / Alt+вертикаль (footprint) / crosshair.
             // Модификаторы читаются из PointerEvent.keyboardModifiers —
             // не зависят от фокуса (раньше onKeyEvent их «терял» после кликов по тулбару).
-            .pointerInput(crosshairEnabled) {
+            .pointerInput(crosshairEnabled, activeDrawingTool, drawingHistory) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
                     if (crosshairEnabled) {
@@ -172,6 +178,49 @@ fun CandleStickChartInteraction(
                             }
                         } while (true)
                     } else {
+                        // 1. Перемещение/изменение размера существующего рисунка
+                        val history = drawingHistory
+                        if (history != null && activeDrawingTool == DrawingToolType.NONE) {
+                            val hitMetrics = timeScale.metrics()
+                            val hit = hitTestDrawings(
+                                drawings = history.drawings,
+                                position = down.position,
+                                candles = currentCandles,
+                                priceRange = currentPriceRange,
+                                chartHeight = chartHeightPx,
+                                scrollOffset = timeScale.scrollOffset,
+                                candleWidth = hitMetrics.width,
+                                candleSpacing = hitMetrics.spacing,
+                            )
+                            if (hit != null) {
+                                do {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull() ?: break
+                                    if (!change.pressed) break
+                                    val updated = moveDrawing(
+                                        drawing = hit.drawing,
+                                        handle = hit.handle,
+                                        from = down.position,
+                                        to = change.position,
+                                        candles = currentCandles,
+                                        priceRange = currentPriceRange,
+                                        chartHeight = chartHeightPx,
+                                        scrollOffset = timeScale.scrollOffset,
+                                        candleWidth = hitMetrics.width,
+                                        candleSpacing = hitMetrics.spacing,
+                                        formatter = config.priceFormatter,
+                                    )
+                                    history.update(hit.id, updated)
+                                    change.consume()
+                                } while (true)
+                                history.commit()
+                                return@awaitEachGesture
+                            }
+                        }
+                        // Активный инструмент рисования — жесты обрабатывает DrawingOverlay
+                        if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
+
+                        // 2. Панорамирование / Alt+вертикаль (footprint)
                         var previous = down.position
                         do {
                             val event = awaitPointerEvent()
@@ -333,6 +382,7 @@ fun CandleStickChartInteraction(
         // Autoscale по видимым свечам (текущая цена НЕ влияет на диапазон)
         priceScale.fit { series.priceRange(startIdx, endIdx) }
         val priceRange = priceScale.range(verticalScroll, chartHeightPx)
+        currentPriceRange = priceRange
         // Линия и badge текущей цены рисуются, только если цена попадает в видимый диапазон
         val visibleCurrentPrice = currentPrice?.takeIf { it in priceRange.visibleMin..priceRange.visibleMax }
 
@@ -466,6 +516,19 @@ fun CandleStickChartInteraction(
                     textMeasurer = textMeasurer,
                 )
             }
+            // 8b. Превью рисуемой фигуры (линейка с актуальными вычислениями)
+            previewDrawing?.let { preview ->
+                drawDrawings(
+                    drawings = listOf(preview), candles = candles,
+                    priceRange = priceRange,
+                    chartWidth = layout.chartMainArea.width,
+                    chartHeight = layout.chartMainArea.height,
+                    scrollOffset = clampedOffset,
+                    candleWidth = candleMetrics.width,
+                    candleSpacing = candleMetrics.spacing,
+                    textMeasurer = textMeasurer,
+                )
+            }
             // 9. Crosshair: в footprint-режиме — footprint-панель, в свечах — свечная
             if (crosshairEnabled && isCrosshairVisible && mousePosition != null) {
                 if (footprintData != null) {
@@ -513,6 +576,10 @@ fun CandleStickChartInteraction(
                 fontFamily = FontFamily.Monospace,
             )
         }
+        // Сброс превью при деактивации инструмента рисования
+        LaunchedEffect(activeDrawingTool) {
+            if (activeDrawingTool == DrawingToolType.NONE) previewDrawing = null
+        }
         // Drawing overlay (only when drawing tool active)
         if (activeDrawingTool != DrawingToolType.NONE) {
             DrawingOverlay(
@@ -524,7 +591,11 @@ fun CandleStickChartInteraction(
                 scrollOffset = clampedOffset,
                 zoomLevel = timeScale.zoomLevel,
                 priceFormatter = config.priceFormatter,
-                onToolChange = onActiveDrawingToolChange,
+                onToolChange = { tool ->
+                    previewDrawing = null
+                    onActiveDrawingToolChange(tool)
+                },
+                onPreviewChange = { previewDrawing = it },
             )
         }
     }

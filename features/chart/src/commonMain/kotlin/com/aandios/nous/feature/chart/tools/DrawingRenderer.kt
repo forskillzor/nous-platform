@@ -207,17 +207,4 @@ object DrawingRenderer {
         )
         drawText(layout, topLeft = Offset(labelX + 3f, y + 2f))
     }
-
-    private fun timeToX(
-        timeMs: Long,
-        firstTime: Long,
-        timeRange: Long,
-        candleCount: Int,
-        totalW: Float,
-        scrollOffset: Float
-    ): Float {
-        val fraction = (timeMs - firstTime).toFloat() / timeRange.toFloat()
-        val x = fraction * candleCount * totalW - scrollOffset
-        return x
-    }
 }

@@ -1953,6 +1953,11 @@ val clampedOffset = timeScale.scrollOffset.coerceIn(-TimeScale.MAX_SCROLL_LEFT, 
 Вертикальный скролл активен только в footprint-режиме и сдвигает
 диапазон цен (`PriceScale.range`), не трогая данные.
 
+Перед панорамированием движок проверяет **hit-test по рисункам**
+(см. главу 24.4): если под курсором фигура — drag её перемещает или
+меняет размер; при активном инструменте рисования жесты обрабатывает
+`DrawingOverlay`, и панорамирование отключается.
+
 **Модификаторы — из pointer-событий.** `Ctrl`/`Alt` читаются через
 `event.keyboardModifiers.isCtrlPressed/isAltPressed`, а не через
 `onKeyEvent`-состояние: раньше после клика по тулбару фокус уходил
@@ -2516,7 +2521,7 @@ fun DrawScope.drawDrawings(
 Метка — это `drawRect` (тёмный фон) + `drawText`. Раньше метки были
 заглушками «handled by composable text» и не рисовались вовсе.
 
-## 24.3. DrawingOverlay
+## 24.3. DrawingOverlay и live-превью
 
 Прозрачный слой, перехватывающий жесты при активном инструменте:
 
@@ -2532,19 +2537,73 @@ fun DrawingOverlay(
     zoomLevel: Float,
     priceFormatter: SymbolFormatter = SymbolFormatter.DEFAULT,
     onToolChange: (DrawingToolType) -> Unit,
+    onPreviewChange: (Drawing?) -> Unit = {},
     modifier: Modifier = Modifier
 )
 ```
 
-- `HORIZONTAL`/`VERTICAL` — одиночный клик;
+- `HORIZONTAL`/`VERTICAL` — одиночный клик (превью видно сразу, коммит
+  на release, инструмент сбрасывается);
 - остальные — drag от начала к концу;
-- после создания фигуры вызывается `onToolChange(NONE)` (инструмент
-  сбрасывается, колбэк проброшен из `ChartInteraction`);
-- линейка (`RULER`) создаёт `TrendLine` с меткой
-  `Δ<цена> (<%>) | <время>`;
+- **live-превью**: на каждом движении `buildDrawing(...)` строит фигуру и
+  отдаёт её в `onPreviewChange` — движок рисует её поверх остальных
+  рисунков, поэтому во время drag видна линия и актуальные вычисления
+  линейки (`Δ/%/время`); на release — `onPreviewChange(null)` + коммит
+  в историю;
+- линейка (`RULER`) создаёт `TrendLine` с меткой из чистой
+  `rulerLabel(startPrice, endPrice, startTimeMs, endTimeMs, formatter)`;
 - цена в метках форматируется `priceFormatter`.
 
-## 24.4. DrawingRepository — персистент
+Построение фигуры вынесено в чистую `buildDrawing(...)` — одно и то же
+значение для превью и коммита.
+
+## 24.4. Перемещение и resize существующих фигур
+
+Когда инструмент не активен, движок сначала проверяет hit-test по
+рисункам (порог 8px):
+
+```kotlin
+fun hitTestDrawings(
+    drawings: List<Drawing>,
+    position: Offset,
+    candles: List<Candle>,
+    priceRange: PriceRange,
+    chartHeight: Float,
+    scrollOffset: Float,
+    candleWidth: Float,
+    candleSpacing: Float,
+    threshold: Float = 8f,
+): DrawingHit?   // id + drawing + handle (START/END или null)
+
+fun moveDrawing(
+    drawing: Drawing,
+    handle: DrawingHandle?,
+    from: Offset, to: Offset,       // дельта от старта жеста — без накопления ошибки
+    candles: List<Candle>,
+    priceRange: PriceRange,
+    chartHeight: Float,
+    scrollOffset: Float,
+    candleWidth: Float,
+    candleSpacing: Float,
+    formatter: SymbolFormatter,
+): Drawing
+```
+
+Поведение:
+
+- тело фигуры → **move**: горизонтальный уровень двигается по цене,
+  вертикальная линия — по времени, тренд/прямоугольник — целиком
+  (обе точки);
+- ручка (`START`/`END` у тренда, углы прямоугольника) → **resize** одной
+  точки;
+- при движении линейки её метка пересчитывается (`rulerLabel`);
+- во время drag — серия `DrawingHistory.update(id, ...)`, на отпускании —
+  `commit()` (один шаг undo на весь жест).
+
+Hit-test, move/resize и `rulerLabel` — чистые функции в
+`tools/DrawingGeometry.kt`, покрыты тестами.
+
+## 24.5. DrawingRepository — персистент
 
 ```kotlin
 class DrawingRepository(private val store: StateStore, ...) {
@@ -2562,7 +2621,7 @@ class DrawingRepository(private val store: StateStore, ...) {
 - Битый JSON не роняет приложение: `load` возвращает пустой список.
 - Привязка к панели воркспейса: у каждой панели графика свои рисунки.
 
-## 24.5. Undo/Redo
+## 24.6. Undo/Redo
 
 `DrawingHistory` — см. главу 27. В тулбаре — кнопки `↶`/`↷`, в
 `ChartInteraction` — горячие клавиши `Ctrl+Z`/`Ctrl+Y`.
@@ -2776,19 +2835,21 @@ class SymbolFormatter(val tickSize: Double = 0.01, val minQty: Double = 0.001) {
 
 # 27. DrawingHistory: Undo/Redo как Compose-состояние <a name="27"></a>
 
-## 27.1. Реализация
+## 27.1. Реализация: снимки списка
 
 ```kotlin
 class DrawingHistory(private val maxHistory: Int = 100) {
-    private val undoStack = ArrayDeque<Drawing>(maxHistory)
-    private val redoStack = ArrayDeque<Drawing>(maxHistory)
+    private val undoStack = ArrayDeque<List<Drawing>>(maxHistory)  // снимки ДО операции
+    private val redoStack = ArrayDeque<List<Drawing>>(maxHistory)
     private val _drawings = mutableStateListOf<Drawing>()
     val drawings: List<Drawing> get() = _drawings
 
-    fun add(drawing: Drawing)
-    fun undo(): Drawing?
-    fun redo(): Drawing?
+    fun add(drawing: Drawing)          // снимок до + добавить
+    fun update(id: String, drawing: Drawing)  // замена БЕЗ записи в undo
+    fun commit()                       // один undo-шаг на серию update (drag)
     fun remove(drawing: Drawing)
+    fun undo()
+    fun redo()
     fun replaceAll(drawings: List<Drawing>)   // загрузка из персистента
     fun clear()
 
@@ -2797,6 +2858,10 @@ class DrawingHistory(private val maxHistory: Int = 100) {
     val size: Int get() = _drawings.size
 }
 ```
+
+Почему снимки, а не «обратная операция»: перемещение и resize — это
+замена фигуры, а не добавление/удаление. Снимок списка делает undo
+тривиально корректным для любой операции.
 
 ## 27.2. Почему mutableStateListOf
 
@@ -2808,15 +2873,19 @@ Compose: любое изменение автоматически инвалид
 
 ## 27.3. Семантика undo/redo
 
-- `add` кладёт рисунок в список и в undo-стек, очищает redo-стек;
-- `undo` снимает с undo-стека, удаляет из списка, кладёт в redo;
+- `add`/`remove` кладут в undo-стек снимок списка **до** операции и
+  очищают redo;
+- `update` меняет фигуру на месте и запоминает baseline-снимок до
+  первого изменения; `commit()` переносит его в undo-стек — вся серия
+  движений мыши = один шаг undo;
+- `undo` кладёт текущий список в redo и применяет последний снимок;
 - `redo` — обратная операция;
-- `maxHistory = 100` — старые записи вытесняются;
-- `replaceAll` заполняет список и undo-стек (загруженные рисунки можно
-  отменять).
+- `maxHistory = 100` — старые снимки вытесняются;
+- `replaceAll` (загрузка из персистента) очищает историю — загруженные
+  фигуры нельзя «отменить до пустоты».
 
-Покрыто тестами `DrawingHistoryTest` (add/undo/redo/remove/clear/
-maxHistory/replaceAll).
+Покрыто тестами `DrawingHistoryTest` (add/undo/redo/update+commit/remove/
+maxHistory/replaceAll/clear).
 
 ---
 
@@ -2998,7 +3067,8 @@ App start
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |
 | `features:chart` | `ChartUiStateTest` | дефолты и `copy` |
-| `features:chart` | `DrawingHistoryTest` | undo/redo/remove/clear/maxHistory |
+| `features:chart` | `DrawingHistoryTest` | add/undo/redo/update+commit/remove/maxHistory (снимки списка) |
+| `features:chart` | `DrawingGeometryTest` | hit-test (тело/ручки), move/resize (уровень, тренд, прямоугольник), `rulerLabel` |
 | `features:chart` | `DrawingRepositoryTest` | JSON-roundtrip, изоляция workspace/panel, битый JSON |
 | `platform-core` | `TimeSeriesControllerTest` | initial load, live-merge, loadMore, пустой ответ, ошибка |
 | `features:localstorage` | `LocalStorageTest` | roundtrip свечей/footprint, изоляция по exchange, лимит, очистка, **миграция схемы** |

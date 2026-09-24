@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DrawingHistoryTest {
@@ -34,35 +33,34 @@ class DrawingHistoryTest {
     }
 
     @Test
-    fun `undo removes drawing and enables redo`() {
+    fun `undo restores previous snapshot and enables redo`() {
         val history = DrawingHistory()
         history.add(trendLine("a"))
+        history.add(trendLine("b"))
 
-        val undone = history.undo()
-
-        assertEquals("a", undone?.id)
-        assertEquals(0, history.size)
-        assertFalse(history.canUndo)
-        assertTrue(history.canRedo)
-    }
-
-    @Test
-    fun `redo restores undone drawing`() {
-        val history = DrawingHistory()
-        history.add(trendLine("a"))
         history.undo()
 
-        val redone = history.redo()
-
-        assertEquals("a", redone?.id)
-        assertEquals(1, history.size)
+        assertEquals(listOf("a"), history.drawings.map { it.id })
         assertTrue(history.canUndo)
-        assertFalse(history.canRedo)
+        assertTrue(history.canRedo)
+
+        history.undo()
+        assertEquals(0, history.size)
+        assertFalse(history.canUndo)
     }
 
     @Test
-    fun `undo on empty history returns null`() {
-        assertNull(DrawingHistory().undo())
+    fun `redo restores undone snapshot`() {
+        val history = DrawingHistory()
+        history.add(trendLine("a"))
+        history.add(trendLine("b"))
+        history.undo()
+
+        history.redo()
+
+        assertEquals(listOf("a", "b"), history.drawings.map { it.id })
+        assertTrue(history.canUndo)
+        assertFalse(history.canRedo)
     }
 
     @Test
@@ -77,7 +75,46 @@ class DrawingHistoryTest {
     }
 
     @Test
-    fun `remove deletes drawing from list and stacks`() {
+    fun `update replaces drawing without undo entry`() {
+        val history = DrawingHistory()
+        history.add(trendLine("a"))
+
+        history.update("a", trendLine("a").copy(startPrice = 105f))
+
+        assertEquals(105f, (history.drawings.first() as Drawing.TrendLine).startPrice)
+        assertTrue(history.canUndo) // снимок только от add
+    }
+
+    @Test
+    fun `update then commit records single undo entry for whole drag`() {
+        val history = DrawingHistory()
+        history.add(trendLine("a"))
+        history.add(trendLine("b"))
+
+        history.update("b", trendLine("b").copy(startPrice = 1f))
+        history.update("b", trendLine("b").copy(startPrice = 2f))
+        history.update("b", trendLine("b").copy(startPrice = 3f))
+        history.commit()
+
+        history.undo()
+        assertEquals(listOf("a", "b"), history.drawings.map { it.id })
+        assertEquals(100f, (history.drawings.last() as Drawing.TrendLine).startPrice)
+    }
+
+    @Test
+    fun `undo of moved drawing restores previous position`() {
+        val history = DrawingHistory()
+        history.add(trendLine("a"))
+
+        history.update("a", trendLine("a").copy(startPrice = 120f))
+        history.commit()
+
+        history.undo()
+        assertEquals(100f, (history.drawings.first() as Drawing.TrendLine).startPrice)
+    }
+
+    @Test
+    fun `remove deletes drawing and records undo`() {
         val history = DrawingHistory()
         val drawing = trendLine("a")
         history.add(drawing)
@@ -85,7 +122,8 @@ class DrawingHistoryTest {
         history.remove(drawing)
 
         assertEquals(0, history.size)
-        assertFalse(history.canUndo)
+        history.undo()
+        assertEquals(1, history.size)
     }
 
     @Test
@@ -95,21 +133,21 @@ class DrawingHistoryTest {
         history.add(trendLine("b"))
         history.add(trendLine("c"))
 
-        assertEquals(3, history.size)
-        history.undo()
-        history.undo()
+        history.undo() // -> a,b
+        history.undo() // -> a
         assertFalse(history.canUndo)
+        assertEquals(1, history.size)
     }
 
     @Test
-    fun `replaceAll replaces content and fills undo stack`() {
+    fun `replaceAll replaces content and clears history`() {
         val history = DrawingHistory()
         history.add(trendLine("old"))
 
         history.replaceAll(listOf(trendLine("new1"), trendLine("new2")))
 
         assertEquals(listOf("new1", "new2"), history.drawings.map { it.id })
-        assertTrue(history.canUndo)
+        assertFalse(history.canUndo)
         assertFalse(history.canRedo)
     }
 
@@ -134,7 +172,6 @@ class DrawingHistoryTest {
 
         history.add(trendLine("a"))
 
-        // Snapshot list reflects the addition (Compose state list)
         assertEquals(1, initialSnapshot.size)
         assertEquals(Color(0xFFFFEB00), history.drawings.first().color)
     }
