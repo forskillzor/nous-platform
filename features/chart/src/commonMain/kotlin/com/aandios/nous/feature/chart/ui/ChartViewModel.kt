@@ -32,8 +32,11 @@ class ChartViewModel(
     stateStore: StateStore? = null,
     private val candleCache: CandleCacheStore? = null,
     footprintCache: FootprintCacheStore? = null,
+    private val cacheDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    // Отдельный scope для записей кэша: не блокирует Main и переживает dispose панели
+    private val cacheScope = CoroutineScope(cacheDispatcher + SupervisorJob())
 
     private val _state = MutableStateFlow(ChartUiState())
     val state: StateFlow<ChartUiState> = _state.asStateFlow()
@@ -50,6 +53,11 @@ class ChartViewModel(
     private var candleController: TimeSeriesController<Candle>? = null
     private var candleStateJob: Job? = null
     private var lastCacheWriteMs = 0L
+
+    // Последний снапшот для flush без троттла (смена символа/ТФ, dispose)
+    private var lastSnapshot: List<Candle> = emptyList()
+    private var lastSnapshotSymbol: String = ""
+    private var lastSnapshotTimeframe: String = ""
 
     init {
         viewModelScope.launch {
@@ -73,6 +81,7 @@ class ChartViewModel(
     }
 
     override fun dispose() {
+        flushCache()
         candleStateJob?.cancel()
         candleController?.dispose()
         footprintController.dispose()
@@ -217,6 +226,9 @@ class ChartViewModel(
      * и пагинация — в одном TimeSeriesController (см. platform-core).
      */
     private fun startCandleSeries(ticker: String, timeframe: String) {
+        // Сохраняем данные текущего символа перед переключением (без троттла)
+        flushCache()
+
         candleStateJob?.cancel()
         candleController?.dispose()
 
@@ -282,7 +294,26 @@ class ChartViewModel(
         if (now - lastCacheWriteMs < CACHE_WRITE_INTERVAL_MS) return
         lastCacheWriteMs = now
         val snapshot = candles.takeLast(CACHE_LIMIT)
-        viewModelScope.launch {
+        lastSnapshot = snapshot
+        lastSnapshotSymbol = symbol
+        lastSnapshotTimeframe = timeframe
+        cacheScope.launch {
+            try {
+                cache.saveCandles(EXCHANGE, symbol, timeframe, snapshot)
+            } catch (_: Exception) {
+                // кэш не критичен для работы графика
+            }
+        }
+    }
+
+    /** Немедленная запись последнего снапшота (без троттла): смена символа/ТФ или dispose. */
+    private fun flushCache() {
+        val cache = candleCache ?: return
+        if (lastSnapshot.isEmpty()) return
+        val snapshot = lastSnapshot
+        val symbol = lastSnapshotSymbol
+        val timeframe = lastSnapshotTimeframe
+        cacheScope.launch {
             try {
                 cache.saveCandles(EXCHANGE, symbol, timeframe, snapshot)
             } catch (_: Exception) {

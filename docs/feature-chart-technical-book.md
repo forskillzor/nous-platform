@@ -428,9 +428,11 @@ factory {
 
 ### 4.2.2. `featureChartModule` (preview, `features:chart`)
 
-Повторяет часть `AppModule`, но без кэша (`candleCache`/`footprintCache`
-остаются `null`) и без `StateStore`. Это осознанно: preview не должен
-писать в продовую базу.
+Повторяет часть `AppModule`, включая локальное хранилище: регистрируются
+`LocalStorage`, `StateStore`, `CandleCacheStore`, `FootprintCacheStore`, и
+все они передаются в `ChartViewModel`. Preview использует ту же БД
+`~/.nous/storage.db`, что и основное приложение — кэш свечей/footprint,
+персистент рисунков и `ChartStatePersistor` работают в изолированном окне.
 
 ### 4.2.3. Кэш как отдельные интерфейсы
 
@@ -901,16 +903,19 @@ object Timeframes {
 `ChartViewModel.startCandleSeries()` делает две вещи, связанные с кэшем:
 
 ```kotlin
-// 1. Быстрый показ из кэша, пока грузится свежая история с биржи
+// 1. Быстрый показ из кэша, пока грузится свежая история с биржи.
+//    Guard внутри update: кэш не может перетереть свежие данные
 viewModelScope.launch {
     val cache = candleCache ?: return@launch
     val cached = cache.getCandles(EXCHANGE, ticker, timeframe, CACHE_LIMIT)
-    if (cached.isNotEmpty() &&
-        _state.value.currentSymbol == ticker &&
-        _state.value.currentTimeframe == timeframe &&
-        _state.value.chartState is ChartState.Loading
-    ) {
-        _state.update { it.copy(chartState = ChartState.Success(cached, cached.last().close)) }
+    _state.update { s ->
+        if (cached.isNotEmpty() &&
+            s.currentSymbol == ticker &&
+            s.currentTimeframe == timeframe &&
+            s.chartState is ChartState.Loading
+        ) {
+            s.copy(chartState = ChartState.Success(cached, cached.last().close))
+        } else s
     }
 }
 
@@ -918,7 +923,14 @@ viewModelScope.launch {
 private fun scheduleCacheWrite(symbol: String, timeframe: String, candles: List<Candle>) {
     if (now - lastCacheWriteMs < CACHE_WRITE_INTERVAL_MS) return
     lastCacheWriteMs = now
-    viewModelScope.launch { cache.saveCandles(EXCHANGE, symbol, timeframe, candles.takeLast(CACHE_LIMIT)) }
+    lastSnapshot = candles.takeLast(CACHE_LIMIT)   // для flushCache()
+    cacheScope.launch { cache.saveCandles(EXCHANGE, symbol, timeframe, lastSnapshot) }
+}
+
+// 3. Немедленный flush без троттла — смена символа/ТФ и dispose()
+private fun flushCache() {
+    if (lastSnapshot.isEmpty()) return
+    cacheScope.launch { cache.saveCandles(EXCHANGE, lastSnapshotSymbol, lastSnapshotTimeframe, lastSnapshot) }
 }
 ```
 
@@ -926,6 +938,22 @@ private fun scheduleCacheWrite(symbol: String, timeframe: String, candles: List<
 секунду, а `INSERT OR REPLACE` 500 строк на каждый тик — лишняя нагрузка.
 Почему preload только при `ChartState.Loading`: кэш не должен перетирать
 уже пришедшие свежие данные.
+
+Почему нужен `flushCache`: троттл может «проглотить» данные последнего
+символа при быстром переключении (например, сменил символ через 10 секунд
+после записи). Flush вызывается при пересоздании контроллера
+(`startCandleSeries`) и в `dispose()`, поэтому последний снапшот
+сохраняется независимо от троттла.
+
+Записи выполняются в отдельном `cacheScope` (`Dispatchers.Default` +
+`SupervisorJob`), чтобы SQLite не блокировал главный поток и flush успевал
+выполниться после `dispose()` панели.
+
+Кэш подключён **и в preview**: `FeatureChartModule` регистрирует
+`LocalStorage`/`StateStore`/`CandleCacheStore`/`FootprintCacheStore` и
+передаёт их в `ChartViewModel` — изолированное окно (`:features:chart:run`)
+использует ту же БД `~/.nous/storage.db`, что и composeApp. Заодно в
+preview заработали персистент рисунков и `ChartStatePersistor`.
 
 **Технический долг.** `EXCHANGE = "Binance"` пока константа — при появлении
 мультибиржевости её нужно брать из выбранного провайдера.
@@ -3100,6 +3128,7 @@ App start
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |
 | `features:chart` | `ChartUiStateTest` | дефолты и `copy` |
+| `features:chart` | `ChartViewModelCacheTest` | с фейками: запись при загрузке, показ из кэша, flush при смене символа |
 | `features:chart` | `DrawingHistoryTest` | add/undo/redo/update+commit/remove/maxHistory (снимки списка) |
 | `features:chart` | `DrawingGeometryTest` | hit-test (тело/ручки), move/resize (уровень, тренд, прямоугольник), `rulerLabel` (знак/округление), `formatDuration` |
 | `features:chart` | `DrawingRepositoryTest` | JSON-roundtrip, изоляция workspace/panel, битый JSON |
