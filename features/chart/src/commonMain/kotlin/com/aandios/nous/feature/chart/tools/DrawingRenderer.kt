@@ -208,3 +208,44 @@ object DrawingRenderer {
         drawText(layout, topLeft = Offset(labelX + 3f, y + 2f))
     }
 }
+
+/**
+ * Ручки выделенного рисунка: клик по фигуре выделяет её,
+ * Delete/Backspace — удаляет (см. ChartInteraction).
+ */
+fun DrawScope.drawDrawingSelection(
+    drawing: Drawing,
+    candles: List<Candle>,
+    priceRange: PriceRange,
+    chartHeight: Float,
+    chartWidth: Float,
+    scrollOffset: Float,
+    candleWidth: Float,
+    candleSpacing: Float,
+) {
+    if (candles.isEmpty()) return
+    val totalW = candleWidth + candleSpacing
+    val firstTime = candles.first().timestamp
+    val timeRange = (candles.last().timestamp - firstTime).coerceAtLeast(1L)
+    val handleColor = Color(0xFF5B9BD5)
+
+    fun handleX(timeMs: Long) = timeToX(timeMs, firstTime, timeRange, candles.size, totalW, scrollOffset)
+    fun handleY(price: Float) = priceToY(price, priceRange, chartHeight)
+
+    fun handle(center: Offset) {
+        drawCircle(color = handleColor, radius = 4f, center = center, style = Stroke(1.5f))
+    }
+
+    when (drawing) {
+        is Drawing.TrendLine -> {
+            handle(Offset(handleX(drawing.startTimeMs), handleY(drawing.startPrice)))
+            handle(Offset(handleX(drawing.endTimeMs), handleY(drawing.endPrice)))
+        }
+        is Drawing.HorizontalLevel -> handle(Offset(chartWidth - 4f, handleY(drawing.price)))
+        is Drawing.Rectangle -> {
+            handle(Offset(handleX(drawing.startTimeMs), handleY(drawing.topPrice)))
+            handle(Offset(handleX(drawing.endTimeMs), handleY(drawing.bottomPrice)))
+        }
+        is Drawing.VerticalLine -> handle(Offset(handleX(drawing.timeMs), 8f))
+    }
+}

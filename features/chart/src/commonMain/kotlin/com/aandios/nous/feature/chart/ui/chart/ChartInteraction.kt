@@ -64,6 +64,7 @@ import com.aandios.nous.feature.chart.scale.TimeScale
 import com.aandios.nous.feature.chart.tools.Drawing
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingRenderer.drawDrawings
+import com.aandios.nous.feature.chart.tools.drawDrawingSelection
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.tools.hitTestDrawings
 import com.aandios.nous.feature.chart.tools.moveDrawing
@@ -110,6 +111,8 @@ fun CandleStickChartInteraction(
     // Превью фигуры во время рисования / последний диапазон для жестов
     var previewDrawing by remember { mutableStateOf<Drawing?>(null) }
     var currentPriceRange by remember { mutableStateOf<PriceRange>(PriceRange(0f, 0f, 0f, 0f, 0f)) }
+    // Выделенный рисунок (клик по фигуре; удаление по Delete/Backspace)
+    var selectedDrawingId by remember { mutableStateOf<String?>(null) }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -128,6 +131,8 @@ fun CandleStickChartInteraction(
     val zoomStep = 1.25f
     val minZoom = config.minZoom
     val maxZoom = if (footprintCandles != null) config.maxZoomFootprint else config.maxZoom
+    // Порог «клик» vs «drag» для выделения рисунков
+    val tapThresholdPx = 4f
 
     // TextMeasurer для измерения текста
     val textMeasurer = rememberTextMeasurer()
@@ -152,6 +157,18 @@ fun CandleStickChartInteraction(
                     }
                     event.key == Key.Y && isCtrlPressed && event.type == KeyEventType.KeyDown -> {
                         drawingHistory?.redo(); true
+                    }
+                    // Удаление выделенного рисунка
+                    (event.key == Key.Delete || event.key == Key.Backspace) &&
+                        event.type == KeyEventType.KeyDown -> {
+                        val id = selectedDrawingId
+                        if (id != null && drawingHistory != null) {
+                            drawingHistory.drawings.firstOrNull { it.id == id }?.let { drawingHistory.remove(it) }
+                            selectedDrawingId = null
+                            true
+                        } else {
+                            false
+                        }
                     }
                     else -> false
                 }
@@ -193,27 +210,38 @@ fun CandleStickChartInteraction(
                                 candleSpacing = hitMetrics.spacing,
                             )
                             if (hit != null) {
+                                var moved = false
                                 do {
                                     val event = awaitPointerEvent()
                                     val change = event.changes.firstOrNull() ?: break
                                     if (!change.pressed) break
-                                    val updated = moveDrawing(
-                                        drawing = hit.drawing,
-                                        handle = hit.handle,
-                                        from = down.position,
-                                        to = change.position,
-                                        candles = currentCandles,
-                                        priceRange = currentPriceRange,
-                                        chartHeight = chartHeightPx,
-                                        scrollOffset = timeScale.scrollOffset,
-                                        candleWidth = hitMetrics.width,
-                                        candleSpacing = hitMetrics.spacing,
-                                        formatter = config.priceFormatter,
-                                    )
-                                    history.update(hit.id, updated)
+                                    if ((change.position - down.position).getDistance() > tapThresholdPx) {
+                                        moved = true
+                                    }
+                                    if (moved) {
+                                        val updated = moveDrawing(
+                                            drawing = hit.drawing,
+                                            handle = hit.handle,
+                                            from = down.position,
+                                            to = change.position,
+                                            candles = currentCandles,
+                                            priceRange = currentPriceRange,
+                                            chartHeight = chartHeightPx,
+                                            scrollOffset = timeScale.scrollOffset,
+                                            candleWidth = hitMetrics.width,
+                                            candleSpacing = hitMetrics.spacing,
+                                            formatter = config.priceFormatter,
+                                        )
+                                        history.update(hit.id, updated)
+                                    }
                                     change.consume()
                                 } while (true)
-                                history.commit()
+                                if (moved) {
+                                    history.commit()
+                                } else {
+                                    // Клик без движения — выделяем рисунок
+                                    selectedDrawingId = hit.id
+                                }
                                 return@awaitEachGesture
                             }
                         }
@@ -222,10 +250,15 @@ fun CandleStickChartInteraction(
 
                         // 2. Панорамирование / Alt+вертикаль (footprint)
                         var previous = down.position
+                        var moved = false
                         do {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull() ?: break
                             if (!change.pressed) break
+
+                            if ((change.position - down.position).getDistance() > tapThresholdPx) {
+                                moved = true
+                            }
 
                             val alt = event.keyboardModifiers.isAltPressed
                             val deltaX = change.position.x - previous.x
@@ -241,6 +274,8 @@ fun CandleStickChartInteraction(
                             }
                             change.consume()
                         } while (true)
+                        // Клик по пустому месту — снимаем выделение рисунка
+                        if (!moved) selectedDrawingId = null
                     }
                 }
             }
@@ -527,6 +562,22 @@ fun CandleStickChartInteraction(
                     candleWidth = candleMetrics.width,
                     candleSpacing = candleMetrics.spacing,
                     textMeasurer = textMeasurer,
+                )
+            }
+            // 8c. Ручки выделенного рисунка
+            val selectedDrawing = selectedDrawingId?.let { id ->
+                drawingHistory?.drawings?.firstOrNull { it.id == id }
+            }
+            if (selectedDrawing != null) {
+                drawDrawingSelection(
+                    drawing = selectedDrawing,
+                    candles = candles,
+                    priceRange = priceRange,
+                    chartHeight = layout.chartMainArea.height,
+                    chartWidth = layout.chartMainArea.width,
+                    scrollOffset = clampedOffset,
+                    candleWidth = candleMetrics.width,
+                    candleSpacing = candleMetrics.spacing,
                 )
             }
             // 9. Crosshair: в footprint-режиме — footprint-панель, в свечах — свечная

@@ -2598,7 +2598,11 @@ fun moveDrawing(
   точки;
 - при движении линейки её метка пересчитывается (`rulerLabel`);
 - во время drag — серия `DrawingHistory.update(id, ...)`, на отпускании —
-  `commit()` (один шаг undo на весь жест).
+  `commit()` (один шаг undo на весь жест);
+- **выделение и удаление**: клик без движения по фигуре выделяет её
+  (рисуются ручки — `drawDrawingSelection`), `Delete`/`Backspace`
+  удаляет выделенный рисунок (с записью в undo), клик по пустому месту
+  снимает выделение.
 
 Hit-test, move/resize и `rulerLabel` — чистые функции в
 `tools/DrawingGeometry.kt`, покрыты тестами.
