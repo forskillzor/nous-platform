@@ -124,6 +124,19 @@ class FootprintAggregatorTest {
     }
 
     @Test
+    fun `bucketStart aligns to absolute boundaries`() {
+        // 5m-бакеты: 05:26 → 05:25
+        assertEquals(0L, FootprintAggregator.bucketStart(65_000L, 60_000L, 5))
+        assertEquals(300_000L, FootprintAggregator.bucketStart(310_000L, 60_000L, 5))
+        assertEquals(300_000L, FootprintAggregator.bucketStart(599_999L, 60_000L, 5))
+        assertEquals(600_000L, FootprintAggregator.bucketStart(600_000L, 60_000L, 5))
+        // 1h-бакеты из 15m source
+        assertEquals(0L, FootprintAggregator.bucketStart(900_000L, 900_000L, 4))
+        assertEquals(3_600_000L, FootprintAggregator.bucketStart(3_600_000L, 900_000L, 4))
+        assertEquals(3_600_000L, FootprintAggregator.bucketStart(7_199_999L, 900_000L, 4))
+    }
+
+    @Test
     fun `aggregateFootprintCandles computes min and max prices from levels`() {
         val candles = listOf(
             candle(0L, 60_000L, level("99.5", "1.0", "1.0", bidCount = 1, askCount = 1)),

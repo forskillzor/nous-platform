@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -40,6 +39,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isAltPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
@@ -101,7 +102,6 @@ fun CandleStickChartInteraction(
     var chartHeightPx by remember { mutableFloatStateOf(0f) }
     var verticalScroll by remember { mutableFloatStateOf(0f) }
     var isCtrlPressed by remember { mutableStateOf(false) }
-    var isAltPressed by remember { mutableStateOf(false) }
     // Alt+hover popup position for footprint
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
 
@@ -140,10 +140,6 @@ fun CandleStickChartInteraction(
                         isCtrlPressed = event.type == KeyEventType.KeyDown
                         true
                     }
-                    event.key == Key.AltLeft || event.key == Key.AltRight -> {
-                        isAltPressed = event.type == KeyEventType.KeyDown
-                        true
-                    }
                     // Undo/Redo
                     event.key == Key.Z && isCtrlPressed && event.type == KeyEventType.KeyDown -> {
                         drawingHistory?.undo(); true
@@ -154,11 +150,13 @@ fun CandleStickChartInteraction(
                     else -> false
                 }
             }
-            // Обработка жестов: pan / Alt+вертикаль (footprint) / crosshair
+            // Обработка жестов: pan / Alt+вертикаль (footprint) / crosshair.
+            // Модификаторы читаются из PointerEvent.keyboardModifiers —
+            // не зависят от фокуса (раньше onKeyEvent их «терял» после кликов по тулбару).
             .pointerInput(crosshairEnabled) {
-                if (crosshairEnabled) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (crosshairEnabled) {
                         isCrosshairVisible = true
                         mousePosition = down.position
                         do {
@@ -173,20 +171,28 @@ fun CandleStickChartInteraction(
                                 break
                             }
                         } while (true)
-                    }
-                } else {
-                    detectDragGestures(
-                        onDrag = { change, dragAmount ->
-                            if (footprintCandles != null && isAltPressed) {
+                    } else {
+                        var previous = down.position
+                        do {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+
+                            val alt = event.keyboardModifiers.isAltPressed
+                            val deltaX = change.position.x - previous.x
+                            val deltaY = change.position.y - previous.y
+                            previous = change.position
+
+                            if (alt && footprintCandles != null) {
                                 // Вертикальный скролл уровней footprint
-                                verticalScroll = (verticalScroll + dragAmount.y)
+                                verticalScroll = (verticalScroll + deltaY)
                                     .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
                             } else {
-                                val deltaX = change.position.x - change.previousPosition.x
                                 timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
                             }
-                        },
-                    )
+                            change.consume()
+                        } while (true)
+                    }
                 }
             }
             // Зум: без Ctrl — от правого края, с Ctrl — от свечи под курсором
@@ -201,7 +207,7 @@ fun CandleStickChartInteraction(
                             timeScale.zoomAt(
                                 factor = factor,
                                 mouseX = change.position.x,
-                                anchorAtMouse = isCtrlPressed,
+                                anchorAtMouse = event.keyboardModifiers.isCtrlPressed,
                                 chartWidth = chartWidthPx,
                                 candleCount = currentCandles.size,
                                 minZoom = minZoom,
@@ -223,19 +229,19 @@ fun CandleStickChartInteraction(
                     })
                 }
             }
-            // Track mouse position for footprint popup (Alt+hover)
-            .pointerInput(isAltPressed, footprintCandles) {
-                if (footprintCandles != null && isAltPressed) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: continue
-                            footprintHoverPos = change.position
-                            change.consume()
+            // Track mouse position for footprint popup (Alt+hover) —
+            // модификатор читаем из pointer-события, чтобы не зависеть от фокуса
+            .pointerInput(footprintCandles) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: continue
+                        footprintHoverPos = if (footprintCandles != null && event.keyboardModifiers.isAltPressed) {
+                            change.position
+                        } else {
+                            null
                         }
                     }
-                } else {
-                    footprintHoverPos = null
                 }
             }
     ) {
@@ -435,7 +441,7 @@ fun CandleStickChartInteraction(
                 )
             }
             // 7. Alt+hover popup for footprint
-            if (footprintData != null && isAltPressed && !crosshairEnabled && footprintHoverPos != null) {
+            if (footprintData != null && !crosshairEnabled && footprintHoverPos != null) {
                 drawFootprintPopup(
                     mousePosition = footprintHoverPos!!,
                     candles = footprintData,

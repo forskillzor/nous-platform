@@ -51,6 +51,7 @@ class FootprintController(
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var footprintJob: Job? = null
     private var pollingJob: Job? = null
+    private var formingJob: Job? = null
     private var isLoadingMore = false
 
     private var symbol: String = ""
@@ -83,13 +84,14 @@ class FootprintController(
         }
         isLoadingMore = false
 
-        // Быстрый показ из кэша, пока грузится свежий footprint
+        // Быстрый показ из кэша, пока грузится свежий footprint.
+        // Проверка пустоты — внутри update: кэш не может перетереть свежие данные
         scope.launch {
             val cache = footprintCache ?: return@launch
             try {
                 val cached = cache.getFootprintCandles(EXCHANGE, symbol, CACHE_LIMIT)
-                if (cached.isNotEmpty() && _state.value.candles.isEmpty()) {
-                    _state.update { it.copy(candles = cached) }
+                _state.update { s ->
+                    if (cached.isNotEmpty() && s.candles.isEmpty()) s.copy(candles = cached) else s
                 }
             } catch (_: Exception) {
                 // кэш не критичен
@@ -167,7 +169,7 @@ class FootprintController(
                         delay(sourceMs)
 
                         val now = currentTimeMillis()
-                        val displayEnd = now / (sourceMs * aggCount) * (sourceMs * aggCount)
+                        val displayEnd = FootprintAggregator.bucketStart(now, sourceMs, aggCount)
                         val displayStart = displayEnd - sourceMs * aggCount
 
                         // Fetch exact range of source candles covering the display window
@@ -191,7 +193,10 @@ class FootprintController(
                                             val list = s.candles.toMutableList()
                                             val existIdx = list.indexOfFirst { it.startTime == agg.startTime }
                                             if (existIdx >= 0) list[existIdx] = agg else list.add(agg)
-                                            s.copy(candles = list.sortedBy { it.startTime })
+                                            s.copy(
+                                                candles = list.sortedBy { it.startTime },
+                                                liveCandle = if (s.liveCandle?.startTime == agg.startTime) null else s.liveCandle,
+                                            )
                                         }
                                         saveToCache(listOf(agg))
                                         break // one display candle per poll cycle
@@ -232,6 +237,63 @@ class FootprintController(
                 }
             }
         }
+
+        // Формирующаяся (незакрытая) свеча для старших таймфреймов: живёт в liveCandle
+        if (!isLiveTrades) {
+            formingJob = scope.launch {
+                while (isActive) {
+                    delay(FORMING_POLL_INTERVAL_MS)
+                    updateFormingCandle(sourceTf, aggCount, sourceMs)
+                }
+            }
+        }
+    }
+
+    /**
+     * Обновляет формирующуюся свечу текущего display-бакета для 15m+.
+     * Результат кладётся в liveCandle и очищается, когда бакет закрывается.
+     */
+    private suspend fun updateFormingCandle(sourceTf: String, aggCount: Int, sourceMs: Long) {
+        val api = footprintApiClient ?: return
+        val now = currentTimeMillis()
+        val bucketStart = FootprintAggregator.bucketStart(now, sourceMs, aggCount)
+        val bucketMs = sourceMs * aggCount
+
+        // Бакет уже закрылся (или история уже содержит его) — убираем живую свечу
+        val closed = now - bucketStart >= bucketMs ||
+            (_state.value.candles.isNotEmpty() && _state.value.candles.last().startTime >= bucketStart)
+        if (closed) {
+            if (_state.value.liveCandle?.startTime == bucketStart) {
+                _state.update { it.copy(liveCandle = null) }
+            }
+            return
+        }
+
+        try {
+            val raw = api.getFootprint(
+                symbol = symbol,
+                timeframe = sourceTf,
+                from = bucketStart - sourceMs, // margin для выравнивания
+                to = now,
+                limit = aggCount + 2,
+            ).reversed()
+
+            val bucketCandles = raw.filter {
+                it.startTime >= bucketStart && it.startTime < bucketStart + bucketMs
+            }
+            if (bucketCandles.isEmpty()) return
+
+            val agg = FootprintAggregator.aggregateFootprintCandles(bucketCandles, aggCount, sourceMs).firstOrNull()
+                ?: return
+            _state.update {
+                it.copy(
+                    liveCandle = agg,
+                    currentPrice = agg.close.takeIf { p -> p > 0f },
+                )
+            }
+        } catch (_: Exception) {
+            // формирующаяся свеча не критична
+        }
     }
 
     fun stop() {
@@ -239,6 +301,8 @@ class FootprintController(
         footprintJob = null
         pollingJob?.cancel()
         pollingJob = null
+        formingJob?.cancel()
+        formingJob = null
         _state.update { it.copy(liveCandle = null) }
     }
 
@@ -286,6 +350,7 @@ class FootprintController(
     override fun dispose() {
         footprintJob?.cancel()
         pollingJob?.cancel()
+        formingJob?.cancel()
         scope.cancel()
     }
 
@@ -333,8 +398,9 @@ class FootprintController(
 
             if (raw.isEmpty()) return null
 
-            // For display 1m (aggCount=1): just return the single source candle
-            if (aggCount == 1) return raw.firstOrNull { it.startTime == startTime || it.endTime == startTime + sourceMs }
+            // For display 1m (aggCount=1): just return the single source candle.
+            // Терпимое сравнение: достаточно, чтобы свеча покрывала startTime
+            if (aggCount == 1) return raw.firstOrNull { it.startTime >= startTime && it.startTime < startTime + sourceMs }
 
             // For aggregated timeframes: find the chunk that covers the exact display window
             for (i in 0..raw.size - aggCount) {
@@ -356,13 +422,14 @@ class FootprintController(
         _state.update { it.copy(liveCandle = null) }
 
         scope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+            _state.update { it.copy(loading = true) }
             val data = fetchHistoricalFootprint()
-            _state.update {
-                it.copy(
+            _state.update { s ->
+                s.copy(
                     candles = data,
                     loading = false,
-                    error = if (data.isEmpty()) "No footprint data in DB" else null,
+                    // не затираем более осмысленную ошибку («Neither trades adapter…»)
+                    error = if (data.isEmpty()) s.error ?: "No footprint data in DB" else s.error,
                 )
             }
             saveToCache(data)
@@ -385,5 +452,6 @@ class FootprintController(
     companion object {
         private const val EXCHANGE = "Binance"
         private const val CACHE_LIMIT = 200
+        private const val FORMING_POLL_INTERVAL_MS = 30_000L
     }
 }

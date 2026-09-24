@@ -220,17 +220,22 @@ class ChartViewModel(
 
         _state.update { it.copy(chartState = ChartState.Loading) }
 
-        // Быстрый показ из кэша, пока грузится свежая история с биржи
+        // Быстрый показ из кэша, пока грузится свежая история с биржи.
+        // Guard внутри update: кэш не может перетереть свежие данные
         viewModelScope.launch {
             val cache = candleCache ?: return@launch
             try {
                 val cached = cache.getCandles(EXCHANGE, ticker, timeframe, CACHE_LIMIT)
-                if (cached.isNotEmpty() &&
-                    _state.value.currentSymbol == ticker &&
-                    _state.value.currentTimeframe == timeframe &&
-                    _state.value.chartState is ChartState.Loading
-                ) {
-                    _state.update { it.copy(chartState = ChartState.Success(cached, cached.last().close)) }
+                _state.update { s ->
+                    if (cached.isNotEmpty() &&
+                        s.currentSymbol == ticker &&
+                        s.currentTimeframe == timeframe &&
+                        s.chartState is ChartState.Loading
+                    ) {
+                        s.copy(chartState = ChartState.Success(cached, cached.last().close))
+                    } else {
+                        s
+                    }
                 }
             } catch (_: Exception) {
                 // кэш не критичен для работы графика

@@ -237,7 +237,7 @@ fun DrawScope.drawFootprintPopup(
     val askX = priceX + textMeasurer.measure(AnnotatedString("  64321.12 "), TextStyle(fontSize = fontSize, fontFamily = FontFamily.Monospace)).size.width + 4f
     val bidX = askX + textMeasurer.measure(AnnotatedString(" 12345 "), TextStyle(fontSize = fontSize, fontFamily = FontFamily.Monospace)).size.width + 4f
 
-    val fmt = SymbolFormatter.DEFAULT
+    val fmt = config.priceFormatter
 
     val panelW = textMeasurer.measure(AnnotatedString("  64321.12   12345   12345"), TextStyle(fontSize = fontSize, fontFamily = FontFamily.Monospace)).size.width + 50f
     val gapBetweenRows = 2f

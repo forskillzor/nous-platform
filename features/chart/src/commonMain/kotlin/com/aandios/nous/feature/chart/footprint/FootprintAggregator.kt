@@ -42,6 +42,15 @@ object FootprintAggregator {
     }
 
     /**
+     * Начало display-бакета (выравнивание по абсолютным границам времени).
+     * Например, для 5m-бакетов (sourceMs=60_000, count=5) время 05:26 → 05:25.
+     */
+    fun bucketStart(timestampMs: Long, sourceMs: Long, count: Int): Long {
+        val bucketMs = sourceMs * count
+        return timestampMs / bucketMs * bucketMs
+    }
+
+    /**
      * Агрегирует свечи в бакеты по count source-свечей, выровненные по абсолютному
      * времени: startTime / (sourceMs * count). Это гарантирует, что границы
      * display-свечей не зависят от того, с какой свечи началась выборка.
@@ -60,7 +69,7 @@ object FootprintAggregator {
         val bucketMs = sourceMs * count
         val groups = linkedMapOf<Long, MutableList<FootprintCandle>>()
         for (candle in candles) {
-            val bucketStart = candle.startTime / bucketMs * bucketMs
+            val bucketStart = bucketStart(candle.startTime, sourceMs, count)
             groups.getOrPut(bucketStart) { mutableListOf() }.add(candle)
         }
 

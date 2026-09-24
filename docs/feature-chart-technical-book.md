@@ -1040,11 +1040,22 @@ tradesAdapter.subscribeToTrades(symbol).collect { trade ->
   локальную (у сервера полнее лента).
 - Для `5m` локальное накопление считается авторитетным.
 
-## 8.5. Серверный polling (15m+)
+## 8.5. Серверный polling (15m+) и формирующаяся свеча
 
-Для старших таймфреймов live-лента не используется. Контроллер раз в
-`sourceMs` запрашивает окно source-свечей, находит чанк, выровненный по
-границе display-бакета, агрегирует и обновляет/добавляет свечу в списке.
+Для старших таймфреймов live-лента не используется. Работают **два цикла**:
+
+1. **Закрытые бакеты** — раз в `sourceMs` контроллер запрашивает окно
+   source-свечей, находит чанк, выровненный по границе display-бакета,
+   агрегирует и обновляет/добавляет свечу в списке. Граница бакета —
+   `FootprintAggregator.bucketStart(now, sourceMs, aggCount)` (общая с
+   агрегацией функция выравнивания по абсолютному времени).
+2. **Формирующаяся свеча** — раз в ~30 секунд запрашивается текущий
+   (незакрытый) бакет, агрегируется и кладётся в `liveCandle`. UI мержит
+   `liveCandle` поверх completed по `startTime`, поэтому видна текущая
+   свеча ещё до её закрытия. Когда бакет закрывается (или его подхватывает
+   первый цикл), `liveCandle` очищается.
+
+Оба цикла отменяются в `stop()`/`dispose()`.
 
 ## 8.6. Пагинация footprint
 
@@ -1908,21 +1919,31 @@ val clampedOffset = timeScale.scrollOffset.coerceIn(-TimeScale.MAX_SCROLL_LEFT, 
 
 ```kotlin
 .pointerInput(crosshairEnabled) {
-    if (crosshairEnabled) {
-        // жест — crosshair
-    } else {
-        detectDragGestures { change, dragAmount ->
-            if (footprintCandles != null && isAltPressed) {
-                // Вертикальный скролл уровней footprint (Alt+drag)
-                verticalScroll = (verticalScroll + dragAmount.y)
-                    .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
-            } else {
-                timeScale.panBy(
-                    deltaX = change.position.x - change.previousPosition.x,
-                    candleCount = currentCandles.size,
-                    chartWidth = chartWidthPx,
-                )
-            }
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        if (crosshairEnabled) {
+            // жест — crosshair
+        } else {
+            var previous = down.position
+            do {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull() ?: break
+                if (!change.pressed) break
+
+                val alt = event.keyboardModifiers.isAltPressed
+                val deltaX = change.position.x - previous.x
+                val deltaY = change.position.y - previous.y
+                previous = change.position
+
+                if (alt && footprintCandles != null) {
+                    // Вертикальный скролл уровней footprint (Alt+drag)
+                    verticalScroll = (verticalScroll + deltaY)
+                        .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
+                } else {
+                    timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
+                }
+                change.consume()
+            } while (true)
         }
     }
 }
@@ -1931,6 +1952,13 @@ val clampedOffset = timeScale.scrollOffset.coerceIn(-TimeScale.MAX_SCROLL_LEFT, 
 Когда crosshair включён, drag отдаётся ему, а не панорамированию.
 Вертикальный скролл активен только в footprint-режиме и сдвигает
 диапазон цен (`PriceScale.range`), не трогая данные.
+
+**Модификаторы — из pointer-событий.** `Ctrl`/`Alt` читаются через
+`event.keyboardModifiers.isCtrlPressed/isAltPressed`, а не через
+`onKeyEvent`-состояние: раньше после клика по тулбару фокус уходил
+с графика и модификаторы «слетали» (Ctrl-зум, Alt-popup и Alt-вертикаль
+переставали работать). `onKeyEvent` остался только для `Ctrl+Z/Y`
+(undo/redo).
 
 ## 15.3. Зум
 
@@ -1964,8 +1992,10 @@ timeScale.zoomAt(
 - В footprint-режиме показывается footprint-панель `O/H/L/C/Ticks`
   (`drawCrosshairForFootprint`), в свечах — `Time/O/H/L` (`drawCrosshair`).
 - При зажатом `Alt` и наведении на footprint-график показывается popup
-  с таблицей bid/ask по уровням.
-- `Ctrl+Z` / `Ctrl+Y` — undo/redo рисунков (обрабатывается `onKeyEvent`).
+  с таблицей bid/ask по уровням. `Alt` читается из pointer-события
+  (`keyboardModifiers.isAltPressed`), поэтому popup работает независимо
+  от фокуса; цены/объёмы форматируются `config.priceFormatter`.
+- `Ctrl+Z` / `Ctrl+Y` — undo/redo рисунков (через `onKeyEvent`).
 
 ## 15.5. Ленивая загрузка и коррекция скролла
 
@@ -2964,7 +2994,7 @@ App start
 | `features:chart` | `TimeScaleTest` | кламп панорамы, якоря зума (правый край/Ctrl), min/max, `indexToX ↔ xToIndex`, prepend-коррекция, `scrollToLatest` |
 | `features:chart` | `PriceScaleTest` | fit, пропорциональный сдвиг, нулевая высота, идемпотентность |
 | `features:chart` | `FootprintMappingTest` | `toSkeletonCandle` (open/high/low/close/startTime/maxVolume) |
-| `features:chart` | `FootprintAggregatorTest` | source-ТФ, выровненная агрегация, суммы объёмов, чанки |
+| `features:chart` | `FootprintAggregatorTest` | source-ТФ, выровненная агрегация, `bucketStart`, суммы объёмов, чанки |
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |
 | `features:chart` | `ChartUiStateTest` | дефолты и `copy` |
