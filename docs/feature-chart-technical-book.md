@@ -2009,8 +2009,9 @@ LaunchedEffect(clampedOffset, hasMoreHistory) {
     if (hasMoreHistory && clampedOffset < 0f) onNeedMoreHistory()
 }
 
-LaunchedEffect(historyLoadCount, candles.size) {
-    if (historyLoadCount > 0) {
+// Коррекция — ключ только на generation: ровно один раз за подгрузку
+LaunchedEffect(historyGeneration) {
+    if (historyGeneration > 0) {
         timeScale.offsetAfterPrepend(historyLoadCount, candles.size, chartWidthPx)
     }
 }
@@ -2018,12 +2019,30 @@ LaunchedEffect(historyLoadCount, candles.size) {
 
 Когда история догружается, список свечей удлиняется слева. Чтобы видимая
 область не «уехала», `scrollOffset` увеличивается на ширину добавленных
-свечей. `historyLoadCount` приходит из `TimeSeriesState.loadCount`.
+свечей.
 
-**Технический долг.** `LaunchedEffect(historyLoadCount, candles.size)`
-срабатывает и при добавлении новой realtime-свечи (`candles.size` меняется),
-из-за чего скролл может корректироваться повторно. Правильнее завести
-отдельный счётчик «поколение истории» или одноразовый сигнал.
+**Почему генерация, а не `(historyLoadCount, candles.size)`.** Раньше
+эффект срабатывал на каждое изменение `candles.size` — включая каждую
+новую realtime-свечу — и повторно прибавлял ширину догруженной истории.
+График «дёргался» дважды: первый раз корректно, второй — на следующем
+тике (и далее). Теперь `TimeSeriesState.loadGeneration` инкрементится
+только на успешную подгрузку, и коррекция применяется один раз.
+
+Автоскролл к последней свече не конфликтует с этим:
+
+```kotlin
+LaunchedEffect(candles.size) {
+    if (historyGeneration == 0 &&
+        (timeScale.scrollOffset == 0f || timeScale.isAtLatest(candles.size, chartWidthPx))
+    ) {
+        timeScale.scrollToLatest(candles.size, chartWidthPx)
+    }
+}
+```
+
+Первичная загрузка позиционирует к последней свече (`scrollOffset == 0f`),
+а realtime следует за ценой только если пользователь у правого края —
+если он ушёл в историю, его не дёргает.
 
 ## 15.6. Кнопка «к последней свече»
 
@@ -3084,7 +3103,7 @@ App start
 | `features:chart` | `DrawingHistoryTest` | add/undo/redo/update+commit/remove/maxHistory (снимки списка) |
 | `features:chart` | `DrawingGeometryTest` | hit-test (тело/ручки), move/resize (уровень, тренд, прямоугольник), `rulerLabel` (знак/округление), `formatDuration` |
 | `features:chart` | `DrawingRepositoryTest` | JSON-roundtrip, изоляция workspace/panel, битый JSON |
-| `platform-core` | `TimeSeriesControllerTest` | initial load, live-merge, loadMore, пустой ответ, ошибка |
+| `platform-core` | `TimeSeriesControllerTest` | initial load, live-merge, loadMore, пустой ответ, ошибка, `loadGeneration` |
 | `features:localstorage` | `LocalStorageTest` | roundtrip свечей/footprint, изоляция по exchange, лимит, очистка, **миграция схемы** |
 
 Запуск:

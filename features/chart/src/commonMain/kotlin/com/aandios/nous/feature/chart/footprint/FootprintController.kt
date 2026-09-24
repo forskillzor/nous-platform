@@ -33,6 +33,8 @@ data class FootprintUiState(
     val error: String? = null,
     val hasMoreHistory: Boolean = true,
     val historyLoadCount: Int = 0,
+    /** Счётчик успешных подгрузок истории — коррекция скролла ровно один раз. */
+    val historyGeneration: Int = 0,
 )
 
 /**
@@ -56,6 +58,7 @@ class FootprintController(
 
     private var symbol: String = ""
     private var displayTimeframe: String = "1h"
+    private var historyGeneration = 0
 
     private val _state = MutableStateFlow(FootprintUiState())
     val state: StateFlow<FootprintUiState> = _state.asStateFlow()
@@ -327,15 +330,18 @@ class FootprintController(
 
                 if (historical.isEmpty()) {
                     _state.update { it.copy(hasMoreHistory = false) }
-                    isLoadingMore = false
+        isLoadingMore = false
+        historyGeneration = 0
                     return@launch
                 }
 
                 val aggregated = if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(historical, aggCount, sourceMs) else historical
+                historyGeneration++
                 _state.update { s ->
                     s.copy(
                         candles = (aggregated + s.candles).distinctBy { it.startTime },
                         historyLoadCount = aggregated.size,
+                        historyGeneration = historyGeneration,
                     )
                 }
                 saveToCache(aggregated)

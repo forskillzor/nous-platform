@@ -128,4 +128,26 @@ class TimeSeriesControllerTest {
         assertTrue(controller.state.value.items.isEmpty())
         assertFalse(controller.state.value.hasMore)
     }
+
+    @Test
+    fun `loadGeneration increments per successful loadMore and resets on start`() = runTest {
+        val source = FakeSource(initial = listOf(10), before = listOf(5))
+        val controller = TimeSeriesController(source, this)
+
+        controller.start()
+        advanceUntilIdle()
+        assertEquals(0, controller.state.value.loadGeneration)
+
+        controller.loadMore()
+        advanceUntilIdle()
+        assertEquals(1, controller.state.value.loadGeneration)
+
+        controller.loadMore()
+        advanceUntilIdle()
+        assertEquals(2, controller.state.value.loadGeneration)
+
+        controller.start()
+        advanceUntilIdle()
+        assertEquals(0, controller.state.value.loadGeneration)
+    }
 }

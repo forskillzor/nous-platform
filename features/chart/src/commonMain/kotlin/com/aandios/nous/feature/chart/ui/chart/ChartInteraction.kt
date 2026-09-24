@@ -89,6 +89,7 @@ fun CandleStickChartInteraction(
     crosshairEnabled: Boolean = false,
     onNeedMoreHistory: () -> Unit = {},
     historyLoadCount: Int = 0,
+    historyGeneration: Int = 0,
     hasMoreHistory: Boolean = true,
     footprintCandles: List<FootprintCandle>? = null,
     liquidationOrders: List<LiquidationOrder> = emptyList(),
@@ -402,9 +403,12 @@ fun CandleStickChartInteraction(
         val totalW = candleMetrics.width + candleMetrics.spacing
         val maxScroll = timeScale.maxScroll(candles.size, chartWidthPx)
 
-        // Автоскролл к последней свече при добавлении новых (realtime flow или footprint)
+        // Автоскролл к последней свече: первичная загрузка и realtime, только если
+        // пользователь не ушёл влево (иначе дёргаем его к последней свече)
         LaunchedEffect(candles.size) {
-            if (historyLoadCount == 0) {
+            if (historyGeneration == 0 &&
+                (timeScale.scrollOffset == 0f || timeScale.isAtLatest(candles.size, chartWidthPx))
+            ) {
                 timeScale.scrollToLatest(candles.size, chartWidthPx)
             }
         }
@@ -430,9 +434,12 @@ fun CandleStickChartInteraction(
             }
         }
 
-        // Коррекция scrollOffset после загрузки исторических свечей
-        LaunchedEffect(historyLoadCount, candles.size) {
-            if (historyLoadCount > 0) {
+        // Коррекция scrollOffset после загрузки исторических свечей.
+        // Ключ — только generation: коррекция применяется ровно один раз за
+        // подгрузку (раньше срабатывала на каждое изменение candles.size,
+        // из-за чего график «дёргался» на каждом realtime-тике)
+        LaunchedEffect(historyGeneration) {
+            if (historyGeneration > 0) {
                 timeScale.offsetAfterPrepend(historyLoadCount, candles.size, chartWidthPx)
             }
         }

@@ -44,6 +44,8 @@ data class TimeSeriesState<T>(
     val loadingMore: Boolean = false,
     val hasMore: Boolean = true,
     val loadCount: Int = 0,
+    /** Счётчик успешных подгрузок истории — UI корректирует скролл ровно один раз за подгрузку. */
+    val loadGeneration: Int = 0,
     val error: String? = null,
 )
 
@@ -60,10 +62,12 @@ class TimeSeriesController<T>(
     val state: StateFlow<TimeSeriesState<T>> = _state.asStateFlow()
 
     private var liveJob: Job? = null
+    private var generation = 0
 
     /** Загружает начальные данные и подписывается на realtime. */
     fun start() {
         liveJob?.cancel()
+        generation = 0
         _state.value = TimeSeriesState(loading = true)
         liveJob = scope.launch {
             try {
@@ -99,6 +103,8 @@ class TimeSeriesController<T>(
                 if (older.isEmpty()) {
                     _state.update { it.copy(loadingMore = false, hasMore = false) }
                 } else {
+                    generation++
+                    val currentGeneration = generation
                     _state.update { s ->
                         s.copy(
                             items = (older + s.items)
@@ -106,6 +112,7 @@ class TimeSeriesController<T>(
                                 .sortedBy { source.timestampOf(it) },
                             loadingMore = false,
                             loadCount = older.size,
+                            loadGeneration = currentGeneration,
                         )
                     }
                 }
