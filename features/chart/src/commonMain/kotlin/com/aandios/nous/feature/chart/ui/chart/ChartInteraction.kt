@@ -64,7 +64,9 @@ import com.aandios.nous.feature.chart.scale.TimeScale
 import com.aandios.nous.feature.chart.tools.Drawing
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingRenderer.drawDrawings
+import com.aandios.nous.feature.chart.tools.drawDrawingProjections
 import com.aandios.nous.feature.chart.tools.drawDrawingSelection
+import com.aandios.nous.feature.chart.tools.drawProjectionPriceTags
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.tools.hitTestDrawings
 import com.aandios.nous.feature.chart.tools.moveDrawing
@@ -448,6 +450,13 @@ fun CandleStickChartInteraction(
             currentPrice = visibleCurrentPrice,
         )
 
+        // Выделенный рисунок и проекция линейки/трендовой на шкалу цен
+        val selectedDrawing = selectedDrawingId?.let { id ->
+            drawingHistory?.drawings?.firstOrNull { it.id == id }
+        }
+        val projectionTrend = (previewDrawing as? Drawing.TrendLine)
+            ?: (selectedDrawing as? Drawing.TrendLine)
+
         // Основной Canvas для графика
         Canvas(
             modifier = Modifier
@@ -507,6 +516,15 @@ fun CandleStickChartInteraction(
                 )
             }
 
+            // 5b. Проекции линейки/трендовой на шкалу цен (под тиками шкалы)
+            if (projectionTrend != null) {
+                drawDrawingProjections(
+                    drawing = projectionTrend,
+                    priceRange = priceRange,
+                    layout = layout,
+                )
+            }
+
             // 6. Шкала цен
             if (config.showPriceScale) {
                 drawPriceScale(
@@ -523,6 +541,16 @@ fun CandleStickChartInteraction(
                     start = Offset(layout.priceScaleArea.left, layout.chartMainArea.top),
                     end = Offset(layout.priceScaleArea.left, layout.chartMainArea.bottom),
                     strokeWidth = 1f
+                )
+            }
+            // 6b. Ценовые теги проекций (поверх шкалы)
+            if (config.showPriceScale && projectionTrend != null) {
+                drawProjectionPriceTags(
+                    drawing = projectionTrend,
+                    priceRange = priceRange,
+                    layout = layout,
+                    textMeasurer = textMeasurer,
+                    formatter = config.priceFormatter,
                 )
             }
             // 7. Alt+hover popup for footprint
@@ -565,9 +593,6 @@ fun CandleStickChartInteraction(
                 )
             }
             // 8c. Ручки выделенного рисунка
-            val selectedDrawing = selectedDrawingId?.let { id ->
-                drawingHistory?.drawings?.firstOrNull { it.id == id }
-            }
             if (selectedDrawing != null) {
                 drawDrawingSelection(
                     drawing = selectedDrawing,

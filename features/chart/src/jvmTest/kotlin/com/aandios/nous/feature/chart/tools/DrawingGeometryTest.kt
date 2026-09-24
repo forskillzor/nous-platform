@@ -239,7 +239,7 @@ class DrawingGeometryTest {
     // ===== ruler label =====
 
     @Test
-    fun `rulerLabel contains delta percent and time`() {
+    fun `rulerLabel shows delta signed percent and duration`() {
         val label = rulerLabel(
             startPrice = 100f,
             endPrice = 105f,
@@ -249,8 +249,49 @@ class DrawingGeometryTest {
         )
 
         assertTrue(label.startsWith("\u03945.00"))
-        assertTrue(label.contains("5.0%"))
-        assertTrue(label.contains("1h 2m"))
+        assertTrue(label.contains("5.00%"))
+        assertTrue(label.contains("1 h 2 m"))
+    }
+
+    @Test
+    fun `rulerLabel shows negative percent when measuring down`() {
+        val label = rulerLabel(
+            startPrice = 105f,
+            endPrice = 100f,
+            startTimeMs = 0L,
+            endTimeMs = 900_000L,
+            formatter = formatter,
+        )
+
+        assertTrue(label.contains("-4.76%"))
+        assertTrue(label.contains("15 m"))
+    }
+
+    @Test
+    fun `rulerLabel rounds percent to two decimals`() {
+        val label = rulerLabel(
+            startPrice = 100f,
+            endPrice = 102.5f,
+            startTimeMs = 0L,
+            endTimeMs = 60_000L,
+            formatter = formatter,
+        )
+
+        assertTrue(label.contains("2.50%"))
+        assertTrue(label.contains("1 m"))
+    }
+
+    // ===== formatDuration =====
+
+    @Test
+    fun `formatDuration skips zero components`() {
+        assertEquals("0 s", formatDuration(0L))
+        assertEquals("45 s", formatDuration(45_000L))
+        assertEquals("15 m", formatDuration(15 * 60_000L))
+        assertEquals("2 h", formatDuration(2 * 3_600_000L))
+        assertEquals("1 h 5 m", formatDuration(3_600_000L + 5 * 60_000L))
+        assertEquals("1 d 5 m", formatDuration(86_400_000L + 5 * 60_000L))
+        assertEquals("2 d 12 h 15 m", formatDuration(2 * 86_400_000L + 12 * 3_600_000L + 15 * 60_000L))
     }
 
     // ===== helpers =====

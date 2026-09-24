@@ -12,6 +12,8 @@ import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.utils.priceFromY
 import com.aandios.nous.feature.chart.utils.priceToY
 import kotlin.math.abs
+import kotlin.math.round
+import kotlin.math.roundToInt
 
 /** Ручка фигуры (для resize). */
 enum class DrawingHandle { START, END }
@@ -155,7 +157,28 @@ fun moveDrawing(
 }
 
 /**
- * Метка линейки: Δ цены, процент и время между точками.
+ * Длительность в читаемом виде: компоненты d/h/m выводятся только если ≠ 0,
+ * секунды — только если длительность меньше минуты. Примеры:
+ * "2 d 12 h 15 m", "1 h 5 m", "15 m", "45 s", "0 s".
+ */
+fun formatDuration(durationMs: Long): String {
+    val totalSec = durationMs / 1000L
+    val days = totalSec / 86_400L
+    val hours = (totalSec % 86_400L) / 3_600L
+    val minutes = (totalSec % 3_600L) / 60L
+    val seconds = totalSec % 60L
+
+    val parts = mutableListOf<String>()
+    if (days > 0) parts.add("$days d")
+    if (hours > 0) parts.add("$hours h")
+    if (minutes > 0) parts.add("$minutes m")
+    if (days == 0L && hours == 0L && minutes == 0L) parts.add("$seconds s")
+    return if (parts.isEmpty()) "0 s" else parts.joinToString(" ")
+}
+
+/**
+ * Метка линейки: Δ цены (модуль), процент со знаком (end − start) / start × 100
+ * и длительность между точками.
  */
 fun rulerLabel(
     startPrice: Float,
@@ -164,15 +187,22 @@ fun rulerLabel(
     endTimeMs: Long,
     formatter: SymbolFormatter,
 ): String {
-    val priceDiff = abs(endPrice - startPrice)
+    val priceDiff = endPrice - startPrice
+    val absDiff = abs(priceDiff)
     val pctChange = if (startPrice > 0f) priceDiff / startPrice * 100f else 0f
-    val timeSec = abs(endTimeMs - startTimeMs) / 1000L
-    val timeStr = when {
-        timeSec >= 3600 -> "${timeSec / 3600}h ${(timeSec % 3600) / 60}m"
-        timeSec >= 60 -> "${timeSec / 60}m ${timeSec % 60}s"
-        else -> "${timeSec}s"
-    }
-    return "\u0394${formatter.formatPrice(priceDiff)} (${(pctChange * 100).toInt() / 100f}%) | $timeStr"
+    val duration = formatDuration(abs(endTimeMs - startTimeMs))
+    return "\u0394${formatter.formatPrice(absDiff)} (${formatPercent(pctChange)}%) | $duration"
+}
+
+/** Процент с двумя знаками после запятой (без усечения-через-toInt). */
+private fun formatPercent(value: Float): String {
+    val rounded = round(value * 100f) / 100f
+    if (rounded == 0f) return "0.00"
+    val absValue = abs(rounded)
+    val whole = absValue.toInt()
+    val frac = ((absValue - whole) * 100f).roundToInt()
+    val sign = if (rounded < 0f) "-" else ""
+    return "$sign$whole.${frac.toString().padStart(2, '0')}"
 }
 
 /** Обновляет label трендовой линии (линейки) после перемещения. */

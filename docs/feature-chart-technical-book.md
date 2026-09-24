@@ -2551,7 +2551,17 @@ fun DrawingOverlay(
   линейки (`Δ/%/время`); на release — `onPreviewChange(null)` + коммит
   в историю;
 - линейка (`RULER`) создаёт `TrendLine` с меткой из чистой
-  `rulerLabel(startPrice, endPrice, startTimeMs, endTimeMs, formatter)`;
+  `rulerLabel(startPrice, endPrice, startTimeMs, endTimeMs, formatter)`:
+  `Δ<цена> (<знак+2 знака %>) | <длительность>` — процент со знаком
+  `(end − start) / start × 100`, длительность через `formatDuration`
+  (`"2 d 12 h 15 m"`, нулевые компоненты пропускаются, секунды — только
+  если длительность меньше минуты);
+- **проекции на шкалу цен**: во время рисования трендовой/линейки и для
+  выделенной трендовой линии движок рисует пунктирные горизонтали на
+  уровнях start/end-цены через область графика с продолжением на
+  `priceScaleArea` (`drawDrawingProjections`, рисуется под тиками шкалы)
+  и ценовые теги start (синий) / end (цвет линии) поверх шкалы
+  (`drawProjectionPriceTags`);
 - цена в метках форматируется `priceFormatter`.
 
 Построение фигуры вынесено в чистую `buildDrawing(...)` — одно и то же
@@ -3072,7 +3082,7 @@ App start
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |
 | `features:chart` | `ChartUiStateTest` | дефолты и `copy` |
 | `features:chart` | `DrawingHistoryTest` | add/undo/redo/update+commit/remove/maxHistory (снимки списка) |
-| `features:chart` | `DrawingGeometryTest` | hit-test (тело/ручки), move/resize (уровень, тренд, прямоугольник), `rulerLabel` |
+| `features:chart` | `DrawingGeometryTest` | hit-test (тело/ручки), move/resize (уровень, тренд, прямоугольник), `rulerLabel` (знак/округление), `formatDuration` |
 | `features:chart` | `DrawingRepositoryTest` | JSON-roundtrip, изоляция workspace/panel, битый JSON |
 | `platform-core` | `TimeSeriesControllerTest` | initial load, live-merge, loadMore, пустой ответ, ошибка |
 | `features:localstorage` | `LocalStorageTest` | roundtrip свечей/footprint, изоляция по exchange, лимит, очистка, **миграция схемы** |

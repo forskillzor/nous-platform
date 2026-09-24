@@ -18,6 +18,8 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.utils.priceToY
 
@@ -248,4 +250,68 @@ fun DrawScope.drawDrawingSelection(
         }
         is Drawing.VerticalLine -> handle(Offset(handleX(drawing.timeMs), 8f))
     }
+}
+
+/**
+ * Проекции линейки/трендовой линии на шкалу цен: пунктирные горизонтальные
+ * линии на уровнях start/end-цены через область графика с продолжением
+ * на шкалу цен. Рисуется ДО drawPriceScale, чтобы тики шкалы были поверх.
+ */
+fun DrawScope.drawDrawingProjections(
+    drawing: Drawing.TrendLine,
+    priceRange: PriceRange,
+    layout: ChartLayout,
+) {
+    val startY = priceToY(drawing.startPrice, priceRange, layout.chartMainArea.height)
+    val endY = priceToY(drawing.endPrice, priceRange, layout.chartMainArea.height)
+    val pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f), 0f)
+
+    fun project(y: Float) {
+        if (y < 0f || y > layout.chartMainArea.height) return
+        drawLine(
+            color = Color(0xFF5B9BD5).copy(alpha = 0.35f),
+            start = Offset(layout.chartMainArea.left, y),
+            end = Offset(layout.priceScaleArea.right, y),
+            strokeWidth = 1f,
+            pathEffect = pathEffect,
+        )
+    }
+
+    project(startY)
+    project(endY)
+}
+
+/**
+ * Ценовые теги проекций на шкале цен: start — синий, end — цвет линии.
+ * Рисуется ПОСЛЕ drawPriceScale (поверх тиков).
+ */
+fun DrawScope.drawProjectionPriceTags(
+    drawing: Drawing.TrendLine,
+    priceRange: PriceRange,
+    layout: ChartLayout,
+    textMeasurer: TextMeasurer,
+    formatter: SymbolFormatter,
+) {
+    val startY = priceToY(drawing.startPrice, priceRange, layout.chartMainArea.height)
+    val endY = priceToY(drawing.endPrice, priceRange, layout.chartMainArea.height)
+
+    fun tag(price: Float, y: Float, color: Color) {
+        if (y < 0f || y > layout.chartMainArea.height) return
+        val text = formatter.formatPrice(price)
+        val style = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        val textLayout = textMeasurer.measure(AnnotatedString(text), style)
+        val labelW = textLayout.size.width + 6f
+        val labelH = textLayout.size.height + 4f
+        val left = layout.priceScaleArea.left + 2f
+        val top = (y - labelH / 2f).coerceIn(layout.priceScaleArea.top, layout.priceScaleArea.bottom - labelH)
+        drawRect(
+            color = color.copy(alpha = 0.4f),
+            topLeft = Offset(left, top),
+            size = Size(labelW, labelH),
+        )
+        drawText(textLayout, topLeft = Offset(left + 3f, top + 2f))
+    }
+
+    tag(drawing.startPrice, startY, Color(0xFF2196F3))
+    tag(drawing.endPrice, endY, drawing.color)
 }
