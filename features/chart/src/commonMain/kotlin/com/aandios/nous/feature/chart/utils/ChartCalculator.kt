@@ -6,6 +6,7 @@
 package com.aandios.nous.feature.chart.utils
 
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.PriceRange
 import kotlin.math.max
@@ -28,14 +29,14 @@ fun calculatePriceRangeWithCurrentPrice(
     candles: List<Candle>,
     currentPrice: Float?
 ): PriceRange {
-    if (candles.isEmpty() && currentPrice == null) {
-        return PriceRange(0f, 0f, 0f, 0f, 0f)
-    }
-
-    val priceList = mutableListOf<Float>().apply {
+    val priceList = buildList {
         addAll(candles.map { it.high })
         addAll(candles.map { it.low })
         currentPrice?.let { add(it) }
+    }.filter { it.isFinite() }
+
+    if (priceList.isEmpty()) {
+        return PriceRange(0f, 0f, 0f, 0f, 0f)
     }
 
     val maxPrice = priceList.maxOrNull() ?: 0f
@@ -54,6 +55,32 @@ fun calculatePriceRangeWithCurrentPrice(
         visibleMax = visibleMax,
         visibleMin = visibleMin,
         range = visibleRange
+    )
+}
+
+/**
+ * Диапазон цен для footprint — по уровням bid/ask видимых свечей.
+ * Не зависит от полей minPrice/maxPrice, которые сервер/агрегация
+ * могут не заполнять (иначе диапазон схлопывается в «плоскую линию»).
+ */
+fun calculatePriceRangeFromLevels(candles: List<FootprintCandle>): PriceRange {
+    val prices = candles.flatMap { c -> c.levels.map { it.priceFloat } }.filter { it.isFinite() }
+    if (prices.isEmpty()) return PriceRange(0f, 0f, 0f, 0f, 0f)
+
+    val maxPrice = prices.maxOrNull() ?: 0f
+    val minPrice = prices.minOrNull() ?: 0f
+    val rawRange = maxPrice - minPrice
+
+    val padding = if (rawRange <= 0f) maxPrice * 0.01f else rawRange * 0.05f
+    val visibleMax = maxPrice + padding
+    val visibleMin = (minPrice - padding).coerceAtLeast(0f)
+
+    return PriceRange(
+        max = maxPrice,
+        min = minPrice,
+        visibleMax = visibleMax,
+        visibleMin = visibleMin,
+        range = visibleMax - visibleMin
     )
 }
 

@@ -75,8 +75,11 @@ object FootprintAggregator {
 
         return groups.map { (bucketStart, group) ->
             val endTime = bucketStart + bucketMs
-            val minPrice = group.minOfOrNull { it.minPrice.toDoubleOrNull() ?: Double.MAX_VALUE } ?: 0.0
-            val maxPrice = group.maxOfOrNull { it.maxPrice.toDoubleOrNull() ?: Double.MIN_VALUE } ?: 0.0
+            // min/max — по уровням: строки minPrice/maxPrice могут отсутствовать
+            val levelPrices = group.flatMap { it.levels.map { level -> level.priceFloat } }
+                .filter { it.isFinite() }
+            val minPrice = levelPrices.minOrNull() ?: 0.0
+            val maxPrice = levelPrices.maxOrNull() ?: 0.0
             val totalTicks = group.sumOf { it.totalTicks }
 
             val levelMap = linkedMapOf<String, Acc>()

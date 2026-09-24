@@ -2772,11 +2772,27 @@ fun calculatePriceRangeWithCurrentPrice(candles: List<Candle>, currentPrice: Flo
 Диапазон считается **только по видимым свечам** — при скролле/зуме
 Y-масштаб подстраивается. Параметр `currentPrice` сохранён для тестов
 и обратной совместимости, но движок передаёт `null`: текущая цена не
-должна растягивать масштаб (см. главу 14.4).
+должна растягивать масштаб (см. главу 14.4). Нефинитные значения
+(`NaN`/`Infinity`) отфильтровываются, чтобы не «взорвать» диапазон.
 
-Для footprint диапазон считается по тем же каркасным свечам —
-отдельной функции `calculatePriceRangeWithFootprint` больше нет (удалена
-в фазе E как дубль).
+Для footprint диапазон считается **по уровням bid/ask**, а не по
+каркасным свечам — поля `minPrice`/`maxPrice` серверных footprint-свечей
+могут отсутствовать, и skeleton-based расчёт давал «плоскую линию»:
+
+```kotlin
+fun calculatePriceRangeFromLevels(candles: List<FootprintCandle>): PriceRange {
+    val prices = candles.flatMap { c -> c.levels.map { it.priceFloat } }.filter { it.isFinite() }
+    if (prices.isEmpty()) return PriceRange(0f, 0f, 0f, 0f, 0f)
+    val maxPrice = prices.maxOrNull() ?: 0f
+    val minPrice = prices.minOrNull() ?: 0f
+    val padding = if (maxPrice - minPrice <= 0f) maxPrice * 0.01f else (maxPrice - minPrice) * 0.05f
+    ...
+}
+```
+
+Этот расчёт переопределён в `FootprintSeries.priceRange()`. Агрегация
+(`FootprintAggregator`) и `toSkeletonCandle()` тоже считают min/max из
+уровней, когда строковые поля пусты.
 
 Сдвиг диапазона при вертикальном скролле footprint:
 
@@ -3159,10 +3175,10 @@ App start
 
 | Модуль | Файл | Что покрывает |
 |---|---|---|
-| `features:chart` | `ChartCalculatorTest` | метрики, `priceToY/priceFromY`, уровни, nearest index, PriceRange (включая низкие цены), якоря зума, `shiftPriceRange` |
+| `features:chart` | `ChartCalculatorTest` | метрики, `priceToY/priceFromY`, уровни, nearest index, PriceRange (включая низкие цены, нефинитные, footprint по уровням), якоря зума, `shiftPriceRange` |
 | `features:chart` | `TimeScaleTest` | кламп панорамы, якоря зума (правый край/Ctrl), min/max, `indexToX ↔ xToIndex`, prepend-коррекция, `scrollToLatest` |
 | `features:chart` | `PriceScaleTest` | fit, пропорциональный сдвиг, нулевая высота, идемпотентность |
-| `features:chart` | `FootprintMappingTest` | `toSkeletonCandle` (open/high/low/close/startTime/maxVolume) |
+| `features:chart` | `FootprintMappingTest` | `toSkeletonCandle` (open/high/low/close/startTime/maxVolume, fallback на уровни) |
 | `features:chart` | `FootprintAggregatorTest` | source-ТФ, выровненная агрегация, `bucketStart`, суммы объёмов, чанки |
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
 | `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения, zoom roundtrip |

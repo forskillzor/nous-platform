@@ -12,6 +12,7 @@ import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.rendering.drawChart
 import com.aandios.nous.feature.chart.rendering.drawFootprintChart
 import com.aandios.nous.feature.chart.ui.ChartConfig
+import com.aandios.nous.feature.chart.utils.calculatePriceRangeFromLevels
 import com.aandios.nous.feature.chart.utils.calculatePriceRangeWithCurrentPrice
 
 /**
@@ -66,6 +67,15 @@ class FootprintSeries(
     override val footprintCandles: List<FootprintCandle>,
     private val config: ChartConfig,
 ) : ChartSeries {
+
+    /**
+     * Диапазон — по уровням bid/ask, а не по каркасным свечам:
+     * minPrice/maxPrice footprint-свечей могут отсутствовать.
+     */
+    override fun priceRange(visibleStart: Int, visibleEnd: Int): PriceRange =
+        calculatePriceRangeFromLevels(
+            footprintCandles.subList(visibleStart, visibleEnd.coerceAtMost(footprintCandles.size))
+        )
 
     override fun draw(scope: DrawScope, canvas: ChartCanvas) {
         scope.drawFootprintChart(

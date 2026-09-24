@@ -124,6 +124,35 @@ class FootprintAggregatorTest {
     }
 
     @Test
+    fun `aggregateFootprintCandles derives min and max from levels when strings are missing`() {
+        val first = FootprintCandle(
+            exchange = "Binance",
+            symbol = "BTCUSDT",
+            timeframe = "1m",
+            startTime = 0L,
+            endTime = 60_000L,
+            minPrice = "0",
+            maxPrice = "0",
+            levels = listOf(FootprintLevel(price = "100.0", bidVolume = "1", askVolume = "1")),
+        )
+        val second = FootprintCandle(
+            exchange = "Binance",
+            symbol = "BTCUSDT",
+            timeframe = "1m",
+            startTime = 60_000L,
+            endTime = 120_000L,
+            minPrice = "0",
+            maxPrice = "0",
+            levels = listOf(FootprintLevel(price = "102.0", bidVolume = "1", askVolume = "1")),
+        )
+
+        val agg = FootprintAggregator.aggregateFootprintCandles(listOf(first, second), 2, 60_000L).first()
+
+        assertEquals("100.0", agg.minPrice)
+        assertEquals("102.0", agg.maxPrice)
+    }
+
+    @Test
     fun `bucketStart aligns to absolute boundaries`() {
         // 5m-бакеты: 05:26 → 05:25
         assertEquals(0L, FootprintAggregator.bucketStart(65_000L, 60_000L, 5))

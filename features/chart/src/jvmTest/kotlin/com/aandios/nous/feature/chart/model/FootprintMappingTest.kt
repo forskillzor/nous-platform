@@ -38,4 +38,28 @@ class FootprintMappingTest {
         assertEquals(1_000L, candle.timestamp)
         assertEquals(3f, candle.volume) // maxVolume
     }
+
+    @Test
+    fun `toSkeletonCandle falls back to levels when min and max are missing`() {
+        val footprint = FootprintCandle(
+            exchange = "Binance",
+            symbol = "BTCUSDT",
+            timeframe = "1m",
+            startTime = 1_000L,
+            endTime = 61_000L,
+            minPrice = "0",
+            maxPrice = "0",
+            levels = listOf(
+                FootprintLevel(price = "99.0", bidVolume = "1", askVolume = "0"),
+                FootprintLevel(price = "101.0", bidVolume = "0", askVolume = "1"),
+            ),
+        )
+
+        val candle = footprint.toSkeletonCandle()
+
+        assertEquals(101f, candle.high)
+        assertEquals(99f, candle.low)
+        assertEquals(99f, candle.open)
+        assertEquals(101f, candle.close)
+    }
 }

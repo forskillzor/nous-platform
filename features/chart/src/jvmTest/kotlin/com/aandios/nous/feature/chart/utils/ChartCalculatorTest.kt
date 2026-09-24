@@ -6,6 +6,8 @@
 package com.aandios.nous.feature.chart.utils
 
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.FootprintCandle
+import com.aandios.nous.api.market.model.FootprintLevel
 import com.aandios.nous.feature.chart.model.PriceRange
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -102,6 +104,57 @@ class ChartCalculatorTest {
         val result = calculatePriceRangeWithCurrentPrice(emptyList(), currentPrice = 50f)
         assertEquals(50f, result.max)
         assertEquals(50f, result.min)
+    }
+
+    @Test
+    fun `price range ignores non-finite candle prices`() {
+        val candles = listOf(
+            Candle(open = 95f, high = 100f, close = 99f, low = 94f, timestamp = 0L),
+            Candle(open = 1f, high = Float.POSITIVE_INFINITY, close = 1f, low = Float.NaN, timestamp = 60_000L),
+        )
+
+        val result = calculatePriceRangeWithCurrentPrice(candles, currentPrice = null)
+
+        assertEquals(100f, result.max, 0.001f)
+        assertEquals(94f, result.min, 0.001f)
+        assertTrue(result.range.isFinite())
+    }
+
+    @Test
+    fun `price range for footprint uses levels and ignores missing min and max`() {
+        val candles = listOf(
+            FootprintCandle(
+                exchange = "Binance",
+                symbol = "BTCUSDT",
+                timeframe = "1m",
+                startTime = 0L,
+                endTime = 60_000L,
+                minPrice = "0",
+                maxPrice = "0",
+                levels = listOf(
+                    FootprintLevel(price = "99.0", bidVolume = "1", askVolume = "1"),
+                    FootprintLevel(price = "101.0", bidVolume = "1", askVolume = "1"),
+                ),
+            ),
+        )
+
+        val result = calculatePriceRangeFromLevels(candles)
+
+        assertEquals(101f, result.max, 0.001f)
+        assertEquals(99f, result.min, 0.001f)
+        assertTrue(result.range > 0f)
+        assertTrue(result.visibleMax > result.max)
+    }
+
+    @Test
+    fun `price range for footprint handles empty levels`() {
+        val candles = listOf(
+            FootprintCandle(exchange = "Binance", symbol = "BTCUSDT", timeframe = "1m", levels = emptyList()),
+        )
+
+        val result = calculatePriceRangeFromLevels(candles)
+
+        assertEquals(0f, result.range)
     }
 
     @Test
