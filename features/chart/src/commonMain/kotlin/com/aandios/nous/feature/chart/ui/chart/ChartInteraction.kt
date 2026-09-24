@@ -404,12 +404,24 @@ fun CandleStickChartInteraction(
         val maxScroll = timeScale.maxScroll(candles.size, chartWidthPx)
 
         // Автоскролл к последней свече: первичная загрузка и realtime, только если
-        // пользователь не ушёл влево (иначе дёргаем его к последней свече)
+        // пользователь не ушёл влево (tolerance = одна свеча: новая realtime-свеча
+        // не должна «терять» следование из-за изменения maxScroll)
         LaunchedEffect(candles.size) {
             if (historyGeneration == 0 &&
-                (timeScale.scrollOffset == 0f || timeScale.isAtLatest(candles.size, chartWidthPx))
+                (timeScale.scrollOffset == 0f ||
+                    timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW))
             ) {
                 timeScale.scrollToLatest(candles.size, chartWidthPx)
+            }
+        }
+
+        // Автозаполнение вьюпорта: если свечей меньше, чем помещается на экран
+        // (например, восстановлен зум «вдаль»), догружаем недостающие
+        LaunchedEffect(candles.size, hasMoreHistory) {
+            if (hasMoreHistory && candles.isNotEmpty() &&
+                timeScale.maxScroll(candles.size, chartWidthPx) == 0f
+            ) {
+                onNeedMoreHistory()
             }
         }
 

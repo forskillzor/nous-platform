@@ -32,6 +32,7 @@ import com.aandios.nous.feature.chart.tools.DrawingRepository
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
+import kotlinx.coroutines.launch
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.context.stopKoin
@@ -39,17 +40,35 @@ import org.koin.core.context.stopKoin
 /**
  * Полноценное окно графика для использования внутри main приложения.
  * Получает ChartViewModel из Koin автоматически.
+ * Восстанавливает символ/ТФ/режим/зум из той же БД, что и composeApp.
  */
 @Composable
 fun ChartWindow() {
     val chartViewModel: ChartViewModel = koinInject()
-    LaunchedEffect(Unit) {
-        chartViewModel.dispatch(ChartIntent.LoadChart())
-    }
     val liquidationViewModel: LiquidationViewModel = koinInject()
+    val previewScope = rememberCoroutineScope()
+
+    val persistor = remember {
+        runCatching {
+            org.koin.core.context.GlobalContext.getOrNull()?.get<StateStore>()
+        }.getOrNull()?.let { ChartStatePersistor(it) }
+    }
+    var initialZoom by remember { mutableStateOf(1f) }
+
+    LaunchedEffect(Unit) {
+        chartViewModel.dispatch(ChartIntent.RestoreState)
+        val saved = persistor?.restore()
+        initialZoom = persistor?.restoreZoom() ?: 1f
+        chartViewModel.dispatch(ChartIntent.LoadChart(saved?.symbol, saved?.timeframe))
+    }
+
     ChartWindowContent(
         chartViewModel = chartViewModel,
-        liquidationViewModel = liquidationViewModel
+        liquidationViewModel = liquidationViewModel,
+        initialZoomLevel = initialZoom,
+        onZoomChange = { zoom ->
+            persistor?.let { p -> previewScope.launch { p.saveZoom(zoom) } }
+        },
     )
 }
 

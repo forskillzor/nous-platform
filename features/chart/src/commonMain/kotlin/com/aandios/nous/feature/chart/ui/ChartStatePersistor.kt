@@ -19,6 +19,7 @@ class ChartStatePersistor(private val store: StateStore) {
         val timeframe: String? = null,
         val chartMode: ChartMode? = null,
         val fpAggregation: AggregationLevel? = null,
+        val zoomLevel: Float? = null,
     )
 
     suspend fun save(
@@ -36,6 +37,14 @@ class ChartStatePersistor(private val store: StateStore) {
             AggregationLevel.HundredTick -> "HundredTick"
         })
     }
+
+    /** Зум живёт в UI-слое и сохраняется отдельно. */
+    suspend fun saveZoom(zoomLevel: Float) {
+        store.putString(KEY_ZOOM, zoomLevel.toString())
+    }
+
+    suspend fun restoreZoom(): Float? =
+        store.getString(KEY_ZOOM)?.toFloatOrNull()
 
     suspend fun restore(): SavedState {
         val mode = store.getString(KEY_CHART_MODE)?.let { raw ->
@@ -65,5 +74,6 @@ class ChartStatePersistor(private val store: StateStore) {
         const val KEY_TIMEFRAME = "chart_timeframe"
         const val KEY_CHART_MODE = "chart_mode"
         const val KEY_FP_AGGREGATION = "fp_aggregation"
+        const val KEY_ZOOM = "chart_zoom"
     }
 }

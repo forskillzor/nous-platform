@@ -103,9 +103,9 @@ class TimeScale(initialZoom: Float = 1f) {
             .coerceIn(-MAX_SCROLL_LEFT, maxScroll(candleCount, chartWidth))
     }
 
-    /** Истинно, если видимая область упирается в самую новую свечу. */
+    /** Истинно, если видимая область упирается в самую новую свечу (в пределах tolerance). */
     fun isAtLatest(candleCount: Int, chartWidth: Float, tolerance: Float = 1f): Boolean =
-        max(0f, maxScroll(candleCount, chartWidth)) - scrollOffset < tolerance
+        max(0f, maxScroll(candleCount, chartWidth)) - scrollOffset <= tolerance
 
     companion object {
         /** Запас «пустой зоны» слева для инициации подгрузки истории. */

@@ -1624,13 +1624,33 @@ DisposableEffect(Unit) {
 ## 13.1. Два overload'а
 
 ```kotlin
-// 1. Preview/isolated: сам достаёт VM из Koin
+// 1. Preview/isolated: сам достаёт VM из Koin и восстанавливает состояние
 @Composable
 fun ChartWindow() {
     val chartViewModel: ChartViewModel = koinInject()
-    LaunchedEffect(Unit) { chartViewModel.dispatch(ChartIntent.LoadChart()) }
     val liquidationViewModel: LiquidationViewModel = koinInject()
-    ChartWindowContent(chartViewModel, liquidationViewModel = liquidationViewModel)
+    val previewScope = rememberCoroutineScope()
+
+    // Восстановление из той же БД, что и у composeApp (символ/ТФ/режим/зум)
+    val persistor = remember {
+        runCatching { GlobalContext.getOrNull()?.get<StateStore>() }
+            .getOrNull()?.let { ChartStatePersistor(it) }
+    }
+    var initialZoom by remember { mutableStateOf(1f) }
+
+    LaunchedEffect(Unit) {
+        chartViewModel.dispatch(ChartIntent.RestoreState)
+        val saved = persistor?.restore()
+        initialZoom = persistor?.restoreZoom() ?: 1f
+        chartViewModel.dispatch(ChartIntent.LoadChart(saved?.symbol, saved?.timeframe))
+    }
+
+    ChartWindowContent(
+        chartViewModel = chartViewModel,
+        liquidationViewModel = liquidationViewModel,
+        initialZoomLevel = initialZoom,
+        onZoomChange = { zoom -> persistor?.let { p -> previewScope.launch { p.saveZoom(zoom) } } },
+    )
 }
 
 // 2. Встраивание: VM приходит аргументом (+ привязка к workspace/панели)
@@ -2061,7 +2081,8 @@ LaunchedEffect(historyGeneration) {
 ```kotlin
 LaunchedEffect(candles.size) {
     if (historyGeneration == 0 &&
-        (timeScale.scrollOffset == 0f || timeScale.isAtLatest(candles.size, chartWidthPx))
+        (timeScale.scrollOffset == 0f ||
+            timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW))
     ) {
         timeScale.scrollToLatest(candles.size, chartWidthPx)
     }
@@ -2069,8 +2090,26 @@ LaunchedEffect(candles.size) {
 ```
 
 Первичная загрузка позиционирует к последней свече (`scrollOffset == 0f`),
-а realtime следует за ценой только если пользователь у правого края —
-если он ушёл в историю, его не дёргает.
+а realtime следует за ценой, если пользователь не дальше одной свечи от
+правого края (`tolerance = totalW` — иначе появление новой свечи
+увеличивает `maxScroll` ровно на ширину свечи и «следование» терялось).
+
+**Автозаполнение вьюпорта.** Если восстановленный зум «вдаль» требует
+больше свечей, чем загружено, движок догружает недостающие:
+
+```kotlin
+LaunchedEffect(candles.size, hasMoreHistory) {
+    if (hasMoreHistory && candles.isNotEmpty() &&
+        timeScale.maxScroll(candles.size, chartWidthPx) == 0f
+    ) {
+        onNeedMoreHistory()
+    }
+}
+```
+
+Условие `maxScroll == 0f` означает «свечей меньше, чем помещается на
+экран» — подгрузка повторяется, пока вьюпорт не заполнится или не
+закончится история.
 
 ## 15.6. Кнопка «к последней свече»
 
@@ -3126,7 +3165,7 @@ App start
 | `features:chart` | `FootprintMappingTest` | `toSkeletonCandle` (open/high/low/close/startTime/maxVolume) |
 | `features:chart` | `FootprintAggregatorTest` | source-ТФ, выровненная агрегация, `bucketStart`, суммы объёмов, чанки |
 | `features:chart` | `FootprintRendererTest` | `aggregateLevels` (BaseTick/TenTick/HundredTick, tickSize ≤ 0) |
-| `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения |
+| `features:chart` | `ChartStatePersistorTest` | save/restore, легаси-ключи, битые значения, zoom roundtrip |
 | `features:chart` | `ChartUiStateTest` | дефолты и `copy` |
 | `features:chart` | `ChartViewModelCacheTest` | с фейками: запись при загрузке, показ из кэша, flush при смене символа |
 | `features:chart` | `DrawingHistoryTest` | add/undo/redo/update+commit/remove/maxHistory (снимки списка) |

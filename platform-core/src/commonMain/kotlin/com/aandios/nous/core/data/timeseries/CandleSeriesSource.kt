@@ -25,7 +25,7 @@ class CandleSeriesSource(
     private val timeframeMs = Timeframes.millis(timeframe)
 
     override suspend fun loadInitial(): List<Candle> =
-        chartAdapter.getCandles(symbol = symbol, interval = interval, limit = 200)
+        chartAdapter.getCandles(symbol = symbol, interval = interval, limit = 500)
 
     override suspend fun loadBefore(beforeTimestamp: Long, limit: Int): List<Candle> =
         chartAdapter.getCandlesBefore(symbol = symbol, interval = interval, endTime = beforeTimestamp, limit = limit)

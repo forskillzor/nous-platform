@@ -75,6 +75,7 @@ class FootprintController(
 
         footprintJob?.cancel()
         pollingJob?.cancel()
+        formingJob?.cancel()
         _state.update {
             it.copy(
                 loading = true,
@@ -83,9 +84,11 @@ class FootprintController(
                 liveCandle = null,
                 hasMoreHistory = true,
                 historyLoadCount = 0,
+                historyGeneration = 0,
             )
         }
         isLoadingMore = false
+        historyGeneration = 0
 
         // Быстрый показ из кэша, пока грузится свежий footprint.
         // Проверка пустоты — внутри update: кэш не может перетереть свежие данные
@@ -330,8 +333,7 @@ class FootprintController(
 
                 if (historical.isEmpty()) {
                     _state.update { it.copy(hasMoreHistory = false) }
-        isLoadingMore = false
-        historyGeneration = 0
+                    isLoadingMore = false
                     return@launch
                 }
 

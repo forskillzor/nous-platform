@@ -92,4 +92,18 @@ class ChartStatePersistorTest {
 
         assertEquals(AggregationLevel.TenTick, persistor.restore().fpAggregation)
     }
+
+    @Test
+    fun `zoom roundtrip and missing key`() = runTest {
+        val store = FakeStateStore()
+        val persistor = ChartStatePersistor(store)
+
+        assertNull(persistor.restoreZoom())
+
+        persistor.saveZoom(2.5f)
+        assertEquals(2.5f, persistor.restoreZoom())
+
+        store.data[ChartStatePersistor.KEY_ZOOM] = "not-a-float"
+        assertNull(persistor.restoreZoom())
+    }
 }
