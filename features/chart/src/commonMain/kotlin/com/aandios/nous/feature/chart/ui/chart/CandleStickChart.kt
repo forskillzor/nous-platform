@@ -25,18 +25,18 @@ import com.aandios.nous.feature.chart.ui.DefaultChartConfig
  * Если передан footprintCandles — рисует footprint вместо свечей,
  * используя ту же логику взаимодействия, кросхаир, шкалы и линию цены.
  */
+
+// todo дублирование сигнатур, раздуте кода, какой смысл???
 @Composable
 fun CandleStickChart(
     candles: List<Candle>,
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    showPriceScale: Boolean = true,
-    priceScaleWidth: Dp = 60.dp,
     crosshairEnabled: Boolean = false,
-    onCrosshairEnabledChange: (Boolean) -> Unit = {},
     onNeedMoreHistory: () -> Unit = {},
     historyLoadCount: Int = 0,
+    historyGeneration: Int = 0,
     hasMoreHistory: Boolean = true,
     footprintCandles: List<FootprintCandle>? = null,
     liquidationOrders: List<LiquidationOrder> = emptyList(),
@@ -53,12 +53,10 @@ fun CandleStickChart(
         currentPrice = currentPrice,
         modifier = modifier,
         config = config,
-        showPriceScale = showPriceScale,
-        priceScaleWidth = priceScaleWidth,
         crosshairEnabled = crosshairEnabled,
-        onCrosshairEnabledChange = onCrosshairEnabledChange,
         onNeedMoreHistory = onNeedMoreHistory,
         historyLoadCount = historyLoadCount,
+        historyGeneration = historyGeneration,
         hasMoreHistory = hasMoreHistory,
         footprintCandles = footprintCandles,
         liquidationOrders = liquidationOrders,
@@ -66,6 +64,7 @@ fun CandleStickChart(
         indicatorHeightDp = indicatorHeightDp,
         drawingHistory = drawingHistory,
         activeDrawingTool = activeDrawingTool,
+        onActiveDrawingToolChange = onActiveDrawingToolChange,
         initialZoomLevel = initialZoomLevel,
         onZoomChange = onZoomChange,
     )

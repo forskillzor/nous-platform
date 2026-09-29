@@ -65,7 +65,6 @@ fun DrawScope.drawCrosshair(
     val candleIndex = findNearestCandleIndex(
         mouseX = mousePosition.x,
         candles = candles,
-        chartWidth = chartLayout.chartMainArea.width,
         scrollOffset = scrollOffset,
         zoomLevel = zoomLevel,
     )
@@ -185,7 +184,7 @@ private fun DrawScope.drawInfoPanel(
 
     // Цены
     drawTextLine(
-        text = "O: ${formatPrice(candle.open)}",
+        text = "O: ${formatPrice(candle.open, config.priceFormatter)}",
         x = adjustedLeft + 4f,
         y = adjustedTop + 30f,
         textMeasurer = textMeasurer,
@@ -193,7 +192,7 @@ private fun DrawScope.drawInfoPanel(
     )
 
     drawTextLine(
-        text = "H: ${formatPrice(candle.high)}",
+        text = "H: ${formatPrice(candle.high, config.priceFormatter)}",
         x = adjustedLeft + 4f,
         y = adjustedTop + 45f,
         textMeasurer = textMeasurer,
@@ -201,7 +200,7 @@ private fun DrawScope.drawInfoPanel(
     )
 
     drawTextLine(
-        text = "L: ${formatPrice(candle.low)}",
+        text = "L: ${formatPrice(candle.low, config.priceFormatter)}",
         x = adjustedLeft + 4f,
         y = adjustedTop + 60f,
         textMeasurer = textMeasurer,
@@ -219,7 +218,7 @@ private fun DrawScope.drawPriceLabelOnAxis(
     textMeasurer: TextMeasurer,
     config: ChartConfig
 ) {
-    val priceText = formatPrice(price)
+    val priceText = formatPrice(price, config.priceFormatter)
 
     val textStyle = TextStyle(
         color = Color.White,

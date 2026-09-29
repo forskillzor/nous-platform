@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.feature.chart.ui.ChartIntent
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.ChartWindow
 import com.aandios.nous.feature.dom.domain.TradingSymbol
@@ -22,6 +23,8 @@ import com.aandios.nous.feature.trades.ui.TradesWindow
 import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous_platform.ui.components.*
 import com.aandios.nous.feature.settings.SettingsWindow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.koin.compose.koinInject
 
 @Composable
@@ -36,21 +39,21 @@ fun MainScreen(
 
     // Sync from ViewModel
     LaunchedEffect(Unit) {
-        chartViewModel.currentSymbol.collect { selectedSymbol = it }
+        chartViewModel.state.map { it.currentSymbol }.distinctUntilChanged().collect { selectedSymbol = it }
     }
     LaunchedEffect(Unit) {
-        chartViewModel.currentTimeframe.collect { selectedTimeframe = it }
+        chartViewModel.state.map { it.currentTimeframe }.distinctUntilChanged().collect { selectedTimeframe = it }
     }
     var showSettings by remember { mutableStateOf(false) }
     val storage: LocalStorage = koinInject()
 
     // Restore saved state on first launch
     LaunchedEffect(Unit) {
-        chartViewModel.restoreState()
+        chartViewModel.dispatch(ChartIntent.RestoreState)
     }
 
     LaunchedEffect(selectedSymbol, selectedTimeframe) {
-        chartViewModel.loadChart(selectedSymbol, selectedTimeframe)
+        chartViewModel.dispatch(ChartIntent.LoadChart(selectedSymbol, selectedTimeframe))
         domViewModel.updateDomOptions(
             domViewModel.domOptions.value.copy(
                 symbol = TradingSymbol.findSymbol(selectedSymbol, domViewModel.domOptions.value.provider)

@@ -11,7 +11,6 @@ data class ChartLayout(
     val canvasWidth: Float,
     val canvasHeight: Float,
     val priceScaleWidth: Float,
-    val chartArea: Rect,
     val priceScaleArea: Rect,
     val chartPadding: Float = 8f,
     val timeScaleHeight: Float = 20f,

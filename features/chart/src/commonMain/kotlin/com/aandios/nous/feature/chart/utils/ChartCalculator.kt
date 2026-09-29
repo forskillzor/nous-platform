@@ -9,6 +9,7 @@ import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.PriceRange
+import kotlin.math.max
 
 /**
  * Рассчитывает метрики свечей на основе zoomLevel.
@@ -28,14 +29,14 @@ fun calculatePriceRangeWithCurrentPrice(
     candles: List<Candle>,
     currentPrice: Float?
 ): PriceRange {
-    if (candles.isEmpty() && currentPrice == null) {
-        return PriceRange(0f, 0f, 0f, 0f, 0f)
-    }
-
-    val priceList = mutableListOf<Float>().apply {
+    val priceList = buildList {
         addAll(candles.map { it.high })
         addAll(candles.map { it.low })
         currentPrice?.let { add(it) }
+    }.filter { it.isFinite() }
+
+    if (priceList.isEmpty()) {
+        return PriceRange(0f, 0f, 0f, 0f, 0f)
     }
 
     val maxPrice = priceList.maxOrNull() ?: 0f
@@ -58,28 +59,28 @@ fun calculatePriceRangeWithCurrentPrice(
 }
 
 /**
- * Вычисляет PriceRange по списку FootprintCandle свечей.
- * Добавляет 5% padding сверху и снизу.
+ * Диапазон цен для footprint — по уровням bid/ask видимых свечей.
+ * Не зависит от полей minPrice/maxPrice, которые сервер/агрегация
+ * могут не заполнять (иначе диапазон схлопывается в «плоскую линию»).
  */
-fun calculatePriceRangeWithFootprint(candles: List<FootprintCandle>): PriceRange {
-    if (candles.isEmpty()) return PriceRange(0f, 0f, 0f, 0f, 0f)
+fun calculatePriceRangeFromLevels(candles: List<FootprintCandle>): PriceRange {
+    val prices = candles.flatMap { c -> c.levels.map { it.priceFloat } }.filter { it.isFinite() }
+    if (prices.isEmpty()) return PriceRange(0f, 0f, 0f, 0f, 0f)
 
-    val allPrices = candles.flatMap { c -> c.levels.map { it.priceFloat } }
-    val maxPrice = allPrices.maxOrNull() ?: 0f
-    val minPrice = allPrices.minOrNull() ?: 0f
-    val priceRange = maxPrice - minPrice
+    val maxPrice = prices.maxOrNull() ?: 0f
+    val minPrice = prices.minOrNull() ?: 0f
+    val rawRange = maxPrice - minPrice
 
-    val padding = if (priceRange <= 0f) maxPrice * 0.01f else priceRange * 0.05f
+    val padding = if (rawRange <= 0f) maxPrice * 0.01f else rawRange * 0.05f
     val visibleMax = maxPrice + padding
     val visibleMin = (minPrice - padding).coerceAtLeast(0f)
-    val visibleRange = visibleMax - visibleMin
 
     return PriceRange(
         max = maxPrice,
         min = minPrice,
         visibleMax = visibleMax,
         visibleMin = visibleMin,
-        range = visibleRange
+        range = visibleMax - visibleMin
     )
 }
 
@@ -127,7 +128,6 @@ fun generatePriceLevels(min: Float, max: Float, count: Int): List<Float> {
 fun findNearestCandleIndex(
     mouseX: Float,
     candles: List<Candle>,
-    chartWidth: Float,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
 ): Int {
@@ -140,4 +140,53 @@ fun findNearestCandleIndex(
     val virtualX = mouseX + scrollOffset
     val index = (virtualX / totalWidthPerCandle).toInt()
     return index.coerceIn(0, candles.size - 1)
+}
+
+/**
+ * Сдвигает диапазон цен при вертикальном скролле footprint.
+ * ratio = verticalScroll / chartHeight, сдвиг = range * ratio.
+ */
+fun shiftPriceRange(base: PriceRange, verticalScroll: Float, chartHeight: Float): PriceRange {
+    if (chartHeight <= 0f || verticalScroll == 0f) return base
+    val ratio = verticalScroll / chartHeight
+    val shift = base.range * ratio
+    return PriceRange(
+        max = base.max + shift,
+        min = base.min + shift,
+        visibleMax = base.visibleMax + shift,
+        visibleMin = base.visibleMin + shift,
+        range = base.range,
+    )
+}
+
+/**
+ * Максимальный скролл для текущего зума: ширина всего ряда минус ширина области графика.
+ */
+fun calculateMaxScroll(
+    candleCount: Int,
+    candleMetrics: CandleMetrics,
+    chartWidth: Float,
+): Float {
+    val totalW = candleMetrics.width + candleMetrics.spacing
+    return max(0f, candleCount * totalW - chartWidth)
+}
+
+/**
+ * Новое значение scrollOffset при зуме.
+ *
+ * @param anchorAtMouse false — фиксируем правый край (самая новая свеча);
+ *                      true — фиксируем точку под курсором (Ctrl+zoom).
+ */
+fun calculateZoomScrollOffset(
+    scrollOffset: Float,
+    chartWidth: Float,
+    mouseX: Float,
+    actualFactor: Float,
+    anchorAtMouse: Boolean,
+): Float {
+    return if (anchorAtMouse) {
+        (mouseX + scrollOffset) * actualFactor - mouseX
+    } else {
+        (scrollOffset + chartWidth) * actualFactor - chartWidth
+    }
 }

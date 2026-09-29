@@ -14,10 +14,14 @@ import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
 import com.aandios.nous.api.market.adapters.TradesAdapter
 import com.aandios.nous.core.data.repository.ChartRepositoryImpl
 import com.aandios.nous.core.di.coreModule
+import com.aandios.nous.core.domain.cache.CandleCacheStore
+import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.domain.repository.ChartRepository
+import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.ui.ChartViewModel
+import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
@@ -92,6 +96,12 @@ val featureChartModule = module {
         get<Provider>().liquidation
     }
 
+    // 6.7 Локальное хранилище и кэш свечей/footprint (та же БД, что и в composeApp)
+    single<LocalStorage> { LocalStorage() }
+    single<StateStore> { get<LocalStorage>() }
+    single<CandleCacheStore> { get<LocalStorage>() }
+    single<FootprintCacheStore> { get<LocalStorage>() }
+
     // 7. ViewModel
     factory {
         ChartViewModel(
@@ -99,6 +109,9 @@ val featureChartModule = module {
             symbolInfoAdapter = get(),
             footprintApiClient = get(),
             tradesAdapter = get(),
+            stateStore = get(),
+            candleCache = get(),
+            footprintCache = get(),
         )
     }
 

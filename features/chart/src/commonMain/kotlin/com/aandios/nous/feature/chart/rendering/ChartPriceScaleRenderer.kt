@@ -73,6 +73,7 @@ fun DrawScope.drawPriceScale(
                 price = currentPrice,
                 y = y,
                 priceScaleWidth = priceScaleArea.width,
+                priceScaleHeight = priceScaleArea.height,
                 textMeasurer = textMeasurer,
                 config = config
             )
@@ -87,10 +88,11 @@ fun DrawScope.drawCurrentPriceBadge(
     price: Float,
     y: Float,
     priceScaleWidth: Float,
+    priceScaleHeight: Float,
     textMeasurer: TextMeasurer,
     config: ChartConfig
 ) {
-    val priceText = formatPrice(price)
+    val priceText = formatPrice(price, config.priceFormatter)
 
     val textStyle = TextStyle(
         color = Color.Green,
@@ -119,7 +121,7 @@ fun DrawScope.drawCurrentPriceBadge(
     // Проверяем, чтобы badge не выходил за границы шкалы
     val adjustedBadgeTop = when {
         badgeTop < 0f -> 0f
-        badgeTop + badgeHeight > size.height -> size.height - badgeHeight
+        badgeTop + badgeHeight > priceScaleHeight -> priceScaleHeight - badgeHeight
         else -> badgeTop
     }
 
@@ -136,57 +138,6 @@ fun DrawScope.drawCurrentPriceBadge(
 }
 
 /**
- * Рисует лейбл текущей цены на графике.
- */
-fun DrawScope.drawCurrentPriceLabel(
-    price: Float,
-    y: Float,
-    priceScaleWidth: Float,
-    textMeasurer: TextMeasurer,
-    config: ChartConfig
-) {
-    val priceText = formatPrice(price)
-
-    val textStyle = TextStyle(
-        color = Color.Green,
-        fontSize = 10.sp,
-        fontWeight = FontWeight.Bold,
-        fontFamily = FontFamily.Monospace
-    )
-
-    val textLayoutResult = textMeasurer.measure(
-        text = AnnotatedString(priceText),
-        style = textStyle
-    )
-
-    val textWidth = textLayoutResult.size.width
-    val textHeight = textLayoutResult.size.height
-
-    val padding = 4f
-    val rectLeft = priceScaleWidth - textWidth - padding * 2
-    val rectTop = y - textHeight / 2 - padding
-    val rectRight = priceScaleWidth
-    val rectBottom = y + textHeight / 2 + padding
-
-    drawRect(
-        color = Color.Green.copy(alpha = 0.2f),
-        topLeft = Offset(rectLeft, rectTop),
-        size = androidx.compose.ui.geometry.Size(rectRight - rectLeft, rectBottom - rectTop)
-    )
-
-    drawText(
-        textLayoutResult = textLayoutResult,
-        topLeft = Offset(priceScaleWidth - textWidth - padding, y - textHeight / 2)
-    )
-
-    drawCircle(
-        color = Color.Green,
-        center = Offset(rectLeft - 6f, y),
-        radius = 2.5f
-    )
-}
-
-/**
  * Рисует обычный уровень цены на шкале.
  */
 fun DrawScope.drawPriceLevel(
@@ -196,7 +147,7 @@ fun DrawScope.drawPriceLevel(
     priceScaleWidth: Float,
     textMeasurer: TextMeasurer
 ) {
-    val priceText = formatPrice(price)
+    val priceText = formatPrice(price, config.priceFormatter)
     val textStyle = TextStyle(
         color = config.axisTextColor,
         fontSize = 10.sp,

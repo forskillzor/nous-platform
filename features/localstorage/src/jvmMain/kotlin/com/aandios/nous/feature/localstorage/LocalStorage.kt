@@ -5,17 +5,23 @@
 
 package com.aandios.nous.feature.localstorage
 
+import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.FootprintCandle
+import com.aandios.nous.core.domain.cache.CandleCacheStore
+import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import java.io.File
 import java.sql.Connection
 import java.sql.DriverManager
 import com.aandios.nous.core.storage.StateStore
 
-class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
+class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore, CandleCacheStore, FootprintCacheStore {
 
     private val dbFile = File(dbPath)
     private var connection: Connection? = null
+    private val json = Json { ignoreUnknownKeys = true }
 
     private suspend fun getConnection(): Connection {
         val conn = connection
@@ -29,6 +35,7 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
                 stmt.execute("PRAGMA foreign_keys=ON")
             }
             ensureTables(c)
+            migrateSchema(c)
             connection = c
             c
         }
@@ -44,20 +51,22 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
             """)
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS candles_cache (
+                    exchange TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     timeframe TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     open REAL, high REAL, low REAL, close REAL, volume REAL,
-                    PRIMARY KEY (symbol, timeframe, timestamp)
+                    PRIMARY KEY (exchange, symbol, timeframe, timestamp)
                 )
             """)
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS footprint_cache (
+                    exchange TEXT NOT NULL,
                     symbol TEXT NOT NULL,
                     start_time INTEGER NOT NULL,
                     end_time INTEGER NOT NULL,
                     json_data TEXT NOT NULL,
-                    PRIMARY KEY (symbol, start_time)
+                    PRIMARY KEY (exchange, symbol, start_time)
                 )
             """)
             stmt.execute("""
@@ -70,6 +79,64 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
                 )
             """)
         }
+    }
+
+    /**
+     * Миграция старых БД (без колонки exchange): пересоздаём таблицы с exchange
+     * в первичном ключе, существующие данные помечаем как Binance.
+     */
+    private fun migrateSchema(conn: Connection) {
+        if (!hasColumn(conn, "candles_cache", "exchange")) {
+            conn.createStatement().use { stmt ->
+                stmt.execute("ALTER TABLE candles_cache RENAME TO candles_cache_legacy")
+                stmt.execute("""
+                    CREATE TABLE candles_cache (
+                        exchange TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        timeframe TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        open REAL, high REAL, low REAL, close REAL, volume REAL,
+                        PRIMARY KEY (exchange, symbol, timeframe, timestamp)
+                    )
+                """)
+                stmt.execute("""
+                    INSERT INTO candles_cache (exchange, symbol, timeframe, timestamp, open, high, low, close, volume)
+                    SELECT 'Binance', symbol, timeframe, timestamp, open, high, low, close, volume FROM candles_cache_legacy
+                """)
+                stmt.execute("DROP TABLE candles_cache_legacy")
+            }
+        }
+        if (!hasColumn(conn, "footprint_cache", "exchange")) {
+            conn.createStatement().use { stmt ->
+                stmt.execute("ALTER TABLE footprint_cache RENAME TO footprint_cache_legacy")
+                stmt.execute("""
+                    CREATE TABLE footprint_cache (
+                        exchange TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        start_time INTEGER NOT NULL,
+                        end_time INTEGER NOT NULL,
+                        json_data TEXT NOT NULL,
+                        PRIMARY KEY (exchange, symbol, start_time)
+                    )
+                """)
+                stmt.execute("""
+                    INSERT INTO footprint_cache (exchange, symbol, start_time, end_time, json_data)
+                    SELECT 'Binance', symbol, start_time, end_time, json_data FROM footprint_cache_legacy
+                """)
+                stmt.execute("DROP TABLE footprint_cache_legacy")
+            }
+        }
+    }
+
+    private fun hasColumn(conn: Connection, table: String, column: String): Boolean {
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery("PRAGMA table_info($table)").use { rs ->
+                while (rs.next()) {
+                    if (rs.getString("name") == column) return true
+                }
+            }
+        }
+        return false
     }
 
     // ============ State Save/Load ============
@@ -112,24 +179,28 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
 
     // ============ Candles ============
 
-    suspend fun saveCandles(symbol: String, timeframe: String, candles: List<CandleCache>) {
+    override suspend fun saveCandles(exchange: String, symbol: String, timeframe: String, candles: List<Candle>) {
         if (candles.isEmpty()) return
         val conn = getConnection()
-        conn.prepareStatement("INSERT OR REPLACE INTO candles_cache (symbol, timeframe, timestamp, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").use { stmt ->
+        conn.prepareStatement("INSERT OR REPLACE INTO candles_cache (exchange, symbol, timeframe, timestamp, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)").use { stmt ->
             candles.forEach { c ->
-                stmt.setString(1, symbol); stmt.setString(2, timeframe)
-                stmt.setLong(3, c.timestamp)
-                stmt.setDouble(4, c.open); stmt.setDouble(5, c.high)
-                stmt.setDouble(6, c.low); stmt.setDouble(7, c.close)
-                stmt.setDouble(8, c.volume)
+                stmt.setString(1, exchange); stmt.setString(2, symbol); stmt.setString(3, timeframe)
+                stmt.setLong(4, c.timestamp)
+                stmt.setDouble(5, c.open.toDouble()); stmt.setDouble(6, c.high.toDouble())
+                stmt.setDouble(7, c.low.toDouble()); stmt.setDouble(8, c.close.toDouble())
+                stmt.setDouble(9, c.volume.toDouble())
                 stmt.addBatch()
             }
             stmt.executeBatch()
         }
-        // Update meta
-        val metaKey = "candles_${symbol}_$timeframe"
-        conn.prepareStatement("SELECT MIN(timestamp), MAX(timestamp), COUNT(*) FROM candles_cache WHERE symbol = ? AND timeframe = ?").use { stmt ->
-            stmt.setString(1, symbol); stmt.setString(2, timeframe)
+        updateCandlesMeta(exchange, symbol, timeframe)
+    }
+
+    private suspend fun updateCandlesMeta(exchange: String, symbol: String, timeframe: String) {
+        val conn = getConnection()
+        val metaKey = "candles_${exchange}_${symbol}_$timeframe"
+        conn.prepareStatement("SELECT MIN(timestamp), MAX(timestamp), COUNT(*) FROM candles_cache WHERE exchange = ? AND symbol = ? AND timeframe = ?").use { stmt ->
+            stmt.setString(1, exchange); stmt.setString(2, symbol); stmt.setString(3, timeframe)
             val rs = stmt.executeQuery()
             if (rs.next() && rs.getLong(1) > 0) {
                 conn.prepareStatement("INSERT OR REPLACE INTO cache_meta (key, symbol, first_ts, last_ts, count) VALUES (?, ?, ?, ?, ?)").use { u ->
@@ -142,87 +213,110 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
         }
     }
 
-    suspend fun getCandles(symbol: String, timeframe: String, limit: Int = 500): List<CandleCache> {
+    override suspend fun getCandles(exchange: String, symbol: String, timeframe: String, limit: Int): List<Candle> {
         val conn = getConnection()
-        return conn.prepareStatement("SELECT * FROM candles_cache WHERE symbol = ? AND timeframe = ? ORDER BY timestamp ASC LIMIT ?").use {
-            it.setString(1, symbol); it.setString(2, timeframe); it.setInt(3, limit)
+        return conn.prepareStatement("SELECT timestamp, open, high, low, close, volume FROM candles_cache WHERE exchange = ? AND symbol = ? AND timeframe = ? ORDER BY timestamp DESC LIMIT ?").use {
+            it.setString(1, exchange); it.setString(2, symbol); it.setString(3, timeframe); it.setInt(4, limit)
             val rs = it.executeQuery()
-            val result = mutableListOf<CandleCache>()
+            val result = mutableListOf<Candle>()
             while (rs.next()) {
-                result.add(CandleCache(rs.getLong("timestamp"), rs.getDouble("open"), rs.getDouble("high"), rs.getDouble("low"), rs.getDouble("close"), rs.getDouble("volume")))
-            }
-            result
-        }
-    }
-
-    suspend fun getCandlesCount(symbol: String, timeframe: String): Long {
-        val conn = getConnection()
-        return conn.prepareStatement("SELECT COUNT(*) FROM candles_cache WHERE symbol = ? AND timeframe = ?").use {
-            it.setString(1, symbol); it.setString(2, timeframe)
-            val rs = it.executeQuery()
-            if (rs.next()) rs.getLong(1) else 0
-        }
-    }
-
-    suspend fun clearCandles(symbol: String? = null, timeframe: String? = null, olderThan: Long? = null) {
-        val conn = getConnection()
-        val sb = StringBuilder("DELETE FROM candles_cache WHERE 1=1")
-        symbol?.let { sb.append(" AND symbol = '$it'") }
-        timeframe?.let { sb.append(" AND timeframe = '$it'") }
-        olderThan?.let { sb.append(" AND timestamp < $it") }
-        conn.createStatement().execute(sb.toString())
-        // Remove meta entries
-        conn.createStatement().execute("DELETE FROM cache_meta WHERE key LIKE 'candles_%' AND (SELECT COUNT(*) FROM candles_cache c WHERE c.symbol = cache_meta.symbol) = 0")
-    }
-
-    // ============ Footprint ============
-
-    suspend fun saveFootprintCandles(symbol: String, candles: List<FootprintCache>) {
-        if (candles.isEmpty()) return
-        val conn = getConnection()
-        conn.prepareStatement("INSERT OR REPLACE INTO footprint_cache (symbol, start_time, end_time, json_data) VALUES (?, ?, ?, ?)").use { stmt ->
-            candles.forEach { c ->
-                stmt.setString(1, symbol); stmt.setLong(2, c.startTime)
-                stmt.setLong(3, c.endTime); stmt.setString(4, c.jsonData)
-                stmt.addBatch()
-            }
-            stmt.executeBatch()
-        }
-        val metaKey = "footprint_$symbol"
-        conn.prepareStatement("SELECT MIN(start_time), MAX(end_time), COUNT(*) FROM footprint_cache WHERE symbol = ?").use { stmt ->
-            stmt.setString(1, symbol)
-            val rs = stmt.executeQuery()
-            if (rs.next() && rs.getLong(1) > 0) {
-                conn.prepareStatement("INSERT OR REPLACE INTO cache_meta (key, symbol, first_ts, last_ts, count) VALUES (?, ?, ?, ?, ?)").use { u ->
-                    u.setString(1, metaKey); u.setString(2, symbol)
-                    u.setLong(3, rs.getLong(1)); u.setLong(4, rs.getLong(2))
-                    u.setInt(5, rs.getInt(3))
-                    u.execute()
-                }
-            }
-        }
-    }
-
-    suspend fun getFootprintCandles(symbol: String, limit: Int = 60): List<FootprintCache> {
-        val conn = getConnection()
-        return conn.prepareStatement("SELECT * FROM footprint_cache WHERE symbol = ? ORDER BY start_time DESC LIMIT ?").use {
-            it.setString(1, symbol); it.setInt(2, limit)
-            val rs = it.executeQuery()
-            val result = mutableListOf<FootprintCache>()
-            while (rs.next()) {
-                result.add(FootprintCache(rs.getLong("start_time"), rs.getLong("end_time"), rs.getString("json_data")))
+                result.add(
+                    Candle(
+                        open = rs.getDouble("open").toFloat(),
+                        high = rs.getDouble("high").toFloat(),
+                        close = rs.getDouble("close").toFloat(),
+                        low = rs.getDouble("low").toFloat(),
+                        timestamp = rs.getLong("timestamp"),
+                        volume = rs.getDouble("volume").toFloat(),
+                    )
+                )
             }
             result.reversed()
         }
     }
 
-    suspend fun clearFootprint(symbol: String? = null, olderThan: Long? = null) {
+    suspend fun clearCandles(symbol: String? = null, timeframe: String? = null, olderThan: Long? = null, exchange: String? = null) {
         val conn = getConnection()
-        val sb = StringBuilder("DELETE FROM footprint_cache WHERE 1=1")
-        symbol?.let { sb.append(" AND symbol = '$it'") }
-        olderThan?.let { sb.append(" AND start_time < $it") }
-        conn.createStatement().execute(sb.toString())
-        conn.createStatement().execute("DELETE FROM cache_meta WHERE key LIKE 'footprint_%' AND (SELECT COUNT(*) FROM footprint_cache f WHERE f.symbol = cache_meta.symbol) = 0")
+        val conditions = mutableListOf<String>()
+        val stringParams = mutableListOf<Pair<Int, String>>()
+        var index = 1
+        exchange?.let { conditions += "exchange = ?"; stringParams += index++ to it }
+        symbol?.let { conditions += "symbol = ?"; stringParams += index++ to it }
+        timeframe?.let { conditions += "timeframe = ?"; stringParams += index++ to it }
+        val olderThanIndex = if (olderThan != null) { conditions += "timestamp < ?"; index } else -1
+        val where = if (conditions.isEmpty()) "" else " WHERE " + conditions.joinToString(" AND ")
+        conn.prepareStatement("DELETE FROM candles_cache$where").use { st ->
+            stringParams.forEach { (i, v) -> st.setString(i, v) }
+            if (olderThanIndex > 0) st.setLong(olderThanIndex, olderThan!!)
+            st.execute()
+        }
+    }
+
+    // ============ Footprint ============
+
+    override suspend fun saveFootprintCandles(exchange: String, symbol: String, candles: List<FootprintCandle>) {
+        if (candles.isEmpty()) return
+        val conn = getConnection()
+        conn.prepareStatement("INSERT OR REPLACE INTO footprint_cache (exchange, symbol, start_time, end_time, json_data) VALUES (?, ?, ?, ?, ?)").use { stmt ->
+            candles.forEach { c ->
+                stmt.setString(1, exchange); stmt.setString(2, symbol)
+                stmt.setLong(3, c.startTime); stmt.setLong(4, c.endTime)
+                stmt.setString(5, json.encodeToString(c))
+                stmt.addBatch()
+            }
+            stmt.executeBatch()
+        }
+        updateFootprintMeta(exchange, symbol)
+    }
+
+    private suspend fun updateFootprintMeta(exchange: String, symbol: String) {
+        val conn = getConnection()
+        val metaKey = "footprint_${exchange}_$symbol"
+        conn.prepareStatement("SELECT MIN(start_time), MAX(end_time), COUNT(*) FROM footprint_cache WHERE exchange = ? AND symbol = ?").use { stmt ->
+            stmt.setString(1, exchange); stmt.setString(2, symbol)
+            val rs = stmt.executeQuery()
+            if (rs.next() && rs.getLong(1) > 0) {
+                conn.prepareStatement("INSERT OR REPLACE INTO cache_meta (key, symbol, first_ts, last_ts, count) VALUES (?, ?, ?, ?, ?)").use { u ->
+                    u.setString(1, metaKey); u.setString(2, symbol)
+                    u.setLong(3, rs.getLong(1)); u.setLong(4, rs.getLong(2))
+                    u.setInt(5, rs.getInt(3))
+                    u.execute()
+                }
+            }
+        }
+    }
+
+    override suspend fun getFootprintCandles(exchange: String, symbol: String, limit: Int): List<FootprintCandle> {
+        val conn = getConnection()
+        return conn.prepareStatement("SELECT json_data FROM footprint_cache WHERE exchange = ? AND symbol = ? ORDER BY start_time DESC LIMIT ?").use {
+            it.setString(1, exchange); it.setString(2, symbol); it.setInt(3, limit)
+            val rs = it.executeQuery()
+            val result = mutableListOf<FootprintCandle>()
+            while (rs.next()) {
+                try {
+                    result.add(json.decodeFromString<FootprintCandle>(rs.getString("json_data")))
+                } catch (_: Exception) {
+                    // пропускаем повреждённые записи
+                }
+            }
+            result.reversed()
+        }
+    }
+
+    suspend fun clearFootprint(symbol: String? = null, olderThan: Long? = null, exchange: String? = null) {
+        val conn = getConnection()
+        val conditions = mutableListOf<String>()
+        val stringParams = mutableListOf<Pair<Int, String>>()
+        var index = 1
+        exchange?.let { conditions += "exchange = ?"; stringParams += index++ to it }
+        symbol?.let { conditions += "symbol = ?"; stringParams += index++ to it }
+        val olderThanIndex = if (olderThan != null) { conditions += "start_time < ?"; index } else -1
+        val where = if (conditions.isEmpty()) "" else " WHERE " + conditions.joinToString(" AND ")
+        conn.prepareStatement("DELETE FROM footprint_cache$where").use { st ->
+            stringParams.forEach { (i, v) -> st.setString(i, v) }
+            if (olderThanIndex > 0) st.setLong(olderThanIndex, olderThan!!)
+            st.execute()
+        }
     }
 
     // ============ Stats ============
@@ -234,34 +328,59 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
         val firstTs: Long,
         val lastTs: Long,
         val sizeBytes: Long,
-        val durationMs: Long = 0L
+        val durationMs: Long = 0L,
+        val exchange: String = "",
     )
 
     suspend fun getDetailedStats(): Pair<List<CacheStats>, Long> {
         val conn = getConnection()
         val stats = mutableListOf<CacheStats>()
 
-        // Candles per symbol+timeframe
+        // Candles per exchange+symbol+timeframe
         conn.createStatement().use { stmt ->
-            val rs = stmt.executeQuery("SELECT symbol, timeframe, COUNT(*) as cnt, MIN(timestamp) as first_ts, MAX(timestamp) as last_ts FROM candles_cache GROUP BY symbol, timeframe ORDER BY cnt DESC")
+            val rs = stmt.executeQuery("SELECT exchange, symbol, timeframe, COUNT(*) as cnt, MIN(timestamp) as first_ts, MAX(timestamp) as last_ts FROM candles_cache GROUP BY exchange, symbol, timeframe ORDER BY cnt DESC")
             while (rs.next()) {
+                val exchange = rs.getString("exchange")
                 val sym = rs.getString("symbol")
                 val tf = rs.getString("timeframe")
                 val cnt = rs.getLong("cnt")
                 val rowSize = (8 + 5 * 8 + 8).toLong()
-                stats.add(CacheStats("Candles $sym $tf", sym, cnt, rs.getLong("first_ts"), rs.getLong("last_ts"), cnt * rowSize, rs.getLong("last_ts") - rs.getLong("first_ts")))
+                stats.add(
+                    CacheStats(
+                        key = "Candles $exchange $sym $tf",
+                        symbol = sym,
+                        count = cnt,
+                        firstTs = rs.getLong("first_ts"),
+                        lastTs = rs.getLong("last_ts"),
+                        sizeBytes = cnt * rowSize,
+                        durationMs = rs.getLong("last_ts") - rs.getLong("first_ts"),
+                        exchange = exchange,
+                    )
+                )
             }
         }
 
-        // Footprint per symbol
+        // Footprint per exchange+symbol
         conn.createStatement().use { stmt ->
-            val rs = stmt.executeQuery("SELECT symbol, COUNT(*) as cnt, MIN(start_time) as first_ts, MAX(end_time) as last_ts, AVG(LENGTH(json_data)) as avg_len FROM footprint_cache GROUP BY symbol ORDER BY cnt DESC")
+            val rs = stmt.executeQuery("SELECT exchange, symbol, COUNT(*) as cnt, MIN(start_time) as first_ts, MAX(end_time) as last_ts, AVG(LENGTH(json_data)) as avg_len FROM footprint_cache GROUP BY exchange, symbol ORDER BY cnt DESC")
             while (rs.next()) {
+                val exchange = rs.getString("exchange")
                 val sym = rs.getString("symbol")
                 val cnt = rs.getLong("cnt")
                 val avgLen = rs.getDouble("avg_len")
                 val size = if (cnt > 0) (cnt * avgLen).toLong() else 0L
-                stats.add(CacheStats("Footprint $sym", sym, cnt, rs.getLong("first_ts"), rs.getLong("last_ts"), size, rs.getLong("last_ts") - rs.getLong("first_ts")))
+                stats.add(
+                    CacheStats(
+                        key = "Footprint $exchange $sym",
+                        symbol = sym,
+                        count = cnt,
+                        firstTs = rs.getLong("first_ts"),
+                        lastTs = rs.getLong("last_ts"),
+                        sizeBytes = size,
+                        durationMs = rs.getLong("last_ts") - rs.getLong("first_ts"),
+                        exchange = exchange,
+                    )
+                )
             }
         }
 
@@ -281,9 +400,6 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore {
     }
 
     fun close() { connection?.close(); connection = null }
-
-    data class CandleCache(val timestamp: Long, val open: Double, val high: Double, val low: Double, val close: Double, val volume: Double)
-    data class FootprintCache(val startTime: Long, val endTime: Long, val jsonData: String)
 
     companion object {
         val DEFAULT_PATH = "${System.getProperty("user.home")}/.nous/storage.db"

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -20,13 +21,18 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.api.market.model.Candle
-import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
+import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.model.PriceRange
+import com.aandios.nous.feature.chart.model.toSkeletonCandle
+import com.aandios.nous.feature.chart.tools.DrawingHistory
+import com.aandios.nous.feature.chart.tools.DrawingRepository
+import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
+import kotlinx.coroutines.launch
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.context.stopKoin
@@ -34,17 +40,35 @@ import org.koin.core.context.stopKoin
 /**
  * Полноценное окно графика для использования внутри main приложения.
  * Получает ChartViewModel из Koin автоматически.
+ * Восстанавливает символ/ТФ/режим/зум из той же БД, что и composeApp.
  */
 @Composable
 fun ChartWindow() {
     val chartViewModel: ChartViewModel = koinInject()
-    LaunchedEffect(Unit) {
-        chartViewModel.loadChart()
-    }
     val liquidationViewModel: LiquidationViewModel = koinInject()
+    val previewScope = rememberCoroutineScope()
+
+    val persistor = remember {
+        runCatching {
+            org.koin.core.context.GlobalContext.getOrNull()?.get<StateStore>()
+        }.getOrNull()?.let { ChartStatePersistor(it) }
+    }
+    var initialZoom by remember { mutableStateOf(1f) }
+
+    LaunchedEffect(Unit) {
+        chartViewModel.dispatch(ChartIntent.RestoreState)
+        val saved = persistor?.restore()
+        initialZoom = persistor?.restoreZoom() ?: 1f
+        chartViewModel.dispatch(ChartIntent.LoadChart(saved?.symbol, saved?.timeframe))
+    }
+
     ChartWindowContent(
         chartViewModel = chartViewModel,
-        liquidationViewModel = liquidationViewModel
+        liquidationViewModel = liquidationViewModel,
+        initialZoomLevel = initialZoom,
+        onZoomChange = { zoom ->
+            persistor?.let { p -> previewScope.launch { p.saveZoom(zoom) } }
+        },
     )
 }
 
@@ -52,7 +76,7 @@ fun ChartWindow() {
  * Окно графика для использования внутри MainScreen (и др. композитов).
  * Принимает ChartViewModel напрямую (чтобы не плодить лишних экземпляров при factory-scope).
  *
- * Загрузку графика (chartViewModel.loadChart()) ожидается, что вызывает родительский composable.
+ * Загрузку графика (dispatch(LoadChart)) ожидается, что вызывает родительский composable.
  */
 @Composable
 fun ChartWindow(
@@ -60,6 +84,8 @@ fun ChartWindow(
     modifier: Modifier = Modifier,
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
+    workspaceId: String? = null,
+    panelId: String? = null,
 ) {
     val liquidationViewModel: LiquidationViewModel = koinInject()
     ChartWindowContent(
@@ -68,6 +94,8 @@ fun ChartWindow(
         liquidationViewModel = liquidationViewModel,
         initialZoomLevel = initialZoomLevel,
         onZoomChange = onZoomChange,
+        workspaceId = workspaceId,
+        panelId = panelId,
     )
 }
 
@@ -78,36 +106,25 @@ private fun ChartWindowContent(
     liquidationViewModel: LiquidationViewModel,
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
+    workspaceId: String? = null,
+    panelId: String? = null,
 ) {
-    val chartState by chartViewModel.chartState.collectAsState()
-    val currentSymbol by chartViewModel.currentSymbol.collectAsState()
-    val currentTimeframe by chartViewModel.currentTimeframe.collectAsState()
-    val symbols by chartViewModel.symbols.collectAsState()
-    val historyLoadCount by chartViewModel.historyLoadCount.collectAsState()
-    val hasMoreHistory by chartViewModel.hasMoreHistory.collectAsState()
-    val footprintCandles by chartViewModel.footprintCandles.collectAsState()
-    val liveFootprintCandle by chartViewModel.liveFootprintCandle.collectAsState()
-    val footprintCurrentPrice by chartViewModel.footprintCurrentPrice.collectAsState()
-    val footprintLoading by chartViewModel.footprintLoading.collectAsState()
-    val footprintError by chartViewModel.footprintError.collectAsState()
-    val chartMode by chartViewModel.chartMode.collectAsState()
-    val symbolsWithFootprint by chartViewModel.symbolsWithFootprint.collectAsState()
-    val hasMoreFootprintHistory by chartViewModel.hasMoreFootprintHistory.collectAsState()
-    val footprintHistoryLoadCount by chartViewModel.footprintHistoryLoadCount.collectAsState()
-    val fpAggregation by chartViewModel.fpAggregation.collectAsState()
-    val formatter by chartViewModel.currentSymbolFormatter.collectAsState()
+    val uiState by chartViewModel.state.collectAsState()
 
-    val chartConfig = remember(fpAggregation, formatter) {
-        DefaultChartConfig.copy(footprintConfig = DefaultChartConfig.footprintConfig.copy(
-            aggregationLevel = fpAggregation,
-            tickSize = formatter.tickSize
-        ))
+    val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter) {
+        DefaultChartConfig.copy(
+            footprintConfig = DefaultChartConfig.footprintConfig.copy(
+                aggregationLevel = uiState.fpAggregation,
+                tickSize = uiState.currentSymbolFormatter.tickSize
+            ),
+            priceFormatter = uiState.currentSymbolFormatter
+        )
     }
 
     // Liquidation state
     val liquidationState by liquidationViewModel.state.collectAsState()
-    LaunchedEffect(currentSymbol) {
-        liquidationViewModel.subscribe(currentSymbol)
+    LaunchedEffect(uiState.currentSymbol) {
+        liquidationViewModel.subscribe(uiState.currentSymbol)
     }
     DisposableEffect(Unit) {
         onDispose { liquidationViewModel.clear() }
@@ -124,12 +141,28 @@ private fun ChartWindowContent(
 
     var crosshairEnabled by remember { mutableStateOf(false) }
 
+    // Drawings: привязаны к workspace+panel и сохраняются на диск
+    val drawingStore: StateStore? = remember {
+        runCatching { org.koin.core.context.GlobalContext.getOrNull()?.get<StateStore>() }.getOrNull()
+    }
+    val drawingHistory = remember { DrawingHistory() }
+    var activeDrawingTool by remember { mutableStateOf(DrawingToolType.NONE) }
+
+    LaunchedEffect(workspaceId, panelId, drawingStore) {
+        val store = drawingStore
+        if (workspaceId == null || panelId == null || store == null) return@LaunchedEffect
+        val repository = DrawingRepository(store)
+        drawingHistory.replaceAll(repository.load(workspaceId, panelId))
+        snapshotFlow { drawingHistory.drawings.toList() }
+            .collect { repository.save(workspaceId, panelId, it) }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        when (val state = chartState) {
+        when (val state = uiState.chartState) {
             is ChartState.Loading -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -164,7 +197,7 @@ private fun ChartWindowContent(
             }
             is ChartState.Success -> {
                 Box(modifier = Modifier.fillMaxSize()) {
-                    when (chartMode) {
+                    when (uiState.chartMode) {
                         ChartMode.CANDLESTICK -> {
                             CandleStickChart(
                                 candles = state.candles,
@@ -173,49 +206,55 @@ private fun ChartWindowContent(
                                 liquidationOrders = liquidationState.orders,
                                 indicatorRenderers = indicatorRenderers,
                                 crosshairEnabled = crosshairEnabled,
-                                onCrosshairEnabledChange = { crosshairEnabled = it },
-                                onNeedMoreHistory = { chartViewModel.loadMoreHistory() },
-                                historyLoadCount = historyLoadCount,
-                                hasMoreHistory = hasMoreHistory,
+                                onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
+                                historyLoadCount = uiState.historyLoadCount,
+                                historyGeneration = uiState.historyGeneration,
+                                hasMoreHistory = uiState.hasMoreHistory,
+                                drawingHistory = drawingHistory,
+                                activeDrawingTool = activeDrawingTool,
+                                onActiveDrawingToolChange = { activeDrawingTool = it },
                                 modifier = Modifier.fillMaxSize(),
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
                             )
                         }
                         ChartMode.FOOTPRINT -> {
-                            if (footprintLoading && footprintCandles.isEmpty()) {
+                            if (uiState.footprintLoading && uiState.footprintCandles.isEmpty()) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Text("Loading footprint data...", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
                                 }
-                            } else if (footprintError != null && footprintCandles.isEmpty()) {
+                            } else if (uiState.footprintError != null && uiState.footprintCandles.isEmpty()) {
                                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         Text("Footprint data error", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
-                                        Text(footprintError!!, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                        Text(uiState.footprintError!!, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
                                     }
                                 }
                             } else {
                                 // Merge completed + live: live overrides same startTime
                                 val allFp = buildList {
-                                    val liveStart = liveFootprintCandle?.startTime
-                                    addAll(footprintCandles.filter { it.startTime != liveStart })
-                                    liveFootprintCandle?.let { add(it) }
+                                    val liveStart = uiState.liveFootprintCandle?.startTime
+                                    addAll(uiState.footprintCandles.filter { it.startTime != liveStart })
+                                    uiState.liveFootprintCandle?.let { add(it) }
                                 }
                                 val fpToCandle = remember(allFp) {
-                                    allFp.map { Candle(it.open, it.high, it.close, it.low, it.startTime, it.maxVolume) }
+                                    allFp.map { it.toSkeletonCandle() }
                                 }
                                 CandleStickChart(
                                     candles = fpToCandle,
-                                    currentPrice = footprintCurrentPrice ?: fpToCandle.lastOrNull()?.close,
+                                    currentPrice = uiState.footprintCurrentPrice ?: fpToCandle.lastOrNull()?.close,
                                     config = chartConfig,
                                     liquidationOrders = liquidationState.orders,
                                     indicatorRenderers = indicatorRenderers,
                                     crosshairEnabled = crosshairEnabled,
-                                    onCrosshairEnabledChange = { crosshairEnabled = it },
                                     footprintCandles = allFp,
-                                    onNeedMoreHistory = { chartViewModel.loadMoreFootprintHistory() },
-                                    historyLoadCount = footprintHistoryLoadCount,
-                                    hasMoreHistory = hasMoreFootprintHistory,
+                                    onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
+                                    historyLoadCount = uiState.footprintHistoryLoadCount,
+                                    historyGeneration = uiState.footprintHistoryGeneration,
+                                    hasMoreHistory = uiState.hasMoreFootprintHistory,
+                                    drawingHistory = drawingHistory,
+                                    activeDrawingTool = activeDrawingTool,
+                                    onActiveDrawingToolChange = { activeDrawingTool = it },
                                     modifier = Modifier.fillMaxSize(),
                                     initialZoomLevel = initialZoomLevel,
                                     onZoomChange = onZoomChange,
@@ -225,18 +264,24 @@ private fun ChartWindowContent(
                     }
 
                     ChartToolbar(
-                        currentSymbol = currentSymbol,
-                        currentTimeframe = currentTimeframe,
-                        availableSymbols = symbols,
-                        onSymbolChange = { chartViewModel.selectSymbol(it) },
-                        onTimeframeChange = { chartViewModel.selectTimeframe(it) },
+                        currentSymbol = uiState.currentSymbol,
+                        currentTimeframe = uiState.currentTimeframe,
+                        availableSymbols = uiState.symbols,
+                        onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
+                        onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
                         crosshairEnabled = crosshairEnabled,
                         onCrosshairToggle = { crosshairEnabled = !crosshairEnabled },
-                        chartMode = chartMode,
-                        onChartModeToggle = { chartViewModel.toggleChartMode() },
-                        symbolsWithFootprint = symbolsWithFootprint,
-                        fpAggregation = fpAggregation,
-                        onFpAggregationChange = { chartViewModel.setFpAggregation(it) },
+                        chartMode = uiState.chartMode,
+                        onChartModeToggle = { chartViewModel.dispatch(ChartIntent.ToggleChartMode) },
+                        symbolsWithFootprint = uiState.symbolsWithFootprint,
+                        fpAggregation = uiState.fpAggregation,
+                        onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
+                        drawingTool = activeDrawingTool,
+                        onDrawingToolChange = { activeDrawingTool = it },
+                        canUndoDrawing = drawingHistory.canUndo,
+                        canRedoDrawing = drawingHistory.canRedo,
+                        onUndoDrawing = { drawingHistory.undo() },
+                        onRedoDrawing = { drawingHistory.redo() },
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(8.dp)

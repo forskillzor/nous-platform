@@ -6,19 +6,12 @@
 package com.aandios.nous.core.domain.repository
 
 import com.aandios.nous.api.market.model.Candle
-import kotlinx.coroutines.flow.Flow
+import com.aandios.nous.core.domain.timeseries.TimeSeriesSource
 
 interface ChartRepository {
-    fun getChart(ticker: String, timeframe: String): Flow<List<Candle>>
-
     /**
-     * Load historical candles before a given time (for infinite scroll backwards).
-     * Returns candles sorted from oldest to newest.
+     * Источник свечей для символа/таймфрейма: история + realtime + слияние.
+     * Пагинация и live-подписка выполняются через TimeSeriesController.
      */
-    suspend fun loadHistoricalCandlesBefore(
-        ticker: String,
-        timeframe: String,
-        endTime: Long,
-        limit: Int = 200
-    ): List<Candle>
+    fun candleSource(ticker: String, timeframe: String): TimeSeriesSource<Candle>
 }

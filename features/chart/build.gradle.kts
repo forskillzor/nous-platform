@@ -26,6 +26,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.swing)
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
+            implementation(project(":features:localstorage"))
         }
 
         wasmJsMain.dependencies {

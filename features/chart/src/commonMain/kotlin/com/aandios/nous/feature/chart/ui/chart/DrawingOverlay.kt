@@ -14,21 +14,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.tools.Drawing
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingToolType
+import com.aandios.nous.feature.chart.tools.rulerLabel
 import com.aandios.nous.feature.chart.utils.findNearestCandleIndex
 import com.aandios.nous.feature.chart.utils.formatPrice
 import com.aandios.nous.feature.chart.utils.priceFromY
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
 /**
  * Transparent overlay that intercepts pointer events when a drawing tool is active.
- * Renders ruler measurement result as a label in the top-left corner.
+ * Во время drag вызывает [onPreviewChange] — движок рисует фигуру «на лету»
+ * с актуальными вычислениями (для линейки — Δ/%/время).
  */
 @Composable
 fun DrawingOverlay(
@@ -37,10 +39,11 @@ fun DrawingOverlay(
     candles: List<Candle>,
     priceRange: PriceRange,
     layout: ChartLayout,
-    chartWidthPx: Float,
     scrollOffset: Float,
     zoomLevel: Float,
+    priceFormatter: SymbolFormatter = SymbolFormatter.DEFAULT,
     onToolChange: (DrawingToolType) -> Unit,
+    onPreviewChange: (Drawing?) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     if (activeDrawingTool == DrawingToolType.NONE || drawingHistory == null) return
@@ -50,7 +53,6 @@ fun DrawingOverlay(
     val currentLayout by rememberUpdatedState(layout)
     val currentScroll by rememberUpdatedState(scrollOffset)
     val currentZoom by rememberUpdatedState(zoomLevel)
-    val currentWidthPx by rememberUpdatedState(chartWidthPx)
 
     Box(modifier = modifier.fillMaxSize().pointerInput(activeDrawingTool) {
         awaitEachGesture {
@@ -59,7 +61,12 @@ fun DrawingOverlay(
 
             when (activeDrawingTool) {
                 DrawingToolType.HORIZONTAL, DrawingToolType.VERTICAL -> {
-                    // Single-click: wait for release
+                    // Single-click: показываем превью сразу, коммитим на release
+                    val draft = buildDrawing(
+                        activeDrawingTool, startPos, startPos,
+                        currentCandles, currentPriceRange, currentLayout, currentScroll, currentZoom, priceFormatter
+                    )
+                    onPreviewChange(draft)
                     var released = false
                     while (!released) {
                         val event = awaitPointerEvent()
@@ -69,106 +76,103 @@ fun DrawingOverlay(
                             released = true
                         }
                     }
-                    addDrawing(activeDrawingTool, startPos, startPos,
-                        currentCandles, currentPriceRange, currentLayout, currentWidthPx, currentScroll, currentZoom, drawingHistory)
+                    onPreviewChange(null)
+                    draft?.let { drawingHistory.add(it) }
                     onToolChange(DrawingToolType.NONE)
                 }
                 else -> {
-                    // Drag tools: track end position
+                    // Drag tools: превью на каждом движении, коммит на release
                     var endPos = startPos
                     var released = false
+                    var draft: Drawing? = null
                     while (!released) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull() ?: break
                         if (change.pressed) {
                             endPos = change.position
+                            draft = buildDrawing(
+                                activeDrawingTool, startPos, endPos,
+                                currentCandles, currentPriceRange, currentLayout, currentScroll, currentZoom, priceFormatter
+                            )
+                            onPreviewChange(draft)
                             change.consume()
                         } else {
                             change.consume()
                             released = true
                         }
                     }
-                    addDrawing(activeDrawingTool, startPos, endPos,
-                        currentCandles, currentPriceRange, currentLayout, currentWidthPx, currentScroll, currentZoom, drawingHistory)
+                    onPreviewChange(null)
+                    draft?.let { drawingHistory.add(it) }
                 }
             }
         }
     })
 }
 
-private fun addDrawing(
+/** Чистое построение фигуры по жесту (для превью и коммита). */
+internal fun buildDrawing(
     tool: DrawingToolType,
     start: Offset, end: Offset,
     candles: List<Candle>,
     priceRange: PriceRange,
     layout: ChartLayout,
-    chartWidthPx: Float,
     scrollOffset: Float,
     zoomLevel: Float,
-    history: DrawingHistory
-) {
+    priceFormatter: SymbolFormatter,
+): Drawing? {
     val chartH = layout.chartMainArea.height
-    if (chartH <= 0f || candles.isEmpty()) return
+    if (chartH <= 0f || candles.isEmpty()) return null
 
     val ts = com.aandios.nous.core.currentTimeMillis()
 
-    fun candleIdx(x: Float) = findNearestCandleIndex(x, candles, chartWidthPx, scrollOffset, zoomLevel)
+    fun candleIdx(x: Float) = findNearestCandleIndex(x, candles, scrollOffset, zoomLevel)
         .coerceIn(0, (candles.lastIndex).coerceAtLeast(0))
 
     fun candleTs(x: Float) = candles[candleIdx(x)].timestamp
 
-    when (tool) {
+    return when (tool) {
         DrawingToolType.HORIZONTAL -> {
             val price = priceFromY(start.y, priceRange, chartH)
-            history.add(Drawing.HorizontalLevel(
+            Drawing.HorizontalLevel(
                 id = "h_$ts", price = price,
                 color = androidx.compose.ui.graphics.Color(0xFF2196F3),
-                label = formatPrice(price)
-            ))
+                label = formatPrice(price, priceFormatter)
+            )
         }
         DrawingToolType.VERTICAL -> {
-            history.add(Drawing.VerticalLine(
+            Drawing.VerticalLine(
                 id = "v_$ts", timeMs = candleTs(start.x),
                 color = androidx.compose.ui.graphics.Color(0xFFFF5722)
-            ))
+            )
         }
         DrawingToolType.TREND_LINE -> {
             val p1 = priceFromY(start.y, priceRange, chartH)
             val p2 = priceFromY(end.y, priceRange, chartH)
-            history.add(Drawing.TrendLine(
+            Drawing.TrendLine(
                 id = "tl_$ts", startPrice = p1, endPrice = p2,
                 startTimeMs = candleTs(start.x), endTimeMs = candleTs(end.x)
-            ))
+            )
         }
         DrawingToolType.RECTANGLE -> {
             val top = priceFromY(min(start.y, end.y), priceRange, chartH)
             val bot = priceFromY(max(start.y, end.y), priceRange, chartH)
-            history.add(Drawing.Rectangle(
+            Drawing.Rectangle(
                 id = "r_$ts", topPrice = top, bottomPrice = bot,
                 startTimeMs = candleTs(min(start.x, end.x)),
                 endTimeMs = candleTs(max(start.x, end.x))
-            ))
+            )
         }
         DrawingToolType.RULER -> {
             val p1 = priceFromY(start.y, priceRange, chartH)
             val p2 = priceFromY(end.y, priceRange, chartH)
             val t1 = candleTs(start.x); val t2 = candleTs(end.x)
-            val priceDiff = abs(p2 - p1)
-            val pctChange = if (p1 > 0f) (priceDiff / p1 * 100f) else 0f
-            val timeSec = abs(t2 - t1) / 1000L
-            val timeStr = when {
-                timeSec >= 3600 -> "${timeSec/3600}h ${(timeSec%3600)/60}m"
-                timeSec >= 60 -> "${timeSec/60}m ${timeSec%60}s"
-                else -> "${timeSec}s"
-            }
-            // Add trendline + ruler label
-            history.add(Drawing.TrendLine(
+            Drawing.TrendLine(
                 id = "ruler_$ts", startPrice = p1, endPrice = p2,
                 startTimeMs = t1, endTimeMs = t2,
                 color = androidx.compose.ui.graphics.Color(0xFFFFEB00),
-                label = "Δ${formatPrice(priceDiff)} (${(pctChange * 100).toInt() / 100f}%) | $timeStr"
-            ))
+                label = rulerLabel(p1, p2, t1, t2, priceFormatter)
+            )
         }
-        else -> {}
+        else -> null
     }
 }
