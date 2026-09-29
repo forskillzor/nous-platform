@@ -1,4 +1,18 @@
-# Nous Platform v0.1.0
+# Nous Platform v0.0.1 Pre-Alpha
+
+![Windows](https://shields.io)
+![Linux](https://shields.io)
+![macOS](https://shields.io)
+
+***Project in active development***
+
+> [!WARNING]
+> **Live trading** and **paper trading** are not yet supported.
+
+This ambitious project needs your active support! You can help out by donating, contributing, or submitting PRs (pull requests).
+
+### Donate
+***LTC Wallet:  ltc1qm9wsd82a4ak6wdy0936enptzntcaal2qwjc06a***
 
 ## Professional crypto terminal with Order Flow analysis and an open environment for strategies
 
