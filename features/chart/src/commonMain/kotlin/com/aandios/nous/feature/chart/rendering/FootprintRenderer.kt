@@ -228,7 +228,7 @@ fun DrawScope.drawFootprintPopup(
     val darkGreen = Color(0xFF1B5E20)
     val darkRed = Color(0xFF5D1A1A)
 
-    val title = "     Price         Ask        Bid"
+    val title = "Price       Ask    Bid"
     val titleStyle = TextStyle(color = Color(0xFF5B9BD5), fontSize = fontSize, fontFamily = FontFamily.Monospace)
     val titleLayout = textMeasurer.measure(AnnotatedString(title), titleStyle)
 

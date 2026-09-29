@@ -25,6 +25,8 @@ import com.aandios.nous.feature.chart.ui.DefaultChartConfig
  * Если передан footprintCandles — рисует footprint вместо свечей,
  * используя ту же логику взаимодействия, кросхаир, шкалы и линию цены.
  */
+
+// todo дублирование сигнатур, раздуте кода, какой смысл???
 @Composable
 fun CandleStickChart(
     candles: List<Candle>,

@@ -80,7 +80,7 @@ kotlin {
 
 compose.desktop {
     application {
-        mainClass = "com.aandios.nous-platform.MainKt"
+        mainClass = "com.aandios.nous_platform.MainKt"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
@@ -88,7 +88,9 @@ compose.desktop {
             packageVersion = version.toString()
 
             buildTypes.release.proguard {
-                obfuscate.set(false)
+                isEnabled = false
+                version.set("7.5.0")
+                obfuscate.set(true)
                 optimize.set(false)
 
                 configurationFiles.from(
@@ -149,6 +151,8 @@ compose.desktop {
 
             windows {
                 menu = true
+                includeAllModules = true
+//                console = true
             }
             macOS {
                 dmgPackageVersion = "1.0.0"

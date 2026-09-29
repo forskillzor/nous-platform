@@ -32,7 +32,7 @@ class ChartViewModel(
     stateStore: StateStore? = null,
     private val candleCache: CandleCacheStore? = null,
     footprintCache: FootprintCacheStore? = null,
-    private val cacheDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    cacheDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     // Отдельный scope для записей кэша: не блокирует Main и переживает dispose панели
@@ -324,7 +324,7 @@ class ChartViewModel(
 
     companion object {
         private const val EXCHANGE = "Binance"
-        private const val CACHE_LIMIT = 500
+        private const val CACHE_LIMIT = 5500
         private const val CACHE_WRITE_INTERVAL_MS = 30_000L
     }
 }

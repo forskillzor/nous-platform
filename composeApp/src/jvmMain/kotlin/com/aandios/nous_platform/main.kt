@@ -5,46 +5,36 @@
 
 package com.aandios.nous_platform
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
-import com.aandios.nous.feature.chart.ui.ChartViewModel
-import com.aandios.nous.feature.chart.ui.ChartWindow
+import com.aandios.nous.core.ui.workspace.LayoutRenderer
+import com.aandios.nous.core.ui.workspace.TabBar
+import com.aandios.nous.core.workspace.*
+import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.feature.chart.ui.ChartIntent
 import com.aandios.nous.feature.chart.ui.ChartMode
+import com.aandios.nous.feature.chart.ui.ChartViewModel
+import com.aandios.nous.feature.chart.ui.ChartWindow
 import com.aandios.nous.feature.dom.domain.TradingSymbol
+import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.ui.DomViewModel
 import com.aandios.nous.feature.dom.ui.DomWindow
-import com.aandios.nous.feature.dom.domain.model.AggregationLevel
+import com.aandios.nous.feature.trades.ui.SizeFilter
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.feature.trades.ui.TradesWindow
-import com.aandios.nous.feature.trades.ui.SizeFilter
 import com.aandios.nous_platform.di.initKoin
 import com.aandios.nous_platform.ui.main.MainScreen
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
-import com.aandios.nous.core.workspace.viewmodel.TabManager
-import com.aandios.nous.core.workspace.WorkspaceRepository
-import com.aandios.nous.core.workspace.LayoutEngine
-import com.aandios.nous.core.workspace.LayoutNode
-import com.aandios.nous.core.workspace.generateId
-import com.aandios.nous.core.workspace.PanelConfig
-import com.aandios.nous.core.workspace.PanelType
-import com.aandios.nous.core.workspace.PanelState
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import com.aandios.nous.core.ui.workspace.TabBar
-import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import org.koin.compose.koinInject
 
 fun main() = application {
@@ -80,9 +70,11 @@ fun main() = application {
                 terminalState = terminalStateViewModel,
                 tabManager = tabManager,
                 workspaceRepo = workspaceRepo,
-                onOpenWorkspace = tabManager?.let { tm -> { config ->
-                    scope.launch { tm.openWorkspace(config) }
-                } },
+                onOpenWorkspace = tabManager?.let { tm ->
+                    { config ->
+                        scope.launch { tm.openWorkspace(config) }
+                    }
+                },
                 onSymbolSelected = { symbol ->
                     terminalStateViewModel.changeSymbol(symbol)
                     val timeframe = terminalStateViewModel.selectedTimeFrame.value
@@ -161,7 +153,8 @@ fun main() = application {
                                         },
                                         onSplitPanel = { panelId, direction, newType ->
                                             val newPanelId = "panel-${generateId()}"
-                                            val newLayout = LayoutEngine.split(layoutState, panelId, direction, newPanelId)
+                                            val newLayout =
+                                                LayoutEngine.split(layoutState, panelId, direction, newPanelId)
                                             layoutState = newLayout
                                             val newConfig = PanelConfig(
                                                 id = newPanelId,
@@ -180,76 +173,129 @@ fun main() = application {
                                     ) { panelId ->
                                         panelConfigs[panelId]?.let { pc ->
                                             when (pc.type) {
-                                                com.aandios.nous.core.workspace.PanelType.CHART -> {
+                                                PanelType.CHART -> {
                                                     val vmKey = "${pc.id}_chart"
-                                                    val vm: ChartViewModel = ws.liveViewModels.getOrPut(vmKey) { koinInject<ChartViewModel>() } as ChartViewModel
-                                                    val state = pc.state as? com.aandios.nous.core.workspace.PanelState.Chart
+                                                    val vm: ChartViewModel =
+                                                        ws.liveViewModels.getOrPut(vmKey) { koinInject<ChartViewModel>() } as ChartViewModel
+                                                    val state =
+                                                        pc.state as? PanelState.Chart
                                                     val tf = state?.timeframe ?: "1m"
                                                     // Restore chartMode from config
                                                     LaunchedEffect(pc.id) {
                                                         val savedMode = state?.chartMode ?: "CANDLESTICK"
-                                                        val target = try { ChartMode.valueOf(savedMode) } catch (e: Exception) { ChartMode.CANDLESTICK }
+                                                        val target = try {
+                                                            ChartMode.valueOf(savedMode)
+                                                        } catch (e: Exception) {
+                                                            ChartMode.CANDLESTICK
+                                                        }
                                                         if (vm.state.value.chartMode != target) vm.dispatch(ChartIntent.ToggleChartMode)
                                                     }
                                                     // Only reload if symbol or timeframe changed since last load
                                                     LaunchedEffect(pc.symbol, tf) {
-                                                        val needReload = vm.state.value.currentSymbol != pc.symbol || vm.state.value.currentTimeframe != tf
-                                                        if (needReload) vm.dispatch(ChartIntent.LoadChart(pc.symbol, tf))
+                                                        val needReload =
+                                                            vm.state.value.currentSymbol != pc.symbol || vm.state.value.currentTimeframe != tf
+                                                        if (needReload) vm.dispatch(
+                                                            ChartIntent.LoadChart(
+                                                                pc.symbol,
+                                                                tf
+                                                            )
+                                                        )
                                                     }
                                                     // Sync back: when user changes symbol/timeframe/zoom/chartMode → update PanelConfig
                                                     val currentPc by rememberUpdatedState(pc)
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
-                                                        vm.state.map { it.currentSymbol }.distinctUntilChanged().collect { s ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
-                                                            panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(symbol = s)); persistConfig()
-                                                        }
+                                                        vm.state.map { it.currentSymbol }.distinctUntilChanged()
+                                                            .collect { s ->
+                                                                if (skipInitial) {
+                                                                    skipInitial = false; return@collect
+                                                                }
+                                                                panelConfigs =
+                                                                    panelConfigs + (currentPc.id to currentPc.copy(
+                                                                        symbol = s
+                                                                    )); persistConfig()
+                                                            }
                                                     }
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
-                                                        vm.state.map { it.currentTimeframe }.distinctUntilChanged().collect { tf2 ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
-                                                            val curS = currentPc.state as? PanelState.Chart ?: PanelState.Chart()
-                                                            panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(state = curS.copy(timeframe = tf2))); persistConfig()
-                                                        }
+                                                        vm.state.map { it.currentTimeframe }.distinctUntilChanged()
+                                                            .collect { tf2 ->
+                                                                if (skipInitial) {
+                                                                    skipInitial = false; return@collect
+                                                                }
+                                                                val curS = currentPc.state as? PanelState.Chart
+                                                                    ?: PanelState.Chart()
+                                                                panelConfigs =
+                                                                    panelConfigs + (currentPc.id to currentPc.copy(
+                                                                        state = curS.copy(timeframe = tf2)
+                                                                    )); persistConfig()
+                                                            }
                                                     }
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
-                                                        vm.state.map { it.chartMode }.distinctUntilChanged().collect { mode ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
-                                                            val curS = currentPc.state as? PanelState.Chart ?: PanelState.Chart()
-                                                            panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(state = curS.copy(chartMode = mode.name))); persistConfig()
-                                                        }
+                                                        vm.state.map { it.chartMode }.distinctUntilChanged()
+                                                            .collect { mode ->
+                                                                if (skipInitial) {
+                                                                    skipInitial = false; return@collect
+                                                                }
+                                                                val curS = currentPc.state as? PanelState.Chart
+                                                                    ?: PanelState.Chart()
+                                                                panelConfigs =
+                                                                    panelConfigs + (currentPc.id to currentPc.copy(
+                                                                        state = curS.copy(chartMode = mode.name)
+                                                                    )); persistConfig()
+                                                            }
                                                     }
-                                                    ChartWindow(vm,
+                                                    ChartWindow(
+                                                        vm,
                                                         initialZoomLevel = state?.zoomLevel ?: 1f,
                                                         onZoomChange = { zl ->
-                                                            val curS = (currentPc.state as? PanelState.Chart) ?: PanelState.Chart()
-                                                            panelConfigs = panelConfigs + (currentPc.id to currentPc.copy(state = curS.copy(zoomLevel = zl))); persistConfig()
+                                                            val curS = (currentPc.state as? PanelState.Chart)
+                                                                ?: PanelState.Chart()
+                                                            panelConfigs =
+                                                                panelConfigs + (currentPc.id to currentPc.copy(
+                                                                    state = curS.copy(zoomLevel = zl)
+                                                                )); persistConfig()
                                                         },
                                                         workspaceId = ws.config.id,
                                                         panelId = pc.id
                                                     )
                                                 }
-                                                com.aandios.nous.core.workspace.PanelType.DOM -> {
+
+                                                PanelType.DOM -> {
                                                     val vmKey = "${pc.id}_dom"
-                                                    val vm: DomViewModel = ws.liveViewModels.getOrPut(vmKey) { koinInject<DomViewModel>() } as DomViewModel
+                                                    val vm: DomViewModel =
+                                                        ws.liveViewModels.getOrPut(vmKey) { koinInject<DomViewModel>() } as DomViewModel
                                                     val domState = pc.state as? PanelState.Dom
                                                     LaunchedEffect(pc.symbol) {
-                                                        val ts = TradingSymbol.findSymbol(pc.symbol, com.aandios.nous.feature.dom.domain.TradingProvider.BINANCE)
-                                                            ?: TradingSymbol(pc.symbol, pc.symbol, com.aandios.nous.feature.dom.domain.TradingProvider.BINANCE)
+                                                        val ts = TradingSymbol.findSymbol(
+                                                            pc.symbol,
+                                                            com.aandios.nous.feature.dom.domain.TradingProvider.BINANCE
+                                                        )
+                                                            ?: TradingSymbol(
+                                                                pc.symbol,
+                                                                pc.symbol,
+                                                                com.aandios.nous.feature.dom.domain.TradingProvider.BINANCE
+                                                            )
                                                         var opts = vm.domOptions.value.copy(symbol = ts)
                                                         // Restore aggregation from saved state
                                                         val savedAgg = domState?.aggregation
                                                         if (savedAgg != null) {
                                                             try {
-                                                                opts = opts.copy(aggregation = AggregationLevel.fromString(savedAgg))
-                                                            } catch (_: Exception) { }
+                                                                opts = opts.copy(
+                                                                    aggregation = AggregationLevel.fromString(savedAgg)
+                                                                )
+                                                            } catch (_: Exception) {
+                                                            }
                                                         }
                                                         // Restore depth from saved state
                                                         val savedDepth = domState?.depth
                                                         if (savedDepth != null && savedDepth > 0) {
-                                                            opts = opts.copy(depth = com.aandios.nous.feature.dom.domain.model.DepthLimit.create(savedDepth))
+                                                            opts = opts.copy(
+                                                                depth = com.aandios.nous.feature.dom.domain.model.DepthLimit.create(
+                                                                    savedDepth
+                                                                )
+                                                            )
                                                         }
                                                         vm.updateDomOptions(opts)
                                                     }
@@ -258,8 +304,11 @@ fun main() = application {
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
                                                         vm.domOptions.collect { opts ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
-                                                            val curState = domPc.state as? PanelState.Dom ?: PanelState.Dom()
+                                                            if (skipInitial) {
+                                                                skipInitial = false; return@collect
+                                                            }
+                                                            val curState =
+                                                                domPc.state as? PanelState.Dom ?: PanelState.Dom()
                                                             val aggStr = when (opts.aggregation) {
                                                                 AggregationLevel.BaseTick -> "1x"
                                                                 AggregationLevel.TenTick -> "10x"
@@ -267,15 +316,20 @@ fun main() = application {
                                                             }
                                                             panelConfigs = panelConfigs + (domPc.id to domPc.copy(
                                                                 symbol = opts.symbol.symbol.ifEmpty { domPc.symbol },
-                                                                state = curState.copy(depth = opts.depth.value, aggregation = aggStr)
+                                                                state = curState.copy(
+                                                                    depth = opts.depth.value,
+                                                                    aggregation = aggStr
+                                                                )
                                                             )); persistConfig()
                                                         }
                                                     }
                                                     key(ws.activationCount) { DomWindow(vm) }
                                                 }
-                                                com.aandios.nous.core.workspace.PanelType.TRADES -> {
+
+                                                PanelType.TRADES -> {
                                                     val vmKey = "${pc.id}_trades"
-                                                    val vm: TradesViewModel = ws.liveViewModels.getOrPut(vmKey) { koinInject<TradesViewModel>() } as TradesViewModel
+                                                    val vm: TradesViewModel =
+                                                        ws.liveViewModels.getOrPut(vmKey) { koinInject<TradesViewModel>() } as TradesViewModel
                                                     val needReload = vm.currentSymbol.value != pc.symbol
                                                     LaunchedEffect(pc.symbol) { if (needReload) vm.subscribeToTrades(pc.symbol) }
                                                     // Sync symbol back
@@ -283,15 +337,20 @@ fun main() = application {
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
                                                         vm.currentSymbol.collect { s ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
-                                                            panelConfigs = panelConfigs + (tradesPc.id to tradesPc.copy(symbol = s)); persistConfig()
+                                                            if (skipInitial) {
+                                                                skipInitial = false; return@collect
+                                                            }
+                                                            panelConfigs =
+                                                                panelConfigs + (tradesPc.id to tradesPc.copy(symbol = s)); persistConfig()
                                                         }
                                                     }
                                                     // Sync size filter back
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
                                                         vm.selectedSizeFilter.collect { filter ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
+                                                            if (skipInitial) {
+                                                                skipInitial = false; return@collect
+                                                            }
                                                             val serialized = when (filter) {
                                                                 is SizeFilter.All -> "All"
                                                                 is SizeFilter.MinQty -> "MinQty"
@@ -299,17 +358,25 @@ fun main() = application {
                                                                 is SizeFilter.MinQtyx100 -> "MinQtyx100"
                                                                 is SizeFilter.Custom -> "Custom:${filter.value}"
                                                             }
-                                                            val curState = tradesPc.state as? PanelState.Trades ?: PanelState.Trades()
-                                                            panelConfigs = panelConfigs + (tradesPc.id to tradesPc.copy(state = curState.copy(sizeFilter = serialized))); persistConfig()
+                                                            val curState = tradesPc.state as? PanelState.Trades
+                                                                ?: PanelState.Trades()
+                                                            panelConfigs = panelConfigs + (tradesPc.id to tradesPc.copy(
+                                                                state = curState.copy(sizeFilter = serialized)
+                                                            )); persistConfig()
                                                         }
                                                     }
                                                     // Sync custom presets back
                                                     LaunchedEffect(Unit) {
                                                         var skipInitial = true
                                                         vm.customPresets.collect { presets ->
-                                                            if (skipInitial) { skipInitial = false; return@collect }
-                                                            val curState = tradesPc.state as? PanelState.Trades ?: PanelState.Trades()
-                                                            panelConfigs = panelConfigs + (tradesPc.id to tradesPc.copy(state = curState.copy(customPresets = presets))); persistConfig()
+                                                            if (skipInitial) {
+                                                                skipInitial = false; return@collect
+                                                            }
+                                                            val curState = tradesPc.state as? PanelState.Trades
+                                                                ?: PanelState.Trades()
+                                                            panelConfigs = panelConfigs + (tradesPc.id to tradesPc.copy(
+                                                                state = curState.copy(customPresets = presets)
+                                                            )); persistConfig()
                                                         }
                                                     }
                                                     // Restore filter + presets
@@ -328,8 +395,11 @@ fun main() = application {
                                                                     saved == "MinQty" -> SizeFilter.MinQty
                                                                     saved == "MinQtyx10" -> SizeFilter.MinQtyx10
                                                                     saved == "MinQtyx100" -> SizeFilter.MinQtyx100
-                                                                    saved.startsWith("Custom:") -> saved.removePrefix("Custom:").toDoubleOrNull()
-                                                                        ?.let { SizeFilter.Custom(it) } ?: SizeFilter.All
+                                                                    saved.startsWith("Custom:") -> saved.removePrefix("Custom:")
+                                                                        .toDoubleOrNull()
+                                                                        ?.let { SizeFilter.Custom(it) }
+                                                                        ?: SizeFilter.All
+
                                                                     else -> SizeFilter.All
                                                                 }
                                                                 if (restored !is SizeFilter.All || vm.selectedSizeFilter.value !is SizeFilter.All) {
@@ -338,7 +408,10 @@ fun main() = application {
                                                             }
                                                         }
                                                     }
-                                                    TradesWindow(vm, currentSymbol = pc.symbol, onSymbolChanged = { s -> vm.subscribeToTrades(s) })
+                                                    TradesWindow(
+                                                        vm,
+                                                        currentSymbol = pc.symbol,
+                                                        onSymbolChanged = { s -> vm.subscribeToTrades(s) })
                                                 }
                                             }
                                         }

@@ -8,6 +8,8 @@ package com.aandios.nous.feature.chart.rendering
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.text.TextMeasurer
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.PriceRange
@@ -23,9 +25,9 @@ fun DrawScope.drawChart(
     candles: List<Candle>,
     priceRange: PriceRange,
     config: ChartConfig,
-    chartArea: androidx.compose.ui.geometry.Rect,
+    chartArea: Rect,
     currentPrice: Float?,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    textMeasurer: TextMeasurer,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
     visibleStartIndex: Int = 0,
