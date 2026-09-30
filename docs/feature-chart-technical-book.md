@@ -769,6 +769,10 @@ Binance REST (klines)         Binance WS (kline_<tf>)
         ChartWindowContent → CandleStickChart → ChartInteraction → drawChart
 ```
 
+> Полные Mermaid-диаграммы по появлению свечи (все сущности, последовательности
+> холодного старта, realtime-свечи, loadMore, состояния и сравнение с footprint):
+> [`docs/chart-candle-flow.md`](chart-candle-flow.md).
+
 Ключевое изменение рефакторинга: **логика «история + realtime + пагинация»
 больше не размазана** между репозиторием и ViewModel. Она живёт в
 `TimeSeriesController` (platform-core) и конкретном `TimeSeriesSource`.
