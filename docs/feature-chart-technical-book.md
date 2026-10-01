@@ -2057,33 +2057,35 @@ timeScale.zoomAt(
 
 ```kotlin
 val firstCandleTs = candles.firstOrNull()?.timestamp
-var prevFirstTs by remember { mutableStateOf<Long?>(null) }
-
 LaunchedEffect(candles.size, firstCandleTs) {
     val prepended = prependedCount(candles, prevFirstTs)
     if (prepended > 0) {
         // История: первая свеча стала старше → удерживаем позицию
         timeScale.offsetAfterPrepend(prepended, candles.size, chartWidthPx)
-    } else if (timeScale.scrollOffset == 0f ||
-        timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW)
-    ) {
-        // Новая свеча: следуем, если стоим у правого края
+    } else if (followLive) {
+        // Новая свеча: следуем безусловно
         timeScale.scrollToLatest(candles.size, chartWidthPx)
     }
     prevFirstTs = firstCandleTs
 }
 ```
 
-**Как различаются случаи без счётчиков.** Якорь — таймстамп первой свечи.
-Если он стал старше (`prependedCount > 0`) — это подгрузка истории, и
-`scrollOffset` сдвигается ровно на число добавленных свечей
-(`prependedCount` находит прежнюю первую свечу в новом списке). Иначе это
-append realtime-свечи — следуем за ней, только если пользователь у правого
-края (`tolerance = totalW` — допуск одна свеча, иначе новая свеча увеличивает
-`maxScroll` ровно на её ширину и «следование» терялось бы).
+**Различение случаев без счётчиков.** Якорь — таймстамп первой свечи. Если он
+стал старше (`prependedCount > 0`) — это подгрузка истории, и `scrollOffset`
+сдвигается ровно на число добавленных свечей (`prependedCount` находит прежнюю
+первую свечу в новом списке). Иначе это append realtime-свечи — следуем за ней,
+если `followLive`.
 
-Раньше здесь были `loadGeneration`/`historyGeneration`/`loadCount` и два
-отдельных эффекта; якорь по первой свече убрал всю обвязку счётчиков.
+**Почему `followLive`, а не проверка `isAtLatest(tolerance = totalW)` в момент
+append.** При появлении свечи `maxScroll` растёт ровно на `totalW`, и разница
+`max - offset` из-за погрешности `Float` оказывалась чуть больше `totalW` —
+проверка «допуск одна свеча» периодически промахивалась (график то следовал,
+то нет). Флаг убирает эту арифметику: решение принимается в момент действия
+пользователя, когда `offset` уже точно равен `maxScroll`:
+
+- pan/zoom пользователем → `followLive = isAtLatest(...)` (ушёл от края —
+  открепился, вернулся к краю — прикрепился сам);
+- кнопка `⇥` и double-tap → `followLive = true`.
 
 Ленивая загрузка (когда пользователь скроллит левее первой свечи):
 

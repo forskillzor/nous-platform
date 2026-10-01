@@ -115,6 +115,9 @@ fun CandleStickChartInteraction(
     var currentPriceRange by remember { mutableStateOf<PriceRange>(PriceRange(0f, 0f, 0f, 0f, 0f)) }
     // Выделенный рисунок (клик по фигуре; удаление по Delete/Backspace)
     var selectedDrawingId by remember { mutableStateOf<String?>(null) }
+    // Follow-live: следуем за новой свечой, пока пользователь у правого края
+    var followLive by remember { mutableStateOf(true) }
+    var prevFirstTs by remember { mutableStateOf<Long?>(null) }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -273,6 +276,8 @@ fun CandleStickChartInteraction(
                                     .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
                             } else {
                                 timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
+                                // Ушёл от правого края — открепляем follow; вернулся — прикрепляем
+                                followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
                             }
                             change.consume()
                         } while (true)
@@ -300,6 +305,8 @@ fun CandleStickChartInteraction(
                                 maxZoom = maxZoom,
                             )
                             onZoomChange?.invoke(timeScale.zoomLevel)
+                            // Если остались у правого края — follow сохраняется
+                            followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
                             change.consume()
                         }
                     }
@@ -312,6 +319,7 @@ fun CandleStickChartInteraction(
                         timeScale.setZoom(1f)
                         timeScale.scrollToLatest(currentCandles.size, chartWidthPx)
                         verticalScroll = 0f
+                        followLive = true
                     })
                 }
             }
@@ -406,14 +414,13 @@ fun CandleStickChartInteraction(
         //  * prepend истории (первая свеча стала старше) — удерживаем позицию;
         //  * иначе новая realtime-свеча — следуем за ней, если стоим у правого края.
         val firstCandleTs = candles.firstOrNull()?.timestamp
-        var prevFirstTs by remember { mutableStateOf<Long?>(null) }
         LaunchedEffect(candles.size, firstCandleTs) {
             val prepended = prependedCount(candles, prevFirstTs)
             if (prepended > 0) {
+                // История: первая свеча стала старше → удерживаем позицию
                 timeScale.offsetAfterPrepend(prepended, candles.size, chartWidthPx)
-            } else if (timeScale.scrollOffset == 0f ||
-                timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW)
-            ) {
+            } else if (followLive) {
+                // Новая свеча: следуем безусловно (без tolerance-математики)
                 timeScale.scrollToLatest(candles.size, chartWidthPx)
             }
             prevFirstTs = firstCandleTs
@@ -655,7 +662,10 @@ fun CandleStickChartInteraction(
                 .align(Alignment.BottomEnd)
                 .padding(end = config.priceScaleWidth + 10.dp, bottom = controlsBottomPadding)
                 .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-                .clickable { timeScale.scrollToLatest(candles.size, chartWidthPx) }
+                .clickable {
+                    followLive = true
+                    timeScale.scrollToLatest(candles.size, chartWidthPx)
+                }
                 .padding(horizontal = 8.dp, vertical = 3.dp)
         ) {
             Text(
