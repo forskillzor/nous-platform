@@ -7,7 +7,7 @@ package com.aandios.nous.api.market.commands
 
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 // Базовый интерфейс команды
 interface TradingCommand {

@@ -88,8 +88,6 @@ fun CandleStickChartInteraction(
     config: ChartConfig = DefaultChartConfig,
     crosshairEnabled: Boolean = false,
     onNeedMoreHistory: () -> Unit = {},
-    historyLoadCount: Int = 0,
-    historyGeneration: Int = 0,
     hasMoreHistory: Boolean = true,
     footprintCandles: List<FootprintCandle>? = null,
     liquidationOrders: List<LiquidationOrder> = emptyList(),
@@ -403,16 +401,21 @@ fun CandleStickChartInteraction(
         val totalW = candleMetrics.width + candleMetrics.spacing
         val maxScroll = timeScale.maxScroll(candles.size, chartWidthPx)
 
-        // Автоскролл к последней свече: первичная загрузка и realtime, только если
-        // пользователь не ушёл влево (tolerance = одна свеча: новая realtime-свеча
-        // не должна «терять» следование из-за изменения maxScroll)
-        LaunchedEffect(candles.size) {
-            if (historyGeneration == 0 &&
-                (timeScale.scrollOffset == 0f ||
-                    timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW))
+        // Единый эффект на изменение списка свечей:
+        //  * prepend истории (первая свеча стала старше) — удерживаем позицию;
+        //  * иначе новая realtime-свеча — следуем за ней, если стоим у правого края.
+        val firstCandleTs = candles.firstOrNull()?.timestamp
+        var prevFirstTs by remember { mutableStateOf<Long?>(null) }
+        LaunchedEffect(candles.size, firstCandleTs) {
+            val prepended = prependedCount(candles, prevFirstTs)
+            if (prepended > 0) {
+                timeScale.offsetAfterPrepend(prepended, candles.size, chartWidthPx)
+            } else if (timeScale.scrollOffset == 0f ||
+                timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW)
             ) {
                 timeScale.scrollToLatest(candles.size, chartWidthPx)
             }
+            prevFirstTs = firstCandleTs
         }
 
         // Автозаполнение вьюпорта: если свечей меньше, чем помещается на экран
@@ -443,16 +446,6 @@ fun CandleStickChartInteraction(
         LaunchedEffect(clampedOffset, hasMoreHistory) {
             if (hasMoreHistory && clampedOffset < 0f) {
                 onNeedMoreHistory()
-            }
-        }
-
-        // Коррекция scrollOffset после загрузки исторических свечей.
-        // Ключ — только generation: коррекция применяется ровно один раз за
-        // подгрузку (раньше срабатывала на каждое изменение candles.size,
-        // из-за чего график «дёргался» на каждом realtime-тике)
-        LaunchedEffect(historyGeneration) {
-            if (historyGeneration > 0) {
-                timeScale.offsetAfterPrepend(historyLoadCount, candles.size, chartWidthPx)
             }
         }
 

@@ -18,6 +18,7 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.compose.material3)
+            implementation(libs.compose.material.icons.core)
         }
 
         jvmMain.dependencies {

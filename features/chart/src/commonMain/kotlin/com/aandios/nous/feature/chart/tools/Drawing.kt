@@ -13,6 +13,7 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlin.time.Clock
 
 /** Сериализация Compose Color как ARGB Long (для персистента рисунков). */
 object ColorSerializer : KSerializer<Color> {
@@ -101,7 +102,7 @@ sealed class Drawing {
 
     companion object {
         fun currentTime(): Long {
-            return kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+            return Clock.System.now().toEpochMilliseconds()
         }
     }
 }

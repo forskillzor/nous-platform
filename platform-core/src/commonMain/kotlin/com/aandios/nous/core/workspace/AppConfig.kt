@@ -6,6 +6,7 @@
 package com.aandios.nous.core.workspace
 
 import kotlinx.serialization.Serializable
+import kotlin.time.Clock
 
 /**
  * Состо��ние приложения между сессиями — какие табы открыты, тема, версия.
@@ -25,4 +26,4 @@ fun generateId(): String {
 }
 
 /** KMP-safe current time in millis */
-fun currentTime(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+fun currentTime(): Long = Clock.System.now().toEpochMilliseconds()

@@ -1,16 +1,18 @@
 [versions]
 # Kotlin & Compose
 kotlin = "2.3.0"
-compose-multiplatform = "1.7.0"
+compose-multiplatform = "1.12.1"
 compose-compiler = "2.1.20"
 compose-hot-reload = "1.0.0"
+compose-material = "1.8.2"
+compose-material-icons = "1.7.3"
 
 # Coroutines
 kotlinx-coroutines = "1.9.0"
 
 # Serialization & DateTime
 kotlinx-serialization = "1.7.3"
-kotlinx-datetime = "0.6.1"
+kotlinx-datetime = "0.7.1"
 
 # Ktor
 ktor = "3.4.1"
@@ -73,11 +75,12 @@ koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koin-com
 # Compose (уже есть)
 compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "compose-multiplatform" }
 compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "compose-multiplatform" }
-compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-multiplatform" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "compose-material" }
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose-multiplatform" }
 compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling", version.ref = "compose-multiplatform" }
 compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "compose-multiplatform" }
 compose-desktop-current = { module = "org.jetbrains.compose.desktop:desktop", version.ref = "compose-multiplatform" }
+compose-material-icons-core = { module = "org.jetbrains.compose.material:material-icons-core", version.ref = "compose-material-icons" }
 
 # Compose Resources
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose-multiplatform" }
@@ -88,7 +91,7 @@ androidx-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycl
 
 # Desktop specific
 androidx-foundation-desktop = { group = "androidx.compose.foundation", name = "foundation-desktop", version.ref = "compose-multiplatform" }
-androidx-ui-geometry-desktop = { group = "androidx.compose.ui", name = "ui-geometry-desktop", version.ref = "compose-multiplatform" }
+androidx-ui-geometry-desktop = { group = "org.jetbrains.compose.ui", name = "ui-geometry-desktop", version.ref = "compose-multiplatform" }
 
 # JUnit
 junit = { module = "junit:junit", version.ref = "junit" }
