@@ -21,8 +21,6 @@ data class ChartUiState(
     // TODO this hardcode need change to repository/datalayer initialisation symbol list
     val symbols: List<String> = listOf("BTCUSDT", "ETHUSDT"),
     val currentSymbolFormatter: SymbolFormatter = SymbolFormatter(),
-    val historyLoadCount: Int = 0,
-    val historyGeneration: Int = 0,
     val hasMoreHistory: Boolean = true,
     val footprintCandles: List<FootprintCandle> = emptyList(),
     val liveFootprintCandle: FootprintCandle? = null,
@@ -33,8 +31,6 @@ data class ChartUiState(
     val symbolsWithFootprint: Set<String> = emptySet(),
     val fpAggregation: AggregationLevel = AggregationLevel.BaseTick,
     val hasMoreFootprintHistory: Boolean = true,
-    val footprintHistoryLoadCount: Int = 0,
-    val footprintHistoryGeneration: Int = 0,
 )
 
 sealed interface ChartState {

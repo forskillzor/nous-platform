@@ -70,8 +70,6 @@ class ChartViewModel(
                         footprintLoading = fp.loading,
                         footprintError = fp.error,
                         hasMoreFootprintHistory = fp.hasMoreHistory,
-                        footprintHistoryLoadCount = fp.historyLoadCount,
-                        footprintHistoryGeneration = fp.historyGeneration,
                     )
                 }
             }
@@ -210,8 +208,6 @@ class ChartViewModel(
                 currentSymbol = ticker,
                 currentTimeframe = timeframe,
                 hasMoreHistory = true,
-                historyLoadCount = 0,
-                historyGeneration = 0,
             )
         }
         startCandleSeries(ticker, timeframe)
@@ -275,8 +271,6 @@ class ChartViewModel(
                     s.copy(
                         chartState = chartState,
                         hasMoreHistory = series.hasMore,
-                        historyLoadCount = series.loadCount,
-                        historyGeneration = series.loadGeneration,
                     )
                 }
                 scheduleCacheWrite(ticker, timeframe, series.items)

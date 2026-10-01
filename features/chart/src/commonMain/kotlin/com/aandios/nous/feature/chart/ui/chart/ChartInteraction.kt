@@ -70,6 +70,7 @@ import com.aandios.nous.feature.chart.tools.drawProjectionPriceTags
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.tools.hitTestDrawings
 import com.aandios.nous.feature.chart.tools.moveDrawing
+import com.aandios.nous.feature.chart.utils.prependedCount
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max

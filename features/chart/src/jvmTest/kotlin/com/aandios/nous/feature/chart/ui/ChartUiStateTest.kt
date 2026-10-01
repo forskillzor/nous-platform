@@ -20,7 +20,6 @@ class ChartUiStateTest {
         assertEquals("BTCUSDT", state.currentSymbol)
         assertEquals("1h", state.currentTimeframe)
         assertEquals(listOf("BTCUSDT", "ETHUSDT"), state.symbols)
-        assertEquals(0, state.historyLoadCount)
         assertTrue(state.hasMoreHistory)
         assertTrue(state.footprintCandles.isEmpty())
         assertEquals(null, state.liveFootprintCandle)
@@ -31,7 +30,6 @@ class ChartUiStateTest {
         assertTrue(state.symbolsWithFootprint.isEmpty())
         assertEquals(AggregationLevel.BaseTick, state.fpAggregation)
         assertTrue(state.hasMoreFootprintHistory)
-        assertEquals(0, state.footprintHistoryLoadCount)
     }
 
     @Test

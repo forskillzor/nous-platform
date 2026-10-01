@@ -245,4 +245,19 @@ class ChartCalculatorTest {
         assertEquals(0f, calculateMaxScroll(candleCount = 10, candleMetrics = metrics, chartWidth = 10_000f))
         assertTrue(calculateMaxScroll(candleCount = 1000, candleMetrics = metrics, chartWidth = 100f) > 0f)
     }
+
+    @Test
+    fun `prependedCount counts candles added to the left`() {
+        val candles = (0 until 10).map { Candle(1f, 2f, 1.5f, 0.5f, it * 60_000L, 10f) }
+
+        // Опорная свеча 240_000: слева появились 0, 60_000, 120_000, 180_000 → 4
+        assertEquals(4, prependedCount(candles, prevFirstTimestamp = 240_000L))
+        // Первая та же (append справа)
+        assertEquals(0, prependedCount(candles, prevFirstTimestamp = 0L))
+        // Нет предыдущего значения
+        assertEquals(0, prependedCount(candles, prevFirstTimestamp = null))
+        // Опорной свечи нет в списке
+        assertEquals(0, prependedCount(candles, prevFirstTimestamp = -60_000L))
+        assertEquals(0, prependedCount(emptyList(), prevFirstTimestamp = 0L))
+    }
 }

@@ -123,6 +123,17 @@ fun generatePriceLevels(min: Float, max: Float, count: Int): List<Float> {
 }
 
 /**
+ * Сколько свечей добавлено слева относительно прежней первой (0 — если это не prepend).
+ * Используется для удержания позиции вьюпорта при подгрузке истории.
+ */
+fun prependedCount(candles: List<Candle>, prevFirstTimestamp: Long?): Int {
+    val prev = prevFirstTimestamp ?: return 0
+    val first = candles.firstOrNull()?.timestamp ?: return 0
+    if (first >= prev) return 0
+    return candles.indexOfFirst { it.timestamp == prev }.coerceAtLeast(0)
+}
+
+/**
  * Находит индекс ближайшей свечи по X координате мыши.
  */
 fun findNearestCandleIndex(

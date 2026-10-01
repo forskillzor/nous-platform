@@ -2050,49 +2050,48 @@ timeScale.zoomAt(
   от фокуса; цены/объёмы форматируются `config.priceFormatter`.
 - `Ctrl+Z` / `Ctrl+Y` — undo/redo рисунков (через `onKeyEvent`).
 
-## 15.5. Ленивая загрузка и коррекция скролла
+## 15.5. Ленивая загрузка, follow live и удержание позиции
+
+Один эффект на изменение списка свечей решает оба случая — подгрузку истории
+и появление новой свечи:
+
+```kotlin
+val firstCandleTs = candles.firstOrNull()?.timestamp
+var prevFirstTs by remember { mutableStateOf<Long?>(null) }
+
+LaunchedEffect(candles.size, firstCandleTs) {
+    val prepended = prependedCount(candles, prevFirstTs)
+    if (prepended > 0) {
+        // История: первая свеча стала старше → удерживаем позицию
+        timeScale.offsetAfterPrepend(prepended, candles.size, chartWidthPx)
+    } else if (timeScale.scrollOffset == 0f ||
+        timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW)
+    ) {
+        // Новая свеча: следуем, если стоим у правого края
+        timeScale.scrollToLatest(candles.size, chartWidthPx)
+    }
+    prevFirstTs = firstCandleTs
+}
+```
+
+**Как различаются случаи без счётчиков.** Якорь — таймстамп первой свечи.
+Если он стал старше (`prependedCount > 0`) — это подгрузка истории, и
+`scrollOffset` сдвигается ровно на число добавленных свечей
+(`prependedCount` находит прежнюю первую свечу в новом списке). Иначе это
+append realtime-свечи — следуем за ней, только если пользователь у правого
+края (`tolerance = totalW` — допуск одна свеча, иначе новая свеча увеличивает
+`maxScroll` ровно на её ширину и «следование» терялось бы).
+
+Раньше здесь были `loadGeneration`/`historyGeneration`/`loadCount` и два
+отдельных эффекта; якорь по первой свече убрал всю обвязку счётчиков.
+
+Ленивая загрузка (когда пользователь скроллит левее первой свечи):
 
 ```kotlin
 LaunchedEffect(clampedOffset, hasMoreHistory) {
     if (hasMoreHistory && clampedOffset < 0f) onNeedMoreHistory()
 }
-
-// Коррекция — ключ только на generation: ровно один раз за подгрузку
-LaunchedEffect(historyGeneration) {
-    if (historyGeneration > 0) {
-        timeScale.offsetAfterPrepend(historyLoadCount, candles.size, chartWidthPx)
-    }
-}
 ```
-
-Когда история догружается, список свечей удлиняется слева. Чтобы видимая
-область не «уехала», `scrollOffset` увеличивается на ширину добавленных
-свечей.
-
-**Почему генерация, а не `(historyLoadCount, candles.size)`.** Раньше
-эффект срабатывал на каждое изменение `candles.size` — включая каждую
-новую realtime-свечу — и повторно прибавлял ширину догруженной истории.
-График «дёргался» дважды: первый раз корректно, второй — на следующем
-тике (и далее). Теперь `TimeSeriesState.loadGeneration` инкрементится
-только на успешную подгрузку, и коррекция применяется один раз.
-
-Автоскролл к последней свече не конфликтует с этим:
-
-```kotlin
-LaunchedEffect(candles.size) {
-    if (historyGeneration == 0 &&
-        (timeScale.scrollOffset == 0f ||
-            timeScale.isAtLatest(candles.size, chartWidthPx, tolerance = totalW))
-    ) {
-        timeScale.scrollToLatest(candles.size, chartWidthPx)
-    }
-}
-```
-
-Первичная загрузка позиционирует к последней свече (`scrollOffset == 0f`),
-а realtime следует за ценой, если пользователь не дальше одной свечи от
-правого края (`tolerance = totalW` — иначе появление новой свечи
-увеличивает `maxScroll` ровно на ширину свечи и «следование» терялось).
 
 **Автозаполнение вьюпорта.** Если восстановленный зум «вдаль» требует
 больше свечей, чем загружено, движок догружает недостающие:
