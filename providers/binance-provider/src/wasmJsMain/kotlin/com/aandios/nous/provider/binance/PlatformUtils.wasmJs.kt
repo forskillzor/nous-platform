@@ -5,6 +5,6 @@
 
 package com.aandios.nous.provider.binance
 
-import kotlinx.datetime.Clock
+import kotlin.time.Clock
 
 actual fun currentTimeMillis(): Long = Clock.System.now().toEpochMilliseconds()

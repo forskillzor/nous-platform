@@ -5,4 +5,4 @@
 
 package com.aandios.nous.core
 
-actual fun currentTimeMillis(): Long = kotlinx.datetime.Clock.System.now().toEpochMilliseconds()
+actual fun currentTimeMillis(): Long = kotlin.time.Clock.System.now().toEpochMilliseconds()

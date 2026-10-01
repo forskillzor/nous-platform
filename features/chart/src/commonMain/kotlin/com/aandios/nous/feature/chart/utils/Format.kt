@@ -6,9 +6,9 @@
 package com.aandios.nous.feature.chart.utils
 
 import com.aandios.nous.core.ui.format.SymbolFormatter
-import kotlinx.datetime.Instant
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Instant
 
 fun formatPrice(price: Float, formatter: SymbolFormatter = SymbolFormatter.DEFAULT): String {
     return formatter.formatPrice(price)
