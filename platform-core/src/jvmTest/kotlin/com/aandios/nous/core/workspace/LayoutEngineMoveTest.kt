@@ -43,14 +43,16 @@ class LayoutEngineMoveTest {
     }
 
     @Test
-    fun `center replaces target and collapses moved position`() {
+    fun `center swaps panels in place`() {
         val root = LayoutNode.Split(
             LayoutNode.Direction.HORIZONTAL, 0.5f,
             listOf(leaf("a"), leaf("b"))
         )
         val result = LayoutEngine.movePanel(root, "a", "b", LayoutEngine.DropZone.CENTER)
-        // a заменяет b, от a остаётся один лист → unwrap в Leaf("a")
-        assertEquals(leaf("a"), result)
+        val split = result as LayoutNode.Split
+        assertEquals("b", (split.children[0] as LayoutNode.Leaf).panelId)
+        assertEquals("a", (split.children[1] as LayoutNode.Leaf).panelId)
+        assertEquals(listOf("b", "a"), LayoutEngine.collectPanelIds(split))
     }
 
     @Test

@@ -69,7 +69,7 @@ object LayoutEngine {
 
     /**
      * Переместить панель [panelId] относительно [targetPanelId] в зону [zone]:
-     * края — сплит целевой панели, CENTER — замена целевой панели.
+     * края — сплит целевой панели, CENTER — обмен панелей местами.
      */
     fun movePanel(
         root: LayoutNode,
@@ -79,12 +79,33 @@ object LayoutEngine {
     ): LayoutNode {
         if (panelId == targetPanelId) return root
 
+        if (zone == DropZone.CENTER) {
+            return swapPanels(root, panelId, targetPanelId)
+        }
+
         val (withoutMoved, removed) = removeNode(root, panelId)
         if (!removed) return root
         val without = withoutMoved ?: return root
 
         return insertRelative(without, panelId, targetPanelId, zone)
     }
+
+    /** Обмен местами: [panelId] встаёт на место [targetPanelId] и наоборот. */
+    private fun swapPanels(root: LayoutNode, panelId: String, targetPanelId: String): LayoutNode {
+        val ids = collectPanelIds(root)
+        if (panelId !in ids || targetPanelId !in ids) return root
+        val marker = "__swap_marker__"
+        var tree = replaceLeaf(root, panelId, LayoutNode.Leaf(marker))
+        tree = replaceLeaf(tree, targetPanelId, LayoutNode.Leaf(panelId))
+        tree = replaceLeaf(tree, marker, LayoutNode.Leaf(targetPanelId))
+        return tree
+    }
+
+    private fun replaceLeaf(node: LayoutNode, panelId: String, replacement: LayoutNode.Leaf): LayoutNode =
+        when (node) {
+            is LayoutNode.Leaf -> if (node.panelId == panelId) replacement else node
+            is LayoutNode.Split -> node.copy(children = node.children.map { replaceLeaf(it, panelId, replacement) })
+        }
 
     private fun removeNode(node: LayoutNode, panelId: String): Pair<LayoutNode?, Boolean> {
         return when (node) {

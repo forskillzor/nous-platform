@@ -158,11 +158,6 @@ fun WorkspaceView(
             onMovePanel = { panelId, targetPanelId, zone ->
                 history.push(snapshot())
                 layoutState = LayoutEngine.movePanel(layoutState, panelId, targetPanelId, zone)
-                if (zone == LayoutEngine.DropZone.CENTER) {
-                    val removedPc = panelConfigs[targetPanelId]
-                    panelConfigs = panelConfigs - targetPanelId
-                    removedPc?.let { disposePanelVm(it) }
-                }
                 persistConfig()
             }
         ) { panelId ->

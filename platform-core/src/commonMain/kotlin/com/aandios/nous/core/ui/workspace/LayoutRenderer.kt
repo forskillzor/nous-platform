@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.hoverable
@@ -26,6 +27,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -45,7 +51,15 @@ private class PanelDragState {
     var panelId by mutableStateOf<String?>(null)
     var targetId by mutableStateOf<String?>(null)
     var zone by mutableStateOf<LayoutEngine.DropZone?>(null)
+    var cancelled by mutableStateOf(false)
     var panelRects by mutableStateOf<Map<String, Rect>>(emptyMap())
+
+    fun cancel() {
+        panelId = null
+        targetId = null
+        zone = null
+        cancelled = true
+    }
 }
 
 @Composable
@@ -62,8 +76,22 @@ fun LayoutRenderer(
 ) {
     val dragState = remember { PanelDragState() }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+    val focusInteraction = remember { MutableInteractionSource() }
 
-    Box(modifier = modifier.onGloballyPositioned { rootOrigin = it.positionInWindow() }) {
+    Box(
+        modifier = modifier
+            .onGloballyPositioned { rootOrigin = it.positionInWindow() }
+            .clickable(interactionSource = focusInteraction, indication = null) { /* focusable for Esc */ }
+            .onPreviewKeyEvent { event ->
+                // Esc во время перетаскивания панели — отменить перенос
+                if (event.key == Key.Escape && event.type == KeyEventType.KeyDown &&
+                    dragState.panelId != null
+                ) {
+                    dragState.cancel()
+                    true
+                } else false
+            }
+    ) {
         RenderNode(
             node = node,
             modifier = Modifier.fillMaxSize(),
@@ -130,17 +158,22 @@ private fun RenderNode(
                                     dragState.panelId = panelId
                                     dragState.targetId = null
                                     dragState.zone = null
+                                    dragState.cancelled = false
                                 },
                                 onDrag = { globalPos ->
-                                    resolveDropTarget(dragState, globalPos, excludeId = panelId)
+                                    if (!dragState.cancelled) {
+                                        resolveDropTarget(dragState, globalPos, excludeId = panelId)
+                                    }
                                 },
                                 onDragEnd = {
                                     val target = dragState.targetId
                                     val zone = dragState.zone
+                                    val wasCancelled = dragState.cancelled
                                     dragState.panelId = null
                                     dragState.targetId = null
                                     dragState.zone = null
-                                    if (target != null && zone != null) {
+                                    dragState.cancelled = false
+                                    if (!wasCancelled && target != null && zone != null) {
                                         onMovePanel(panelId, target, zone)
                                     }
                                 },
