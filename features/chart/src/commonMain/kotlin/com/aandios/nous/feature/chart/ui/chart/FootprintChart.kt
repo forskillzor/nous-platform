@@ -33,7 +33,6 @@ fun FootprintChart(
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    crosshairEnabled: Boolean = false,
 ) {
     val allCandles = remember(completedCandles, liveCandle) {
         if (liveCandle != null) completedCandles + liveCandle else completedCandles
@@ -53,7 +52,6 @@ fun FootprintChart(
         currentPrice = currentPrice ?: skeleton.lastOrNull()?.close,
         modifier = modifier,
         config = config,
-        crosshairEnabled = crosshairEnabled,
         footprintCandles = allCandles,
         hasMoreHistory = false,
     )

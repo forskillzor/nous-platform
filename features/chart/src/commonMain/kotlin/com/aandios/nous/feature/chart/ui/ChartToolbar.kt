@@ -42,8 +42,6 @@ fun ChartToolbar(
     availableSymbols: List<String>,
     onSymbolChange: (String) -> Unit,
     onTimeframeChange: (String) -> Unit,
-    crosshairEnabled: Boolean = false,
-    onCrosshairToggle: () -> Unit = {},
     chartMode: ChartMode = ChartMode.CANDLESTICK,
     onChartModeToggle: () -> Unit = {},
     symbolsWithFootprint: Set<String> = emptySet(),
@@ -79,8 +77,6 @@ fun ChartToolbar(
             FpAggregationSelector(level = fpAggregation, onChange = onFpAggregationChange)
         }
 
-        Spacer(Modifier.width(8.dp))
-        CrosshairToggleButton(enabled = crosshairEnabled, onToggle = onCrosshairToggle)
         Spacer(Modifier.width(8.dp))
         TimeframeSelector(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
         Spacer(Modifier.width(8.dp))
@@ -149,18 +145,6 @@ private fun ChartModeToggleButton(mode: ChartMode, onToggle: () -> Unit) {
         fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
         modifier = Modifier.clickable { onToggle() }.background(
             if (mode == ChartMode.FOOTPRINT) accentColor.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(3.dp)
-        ).padding(horizontal = 6.dp, vertical = 3.dp),
-    )
-}
-
-@Composable
-private fun CrosshairToggleButton(enabled: Boolean, onToggle: () -> Unit) {
-    Text(
-        text = "\u29C9",
-        color = if (enabled) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.surfaceVariant,
-        fontSize = 14.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace,
-        modifier = Modifier.clickable { onToggle() }.background(
-            if (enabled) accentColor.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(3.dp)
         ).padding(horizontal = 6.dp, vertical = 3.dp),
     )
 }

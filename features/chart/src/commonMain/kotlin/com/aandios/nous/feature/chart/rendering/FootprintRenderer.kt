@@ -140,47 +140,9 @@ fun DrawScope.drawFootprintCandle(
     }
 }
 
-fun DrawScope.drawCrosshairForFootprint(
-    mousePosition: Offset,
-    candles: List<FootprintCandle>,
-    priceRange: PriceRange,
-    config: ChartConfig,
-    chartLayout: ChartLayout,
-    textMeasurer: TextMeasurer,
-    scrollOffset: Float = 0f,
-    zoomLevel: Float = 1f,
-) {
-    val candleMetrics = calculateCandleMetrics(zoomLevel)
-    val totalW = candleMetrics.width + candleMetrics.spacing
-    val virtualX = mousePosition.x + scrollOffset
-    val candleIndex = (virtualX / totalW).toInt().coerceIn(0, candles.size - 1)
-    val candle = candles.getOrNull(candleIndex) ?: return
-    val candleX = candleIndex * totalW - scrollOffset + candleMetrics.width / 2
-
-    val crosshairColor = config.gridColor.copy(alpha = 0.8f)
-
-    drawLine(color = crosshairColor, start = Offset(candleX, 0f), end = Offset(candleX, chartLayout.chartMainArea.height), strokeWidth = 1f)
-    drawLine(color = crosshairColor, start = Offset(0f, mousePosition.y), end = Offset(chartLayout.chartMainArea.width, mousePosition.y), strokeWidth = 1f)
-
-    val info = buildString {
-        appendLine("O: ${candle.open}")
-        appendLine("H: ${candle.high}")
-        appendLine("L: ${candle.low}")
-        appendLine("C: ${candle.close}")
-        appendLine("Ticks: ${candle.totalTicks}")
-    }
-    val textStyle = TextStyle(color = config.axisTextColor, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-    val layoutResult = textMeasurer.measure(AnnotatedString(info), textStyle)
-
-    val panelX = if (candleX + layoutResult.size.width + 20f > chartLayout.chartMainArea.width) candleX - layoutResult.size.width - 10f else candleX + 10f
-    val panelY = 10f
-    drawRect(color = config.backgroundColor.copy(alpha = 0.85f), topLeft = Offset(panelX - 4f, panelY - 2f), size = Size(layoutResult.size.width + 8f, layoutResult.size.height + 4f))
-    drawText(layoutResult, topLeft = Offset(panelX, panelY))
-}
-
 /**
- * Ctrl+hover popup: rectangle with compact bid/ask volume table for the candle under cursor.
- * When Ctrl pressed and mouse over footprint candle вЂ” shows price levels table.
+ * Alt+hover popup: rectangle with compact bid/ask volume table for the candle under cursor.
+ * When Alt pressed and mouse over footprint candle — shows price levels table.
  */
 fun DrawScope.drawFootprintPopup(
     mousePosition: Offset,

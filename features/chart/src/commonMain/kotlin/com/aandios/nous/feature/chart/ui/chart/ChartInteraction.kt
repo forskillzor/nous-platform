@@ -54,7 +54,6 @@ import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.rendering.drawCrosshair
-import com.aandios.nous.feature.chart.rendering.drawCrosshairForFootprint
 import com.aandios.nous.feature.chart.rendering.drawCurrentPriceLine
 import com.aandios.nous.feature.chart.rendering.drawFootprintPopup
 import com.aandios.nous.feature.chart.rendering.drawPriceScale
@@ -87,7 +86,6 @@ fun CandleStickChartInteraction(
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    crosshairEnabled: Boolean = false,
     onNeedMoreHistory: () -> Unit = {},
     hasMoreHistory: Boolean = true,
     footprintCandles: List<FootprintCandle>? = null,
@@ -178,112 +176,95 @@ fun CandleStickChartInteraction(
                     else -> false
                 }
             }
-            // Обработка жестов: move/resize рисунков, pan / Alt+вертикаль (footprint) / crosshair.
+            // Обработка жестов: move/resize рисунков, pan / Alt+вертикаль (footprint).
             // Модификаторы читаются из PointerEvent.keyboardModifiers —
             // не зависят от фокуса (раньше onKeyEvent их «терял» после кликов по тулбару).
-            .pointerInput(crosshairEnabled, activeDrawingTool, drawingHistory) {
+            .pointerInput(activeDrawingTool, drawingHistory) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    if (crosshairEnabled) {
-                        isCrosshairVisible = true
-                        mousePosition = down.position
-                        do {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (change.pressed) {
-                                isCrosshairVisible = true
-                                mousePosition = change.position
-                                change.consume()
-                            } else {
-                                change.consume()
-                                break
-                            }
-                        } while (true)
-                    } else {
-                        // 1. Перемещение/изменение размера существующего рисунка
-                        val history = drawingHistory
-                        if (history != null && activeDrawingTool == DrawingToolType.NONE) {
-                            val hitMetrics = timeScale.metrics()
-                            val hit = hitTestDrawings(
-                                drawings = history.drawings,
-                                position = down.position,
-                                candles = currentCandles,
-                                priceRange = currentPriceRange,
-                                chartHeight = chartHeightPx,
-                                scrollOffset = timeScale.scrollOffset,
-                                candleWidth = hitMetrics.width,
-                                candleSpacing = hitMetrics.spacing,
-                            )
-                            if (hit != null) {
-                                var moved = false
-                                do {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull() ?: break
-                                    if (!change.pressed) break
-                                    if ((change.position - down.position).getDistance() > tapThresholdPx) {
-                                        moved = true
-                                    }
-                                    if (moved) {
-                                        val updated = moveDrawing(
-                                            drawing = hit.drawing,
-                                            handle = hit.handle,
-                                            from = down.position,
-                                            to = change.position,
-                                            candles = currentCandles,
-                                            priceRange = currentPriceRange,
-                                            chartHeight = chartHeightPx,
-                                            scrollOffset = timeScale.scrollOffset,
-                                            candleWidth = hitMetrics.width,
-                                            candleSpacing = hitMetrics.spacing,
-                                            formatter = config.priceFormatter,
-                                        )
-                                        history.update(hit.id, updated)
-                                    }
-                                    change.consume()
-                                } while (true)
-                                if (moved) {
-                                    history.commit()
-                                } else {
-                                    // Клик без движения — выделяем рисунок
-                                    selectedDrawingId = hit.id
+                    // 1. Перемещение/изменение размера существующего рисунка
+                    val history = drawingHistory
+                    if (history != null && activeDrawingTool == DrawingToolType.NONE) {
+                        val hitMetrics = timeScale.metrics()
+                        val hit = hitTestDrawings(
+                            drawings = history.drawings,
+                            position = down.position,
+                            candles = currentCandles,
+                            priceRange = currentPriceRange,
+                            chartHeight = chartHeightPx,
+                            scrollOffset = timeScale.scrollOffset,
+                            candleWidth = hitMetrics.width,
+                            candleSpacing = hitMetrics.spacing,
+                        )
+                        if (hit != null) {
+                            var moved = false
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) break
+                                if ((change.position - down.position).getDistance() > tapThresholdPx) {
+                                    moved = true
                                 }
-                                return@awaitEachGesture
-                            }
-                        }
-                        // Активный инструмент рисования — жесты обрабатывает DrawingOverlay
-                        if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
-
-                        // 2. Панорамирование / Alt+вертикаль (footprint)
-                        var previous = down.position
-                        var moved = false
-                        do {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-
-                            if ((change.position - down.position).getDistance() > tapThresholdPx) {
-                                moved = true
-                            }
-
-                            val alt = event.keyboardModifiers.isAltPressed
-                            val deltaX = change.position.x - previous.x
-                            val deltaY = change.position.y - previous.y
-                            previous = change.position
-
-                            if (alt && footprintCandles != null) {
-                                // Вертикальный скролл уровней footprint
-                                verticalScroll = (verticalScroll + deltaY)
-                                    .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
+                                if (moved) {
+                                    val updated = moveDrawing(
+                                        drawing = hit.drawing,
+                                        handle = hit.handle,
+                                        from = down.position,
+                                        to = change.position,
+                                        candles = currentCandles,
+                                        priceRange = currentPriceRange,
+                                        chartHeight = chartHeightPx,
+                                        scrollOffset = timeScale.scrollOffset,
+                                        candleWidth = hitMetrics.width,
+                                        candleSpacing = hitMetrics.spacing,
+                                        formatter = config.priceFormatter,
+                                    )
+                                    history.update(hit.id, updated)
+                                }
+                                change.consume()
+                            } while (true)
+                            if (moved) {
+                                history.commit()
                             } else {
-                                timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
-                                // Ушёл от правого края — открепляем follow; вернулся — прикрепляем
-                                followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
+                                // Клик без движения — выделяем рисунок
+                                selectedDrawingId = hit.id
                             }
-                            change.consume()
-                        } while (true)
-                        // Клик по пустому месту — снимаем выделение рисунка
-                        if (!moved) selectedDrawingId = null
+                            return@awaitEachGesture
+                        }
                     }
+                    // Активный инструмент рисования — жесты обрабатывает DrawingOverlay
+                    if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
+
+                    // 2. Панорамирование / Alt+вертикаль (footprint)
+                    var previous = down.position
+                    var moved = false
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+                        if (!change.pressed) break
+
+                        if ((change.position - down.position).getDistance() > tapThresholdPx) {
+                            moved = true
+                        }
+
+                        val alt = event.keyboardModifiers.isAltPressed
+                        val deltaX = change.position.x - previous.x
+                        val deltaY = change.position.y - previous.y
+                        previous = change.position
+
+                        if (alt && footprintCandles != null) {
+                            // Вертикальный скролл уровней footprint
+                            verticalScroll = (verticalScroll + deltaY)
+                                .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
+                        } else {
+                            timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
+                            // Ушёл от правого края — открепляем follow; вернулся — прикрепляем
+                            followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
+                        }
+                        change.consume()
+                    } while (true)
+                    // Клик по пустому месту — снимаем выделение рисунка
+                    if (!moved) selectedDrawingId = null
                 }
             }
             // Зум: без Ctrl — от правого края, с Ctrl — от свечи под курсором
@@ -323,13 +304,26 @@ fun CandleStickChartInteraction(
                     })
                 }
             }
-            // Track mouse position for footprint popup (Alt+hover) —
-            // модификатор читаем из pointer-события, чтобы не зависеть от фокуса
+            // Hover-трекинг: crosshair всегда включён (как в TradingView),
+            // Alt+hover popup для footprint. Модификатор читаем из pointer-события,
+            // чтобы не зависеть от фокуса.
             .pointerInput(footprintCandles) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull() ?: continue
+                        when (event.type) {
+                            PointerEventType.Move -> {
+                                mousePosition = change.position
+                                isCrosshairVisible = true
+                            }
+                            PointerEventType.Exit -> {
+                                isCrosshairVisible = false
+                                mousePosition = null
+                                footprintHoverPos = null
+                            }
+                            else -> Unit
+                        }
                         footprintHoverPos = if (footprintCandles != null && event.keyboardModifiers.isAltPressed) {
                             change.position
                         } else {
@@ -574,7 +568,7 @@ fun CandleStickChartInteraction(
                 )
             }
             // 7. Alt+hover popup for footprint
-            if (footprintData != null && !crosshairEnabled && footprintHoverPos != null) {
+            if (footprintData != null && footprintHoverPos != null) {
                 drawFootprintPopup(
                     mousePosition = footprintHoverPos!!,
                     candles = footprintData,
@@ -625,31 +619,18 @@ fun CandleStickChartInteraction(
                     candleSpacing = candleMetrics.spacing,
                 )
             }
-            // 9. Crosshair: в footprint-режиме — footprint-панель, в свечах — свечная
-            if (crosshairEnabled && isCrosshairVisible && mousePosition != null) {
-                if (footprintData != null) {
-                    drawCrosshairForFootprint(
-                        mousePosition = mousePosition!!,
-                        candles = footprintData,
-                        priceRange = priceRange,
-                        config = config,
-                        chartLayout = layout,
-                        textMeasurer = textMeasurer,
-                        scrollOffset = clampedOffset,
-                        zoomLevel = timeScale.zoomLevel,
-                    )
-                } else {
-                    drawCrosshair(
-                        mousePosition = mousePosition!!,
-                        candles = candles,
-                        priceRange = priceRange,
-                        config = config,
-                        chartLayout = layout,
-                        textMeasurer = textMeasurer,
-                        scrollOffset = clampedOffset,
-                        zoomLevel = timeScale.zoomLevel,
-                    )
-                }
+            // 9. Crosshair: всегда включён (hover), единый для свечей и footprint
+            if (isCrosshairVisible && mousePosition != null) {
+                drawCrosshair(
+                    mousePosition = mousePosition!!,
+                    candles = candles,
+                    priceRange = priceRange,
+                    config = config,
+                    chartLayout = layout,
+                    textMeasurer = textMeasurer,
+                    scrollOffset = clampedOffset,
+                    zoomLevel = timeScale.zoomLevel,
+                )
             }
         }
         // Кнопка «к последней свече» в правом нижнем углу области графика

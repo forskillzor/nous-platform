@@ -139,8 +139,6 @@ private fun ChartWindowContent(
         )
     }
 
-    var crosshairEnabled by remember { mutableStateOf(false) }
-
     // Drawings: привязаны к workspace+panel и сохраняются на диск
     val drawingStore: StateStore? = remember {
         runCatching { org.koin.core.context.GlobalContext.getOrNull()?.get<StateStore>() }.getOrNull()
@@ -205,7 +203,6 @@ private fun ChartWindowContent(
                                 config = chartConfig,
                                 liquidationOrders = liquidationState.orders,
                                 indicatorRenderers = indicatorRenderers,
-                                crosshairEnabled = crosshairEnabled,
                                 onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
                                 hasMoreHistory = uiState.hasMoreHistory,
                                 drawingHistory = drawingHistory,
@@ -244,7 +241,6 @@ private fun ChartWindowContent(
                                     config = chartConfig,
                                     liquidationOrders = liquidationState.orders,
                                     indicatorRenderers = indicatorRenderers,
-                                    crosshairEnabled = crosshairEnabled,
                                     footprintCandles = allFp,
                                     onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
                                     hasMoreHistory = uiState.hasMoreFootprintHistory,
@@ -265,8 +261,6 @@ private fun ChartWindowContent(
                         availableSymbols = uiState.symbols,
                         onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
                         onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
-                        crosshairEnabled = crosshairEnabled,
-                        onCrosshairToggle = { crosshairEnabled = !crosshairEnabled },
                         chartMode = uiState.chartMode,
                         onChartModeToggle = { chartViewModel.dispatch(ChartIntent.ToggleChartMode) },
                         symbolsWithFootprint = uiState.symbolsWithFootprint,

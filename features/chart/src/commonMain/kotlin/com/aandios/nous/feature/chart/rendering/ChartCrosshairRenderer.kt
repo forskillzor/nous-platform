@@ -6,7 +6,6 @@
 package com.aandios.nous.feature.chart.rendering
 
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -27,6 +26,10 @@ import com.aandios.nous.feature.chart.utils.priceFromY
 
 /**
  * Рисует перекрестие (crosshair) при наведении мыши на график.
+ *
+ * Crosshair всегда включён (TradingView-стиль): две линии через область графика
+ * и проекции на шкалы — badge цены на ценовой шкале (значение под курсором)
+ * и badge времени на шкале времени (ближайшая свеча).
  */
 fun DrawScope.drawCrosshair(
     mousePosition: Offset,
@@ -38,30 +41,48 @@ fun DrawScope.drawCrosshair(
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
 ) {
+    val mainArea = chartLayout.chartMainArea
+
     // Проверяем находится ли курсор в области графика (без шкалы времени)
-    if (mousePosition.x < chartLayout.chartMainArea.left ||
-        mousePosition.x > chartLayout.chartMainArea.right ||
-        mousePosition.y < chartLayout.chartMainArea.top ||
-        mousePosition.y > chartLayout.chartMainArea.bottom) {
+    if (mousePosition.x < mainArea.left ||
+        mousePosition.x > mainArea.right ||
+        mousePosition.y < mainArea.top ||
+        mousePosition.y > mainArea.bottom) {
         return // Курсор вне области графика
     }
 
-    // 1. Вертикальная линия через весь график
+    // Вертикальная линия через весь график
     drawLine(
         color = Color.White.copy(alpha = 0.3f),
-        start = Offset(mousePosition.x, chartLayout.chartMainArea.top),
-        end = Offset(mousePosition.x, chartLayout.chartMainArea.bottom),
+        start = Offset(mousePosition.x, mainArea.top),
+        end = Offset(mousePosition.x, mainArea.bottom),
         strokeWidth = 1f
     )
 
+    // Горизонтальная линия через весь график
     drawLine(
         color = Color.White.copy(alpha = 0.3f),
-        start = Offset(chartLayout.chartMainArea.left, mousePosition.y),
-        end = Offset(chartLayout.chartMainArea.right, mousePosition.y),
+        start = Offset(mainArea.left, mousePosition.y),
+        end = Offset(mainArea.right, mousePosition.y),
         strokeWidth = 1f
     )
 
-    // 3. Находим ближайшую свечу к позиции курсора по X
+    // Проекция на шкалу цен: текущее значение под курсором
+    val priceAtCursor = priceFromY(
+        y = mousePosition.y,
+        priceRange = priceRange,
+        chartHeight = mainArea.height
+    )
+
+    drawPriceBadgeOnScale(
+        price = priceAtCursor,
+        mouseY = mousePosition.y,
+        chartLayout = chartLayout,
+        textMeasurer = textMeasurer,
+        config = config
+    )
+
+    // Проекция на шкалу времени: ближайшая свеча к позиции курсора по X
     val candleIndex = findNearestCandleIndex(
         mouseX = mousePosition.x,
         candles = candles,
@@ -69,64 +90,9 @@ fun DrawScope.drawCrosshair(
         zoomLevel = zoomLevel,
     )
 
-    // 4. Если нашли свечу, показываем информацию о ней
     if (candleIndex in candles.indices) {
-        val candle = candles[candleIndex]
-
-        // Рассчитываем Y для цен свечи
-        fun getYForPrice(price: Float): Float {
-            return chartLayout.chartMainArea.height -
-                    ((price - priceRange.visibleMin) / priceRange.range) *
-                    chartLayout.chartMainArea.height
-        }
-
-        // 5. Маленькие маркеры на уровнях цен свечи
-        val highY = getYForPrice(candle.high)
-        val lowY = getYForPrice(candle.low)
-        val openY = getYForPrice(candle.open)
-        val closeY = getYForPrice(candle.close)
-
-        // Маркер на high
-        drawCircle(
-            color = Color.Red.copy(alpha = 0.7f),
-            center = Offset(mousePosition.x, highY),
-            radius = 3f
-        )
-
-        // Маркер на low
-        drawCircle(
-            color = Color.Green.copy(alpha = 0.7f),
-            center = Offset(mousePosition.x, lowY),
-            radius = 3f
-        )
-
-        // 6. Информационная панель в углу
-        drawInfoPanel(
-            candle = candle,
-            mousePosition = mousePosition,
-            chartLayout = chartLayout,
-            textMeasurer = textMeasurer,
-            config = config
-        )
-
-        // 7. Метка цены на оси Y
-        val currentPriceAtCursor = priceFromY(
-            y = mousePosition.y,
-            priceRange = priceRange,
-            chartHeight = chartLayout.chartMainArea.height
-        )
-
-        drawPriceLabelOnAxis(
-            price = currentPriceAtCursor,
-            mouseY = mousePosition.y,
-            chartLayout = chartLayout,
-            textMeasurer = textMeasurer,
-            config = config
-        )
-
-        // 8. Метка времени на оси X
-        drawTimeLabelOnAxis(
-            candle = candle,
+        drawTimeBadgeOnScale(
+            candle = candles[candleIndex],
             mouseX = mousePosition.x,
             chartLayout = chartLayout,
             textMeasurer = textMeasurer,
@@ -136,82 +102,9 @@ fun DrawScope.drawCrosshair(
 }
 
 /**
- * Рисует информационную панель с данными свечи.
+ * Рисует badge цены crosshair на ценовой шкале (справа).
  */
-private fun DrawScope.drawInfoPanel(
-    candle: Candle,
-    mousePosition: Offset,
-    chartLayout: ChartLayout,
-    textMeasurer: TextMeasurer,
-    config: ChartConfig
-) {
-    val panelWidth = 120f
-    val panelHeight = 80f
-
-    // Позиция панели (правый верхний угол)
-    val panelLeft = mousePosition.x + 10f
-    val panelTop = mousePosition.y + 10f
-
-    // Проверяем чтобы панель не выходила за границы
-    val adjustedLeft = if (panelLeft + panelWidth > chartLayout.chartMainArea.right) {
-        mousePosition.x - panelWidth - 10f
-    } else {
-        panelLeft
-    }
-
-    val adjustedTop = if (panelTop + panelHeight > chartLayout.chartMainArea.bottom) {
-        mousePosition.y - panelHeight - 10f
-    } else {
-        panelTop
-    }
-
-    // Фон панели
-    drawRect(
-        color = Color.Black.copy(alpha = 0.8f),
-        topLeft = Offset(adjustedLeft, adjustedTop),
-        size = Size(panelWidth, panelHeight)
-    )
-
-    // Время свечи
-    val timeText = "Time: ${formatTime(candle.timestamp)}"
-    drawTextLine(
-        text = timeText,
-        x = adjustedLeft + 4f,
-        y = adjustedTop + 15f,
-        textMeasurer = textMeasurer,
-        color = Color.White
-    )
-
-    // Цены
-    drawTextLine(
-        text = "O: ${formatPrice(candle.open, config.priceFormatter)}",
-        x = adjustedLeft + 4f,
-        y = adjustedTop + 30f,
-        textMeasurer = textMeasurer,
-        color = Color.White
-    )
-
-    drawTextLine(
-        text = "H: ${formatPrice(candle.high, config.priceFormatter)}",
-        x = adjustedLeft + 4f,
-        y = adjustedTop + 45f,
-        textMeasurer = textMeasurer,
-        color = if (candle.high >= candle.open) Color.Green else Color.Red
-    )
-
-    drawTextLine(
-        text = "L: ${formatPrice(candle.low, config.priceFormatter)}",
-        x = adjustedLeft + 4f,
-        y = adjustedTop + 60f,
-        textMeasurer = textMeasurer,
-        color = if (candle.low <= candle.open) Color.Red else Color.Green
-    )
-}
-
-/**
- * Рисует метку цены на оси Y (справа) при crosshair.
- */
-private fun DrawScope.drawPriceLabelOnAxis(
+private fun DrawScope.drawPriceBadgeOnScale(
     price: Float,
     mouseY: Float,
     chartLayout: ChartLayout,
@@ -231,29 +124,32 @@ private fun DrawScope.drawPriceLabelOnAxis(
         style = textStyle
     )
 
-    // Позиция на правой стороне графика
-    val labelX = chartLayout.chartMainArea.right - textLayoutResult.size.width - 4f
-    val labelY = mouseY - textLayoutResult.size.height / 2
+    val padding = 3f
+    val badgeWidth = textLayoutResult.size.width + padding * 2
+    val badgeHeight = textLayoutResult.size.height + padding * 2
+
+    val scale = chartLayout.priceScaleArea
+
+    // Выравниваем по правому краю шкалы (как badge текущей цены)
+    val badgeLeft = scale.right - badgeWidth
+    val badgeTop = (mouseY - badgeHeight / 2).coerceIn(scale.top, scale.bottom - badgeHeight)
 
     drawRect(
-        color = Color.Black.copy(alpha = 0.7f),
-        topLeft = Offset(labelX, labelY),
-        size = Size(
-            textLayoutResult.size.width.toFloat(),
-            textLayoutResult.size.height.toFloat()
-        )
+        color = Color.Black.copy(alpha = 0.85f),
+        topLeft = Offset(badgeLeft, badgeTop),
+        size = Size(badgeWidth, badgeHeight)
     )
 
     drawText(
         textLayoutResult = textLayoutResult,
-        topLeft = Offset(labelX, labelY)
+        topLeft = Offset(badgeLeft + padding, badgeTop + padding)
     )
 }
 
 /**
- * Рисует метку времени на оси X (внизу) при crosshair.
+ * Рисует badge времени crosshair на шкале времени (внизу).
  */
-private fun DrawScope.drawTimeLabelOnAxis(
+private fun DrawScope.drawTimeBadgeOnScale(
     candle: Candle,
     mouseX: Float,
     chartLayout: ChartLayout,
@@ -273,27 +169,24 @@ private fun DrawScope.drawTimeLabelOnAxis(
         style = textStyle
     )
 
-    // Позиция внизу графика
-    val labelX = mouseX - textLayoutResult.size.width / 2
-    val labelY = chartLayout.chartMainArea.bottom + 4f
+    val padding = 3f
+    val badgeWidth = textLayoutResult.size.width + padding * 2
+    val badgeHeight = textLayoutResult.size.height + padding * 2
 
-    // Проверяем границы
-    val adjustedX = labelX.coerceIn(
-        0f,
-        chartLayout.chartMainArea.right - textLayoutResult.size.width
-    )
+    val scale = chartLayout.timeScaleArea
+
+    // По центру под курсором, в пределах шкалы времени
+    val badgeLeft = (mouseX - badgeWidth / 2).coerceIn(scale.left, scale.right - badgeWidth)
+    val badgeTop = (scale.top + (scale.height - badgeHeight) / 2).coerceAtLeast(scale.top)
 
     drawRect(
-        color = Color.Black.copy(alpha = 0.7f),
-        topLeft = Offset(adjustedX, labelY),
-        size = Size(
-            textLayoutResult.size.width.toFloat(),
-            textLayoutResult.size.height.toFloat()
-        )
+        color = Color.Black.copy(alpha = 0.85f),
+        topLeft = Offset(badgeLeft, badgeTop),
+        size = Size(badgeWidth, badgeHeight)
     )
 
     drawText(
         textLayoutResult = textLayoutResult,
-        topLeft = Offset(adjustedX, labelY)
+        topLeft = Offset(badgeLeft + padding, badgeTop + padding)
     )
 }
