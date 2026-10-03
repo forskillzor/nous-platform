@@ -107,32 +107,40 @@ fun WelcomeScreen(
             }
         }
 
-        // ── Templates ──────────────────────────────────────────────────────
-        Spacer(Modifier.height(36.dp))
-        SectionTitle("TEMPLATES")
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            visibleBuiltins.forEach { card ->
-                WorkspaceCard(
-                    title = card.title,
-                    config = card.preview,
-                    onClick = { onSelectTemplate(card.build()) },
-                    onDelete = { onHideBuiltinTemplate(card.id) },
-                )
-            }
-        }
-
-        // ── My templates ───────────────────────────────────────────────────
-        if (userTemplates.isNotEmpty()) {
+        // ── Templates (встроенные + пользовательские, единый раздел) ───────
+        if (visibleBuiltins.isNotEmpty() || userTemplates.isNotEmpty()) {
             Spacer(Modifier.height(36.dp))
-            SectionTitle("MY TEMPLATES")
-            userTemplates.chunked(4).forEach { rowTemplates ->
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    rowTemplates.forEach { template ->
-                        WorkspaceCard(
+            SectionTitle("TEMPLATES")
+            val entries = buildList {
+                visibleBuiltins.forEach { card ->
+                    add(
+                        TemplateEntry(
+                            title = card.title,
+                            config = card.preview,
+                            onClick = { onSelectTemplate(card.build()) },
+                            onDelete = { onHideBuiltinTemplate(card.id) },
+                        )
+                    )
+                }
+                userTemplates.forEach { template ->
+                    add(
+                        TemplateEntry(
                             title = template.name,
                             config = template,
                             onClick = { onSelectTemplate(template) },
                             onDelete = { onDeleteTemplate(template) },
+                        )
+                    )
+                }
+            }
+            entries.chunked(6).forEach { rowEntries ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    rowEntries.forEach { entry ->
+                        WorkspaceCard(
+                            title = entry.title,
+                            config = entry.config,
+                            onClick = entry.onClick,
+                            onDelete = entry.onDelete,
                         )
                     }
                 }
@@ -178,6 +186,13 @@ private data class BuiltinCard(
     val title: String,
     val preview: WorkspaceConfig,
     val build: () -> WorkspaceConfig,
+)
+
+private data class TemplateEntry(
+    val title: String,
+    val config: WorkspaceConfig,
+    val onClick: () -> Unit,
+    val onDelete: () -> Unit,
 )
 
 @Composable
