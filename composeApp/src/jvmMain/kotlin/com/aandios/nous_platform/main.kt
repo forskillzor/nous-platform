@@ -43,7 +43,7 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Nous Platform • v 0.1",
-        state = rememberWindowState(width = 1600.dp, height = 1100.dp)
+        state = rememberWindowState(width = 1900.dp, height = 1080.dp)
     ) {
         TradingTerminalTheme(
             darkTheme = true, // Всегда темная тема
@@ -96,16 +96,19 @@ fun main() = application {
                 val activeIdx by tabManager.activeIndex.collectAsState()
                 var recentConfigs by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
                 var userTemplates by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
+                var hiddenBuiltins by remember { mutableStateOf<Set<String>>(emptySet()) }
                 LaunchedEffect(workspaces.size) {
                     recentConfigs = workspaceRepo.getAll()
                         .sortedByDescending { it.updatedAt }
                         .take(8)
                     userTemplates = templateRepo.getAll()
+                    hiddenBuiltins = templateRepo.hiddenBuiltins()
                 }
                 if (workspaces.isEmpty()) {
                     WelcomeScreen(
                         recentWorkspaces = recentConfigs,
                         userTemplates = userTemplates,
+                        hiddenBuiltinTemplates = hiddenBuiltins,
                         onSelectTemplate = { config ->
                             scope.launch {
                                 val fresh = config.copy(
@@ -124,6 +127,21 @@ fun main() = application {
                             scope.launch {
                                 templateRepo.delete(template.id)
                                 userTemplates = templateRepo.getAll()
+                            }
+                        },
+                        onHideBuiltinTemplate = { builtinId ->
+                            scope.launch {
+                                templateRepo.hideBuiltin(builtinId)
+                                hiddenBuiltins = templateRepo.hiddenBuiltins()
+                            }
+                        },
+                        onDeleteRecent = { config ->
+                            scope.launch {
+                                tabManager.closeWorkspace(config.id)
+                                workspaceRepo.delete(config.id)
+                                recentConfigs = workspaceRepo.getAll()
+                                    .sortedByDescending { it.updatedAt }
+                                    .take(8)
                             }
                         },
                         modifier = Modifier.fillMaxWidth().weight(1f),
