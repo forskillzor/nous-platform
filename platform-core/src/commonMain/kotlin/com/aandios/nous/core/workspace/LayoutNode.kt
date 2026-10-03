@@ -32,3 +32,12 @@ sealed class LayoutNode {
     @Serializable
     enum class Direction { HORIZONTAL, VERTICAL }
 }
+
+/**
+ * Глубокая копия дерева. Нужна для истории undo/redo: ratio сплитов
+ * мутируется in-place, поэтому снимки обязаны быть независимыми копиями.
+ */
+fun LayoutNode.deepCopy(): LayoutNode = when (this) {
+    is LayoutNode.Leaf -> copy()
+    is LayoutNode.Split -> copy(children = children.map { it.deepCopy() })
+}

@@ -49,6 +49,7 @@ fun LayoutRenderer(
     onClosePanel: ((String) -> Unit)? = null,
     onSplitPanel: ((String, LayoutNode.Direction, PanelType) -> Unit)? = null,
     onRatioChange: (() -> Unit)? = null,
+    onRatioChangeStart: (() -> Unit)? = null,
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)? = null,
     panelContent: @Composable (panelId: String) -> Unit
 ) {
@@ -60,6 +61,7 @@ fun LayoutRenderer(
         onClosePanel = onClosePanel,
         onSplitPanel = onSplitPanel,
         onRatioChange = onRatioChange,
+        onRatioChangeStart = onRatioChangeStart,
         onMovePanel = onMovePanel,
         dragState = dragState,
         panelContent = panelContent,
@@ -74,6 +76,7 @@ private fun RenderNode(
     onClosePanel: ((String) -> Unit)?,
     onSplitPanel: ((String, LayoutNode.Direction, PanelType) -> Unit)?,
     onRatioChange: (() -> Unit)?,
+    onRatioChangeStart: (() -> Unit)?,
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)?,
     dragState: PanelDragState,
     panelContent: @Composable (panelId: String) -> Unit,
@@ -146,16 +149,12 @@ private fun RenderNode(
                             node.children.forEachIndexed { index, child ->
                                 val weight =
                                     if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                RenderNode(
-                                    node = child, modifier = Modifier.weight(weight),
-                                    panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel,
-                                    onRatioChange = onRatioChange, onMovePanel = onMovePanel,
-                                    dragState = dragState, panelContent = panelContent
-                                )
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, dragState = dragState, panelContent = panelContent)
                                 if (index < node.children.lastIndex) {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.HORIZONTAL,
                                         parentSize = parentSizePx,
+                                        onResizeStart = onRatioChangeStart,
                                         onResize = { delta ->
                                             val newRatio = ratio + delta
                                             if (newRatio in 0.15f..0.85f) {
@@ -173,16 +172,12 @@ private fun RenderNode(
                             node.children.forEachIndexed { index, child ->
                                 val weight =
                                     if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                RenderNode(
-                                    node = child, modifier = Modifier.weight(weight),
-                                    panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel,
-                                    onRatioChange = onRatioChange, onMovePanel = onMovePanel,
-                                    dragState = dragState, panelContent = panelContent
-                                )
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, dragState = dragState, panelContent = panelContent)
                                 if (index < node.children.lastIndex) {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.VERTICAL,
                                         parentSize = parentSizePx,
+                                        onResizeStart = onRatioChangeStart,
                                         onResize = { delta ->
                                             val newRatio = ratio + delta
                                             if (newRatio in 0.15f..0.85f) {
@@ -252,6 +247,7 @@ private fun ZoneBox(active: Boolean, modifier: Modifier) {
 private fun SplitHandle(
     direction: LayoutNode.Direction,
     parentSize: Float,
+    onResizeStart: (() -> Unit)? = null,
     onResize: (Float) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -270,13 +266,19 @@ private fun SplitHandle(
             .pointerInput(Unit) {
                 val size = if (parentSize > 0f) parentSize else 500f
                 if (direction == LayoutNode.Direction.HORIZONTAL) {
-                    detectHorizontalDragGestures { _, dragAmount ->
-                        onResize(dragAmount / size)
-                    }
+                    detectHorizontalDragGestures(
+                        onDragStart = { onResizeStart?.invoke() },
+                        onHorizontalDrag = { _, dragAmount ->
+                            onResize(dragAmount / size)
+                        }
+                    )
                 } else {
-                    detectVerticalDragGestures { _, dragAmount ->
-                        onResize(dragAmount / size)
-                    }
+                    detectVerticalDragGestures(
+                        onDragStart = { onResizeStart?.invoke() },
+                        onVerticalDrag = { _, dragAmount ->
+                            onResize(dragAmount / size)
+                        }
+                    )
                 }
             }
     )

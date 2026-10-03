@@ -18,8 +18,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,10 @@ fun PanelHeader(
     var splitDirection by remember { mutableStateOf(false) } // false=H, true=V
     var menuX by remember { mutableFloatStateOf(0f) }
     var headerOrigin by remember { mutableStateOf(Offset.Zero) }
+    val density = LocalDensity.current
+    // Порог, после которого «нажатие» превращается в перетаскивание
+    // (сплит срабатывает только когда панель реально тащат, а не при клике)
+    val dragThresholdPx = with(density) { 12.dp.toPx() }
 
     Row(
         modifier = modifier
@@ -58,12 +63,32 @@ fun PanelHeader(
             .onGloballyPositioned { headerOrigin = it.positionInWindow() }
             .then(
                 if (onDrag != null) {
-                    Modifier.pointerInput(onDrag) {
+                    Modifier.pointerInput(onDrag, dragThresholdPx) {
+                        var totalDrag = 0f
+                        var dragActive = false
                         detectDragGestures(
-                            onDragStart = { onDrag.onDragStart() },
-                            onDrag = { change, _ -> onDrag.onDrag(headerOrigin + change.position) },
-                            onDragEnd = { onDrag.onDragEnd() },
-                            onDragCancel = { onDrag.onDragEnd() },
+                            onDragStart = {
+                                totalDrag = 0f
+                                dragActive = false
+                            },
+                            onDrag = { change, dragAmount ->
+                                totalDrag += dragAmount.getDistance()
+                                if (!dragActive && totalDrag >= dragThresholdPx) {
+                                    dragActive = true
+                                    onDrag.onDragStart()
+                                }
+                                if (dragActive) {
+                                    onDrag.onDrag(headerOrigin + change.position)
+                                }
+                            },
+                            onDragEnd = {
+                                if (dragActive) onDrag.onDragEnd()
+                                dragActive = false
+                            },
+                            onDragCancel = {
+                                if (dragActive) onDrag.onDragEnd()
+                                dragActive = false
+                            },
                         )
                     }
                 } else Modifier
