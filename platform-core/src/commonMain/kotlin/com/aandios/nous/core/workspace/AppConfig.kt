@@ -16,7 +16,9 @@ data class AppConfig(
     val openWorkspaceIds: List<String> = emptyList(),
     val activeWorkspaceId: String? = null,
     val theme: String = "dark",
-    val lastKnownVersion: String? = null
+    val lastKnownVersion: String? = null,
+    /** Окна терминала (multi-window); устаревшие поля выше — для миграции. */
+    val windows: List<WindowSessionState> = emptyList()
 )
 
 /** KMP-safe unique ID generator */
