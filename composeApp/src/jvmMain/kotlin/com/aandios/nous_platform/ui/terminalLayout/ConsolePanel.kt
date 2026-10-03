@@ -19,8 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -107,7 +107,7 @@ fun ConsolePanel(
             }
         }
 
-        Divider()
+        HorizontalDivider()
 
         // Лог консоли
         LazyColumn(
@@ -137,7 +137,7 @@ fun ConsolePanel(
             }
         }
 
-        Divider()
+        HorizontalDivider()
 
         // Поле ввода
         Row(

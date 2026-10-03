@@ -18,8 +18,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -122,7 +122,7 @@ if (ta.crossunder(fastMA, slowMA))
             }
         }
 
-        Divider()
+        HorizontalDivider()
 
         // Редактор кода
         Box(
@@ -152,7 +152,7 @@ if (ta.crossunder(fastMA, slowMA))
             )
         }
 
-        Divider()
+        HorizontalDivider()
 
         // Нижняя панель с кнопками
         Row(

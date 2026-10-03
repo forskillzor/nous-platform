@@ -10,13 +10,14 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.material.Divider
-import androidx.compose.material3.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.model.trading.TradeSide
@@ -89,6 +90,11 @@ data class MockBalance(
     val usdValue: Double
 )
 
+/** Переключение выдвижной панели: тот же тип — свернуть/развернуть, другой — открыть. */
+private fun ToolPanelState.toggle(type: ToolPanelType): ToolPanelState =
+    if (this.type == type) copy(isExpanded = !isExpanded)
+    else copy(isExpanded = true, type = type)
+
 @Composable
 fun TerminalLayout(
     modifier: Modifier = Modifier,
@@ -105,8 +111,14 @@ fun TerminalLayout(
 ) {
     var topPanelState by remember { mutableStateOf(ToolPanelState()) }
     var bottomPanelState by remember { mutableStateOf<BottomToolType?>(null) }
-    val selectedSymbol by remember { mutableStateOf<String>(terminalState.selectedSymbol.value) }
-    val selectedTimeframe by remember { mutableStateOf<String>(terminalState.selectedTimeFrame.value) }
+    var portfolioTab by remember { mutableStateOf(PortfolioTab.POSITIONS) }
+    // Высота нижней панели запоминается на время сессии
+    var bottomPanelHeight by remember { mutableStateOf(300.dp) }
+    var contentAreaHeightPx by remember { mutableFloatStateOf(0f) }
+
+    // Реактивные значения из VM (раньше читались один раз через remember)
+    val selectedSymbol by terminalState.selectedSymbol.collectAsState()
+    val selectedTimeframe by terminalState.selectedTimeFrame.collectAsState()
 
     // Workspace state
     val scope = rememberCoroutineScope()
@@ -129,19 +141,13 @@ fun TerminalLayout(
         workspaceBus?.workspaceChanged()
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize()
-    ) {
-
-        // Используем Row для размещения основной панели и выдвижных панелей рядом
-        Row(
-//            modifier = modifier.fillMaxHeight()
-        ) {
+    Column(modifier = modifier.fillMaxSize()) {
+        Row(modifier = Modifier.fillMaxSize()) {
             // Основная панель с иконками (всегда видима)
             Column(
                 modifier = Modifier
-//                    .fillMaxHeight()
                     .width(48.dp)
+                    .fillMaxHeight()
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 // Верхняя группа иконок
@@ -152,93 +158,33 @@ fun TerminalLayout(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Workspaces icon (only when workspace system enabled)
-                    if (useWorkspaces) {
+                    val topIcons = buildList {
+                        if (useWorkspaces) {
+                            add(Triple(ToolPanelType.WORKSPACES, Res.drawable.workspaces, "Workspaces"))
+                        }
+                        add(Triple(ToolPanelType.SYMBOLS, Res.drawable.candlestick, "Symbols"))
+                        add(Triple(ToolPanelType.INDICATORS, Res.drawable.indicators, "Indicators"))
+                        add(Triple(ToolPanelType.TIMEFRAMES, Res.drawable.clock, "Timeframes"))
+                        add(Triple(ToolPanelType.DRAWINGS, Res.drawable.pencil, "Drawings"))
+                        add(Triple(ToolPanelType.STRATEGIES, Res.drawable.robot, "Strategies"))
+                    }
+                    topIcons.forEach { (type, icon, description) ->
                         ToolBarIcon(
-                            icon = Res.drawable.code,
-                            description = "Workspaces",
-                            isSelected = topPanelState.type == ToolPanelType.WORKSPACES && topPanelState.isExpanded,
-                            onClick = {
-                                topPanelState = if (topPanelState.type == ToolPanelType.WORKSPACES) {
-                                    topPanelState.copy(isExpanded = !topPanelState.isExpanded)
-                                } else {
-                                    topPanelState.copy(isExpanded = true, type = ToolPanelType.WORKSPACES)
-                                }
-                            }
+                            icon = icon,
+                            description = description,
+                            isSelected = topPanelState.type == type && topPanelState.isExpanded,
+                            onClick = { topPanelState = topPanelState.toggle(type) }
                         )
                     }
-
-                    ToolBarIcon(
-                        icon = Res.drawable.candlestick,
-                        description = "Symbols",
-                        isSelected = topPanelState.type == ToolPanelType.SYMBOLS && topPanelState.isExpanded,
-                        onClick = {
-                            topPanelState = if (topPanelState.type == ToolPanelType.SYMBOLS) {
-                                topPanelState.copy(isExpanded = !topPanelState.isExpanded)
-                            } else {
-                                topPanelState.copy(isExpanded = true, type = ToolPanelType.SYMBOLS)
-                            }
-                        }
-                    )
-
-                    ToolBarIcon(
-                        icon = Res.drawable.indicators,
-                        description = "Indicators",
-                        isSelected = topPanelState.type == ToolPanelType.INDICATORS && topPanelState.isExpanded,
-                        onClick = {
-                            topPanelState = if (topPanelState.type == ToolPanelType.INDICATORS) {
-                                topPanelState.copy(isExpanded = !topPanelState.isExpanded)
-                            } else {
-                                topPanelState.copy(isExpanded = true, type = ToolPanelType.INDICATORS)
-                            }
-                        }
-                    )
-
-                    ToolBarIcon(
-                        icon = Res.drawable.clock,
-                        description = "Timeframes",
-                        isSelected = topPanelState.type == ToolPanelType.TIMEFRAMES && topPanelState.isExpanded,
-                        onClick = {
-                            topPanelState = if (topPanelState.type == ToolPanelType.TIMEFRAMES) {
-                                topPanelState.copy(isExpanded = !topPanelState.isExpanded)
-                            } else {
-                                topPanelState.copy(isExpanded = true, type = ToolPanelType.TIMEFRAMES)
-                            }
-                        }
-                    )
-
-                    ToolBarIcon(
-                        icon = Res.drawable.pencil,
-                        description = "Drawings",
-                        isSelected = topPanelState.type == ToolPanelType.DRAWINGS && topPanelState.isExpanded,
-                        onClick = {
-                            topPanelState = if (topPanelState.type == ToolPanelType.DRAWINGS) {
-                                topPanelState.copy(isExpanded = !topPanelState.isExpanded)
-                            } else {
-                                topPanelState.copy(isExpanded = true, type = ToolPanelType.DRAWINGS)
-                            }
-                        }
-                    )
-
-                    ToolBarIcon(
-                        icon = Res.drawable.robot,
-                        description = "Strategies",
-                        isSelected = topPanelState.type == ToolPanelType.STRATEGIES && topPanelState.isExpanded,
-                        onClick = {
-                            topPanelState = if (topPanelState.type == ToolPanelType.STRATEGIES) {
-                                topPanelState.copy(isExpanded = !topPanelState.isExpanded)
-                            } else {
-                                topPanelState.copy(isExpanded = true, type = ToolPanelType.STRATEGIES)
-                            }
-                        }
-                    )
                 }
 
                 // Разделитель
-                Divider(
-                    color = MaterialTheme.colorScheme.outline,
-                    thickness = 1.dp,
-                    modifier = Modifier.padding(horizontal = 8.dp)
+                Box(
+                    modifier = Modifier
+                        .padding(horizontal = 8.dp)
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(MaterialTheme.colorScheme.outline)
                 )
 
                 // Нижняя группа иконок
@@ -247,35 +193,21 @@ fun TerminalLayout(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ToolBarIcon(
-                        icon = Res.drawable.wallet,
-                        description = "Portfolio",
-                        isSelected = bottomPanelState == BottomToolType.PORTFOLIO,
-                        onClick = {
-                            bottomPanelState = if (bottomPanelState == BottomToolType.PORTFOLIO) null
-                            else BottomToolType.PORTFOLIO
-                        }
+                    val bottomIcons = listOf(
+                        Triple(BottomToolType.PORTFOLIO, Res.drawable.wallet, "Portfolio"),
+                        Triple(BottomToolType.CONSOLE, Res.drawable.terminal, "Console"),
+                        Triple(BottomToolType.EDITOR, Res.drawable.code, "Editor"),
                     )
-
-                    ToolBarIcon(
-                        icon = Res.drawable.terminal,
-                        description = "Console",
-                        isSelected = bottomPanelState == BottomToolType.CONSOLE,
-                        onClick = {
-                            bottomPanelState = if (bottomPanelState == BottomToolType.CONSOLE) null
-                            else BottomToolType.CONSOLE
-                        }
-                    )
-
-                    ToolBarIcon(
-                        icon = Res.drawable.code,
-                        description = "Editor",
-                        isSelected = bottomPanelState == BottomToolType.EDITOR,
-                        onClick = {
-                            bottomPanelState = if (bottomPanelState == BottomToolType.EDITOR) null
-                            else BottomToolType.EDITOR
-                        }
-                    )
+                    bottomIcons.forEach { (type, icon, description) ->
+                        ToolBarIcon(
+                            icon = icon,
+                            description = description,
+                            isSelected = bottomPanelState == type,
+                            onClick = {
+                                bottomPanelState = if (bottomPanelState == type) null else type
+                            }
+                        )
+                    }
                 }
             }
 
@@ -354,21 +286,39 @@ fun TerminalLayout(
                     )
                 }
             }
-            Column() {
+
+            // Контент окна + нижняя выдвижная панель
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .onSizeChanged { contentAreaHeightPx = it.height.toFloat() }
+            ) {
                 mainContent()
                 if (bottomPanelState != null) {
+                    val density = LocalDensity.current
+                    val minHeight = 120.dp
+                    val maxHeight = with(density) {
+                        (contentAreaHeightPx * 0.75f).toDp()
+                    }.coerceAtLeast(minHeight)
 
+                    BottomResizeHandle(
+                        onDrag = { dy ->
+                            bottomPanelHeight = (bottomPanelHeight - with(density) { dy.toDp() })
+                                .coerceIn(minHeight, maxHeight)
+                        }
+                    )
                     BottomToolPanel(
                         type = bottomPanelState!!,
-                        width = Dp.Unspecified,
                         onClose = { bottomPanelState = null },
-                        modifier = Modifier.fillMaxWidth()
-                            .height(300.dp)
-                            .weight(0.5f)
+                        portfolioTab = portfolioTab,
+                        onPortfolioTabChange = { portfolioTab = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(bottomPanelHeight)
                     )
                 }
             }
         }
     }
 }
-

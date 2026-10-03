@@ -5,50 +5,86 @@
 
 package com.aandios.nous_platform.ui.terminalLayout
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import org.jetbrains.compose.resources.painterResource
 import nous_platform.composeapp.generated.resources.Res
 import nous_platform.composeapp.generated.resources.close
 
+private val accentColor = Color(0xFF00C853)
+
+/**
+ * Ручка изменения высоты нижней панели: вертикальный drag.
+ */
+@Composable
+fun BottomResizeHandle(
+    onDrag: (Float) -> Unit,
+    modifier: Modifier = Modifier.Companion,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(4.dp)
+            .background(if (hovered) accentColor.copy(alpha = 0.4f) else Color(0xFF333333))
+            .hoverable(interaction)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures { _, dragAmount -> onDrag(dragAmount) }
+            }
+    )
+}
+
 @Composable
 fun BottomToolPanel(
     type: BottomToolType,
-    width: Dp,
     onClose: () -> Unit,
+    portfolioTab: PortfolioTab = PortfolioTab.POSITIONS,
+    onPortfolioTabChange: (PortfolioTab) -> Unit = {},
     modifier: Modifier = Modifier.Companion
 ) {
     Surface(
-        modifier = modifier.width(width),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.Companion.fillMaxSize()
         ) {
-            // Заголовок
+            // Компактная строка заголовка: название + табы (для Portfolio) + закрыть
             Row(
                 modifier = Modifier.Companion
                     .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .height(30.dp)
+                    .padding(start = 12.dp, end = 6.dp),
                 verticalAlignment = Alignment.Companion.CenterVertically
             ) {
                 Text(
@@ -61,27 +97,94 @@ fun BottomToolPanel(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.Companion.size(24.dp)
+                if (type == BottomToolType.PORTFOLIO) {
+                    Spacer(Modifier.Companion.width(16.dp))
+                    // Табы занимают оставшееся место; при нехватке — скроллятся
+                    Row(
+                        modifier = Modifier.Companion
+                            .weight(1f)
+                            .height(30.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.Companion.CenterVertically
+                    ) {
+                        PortfolioTab.values().forEach { tab ->
+                            PortfolioTabItem(
+                                tab = tab,
+                                selected = portfolioTab == tab,
+                                onClick = { onPortfolioTabChange(tab) }
+                            )
+                        }
+                    }
+                } else {
+                    Spacer(Modifier.Companion.weight(1f))
+                }
+
+                Box(
+                    modifier = Modifier.Companion
+                        .size(20.dp)
+                        .clickable(onClick = onClose),
+                    contentAlignment = Alignment.Companion.Center
                 ) {
                     Icon(
                         painter = painterResource(Res.drawable.close),
                         contentDescription = "Close",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.Companion.size(16.dp)
+                        modifier = Modifier.Companion.size(14.dp)
                     )
                 }
             }
 
-            Divider()
+            Box(
+                modifier = Modifier.Companion
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outline)
+            )
 
             // Контент
             when (type) {
-                BottomToolType.PORTFOLIO -> PortfolioPanel(modifier = Modifier.Companion.weight(1f))
+                BottomToolType.PORTFOLIO -> PortfolioPanel(
+                    selectedTab = portfolioTab,
+                    modifier = Modifier.Companion.weight(1f)
+                )
                 BottomToolType.CONSOLE -> ConsolePanel(modifier = Modifier.Companion.weight(1f))
                 BottomToolType.EDITOR -> CodeEditorPanel(modifier = Modifier.Companion.weight(1f))
             }
+        }
+    }
+}
+
+/** Компактный таб с подчёркиванием выбранного (в стиле m3-индикатора). */
+@Composable
+private fun PortfolioTabItem(
+    tab: PortfolioTab,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier.Companion
+            .height(30.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp),
+        contentAlignment = Alignment.Companion.Center
+    ) {
+        Text(
+            text = tab.name,
+            color = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium
+        )
+        if (selected) {
+            Box(
+                modifier = Modifier.Companion
+                    .align(Alignment.Companion.BottomCenter)
+                    .fillMaxWidth()
+                    .height(3.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)
+                    )
+            )
         }
     }
 }

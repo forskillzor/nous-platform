@@ -13,7 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -74,7 +74,7 @@ fun TradingStats(
                 )
             }
 
-            Divider(modifier = Modifier.Companion.padding(vertical = 4.dp))
+            HorizontalDivider(modifier = Modifier.Companion.padding(vertical = 4.dp))
         }
     }
 }

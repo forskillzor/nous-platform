@@ -13,8 +13,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.Divider
-import androidx.compose.material.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -41,8 +41,7 @@ fun ToolDetailsPanel(
 ) {
     Surface(
         modifier = modifier.width(width),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 2.dp
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
             modifier = Modifier.Companion.fillMaxSize()
@@ -81,7 +80,7 @@ fun ToolDetailsPanel(
                 }
             }
 
-            Divider()
+            HorizontalDivider()
 
             // Контент в зависимости от типа
             when (type) {
