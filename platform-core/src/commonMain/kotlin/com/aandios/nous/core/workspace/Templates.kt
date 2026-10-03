@@ -83,6 +83,62 @@ object Templates {
         )
     }
 
+    fun classic(symbol: String = "BTCUSDT", provider: String = "Binance"): WorkspaceConfig {
+        return WorkspaceConfig(
+            id = generateId(),
+            name = "$symbol Classic",
+            group = "Classic",
+            providers = listOf(ProviderRef(id = "main", name = provider, symbols = listOf(symbol))),
+            layout = LayoutNode.Split(
+                direction = LayoutNode.Direction.HORIZONTAL,
+                ratio = 0.6f,
+                children = listOf(
+                    LayoutNode.Leaf("chart"),
+                    LayoutNode.Split(
+                        direction = LayoutNode.Direction.HORIZONTAL,
+                        ratio = 0.55f,
+                        children = listOf(
+                            LayoutNode.Leaf("dom"),
+                            LayoutNode.Leaf("trades")
+                        )
+                    )
+                )
+            ),
+            panels = listOf(
+                PanelConfig("chart", PanelType.CHART, "main", symbol, PanelState.Chart(timeframe = "1h")),
+                PanelConfig("dom", PanelType.DOM, "main", symbol, PanelState.Dom(depth = 10)),
+                PanelConfig("trades", PanelType.TRADES, "main", symbol, PanelState.Trades())
+            )
+        )
+    }
+
+    fun multiChart(
+        symbols: List<String> = listOf("BTCUSDT", "ETHUSDT"),
+        provider: String = "Binance"
+    ): WorkspaceConfig {
+        val panels = symbols.mapIndexed { i, s ->
+            PanelConfig(
+                id = "chart-$i",
+                type = PanelType.CHART,
+                providerRef = "main",
+                symbol = s,
+                state = PanelState.Chart(timeframe = if (i == 0) "1h" else "5m")
+            )
+        }
+        return WorkspaceConfig(
+            id = generateId(),
+            name = "${symbols.size} Charts",
+            group = "Multi-Chart",
+            providers = listOf(ProviderRef(id = "main", name = provider, symbols = symbols)),
+            layout = LayoutNode.Split(
+                direction = LayoutNode.Direction.HORIZONTAL,
+                ratio = 0.5f,
+                children = panels.map { LayoutNode.Leaf(it.id) }
+            ),
+            panels = panels
+        )
+    }
+
     fun empty(): WorkspaceConfig {
         return WorkspaceConfig(
             id = generateId(),

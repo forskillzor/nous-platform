@@ -37,6 +37,7 @@ import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.AppStateRepository
+import com.aandios.nous.core.workspace.TemplateRepository
 import com.aandios.nous.core.workspace.viewmodel.TabManager
 import org.koin.core.qualifier.named
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
@@ -132,6 +133,7 @@ val appModule = module {
     // 4.7 Workspace system
     single<WorkspaceRepository> { WorkspaceRepository(get()) }
     single<AppStateRepository> { AppStateRepository(get()) }
+    single<TemplateRepository> { TemplateRepository(get()) }
     single<TabManager> { TabManager(get(), get()) }
 
     // 5. ViewModels

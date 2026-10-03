@@ -15,6 +15,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import com.aandios.nous.core.ui.workspace.TabBar
+import com.aandios.nous.core.ui.workspace.WelcomeScreen
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.feature.chart.ui.ChartIntent
@@ -29,7 +30,6 @@ import com.aandios.nous.feature.trades.ui.SizeFilter
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.feature.trades.ui.TradesWindow
 import com.aandios.nous_platform.di.initKoin
-import com.aandios.nous_platform.ui.main.MainScreen
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -54,26 +54,23 @@ fun main() = application {
             val tradesViewModel: TradesViewModel = koinInject()
             val terminalStateViewModel: TerminalStateViewModel = koinInject()
 
-            // Workspace system (feature flag)
-            val useWorkspaceSystem = true
-            val tabManager: TabManager? = if (useWorkspaceSystem) koinInject() else null
-            val workspaceRepo: WorkspaceRepository? = if (useWorkspaceSystem) koinInject() else null
+            // Workspace system
+            val tabManager: TabManager = koinInject()
+            val workspaceRepo: WorkspaceRepository = koinInject()
+            val templateRepo: TemplateRepository = koinInject()
             val scope = rememberCoroutineScope()
 
             // Restore workspace session on startup
-            if (useWorkspaceSystem && tabManager != null) {
-                LaunchedEffect(Unit) { tabManager.restoreSession() }
-            }
+            LaunchedEffect(Unit) { tabManager.restoreSession() }
 
             TerminalLayout(
                 modifier = Modifier.fillMaxHeight(),
                 terminalState = terminalStateViewModel,
                 tabManager = tabManager,
                 workspaceRepo = workspaceRepo,
-                onOpenWorkspace = tabManager?.let { tm ->
-                    { config ->
-                        scope.launch { tm.openWorkspace(config) }
-                    }
+                templateRepo = templateRepo,
+                onOpenWorkspace = { config ->
+                    scope.launch { tabManager.openWorkspace(config) }
                 },
                 onSymbolSelected = { symbol ->
                     terminalStateViewModel.changeSymbol(symbol)
@@ -94,28 +91,54 @@ fun main() = application {
                     chartViewModel.dispatch(ChartIntent.LoadChart(symbol, timeframe))
                 },
             ) {
-                // Main content — workspace tabs or legacy MainScreen
-                if (useWorkspaceSystem && tabManager != null) {
-                    val workspaces by tabManager.workspaces.collectAsState()
-                    val activeIdx by tabManager.activeIndex.collectAsState()
-                    if (workspaces.isEmpty()) {
-                        MainScreen(
-                            chartViewModel = chartViewModel,
-                            domViewModel = domViewModel,
-                            tradesViewModel = tradesViewModel,
-                            modifier = Modifier.fillMaxWidth().weight(1f),
+                // Main content — workspace tabs or welcome screen
+                val workspaces by tabManager.workspaces.collectAsState()
+                val activeIdx by tabManager.activeIndex.collectAsState()
+                var recentConfigs by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
+                var userTemplates by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
+                LaunchedEffect(workspaces.size) {
+                    recentConfigs = workspaceRepo.getAll()
+                        .sortedByDescending { it.updatedAt }
+                        .take(8)
+                    userTemplates = templateRepo.getAll()
+                }
+                if (workspaces.isEmpty()) {
+                    WelcomeScreen(
+                        recentWorkspaces = recentConfigs,
+                        userTemplates = userTemplates,
+                        onSelectTemplate = { config ->
+                            scope.launch {
+                                val fresh = config.copy(
+                                    id = generateId(),
+                                    createdAt = currentTime(),
+                                    updatedAt = currentTime()
+                                )
+                                workspaceRepo.create(fresh)
+                                tabManager.openWorkspace(fresh)
+                            }
+                        },
+                        onOpenRecent = { config ->
+                            scope.launch { tabManager.openWorkspace(config) }
+                        },
+                        onDeleteTemplate = { template ->
+                            scope.launch {
+                                templateRepo.delete(template.id)
+                                userTemplates = templateRepo.getAll()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().weight(1f),
+                    )
+                } else {
+                    Column(Modifier.fillMaxWidth().weight(1f)) {
+                        TabBar(
+                            workspaces = workspaces,
+                            activeIndex = activeIdx,
+                            onTabClick = { tabManager.setActive(it) },
+                            onTabClose = { scope.launch { tabManager.closeWorkspace(it) } },
+                            onTabReorder = { from, to -> tabManager.reorderWorkspace(from, to) }
                         )
-                    } else {
-                        Column(Modifier.fillMaxWidth().weight(1f)) {
-                            TabBar(
-                                workspaces = workspaces,
-                                activeIndex = activeIdx,
-                                onTabClick = { tabManager.setActive(it) },
-                                onTabClose = { scope.launch { tabManager.closeWorkspace(it) } },
-                                onTabReorder = { from, to -> tabManager.reorderWorkspace(from, to) }
-                            )
-                            Box(Modifier.fillMaxSize()) {
-                                tabManager.activeWorkspace?.let { ws ->
+                        Box(Modifier.fillMaxSize()) {
+                            tabManager.activeWorkspace?.let { ws ->
                                     var panelConfigs by remember(ws.config.id) { mutableStateOf(ws.config.panels.associateBy { it.id }) }
                                     var layoutState by remember(ws.config.id) { mutableStateOf(ws.config.layout) }
 
@@ -125,7 +148,7 @@ fun main() = application {
                                             panels = panelConfigs.values.toList()
                                         )
                                         ws.updateConfig(config)
-                                        scope.launch { workspaceRepo?.update(config) }
+                                        scope.launch { workspaceRepo.update(config) }
                                     }
 
                                     LayoutRenderer(
@@ -420,15 +443,7 @@ fun main() = application {
                             }
                         }
                     }
-                } else {
-                    MainScreen(
-                        chartViewModel = chartViewModel,
-                        domViewModel = domViewModel,
-                        tradesViewModel = tradesViewModel,
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                    )
                 }
             }
         }
     }
-}

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.workspace.ProjectTree
+import com.aandios.nous.core.workspace.TemplateRepository
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.viewmodel.TabManager
@@ -95,6 +96,7 @@ fun TerminalLayout(
     onTimeframeSelected: (String) -> Unit,
     tabManager: TabManager? = null,
     workspaceRepo: WorkspaceRepository? = null,
+    templateRepo: TemplateRepository? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
@@ -303,6 +305,13 @@ fun TerminalLayout(
                                 scope.launch {
                                     val copy = ws.copy(id = com.aandios.nous.core.workspace.generateId(), name = "${ws.name} (copy)")
                                     workspaceRepo?.create(copy); refreshWorkspaces()
+                                }
+                            },
+                            onSaveAsTemplate = templateRepo?.let { repo ->
+                                { ws ->
+                                    scope.launch {
+                                        repo.create(ws.copy(id = com.aandios.nous.core.workspace.generateId()))
+                                    }
                                 }
                             },
                             modifier = Modifier.width(topPanelState.width).fillMaxHeight()

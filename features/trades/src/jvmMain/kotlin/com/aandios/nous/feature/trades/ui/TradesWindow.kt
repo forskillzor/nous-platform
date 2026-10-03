@@ -32,7 +32,7 @@ fun TradesWindow() {
 }
 
 /**
- * Trades-панель для использования внутри MainScreen (и др. композитов).
+ * Trades-панель для использования внутри workspace-панелей (и др. композитов).
  * Принимает TradesViewModel напрямую (чтобы не плодить лишних экземпляров при factory-scope).
  */
 @Composable

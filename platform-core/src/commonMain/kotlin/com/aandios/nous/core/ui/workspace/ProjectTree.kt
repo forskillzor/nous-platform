@@ -38,6 +38,7 @@ fun ProjectTree(
     onDelete: ((WorkspaceConfig) -> Unit)? = null,
     onExport: ((WorkspaceConfig) -> Unit)? = null,
     onDuplicate: ((WorkspaceConfig) -> Unit)? = null,
+    onSaveAsTemplate: ((WorkspaceConfig) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val groups = workspaces.groupBy { it.group.ifEmpty { "Unsorted" } }
@@ -78,6 +79,7 @@ fun ProjectTree(
                         onDelete = onDelete?.let { fn -> { fn(ws) } },
                         onExport = onExport?.let { fn -> { fn(ws) } },
                         onDuplicate = onDuplicate?.let { fn -> { fn(ws) } },
+                        onSaveAsTemplate = onSaveAsTemplate?.let { fn -> { fn(ws) } },
                     )
                 }
             }
@@ -101,7 +103,8 @@ private fun WorkspaceTreeItem(
     onRename: ((String) -> Unit)?,
     onDelete: (() -> Unit)?,
     onExport: (() -> Unit)?,
-    onDuplicate: (() -> Unit)?
+    onDuplicate: (() -> Unit)?,
+    onSaveAsTemplate: (() -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
@@ -179,6 +182,11 @@ private fun WorkspaceTreeItem(
             }
             onExport?.let { fn ->
                 DropdownMenuItem(text = { Text("Export JSON", fontSize = 12.sp) }, onClick = {
+                    menuExpanded = false; fn()
+                })
+            }
+            onSaveAsTemplate?.let { fn ->
+                DropdownMenuItem(text = { Text("Save as template", fontSize = 12.sp) }, onClick = {
                     menuExpanded = false; fn()
                 })
             }
