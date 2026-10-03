@@ -8,6 +8,7 @@ package com.aandios.nous.core.ui.workspace
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
@@ -205,13 +206,17 @@ private fun WorkspaceCard(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
 
-    Box(modifier = Modifier.width(180.dp)) {
+    Box(
+        modifier = Modifier
+            .width(180.dp)
+            .hoverable(interaction)
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF121212))
-                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+                .clickable(onClick = onClick)
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
