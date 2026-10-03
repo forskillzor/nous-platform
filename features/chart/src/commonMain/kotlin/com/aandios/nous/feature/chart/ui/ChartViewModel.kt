@@ -91,6 +91,7 @@ class ChartViewModel(
             is ChartIntent.SelectSymbol -> selectSymbol(intent.symbol)
             is ChartIntent.SelectTimeframe -> selectTimeframe(intent.timeframe)
             is ChartIntent.ToggleChartMode -> toggleChartMode()
+            is ChartIntent.SelectChartMode -> selectChartMode(intent.mode)
             is ChartIntent.SetFpAggregation -> setFpAggregation(intent.level)
             is ChartIntent.LoadChart -> loadChart(
                 ticker = intent.symbol ?: _state.value.currentSymbol,
@@ -144,13 +145,19 @@ class ChartViewModel(
     }
 
     private fun toggleChartMode() {
-        val newMode = when (_state.value.chartMode) {
-            ChartMode.CANDLESTICK -> ChartMode.FOOTPRINT
-            ChartMode.FOOTPRINT -> ChartMode.CANDLESTICK
-        }
-        _state.update { it.copy(chartMode = newMode) }
+        selectChartMode(
+            when (_state.value.chartMode) {
+                ChartMode.CANDLESTICK -> ChartMode.FOOTPRINT
+                ChartMode.FOOTPRINT -> ChartMode.CANDLESTICK
+            }
+        )
+    }
+
+    private fun selectChartMode(mode: ChartMode) {
+        if (_state.value.chartMode == mode) return
+        _state.update { it.copy(chartMode = mode) }
         saveState()
-        if (newMode == ChartMode.FOOTPRINT) {
+        if (mode == ChartMode.FOOTPRINT) {
             footprintController.start(_state.value.currentSymbol, _state.value.currentTimeframe)
         } else {
             footprintController.stop()

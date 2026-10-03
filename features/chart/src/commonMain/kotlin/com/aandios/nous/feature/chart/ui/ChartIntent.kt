@@ -15,6 +15,7 @@ sealed interface ChartIntent {
     data class SelectSymbol(val symbol: String) : ChartIntent
     data class SelectTimeframe(val timeframe: String) : ChartIntent
     data object ToggleChartMode : ChartIntent
+    data class SelectChartMode(val mode: ChartMode) : ChartIntent
     data class SetFpAggregation(val level: AggregationLevel) : ChartIntent
 
     /** null — оставить текущие значения. */

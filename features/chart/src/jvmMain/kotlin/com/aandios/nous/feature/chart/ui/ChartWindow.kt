@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
@@ -73,7 +74,7 @@ fun ChartWindow() {
 }
 
 /**
- * Окно графика для использования внутри MainScreen (и др. композитов).
+ * Окно графика для использования внутри workspace-панелей (и др. композитов).
  * Принимает ChartViewModel напрямую (чтобы не плодить лишних экземпляров при factory-scope).
  *
  * Загрузку графика (dispatch(LoadChart)) ожидается, что вызывает родительский composable.
@@ -110,6 +111,7 @@ private fun ChartWindowContent(
     panelId: String? = null,
 ) {
     val uiState by chartViewModel.state.collectAsState()
+    val provider: Provider = koinInject()
 
     val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter) {
         DefaultChartConfig.copy(
@@ -155,7 +157,7 @@ private fun ChartWindowContent(
             .collect { repository.save(workspaceId, panelId, it) }
     }
 
-    Box(
+    Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -194,7 +196,34 @@ private fun ChartWindowContent(
                 }
             }
             is ChartState.Success -> {
-                Box(modifier = Modifier.fillMaxSize()) {
+                // Верхняя панель — вне области графика, над ним
+                val exchanges = remember(provider) {
+                    runCatching {
+                        org.koin.core.context.GlobalContext.get().getAll<Provider>()
+                            .map { it.config.displayName }.distinct()
+                    }.getOrNull() ?: listOf(provider.config.displayName)
+                }
+                var currentExchange by remember(provider) { mutableStateOf(provider.config.displayName) }
+
+                ChartToolbar(
+                    currentSymbol = uiState.currentSymbol,
+                    currentTimeframe = uiState.currentTimeframe,
+                    availableSymbols = uiState.symbols,
+                    onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
+                    onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
+                    exchanges = exchanges,
+                    currentExchange = currentExchange,
+                    onExchangeChange = { currentExchange = it },
+                    chartMode = uiState.chartMode,
+                    onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
+                    symbolsWithFootprint = uiState.symbolsWithFootprint,
+                    fpAggregation = uiState.fpAggregation,
+                    onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
+                    modifier = Modifier.padding(8.dp)
+                )
+
+                // Область графика + левая панель рисования (TradingView-стиль)
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                     when (uiState.chartMode) {
                         ChartMode.CANDLESTICK -> {
                             CandleStickChart(
@@ -255,23 +284,13 @@ private fun ChartWindowContent(
                         }
                     }
 
-                    ChartToolbar(
-                        currentSymbol = uiState.currentSymbol,
-                        currentTimeframe = uiState.currentTimeframe,
-                        availableSymbols = uiState.symbols,
-                        onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
-                        onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
-                        chartMode = uiState.chartMode,
-                        onChartModeToggle = { chartViewModel.dispatch(ChartIntent.ToggleChartMode) },
-                        symbolsWithFootprint = uiState.symbolsWithFootprint,
-                        fpAggregation = uiState.fpAggregation,
-                        onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
-                        drawingTool = activeDrawingTool,
-                        onDrawingToolChange = { activeDrawingTool = it },
-                        canUndoDrawing = drawingHistory.canUndo,
-                        canRedoDrawing = drawingHistory.canRedo,
-                        onUndoDrawing = { drawingHistory.undo() },
-                        onRedoDrawing = { drawingHistory.redo() },
+                    DrawingToolPanel(
+                        activeTool = activeDrawingTool,
+                        onToolChange = { activeDrawingTool = it },
+                        canUndo = drawingHistory.canUndo,
+                        canRedo = drawingHistory.canRedo,
+                        onUndo = { drawingHistory.undo() },
+                        onRedo = { drawingHistory.redo() },
                         modifier = Modifier
                             .align(Alignment.TopStart)
                             .padding(8.dp)

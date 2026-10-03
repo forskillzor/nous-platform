@@ -50,6 +50,7 @@ fun SymbolSearchDropdown(
     onToggleFavorite: ((String) -> Unit)? = null,
     symbolsWithFootprint: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
+    showLabel: Boolean = true,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -71,7 +72,7 @@ fun SymbolSearchDropdown(
         else sortedSymbols.filter { it.contains(searchQuery, ignoreCase = true) }
     }
 
-    TerminalDropdownWithLabel(label = "Sym", modifier = modifier) {
+    val dropdownContent: @Composable () -> Unit = {
         Box {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -169,6 +170,16 @@ fun SymbolSearchDropdown(
                     }
                 }
             }
+        }
+    }
+
+    if (showLabel) {
+        TerminalDropdownWithLabel(label = "Sym", modifier = modifier) {
+            dropdownContent()
+        }
+    } else {
+        TerminalDropdownWithLabel(label = "", modifier = modifier) {
+            dropdownContent()
         }
     }
 }

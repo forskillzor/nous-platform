@@ -50,27 +50,29 @@ fun TerminalDropdownWithLabel(
             verticalAlignment = Alignment.Companion.CenterVertically,
             modifier = Modifier.Companion.padding(horizontal = 10.dp, vertical = 0.dp)
         ) {
-            // Label слева
-            Text(
-                text = label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                fontWeight = FontWeight.Companion.Medium,
-                letterSpacing = 0.1.sp,
-                modifier = Modifier.Companion.padding(end = 8.dp)
-            )
+            if (label.isNotEmpty()) {
+                // Label слева
+                Text(
+                    text = label,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                    fontWeight = FontWeight.Companion.Medium,
+                    letterSpacing = 0.1.sp,
+                    modifier = Modifier.Companion.padding(end = 8.dp)
+                )
 
-            // Вертикальный разделитель
-            Spacer(
-                modifier = Modifier.Companion
-                    .width(2.dp)
-                    .height(18.dp)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.8f))
-            )
+                // Вертикальный разделитель
+                Spacer(
+                    modifier = Modifier.Companion
+                        .width(2.dp)
+                        .height(18.dp)
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.8f))
+                )
+            }
 
             // Dropdown справа
             Box(
-                modifier = Modifier.Companion.padding(start = 8.dp)
+                modifier = Modifier.Companion.padding(start = if (label.isNotEmpty()) 8.dp else 0.dp)
             ) {
                 content()
             }
