@@ -29,4 +29,8 @@ data class SymbolInfo(
     val baseAsset: String,
     /** Котируемый актив (например, "USDT") */
     val quoteAsset: String,
+    /** Тип контракта с биржи (например, "PERPETUAL") */
+    val contractType: String? = null,
+    /** Маржинальный актив (например, "USDT" для USD-M) */
+    val marginAsset: String? = null,
 )

@@ -67,6 +67,8 @@ class BinanceSymbolInfoAdapter(
             status = status,
             baseAsset = baseAsset,
             quoteAsset = quoteAsset,
+            contractType = contractType,
+            marginAsset = marginAsset,
         )
     }
 }

@@ -117,6 +117,7 @@ class ChartViewModel(
                         currentSymbolFormatter = map[s.currentSymbol]?.let {
                             SymbolFormatter(it.tickSize, it.minQty)
                         } ?: s.currentSymbolFormatter,
+                        currentSymbolInfo = map[s.currentSymbol] ?: s.currentSymbolInfo,
                     )
                 }
             } catch (e: Exception) {
@@ -127,11 +128,13 @@ class ChartViewModel(
 
     private fun selectSymbol(symbol: String) {
         _state.update { s ->
+            val info = _symbolInfoMap.value[symbol]
             s.copy(
                 currentSymbol = symbol,
-                currentSymbolFormatter = _symbolInfoMap.value[symbol]?.let {
+                currentSymbolFormatter = info?.let {
                     SymbolFormatter(it.tickSize, it.minQty)
                 } ?: s.currentSymbolFormatter,
+                currentSymbolInfo = info ?: s.currentSymbolInfo,
             )
         }
         saveState()
@@ -215,6 +218,7 @@ class ChartViewModel(
                 currentSymbol = ticker,
                 currentTimeframe = timeframe,
                 hasMoreHistory = true,
+                currentSymbolInfo = _symbolInfoMap.value[ticker] ?: it.currentSymbolInfo,
             )
         }
         startCandleSeries(ticker, timeframe)

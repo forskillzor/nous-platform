@@ -9,5 +9,7 @@ data class ProviderConfig(
     val apiKey: String? = null,
     val secretKey: String? = null,
     val isTestnet: Boolean = false,
-    val customSettings: Map<String, String> = emptyMap()
+    val customSettings: Map<String, String> = emptyMap(),
+    /** Отображаемое имя биржи (например, "Binance"). */
+    val displayName: String = "Binance"
 )

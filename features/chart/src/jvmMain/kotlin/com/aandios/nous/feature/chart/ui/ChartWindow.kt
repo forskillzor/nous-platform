@@ -15,6 +15,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
@@ -224,6 +226,45 @@ private fun ChartWindowContent(
 
                 // Область графика + левая панель рисования (TradingView-стиль)
                 Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    // Водяной знак символа — самый нижний слой, ничего не перекрывает:
+                    // крупный тикер монеты + биржа и тип контракта (как в TradingView)
+                    val symbolInfo = uiState.currentSymbolInfo
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 48.dp, top = 4.dp)
+                    ) {
+                        Text(
+                            text = symbolInfo?.baseAsset ?: uiState.currentSymbol,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                            fontSize = 72.sp,
+                            fontWeight = FontWeight.Light,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                        if (symbolInfo != null) {
+                            Spacer(Modifier.width(10.dp))
+                            Column(verticalArrangement = Arrangement.Center) {
+                                Text(
+                                    text = provider.config.displayName,
+                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                                    fontSize = 26.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                                contractTypeLabel(symbolInfo)?.let { label ->
+                                    Text(
+                                        text = label,
+                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                                        fontSize = 26.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     when (uiState.chartMode) {
                         ChartMode.CANDLESTICK -> {
                             CandleStickChart(

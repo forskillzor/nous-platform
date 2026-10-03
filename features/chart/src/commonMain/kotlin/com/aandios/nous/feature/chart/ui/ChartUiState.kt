@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
+import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
@@ -21,6 +22,8 @@ data class ChartUiState(
     // TODO this hardcode need change to repository/datalayer initialisation symbol list
     val symbols: List<String> = listOf("BTCUSDT", "ETHUSDT"),
     val currentSymbolFormatter: SymbolFormatter = SymbolFormatter(),
+    /** SymbolInfo текущего символа (baseAsset/contractType/marginAsset и т.д.). */
+    val currentSymbolInfo: SymbolInfo? = null,
     val hasMoreHistory: Boolean = true,
     val footprintCandles: List<FootprintCandle> = emptyList(),
     val liveFootprintCandle: FootprintCandle? = null,
@@ -37,4 +40,13 @@ sealed interface ChartState {
     object Loading : ChartState
     data class Success(val candles: List<Candle>, val currentPrice: Float? = null) : ChartState
     data class Error(val message: String) : ChartState
+}
+
+/**
+ * Метка типа контракта в стиле Binance ("USDT-M Perp", "BTC-M Perp").
+ * Для спота (нет contractType) возвращает null.
+ */
+internal fun contractTypeLabel(info: SymbolInfo?): String? {
+    if (info?.contractType != "PERPETUAL") return null
+    return "${info.marginAsset ?: info.quoteAsset}-M Perp"
 }
