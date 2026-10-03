@@ -5,6 +5,11 @@
 
 package com.aandios.nous.core.ui.workspace
 
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateValueAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -16,9 +21,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -54,18 +61,37 @@ fun LayoutRenderer(
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     val dragState = remember { PanelDragState() }
-    RenderNode(
-        node = node,
-        modifier = modifier,
-        panels = panels,
-        onClosePanel = onClosePanel,
-        onSplitPanel = onSplitPanel,
-        onRatioChange = onRatioChange,
-        onRatioChangeStart = onRatioChangeStart,
-        onMovePanel = onMovePanel,
-        dragState = dragState,
-        panelContent = panelContent,
-    )
+    var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+
+    Box(modifier = modifier.onGloballyPositioned { rootOrigin = it.positionInWindow() }) {
+        RenderNode(
+            node = node,
+            modifier = Modifier.fillMaxSize(),
+            panels = panels,
+            onClosePanel = onClosePanel,
+            onSplitPanel = onSplitPanel,
+            onRatioChange = onRatioChange,
+            onRatioChangeStart = onRatioChangeStart,
+            onMovePanel = onMovePanel,
+            dragState = dragState,
+            panelContent = panelContent,
+        )
+
+        // Анимированный «призрак» панели: показывает, куда и какого размера
+        // она встанет при отпускании (половина цели для краёв, вся цель для CENTER)
+        val landingWindow = dragState.targetId
+            ?.let { id -> dragState.panelRects[id] }
+            ?.let { r -> dragState.zone?.let { z -> landingRect(r, z) } }
+        val landing = landingWindow?.let {
+            Rect(
+                left = it.left - rootOrigin.x,
+                top = it.top - rootOrigin.y,
+                right = it.right - rootOrigin.x,
+                bottom = it.bottom - rootOrigin.y,
+            )
+        }
+        DropPreview(landing = landing)
+    }
 }
 
 @Composable
@@ -124,11 +150,6 @@ private fun RenderNode(
                 }
                 Box(modifier = Modifier.fillMaxSize().weight(1f)) {
                     panelContent(panelId)
-                    if (onMovePanel != null && dragState.panelId != null && dragState.panelId != panelId) {
-                        DropZoneOverlay(
-                            activeZone = if (dragState.targetId == panelId) dragState.zone else null
-                        )
-                    }
                 }
             }
         }
@@ -219,28 +240,52 @@ private fun resolveDropTarget(dragState: PanelDragState, globalPos: Offset, excl
     dragState.zone = zone
 }
 
-/**
- * Визуальный оверлей зон дропа (как в IntelliJ IDEA): 4 края + центр.
- */
-@Composable
-private fun BoxScope.DropZoneOverlay(activeZone: LayoutEngine.DropZone?) {
-    ZoneBox(activeZone == LayoutEngine.DropZone.LEFT, Modifier.align(Alignment.CenterStart).fillMaxHeight().fillMaxWidth(0.3f))
-    ZoneBox(activeZone == LayoutEngine.DropZone.RIGHT, Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.3f))
-    ZoneBox(activeZone == LayoutEngine.DropZone.TOP, Modifier.align(Alignment.TopCenter).fillMaxWidth().fillMaxHeight(0.3f))
-    ZoneBox(activeZone == LayoutEngine.DropZone.BOTTOM, Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.3f))
-    ZoneBox(activeZone == LayoutEngine.DropZone.CENTER, Modifier.align(Alignment.Center).fillMaxWidth(0.4f).fillMaxHeight(0.4f))
+/** Зона дропа → прямоугольник, который займёт панель после переселения. */
+private fun landingRect(target: Rect, zone: LayoutEngine.DropZone): Rect = when (zone) {
+    LayoutEngine.DropZone.LEFT -> Rect(target.left, target.top, target.left + target.width / 2f, target.bottom)
+    LayoutEngine.DropZone.RIGHT -> Rect(target.left + target.width / 2f, target.top, target.right, target.bottom)
+    LayoutEngine.DropZone.TOP -> Rect(target.left, target.top, target.right, target.top + target.height / 2f)
+    LayoutEngine.DropZone.BOTTOM -> Rect(target.left, target.top + target.height / 2f, target.right, target.bottom)
+    LayoutEngine.DropZone.CENTER -> target
 }
 
+/**
+ * Анимированный призрак панели: плавно (tween 160ms) перетекает и ресайзится
+ * под целевую зону. При уходе с цели — остаётся на месте и растворяется.
+ */
 @Composable
-private fun ZoneBox(active: Boolean, modifier: Modifier) {
-    Box(
-        modifier = modifier.background(
-            when {
-                active -> Color(0xFF00C853).copy(alpha = 0.30f)
-                else -> Color.White.copy(alpha = 0.04f)
-            }
-        )
+private fun DropPreview(landing: Rect?) {
+    val lastLanding = remember { mutableStateOf(Rect.Zero) }
+    LaunchedEffect(landing) {
+        if (landing != null) lastLanding.value = landing
+    }
+    val animated by animateValueAsState(
+        targetValue = landing ?: lastLanding.value,
+        typeConverter = Rect.VectorConverter,
+        animationSpec = tween(durationMillis = 160),
     )
+    val alpha by animateFloatAsState(
+        targetValue = if (landing != null) 1f else 0f,
+        animationSpec = tween(durationMillis = 120),
+    )
+    if (alpha > 0.01f) {
+        val accent = Color(0xFF00C853)
+        Canvas(Modifier.fillMaxSize()) {
+            drawRoundRect(
+                color = accent.copy(alpha = 0.22f * alpha),
+                topLeft = animated.topLeft,
+                size = animated.size,
+                cornerRadius = CornerRadius(4f)
+            )
+            drawRoundRect(
+                color = accent.copy(alpha = 0.90f * alpha),
+                topLeft = animated.topLeft,
+                size = animated.size,
+                cornerRadius = CornerRadius(4f),
+                style = Stroke(width = 2f)
+            )
+        }
+    }
 }
 
 @Composable

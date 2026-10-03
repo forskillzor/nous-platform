@@ -54,6 +54,9 @@ fun PanelHeader(
     // Порог, после которого «нажатие» превращается в перетаскивание
     // (сплит срабатывает только когда панель реально тащат, а не при клике)
     val dragThresholdPx = with(density) { 12.dp.toPx() }
+    // Стабильная ссылка на обработчики: dragState обновляется на каждое движение
+    // (рекомпозиция), из-за чего pointerInput с ключом onDrag обрывал бы жест
+    val currentOnDrag by rememberUpdatedState(onDrag)
 
     Row(
         modifier = modifier
@@ -63,7 +66,7 @@ fun PanelHeader(
             .onGloballyPositioned { headerOrigin = it.positionInWindow() }
             .then(
                 if (onDrag != null) {
-                    Modifier.pointerInput(onDrag, dragThresholdPx) {
+                    Modifier.pointerInput(dragThresholdPx) {
                         var totalDrag = 0f
                         var dragActive = false
                         detectDragGestures(
@@ -73,20 +76,23 @@ fun PanelHeader(
                             },
                             onDrag = { change, dragAmount ->
                                 totalDrag += dragAmount.getDistance()
+                                val handler = currentOnDrag ?: return@detectDragGestures
                                 if (!dragActive && totalDrag >= dragThresholdPx) {
                                     dragActive = true
-                                    onDrag.onDragStart()
+                                    handler.onDragStart()
                                 }
                                 if (dragActive) {
-                                    onDrag.onDrag(headerOrigin + change.position)
+                                    handler.onDrag(headerOrigin + change.position)
                                 }
                             },
                             onDragEnd = {
-                                if (dragActive) onDrag.onDragEnd()
+                                val handler = currentOnDrag
+                                if (dragActive) handler?.onDragEnd()
                                 dragActive = false
                             },
                             onDragCancel = {
-                                if (dragActive) onDrag.onDragEnd()
+                                val handler = currentOnDrag
+                                if (dragActive) handler?.onDragEnd()
                                 dragActive = false
                             },
                         )
