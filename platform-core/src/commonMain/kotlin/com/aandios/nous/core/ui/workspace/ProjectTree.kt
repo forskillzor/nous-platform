@@ -26,6 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.component.ConfirmDeleteDialog
 import com.aandios.nous.core.workspace.WorkspaceConfig
 
 @Composable
@@ -109,6 +110,7 @@ private fun WorkspaceTreeItem(
     var menuExpanded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var editName by remember(name) { mutableStateOf(name) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     Box {
         Row(
@@ -197,9 +199,22 @@ private fun WorkspaceTreeItem(
             }
             onDelete?.let { fn ->
                 DropdownMenuItem(text = { Text("Delete", color = Color(0xFFF44336), fontSize = 12.sp) }, onClick = {
-                    menuExpanded = false; fn()
+                    menuExpanded = false
+                    confirmDelete = true
                 })
             }
+        }
+
+        if (confirmDelete) {
+            ConfirmDeleteDialog(
+                title = "Delete workspace",
+                message = "Workspace \"$name\" will be permanently deleted.",
+                onConfirm = {
+                    confirmDelete = false
+                    onDelete?.invoke()
+                },
+                onDismiss = { confirmDelete = false },
+            )
         }
     }
 }

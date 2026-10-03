@@ -39,6 +39,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.aandios.nous.core.ui.component.ConfirmDeleteDialog
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelState
 import com.aandios.nous.core.workspace.PanelType
@@ -128,6 +129,7 @@ fun WelcomeScreen(
                             config = card.preview,
                             onClick = { onSelectTemplate(card.build()) },
                             onDelete = { onHideBuiltinTemplate(card.id) },
+                            deleteMessage = "Template \"${card.title}\" will be removed from this list.",
                         )
                     )
                 }
@@ -138,6 +140,7 @@ fun WelcomeScreen(
                             config = template,
                             onClick = { onSelectTemplate(template) },
                             onDelete = { onDeleteTemplate(template) },
+                            deleteMessage = "Template \"${template.name}\" will be permanently deleted.",
                             onRename = { newName -> onRenameTemplate(template, newName) },
                             onDuplicate = { onDuplicateTemplate(template) },
                             onChangeDescription = { desc -> onChangeTemplateDescription(template, desc) },
@@ -153,6 +156,7 @@ fun WelcomeScreen(
                             config = entry.config,
                             onClick = entry.onClick,
                             onDelete = entry.onDelete,
+                            deleteMessage = entry.deleteMessage,
                             onRename = entry.onRename,
                             onDuplicate = entry.onDuplicate,
                             onChangeDescription = entry.onChangeDescription,
@@ -179,6 +183,7 @@ fun WelcomeScreen(
                                 config = config,
                                 onClick = { onOpenRecent(config) },
                                 onDelete = { onDeleteRecent(config) },
+                                deleteMessage = "Workspace \"${config.name}\" will be permanently deleted.",
                             )
                         }
                     }
@@ -208,6 +213,7 @@ private data class TemplateEntry(
     val config: WorkspaceConfig,
     val onClick: () -> Unit,
     val onDelete: () -> Unit,
+    val deleteMessage: String = "",
     val onRename: ((String) -> Unit)? = null,
     val onDuplicate: (() -> Unit)? = null,
     val onChangeDescription: ((String) -> Unit)? = null,
@@ -221,6 +227,7 @@ private fun WorkspaceCard(
     config: WorkspaceConfig,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? = null,
+    deleteMessage: String = "This item will be permanently deleted.",
     onRename: ((String) -> Unit)? = null,
     onDuplicate: (() -> Unit)? = null,
     onChangeDescription: ((String) -> Unit)? = null,
@@ -230,6 +237,7 @@ private fun WorkspaceCard(
     var menuExpanded by remember { mutableStateOf(false) }
     var dialogMode by remember { mutableStateOf<CardDialogMode?>(null) }
     var dialogText by remember { mutableStateOf("") }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     val hasMenu = onRename != null || onDuplicate != null || onChangeDescription != null
 
@@ -299,7 +307,7 @@ private fun WorkspaceCard(
                     }
                 }
                 if (onDelete != null) {
-                    TrashIconButton(onClick = { onDelete() })
+                    TrashIconButton(onClick = { confirmDelete = true })
                 }
             }
         }
@@ -318,6 +326,18 @@ private fun WorkspaceCard(
                     CardDialogMode.DESCRIPTION -> onChangeDescription?.invoke(text)
                 }
             }
+        )
+    }
+
+    if (confirmDelete) {
+        ConfirmDeleteDialog(
+            title = "Confirm delete",
+            message = deleteMessage,
+            onConfirm = {
+                confirmDelete = false
+                onDelete?.invoke()
+            },
+            onDismiss = { confirmDelete = false },
         )
     }
 }
