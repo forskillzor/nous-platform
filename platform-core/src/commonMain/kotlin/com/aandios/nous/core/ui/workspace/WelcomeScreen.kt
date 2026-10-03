@@ -14,11 +14,13 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +28,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -35,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelState
 import com.aandios.nous.core.workspace.PanelType
@@ -47,6 +51,7 @@ import com.aandios.nous.core.workspace.WorkspaceConfig
  * Превью карточек рисуется из фактической конфигурации панелей.
  * Карточки встроенных/пользовательских шаблонов и недавних workspace'ов
  * можно удалять (кнопка-корзина видна только при наведении).
+ * У пользовательских шаблонов есть меню ⋮: Rename / Duplicate / Change (описание).
  */
 @Composable
 fun WelcomeScreen(
@@ -58,6 +63,9 @@ fun WelcomeScreen(
     onDeleteTemplate: (WorkspaceConfig) -> Unit,
     onHideBuiltinTemplate: (String) -> Unit = {},
     onDeleteRecent: (WorkspaceConfig) -> Unit = {},
+    onRenameTemplate: (WorkspaceConfig, String) -> Unit = { _, _ -> },
+    onDuplicateTemplate: (WorkspaceConfig) -> Unit = {},
+    onChangeTemplateDescription: (WorkspaceConfig, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val builtinTemplates = remember {
@@ -130,6 +138,9 @@ fun WelcomeScreen(
                             config = template,
                             onClick = { onSelectTemplate(template) },
                             onDelete = { onDeleteTemplate(template) },
+                            onRename = { newName -> onRenameTemplate(template, newName) },
+                            onDuplicate = { onDuplicateTemplate(template) },
+                            onChangeDescription = { desc -> onChangeTemplateDescription(template, desc) },
                         )
                     )
                 }
@@ -142,6 +153,9 @@ fun WelcomeScreen(
                             config = entry.config,
                             onClick = entry.onClick,
                             onDelete = entry.onDelete,
+                            onRename = entry.onRename,
+                            onDuplicate = entry.onDuplicate,
+                            onChangeDescription = entry.onChangeDescription,
                         )
                     }
                 }
@@ -194,7 +208,12 @@ private data class TemplateEntry(
     val config: WorkspaceConfig,
     val onClick: () -> Unit,
     val onDelete: () -> Unit,
+    val onRename: ((String) -> Unit)? = null,
+    val onDuplicate: (() -> Unit)? = null,
+    val onChangeDescription: ((String) -> Unit)? = null,
 )
+
+private enum class CardDialogMode { RENAME, DESCRIPTION }
 
 @Composable
 private fun WorkspaceCard(
@@ -202,9 +221,17 @@ private fun WorkspaceCard(
     config: WorkspaceConfig,
     onClick: () -> Unit,
     onDelete: (() -> Unit)? = null,
+    onRename: ((String) -> Unit)? = null,
+    onDuplicate: (() -> Unit)? = null,
+    onChangeDescription: ((String) -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    var menuExpanded by remember { mutableStateOf(false) }
+    var dialogMode by remember { mutableStateOf<CardDialogMode?>(null) }
+    var dialogText by remember { mutableStateOf("") }
+
+    val hasMenu = onRename != null || onDuplicate != null || onChangeDescription != null
 
     Box(
         modifier = Modifier
@@ -224,17 +251,141 @@ private fun WorkspaceCard(
             Spacer(Modifier.height(10.dp))
             Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
             Spacer(Modifier.height(4.dp))
-            Text(descOf(config), color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp)
+            Text(config.description.ifBlank { descOf(config) }, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp, maxLines = 2)
             Spacer(Modifier.height(4.dp))
             Text(infoOf(config), color = Color(0xFF5B9BD5), fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
         }
-        if (onDelete != null && hovered) {
-            TrashIconButton(
-                onClick = { onDelete() },
+        if (hovered || menuExpanded) {
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(6.dp)
+                    .padding(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                if (hasMenu) {
+                    Box {
+                        CardIconButton("\u22EE") { menuExpanded = true }
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            onRename?.let { fn ->
+                                DropdownMenuItem(
+                                    text = { Text("Rename", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        dialogText = title
+                                        dialogMode = CardDialogMode.RENAME
+                                    }
+                                )
+                            }
+                            onDuplicate?.let { fn ->
+                                DropdownMenuItem(
+                                    text = { Text("Duplicate", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        fn()
+                                    }
+                                )
+                            }
+                            onChangeDescription?.let { fn ->
+                                DropdownMenuItem(
+                                    text = { Text("Change", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                                    onClick = {
+                                        menuExpanded = false
+                                        dialogText = config.description
+                                        dialogMode = CardDialogMode.DESCRIPTION
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+                if (onDelete != null) {
+                    TrashIconButton(onClick = { onDelete() })
+                }
+            }
+        }
+    }
+
+    val mode = dialogMode
+    if (mode != null) {
+        CardDialog(
+            title = if (mode == CardDialogMode.RENAME) "Rename template" else "Description",
+            initialText = dialogText,
+            onDismiss = { dialogMode = null },
+            onConfirm = { text ->
+                dialogMode = null
+                when (mode) {
+                    CardDialogMode.RENAME -> onRename?.invoke(text)
+                    CardDialogMode.DESCRIPTION -> onChangeDescription?.invoke(text)
+                }
+            }
+        )
+    }
+}
+
+/**
+ * Небольшая кнопка-иконка в углу карточки (три точки), как у корзины.
+ */
+@Composable
+private fun CardIconButton(icon: String, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color(0xFF1E1E1E))
+            .clickable(onClick = onClick)
+            .size(20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(icon, color = Color(0xFFB0B0B0), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+    }
+}
+
+/**
+ * Модальный диалог ввода (переименование / описание шаблона).
+ */
+@Composable
+private fun CardDialog(
+    title: String,
+    initialText: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(initialText) }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .width(320.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color(0xFF121212))
+                .padding(16.dp)
+        ) {
+            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(10.dp))
+            BasicTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                textStyle = TextStyle(color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                cursorBrush = SolidColor(Color(0xFF00C853)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(Color(0xFF1A1A1A), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 8.dp)
             )
+            Spacer(Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                }
+                Spacer(Modifier.width(8.dp))
+                TextButton(onClick = { onConfirm(text) }) {
+                    Text("Save", color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+            }
         }
     }
 }

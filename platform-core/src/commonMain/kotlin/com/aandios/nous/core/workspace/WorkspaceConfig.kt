@@ -17,6 +17,8 @@ data class WorkspaceConfig(
     val name: String = "Untitled",
     val group: String = "",
     val icon: String? = null,
+    /** Пользовательское описание (карточка шаблона); пустое — описание генерируется. */
+    val description: String = "",
 
     val providers: List<ProviderRef> = emptyList(),
     val layout: LayoutNode = LayoutNode.Leaf("panel-0"),
