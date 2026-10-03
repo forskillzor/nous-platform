@@ -154,12 +154,19 @@ fun CandleStickChartInteraction(
                         isCtrlPressed = event.type == KeyEventType.KeyDown
                         true
                     }
-                    // Undo/Redo
+                    // Undo/Redo рисунков: потребляем только когда есть что откатить,
+                    // иначе событие уходит наверх (undo/redo сплитов workspace)
                     event.key == Key.Z && isCtrlPressed && event.type == KeyEventType.KeyDown -> {
-                        drawingHistory?.undo(); true
+                        val h = drawingHistory
+                        if (h != null && h.canUndo) {
+                            h.undo(); true
+                        } else false
                     }
                     event.key == Key.Y && isCtrlPressed && event.type == KeyEventType.KeyDown -> {
-                        drawingHistory?.redo(); true
+                        val h = drawingHistory
+                        if (h != null && h.canRedo) {
+                            h.redo(); true
+                        } else false
                     }
                     // Удаление выделенного рисунка
                     (event.key == Key.Delete || event.key == Key.Backspace) &&
