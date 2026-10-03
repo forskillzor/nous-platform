@@ -5,8 +5,19 @@
 
 package com.aandios.nous_platform.ui.main
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
@@ -41,6 +52,11 @@ fun WorkspaceView(
     var panelConfigs by remember(ws.config.id) { mutableStateOf(ws.config.panels.associateBy { it.id }) }
     var layoutState by remember(ws.config.id) { mutableStateOf(ws.config.layout) }
 
+    // Undo/redo сплитов (Ctrl+Z / Ctrl+Shift+Z) — история на workspace
+    val history = remember(ws.config.id) { LayoutHistory() }
+
+    fun snapshot() = LayoutSnapshot(layout = layoutState.deepCopy(), panels = panelConfigs.toMap())
+
     fun persistConfig() {
         val config = ws.config.copy(
             layout = layoutState,
@@ -48,6 +64,12 @@ fun WorkspaceView(
         )
         ws.updateConfig(config)
         scope.launch { workspaceRepo.update(config) }
+    }
+
+    fun applySnapshot(snap: LayoutSnapshot) {
+        layoutState = snap.layout
+        panelConfigs = snap.panels
+        persistConfig()
     }
 
     fun updatePanelConfig(updated: PanelConfig) {
@@ -65,54 +87,91 @@ fun WorkspaceView(
         (ws.liveViewModels.remove(vmKey) as? com.aandios.nous.core.Disposable)?.dispose()
     }
 
-    LayoutRenderer(
-        node = layoutState,
-        panels = panelConfigs,
-        modifier = modifier,
-        onRatioChange = { persistConfig() },
-        onClosePanel = { panelId ->
-            val newLayout = LayoutEngine.removePanel(layoutState, panelId)
-            if (newLayout != null) {
+    // Корень — фокусируемый, чтобы ловить Ctrl+Z / Ctrl+Shift+Z (undo/redo сплитов).
+    // Если истории нет — не потребляем событие: оно уйдёт к undo рисунков графика.
+    val focusInteraction = remember { MutableInteractionSource() }
+
+    Box(
+        modifier = modifier
+            .clickable(
+                interactionSource = focusInteraction,
+                indication = null
+            ) { /* no-op: focusable for onKeyEvent */ }
+            .onKeyEvent { event ->
+                when {
+                    event.key == Key.Z && event.isCtrlPressed &&
+                        event.type == KeyEventType.KeyDown -> {
+                        if (history.canUndo) {
+                            val prev = history.undo(snapshot())
+                            if (prev != null) applySnapshot(prev)
+                            true
+                        } else false
+                    }
+                    event.key == Key.Z && event.isCtrlPressed && event.isShiftPressed &&
+                        event.type == KeyEventType.KeyDown -> {
+                        if (history.canRedo) {
+                            val next = history.redo(snapshot())
+                            if (next != null) applySnapshot(next)
+                            true
+                        } else false
+                    }
+                    else -> false
+                }
+            }
+    ) {
+        LayoutRenderer(
+            node = layoutState,
+            panels = panelConfigs,
+            modifier = Modifier.fillMaxSize(),
+            onRatioChange = { persistConfig() },
+            onRatioChangeStart = { history.push(snapshot()) },
+            onClosePanel = { panelId ->
+                val newLayout = LayoutEngine.removePanel(layoutState, panelId)
+                if (newLayout != null) {
+                    history.push(snapshot())
+                    layoutState = newLayout
+                    val removedPc = panelConfigs[panelId]
+                    panelConfigs = panelConfigs - panelId
+                    removedPc?.let { disposePanelVm(it) }
+                    persistConfig()
+                }
+            },
+            onSplitPanel = { panelId, direction, newType ->
+                val newPanelId = "panel-${generateId()}"
+                history.push(snapshot())
+                val newLayout = LayoutEngine.split(layoutState, panelId, direction, newPanelId)
                 layoutState = newLayout
-                val removedPc = panelConfigs[panelId]
-                panelConfigs = panelConfigs - panelId
-                removedPc?.let { disposePanelVm(it) }
+                val newConfig = PanelConfig(
+                    id = newPanelId,
+                    type = newType,
+                    symbol = panelConfigs[panelId]?.symbol ?: "BTCUSDT",
+                    providerRef = panelConfigs[panelId]?.providerRef ?: "main",
+                    state = when (newType) {
+                        PanelType.CHART -> PanelState.Chart()
+                        PanelType.DOM -> PanelState.Dom()
+                        PanelType.TRADES -> PanelState.Trades()
+                    }
+                )
+                panelConfigs = panelConfigs + (newPanelId to newConfig)
+                persistConfig()
+            },
+            onMovePanel = { panelId, targetPanelId, zone ->
+                history.push(snapshot())
+                layoutState = LayoutEngine.movePanel(layoutState, panelId, targetPanelId, zone)
+                if (zone == LayoutEngine.DropZone.CENTER) {
+                    val removedPc = panelConfigs[targetPanelId]
+                    panelConfigs = panelConfigs - targetPanelId
+                    removedPc?.let { disposePanelVm(it) }
+                }
                 persistConfig()
             }
-        },
-        onSplitPanel = { panelId, direction, newType ->
-            val newPanelId = "panel-${generateId()}"
-            val newLayout = LayoutEngine.split(layoutState, panelId, direction, newPanelId)
-            layoutState = newLayout
-            val newConfig = PanelConfig(
-                id = newPanelId,
-                type = newType,
-                symbol = panelConfigs[panelId]?.symbol ?: "BTCUSDT",
-                providerRef = panelConfigs[panelId]?.providerRef ?: "main",
-                state = when (newType) {
-                    PanelType.CHART -> PanelState.Chart()
-                    PanelType.DOM -> PanelState.Dom()
-                    PanelType.TRADES -> PanelState.Trades()
+        ) { panelId ->
+            panelConfigs[panelId]?.let { pc ->
+                when (pc.type) {
+                    PanelType.CHART -> ChartPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
+                    PanelType.DOM -> DomPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
+                    PanelType.TRADES -> TradesPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                 }
-            )
-            panelConfigs = panelConfigs + (newPanelId to newConfig)
-            persistConfig()
-        },
-        onMovePanel = { panelId, targetPanelId, zone ->
-            layoutState = LayoutEngine.movePanel(layoutState, panelId, targetPanelId, zone)
-            if (zone == LayoutEngine.DropZone.CENTER) {
-                val removedPc = panelConfigs[targetPanelId]
-                panelConfigs = panelConfigs - targetPanelId
-                removedPc?.let { disposePanelVm(it) }
-            }
-            persistConfig()
-        }
-    ) { panelId ->
-        panelConfigs[panelId]?.let { pc ->
-            when (pc.type) {
-                PanelType.CHART -> ChartPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
-                PanelType.DOM -> DomPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
-                PanelType.TRADES -> TradesPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
             }
         }
     }

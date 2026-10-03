@@ -180,7 +180,9 @@ val appModule = module {
 
 // Simple initialization
 fun initKoin() {
-    startKoin {
-        modules(appModule)
+    if (org.koin.core.context.GlobalContext.getOrNull() == null) {
+        startKoin {
+            modules(appModule)
+        }
     }
 }
