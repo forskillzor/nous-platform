@@ -27,6 +27,8 @@ private val DarkTerminalColorScheme = darkColorScheme(
     background = Color(0xFF0A0A0A),
     surface = Color(0xFF121212),
     surfaceVariant = Color(0xFF1E1E1E),
+    // Без тонирования elevated Surface в primary (иначе панели зеленеют)
+    surfaceTint = Color.Transparent,
 
     // Текст
     onPrimary = Color.Black,
@@ -51,6 +53,7 @@ private val NightTerminalColorScheme = darkColorScheme(
     background = Color(0xFF000000),
     surface = Color(0xFF080808),
     surfaceVariant = Color(0xFF111111),
+    surfaceTint = Color.Transparent,
     onBackground = Color(0xFFAAAAAA),
     onSurface = Color(0xFF999999),
     outline = Color(0xFF222222),
