@@ -39,7 +39,9 @@ import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.AppStateRepository
 import com.aandios.nous.core.workspace.TemplateRepository
 import com.aandios.nous.core.workspace.WorkspaceBus
+import com.aandios.nous.core.workspace.TabDragBus
 import com.aandios.nous.core.workspace.viewmodel.TabManager
+import com.aandios.nous.core.workspace.viewmodel.WindowManager
 import org.koin.core.qualifier.named
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import org.koin.core.context.startKoin
@@ -136,7 +138,9 @@ val appModule = module {
     single<AppStateRepository> { AppStateRepository(get()) }
     single<TemplateRepository> { TemplateRepository(get()) }
     single<WorkspaceBus> { WorkspaceBus() }
-    single<TabManager> { TabManager(get(), get()) }
+    single<TabDragBus> { TabDragBus() }
+    single<TabManager> { TabManager() }
+    single<WindowManager> { WindowManager(get(), get(), get()) }
 
     // 5. ViewModels
     factory {

@@ -99,6 +99,7 @@ fun TerminalLayout(
     workspaceRepo: WorkspaceRepository? = null,
     templateRepo: TemplateRepository? = null,
     workspaceBus: WorkspaceBus? = null,
+    activeWorkspaceId: String? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
@@ -287,7 +288,7 @@ fun TerminalLayout(
                     if (topPanelState.type == ToolPanelType.WORKSPACES && useWorkspaces) {
                         ProjectTree(
                             workspaces = allWorkspaceConfigs,
-                            activeId = tabManager!!.activeWorkspace?.config?.id,
+                            activeId = activeWorkspaceId,
                             onWorkspaceClick = { config -> onOpenWorkspace?.invoke(config) },
                             onNewWorkspace = {
                                 scope.launch {
