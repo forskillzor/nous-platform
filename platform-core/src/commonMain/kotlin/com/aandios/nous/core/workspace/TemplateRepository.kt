@@ -20,11 +20,25 @@ class TemplateRepository(
     companion object {
         private const val PREFIX = "template_"
         private const val INDEX_KEY = "template_index"
+        private const val HIDDEN_KEY = "template_hidden_builtin"
     }
 
     suspend fun create(config: WorkspaceConfig) {
         store.putString("$PREFIX${config.id}", json.encodeToString(config))
         addToIndex(config.id)
+    }
+
+    /** Скрывает встроенный шаблон (стабильный id вида "builtin-*"). */
+    suspend fun hideBuiltin(id: String) {
+        val ids = hiddenBuiltins().toMutableSet().apply { add(id) }
+        store.putString(HIDDEN_KEY, ids.joinToString(","))
+    }
+
+    /** Id скрытых пользователем встроенных шаблонов. */
+    suspend fun hiddenBuiltins(): Set<String> {
+        val raw = store.getString(HIDDEN_KEY) ?: return emptySet()
+        if (raw.isEmpty()) return emptySet()
+        return raw.split(",").filter { it.isNotBlank() }.toSet()
     }
 
     suspend fun get(id: String): WorkspaceConfig? {

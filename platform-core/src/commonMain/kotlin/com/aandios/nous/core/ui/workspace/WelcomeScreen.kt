@@ -8,12 +8,15 @@ package com.aandios.nous.core.ui.workspace
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,27 +44,35 @@ import com.aandios.nous.core.workspace.WorkspaceConfig
  * Экран-заставка терминала (показывается, когда нет открытых workspace):
  * Quick Start → шаблоны (встроенные + пользовательские) → недавние workspace.
  * Превью карточек рисуется из фактической конфигурации панелей.
+ * Карточки встроенных/пользовательских шаблонов и недавних workspace'ов
+ * можно удалять (кнопка-корзина видна только при наведении).
  */
 @Composable
 fun WelcomeScreen(
     recentWorkspaces: List<WorkspaceConfig>,
     userTemplates: List<WorkspaceConfig>,
+    hiddenBuiltinTemplates: Set<String> = emptySet(),
     onSelectTemplate: (WorkspaceConfig) -> Unit,
     onOpenRecent: (WorkspaceConfig) -> Unit,
     onDeleteTemplate: (WorkspaceConfig) -> Unit,
+    onHideBuiltinTemplate: (String) -> Unit = {},
+    onDeleteRecent: (WorkspaceConfig) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val builtinTemplates = remember {
         val gridSymbols = listOf("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
             "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT", "TRXUSDT", "LTCUSDT")
         listOf(
-            BuiltinCard("Scalping", Templates.scalping()) { Templates.scalping() },
-            BuiltinCard("Classic", Templates.classic()) { Templates.classic() },
-            BuiltinCard("Order Flow", Templates.orderFlow()) { Templates.orderFlow() },
-            BuiltinCard("Multi-Chart", Templates.multiChart()) { Templates.multiChart() },
-            BuiltinCard("DOM Grid", Templates.domGrid(gridSymbols)) { Templates.domGrid(gridSymbols) },
-            BuiltinCard("Empty", Templates.empty()) { Templates.empty() },
+            BuiltinCard("builtin-scalping", "Scalping", Templates.scalping()) { Templates.scalping() },
+            BuiltinCard("builtin-classic", "Classic", Templates.classic()) { Templates.classic() },
+            BuiltinCard("builtin-orderflow", "Order Flow", Templates.orderFlow()) { Templates.orderFlow() },
+            BuiltinCard("builtin-multichart", "Multi-Chart", Templates.multiChart()) { Templates.multiChart() },
+            BuiltinCard("builtin-domgrid", "DOM Grid", Templates.domGrid(gridSymbols)) { Templates.domGrid(gridSymbols) },
+            BuiltinCard("builtin-empty", "Empty", Templates.empty()) { Templates.empty() },
         )
+    }
+    val visibleBuiltins = remember(builtinTemplates, hiddenBuiltinTemplates) {
+        builtinTemplates.filter { it.id !in hiddenBuiltinTemplates }
     }
 
     Column(
@@ -100,11 +111,12 @@ fun WelcomeScreen(
         Spacer(Modifier.height(36.dp))
         SectionTitle("TEMPLATES")
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            builtinTemplates.forEach { card ->
+            visibleBuiltins.forEach { card ->
                 WorkspaceCard(
                     title = card.title,
                     config = card.preview,
                     onClick = { onSelectTemplate(card.build()) },
+                    onDelete = { onHideBuiltinTemplate(card.id) },
                 )
             }
         }
@@ -143,6 +155,7 @@ fun WelcomeScreen(
                                 title = config.name,
                                 config = config,
                                 onClick = { onOpenRecent(config) },
+                                onDelete = { onDeleteRecent(config) },
                             )
                         }
                     }
@@ -161,6 +174,7 @@ private fun SectionTitle(text: String) {
 }
 
 private data class BuiltinCard(
+    val id: String,
     val title: String,
     val preview: WorkspaceConfig,
     val build: () -> WorkspaceConfig,
@@ -173,13 +187,16 @@ private fun WorkspaceCard(
     onClick: () -> Unit,
     onDelete: (() -> Unit)? = null,
 ) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+
     Box(modifier = Modifier.width(180.dp)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(6.dp))
                 .background(Color(0xFF121212))
-                .clickable(onClick = onClick)
+                .clickable(interactionSource = interaction, indication = null, onClick = onClick)
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -191,20 +208,50 @@ private fun WorkspaceCard(
             Spacer(Modifier.height(4.dp))
             Text(infoOf(config), color = Color(0xFF5B9BD5), fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
         }
-        if (onDelete != null) {
-            Text(
-                text = "\u2715",
-                color = Color(0xFF888888),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+        if (onDelete != null && hovered) {
+            TrashIconButton(
+                onClick = { onDelete() },
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Color(0xFF1E1E1E))
-                    .clickable { onDelete() }
-                    .padding(horizontal = 5.dp, vertical = 3.dp)
             )
+        }
+    }
+}
+
+/**
+ * Кнопка удаления с иконкой корзины (видна только при наведении на карточку).
+ */
+@Composable
+private fun TrashIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color(0xFF1E1E1E))
+            .clickable(onClick = onClick)
+            .size(20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.size(12.dp)) {
+            val w = size.width
+            val h = size.height
+            val stroke = Color(0xFFB0B0B0)
+            // Крышка и ручка
+            drawLine(stroke, Offset(w * 0.1f, h * 0.3f), Offset(w * 0.9f, h * 0.3f), strokeWidth = 1.2f)
+            drawLine(stroke, Offset(w * 0.4f, h * 0.3f), Offset(w * 0.4f, h * 0.12f), strokeWidth = 1.2f)
+            drawLine(stroke, Offset(w * 0.6f, h * 0.3f), Offset(w * 0.6f, h * 0.12f), strokeWidth = 1.2f)
+            drawLine(stroke, Offset(w * 0.4f, h * 0.12f), Offset(w * 0.6f, h * 0.12f), strokeWidth = 1.2f)
+            // Корпус
+            drawRect(
+                color = stroke,
+                topLeft = Offset(w * 0.2f, h * 0.34f),
+                size = Size(w * 0.6f, h * 0.52f),
+                style = Stroke(width = 1.2f)
+            )
+            // Полосы
+            drawLine(stroke, Offset(w * 0.3f, h * 0.48f), Offset(w * 0.7f, h * 0.48f), strokeWidth = 1f)
+            drawLine(stroke, Offset(w * 0.3f, h * 0.62f), Offset(w * 0.7f, h * 0.62f), strokeWidth = 1f)
+            drawLine(stroke, Offset(w * 0.3f, h * 0.76f), Offset(w * 0.7f, h * 0.76f), strokeWidth = 1f)
         }
     }
 }
