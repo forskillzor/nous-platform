@@ -49,14 +49,14 @@
 13. [ChartWindow и ChartWindowContent](#13)
 14. [ChartInteraction: layout, состояния, Canvas-конвейер](#14)
 15. [Скролл, зум, crosshair и ленивая загрузка — подробно](#15)
-16. [ChartToolbar: символ, режим, агрегация, рисование](#16)
+16. [ChartToolbar: верхняя панель и панель рисования](#16)
 17. [FootprintChart: отдельный график для bidasker-web](#17)
 
 **Часть V. Рендеринг**
 18. [CandleRenderer: свечи, сетка, линия цены](#18)
 19. [ChartPriceScaleRenderer: шкала цен и badge](#19)
 20. [ChartTimeScaleRenderer: шкала времени](#20)
-21. [ChartCrosshairRenderer и ChartTextRenderer](#21)
+21. [ChartCrosshairRenderer](#21)
 22. [FootprintRenderer: кластерный график, popup, агрегация уровней](#22)
 23. [LiquidationRenderer: маркеры и гистограмма](#23)
 24. [Рисование: Drawing, DrawingRenderer, DrawingOverlay, DrawingRepository](#24)
@@ -101,8 +101,9 @@ UI — на **Compose Multiplatform**. График — один из трёх �
 | `CANDLESTICK` | Японские свечи OHLCV | `drawChart()` из `CandleRenderer.kt` |
 | `FOOTPRINT` | Кластерный график (bid/ask объёмы по ценовым уровням внутри свечи) | `drawFootprintChart()` из `FootprintRenderer.kt` |
 
-Переключение — интент `ChartIntent.ToggleChartMode`, кнопка `C`/`FP` живёт
-в `ChartToolbar`.
+Переключение — интент `ChartIntent.SelectChartMode` (дропдаун «Candles/Footprint»
+в верхней панели `ChartToolbar`); `ToggleChartMode` остался для внешних
+переключателей (composeApp).
 
 Важная деталь: **оба режима рисуются одним и тем же composable** —
 `CandleStickChart`. Когда включён footprint, в него передаётся параметр
@@ -121,7 +122,8 @@ UI — на **Compose Multiplatform**. График — один из трёх �
 - **Зум** колёсиком: обычный (якорь — правая, самая новая свеча) и `Ctrl+Zoom`
   (якорь — свеча под курсором). Минимальный зум — `0.05` (видно очень много свечей).
 - **Панорамирование** мышью (drag).
-- **Crosshair** с инфо-панелью (Time/O/H/L), метками high/low и ценой/временем на осях.
+- **Crosshair** всегда включён (TradingView-стиль): линии на hover и проекции
+  на шкалы — badge цены на ценовой шкале и badge времени на шкале времени.
   Свечи, crosshair и шкала цен используют **одно Y-пространство** (`chartMainArea`),
   поэтому метки совпадают со свечами.
 - **Footprint**: история с REST-сервера, live-накопление из ленты сделок для
@@ -180,9 +182,8 @@ features/chart/
     │   │   └── PriceScale.kt                  # вертикальная шкала: fit/сдвиг/диапазон
     │   ├── rendering/
     │   │   ├── CandleRenderer.kt              # свечи, сетка, линия цены
-    │   │   ├── ChartCrosshairRenderer.kt      # перекрестие и инфо-панель
+    │   │   ├── ChartCrosshairRenderer.kt      # crosshair: линии + проекции на шкалы
     │   │   ├── ChartPriceScaleRenderer.kt     # шкала цен, badge цены
-    │   │   ├── ChartTextRenderer.kt           # утилита drawTextLine
     │   │   ├── ChartTimeScaleRenderer.kt      # шкала времени
     │   │   └── FootprintRenderer.kt           # footprint-свечи, popup, агрегация уровней
     │   ├── tools/
@@ -195,7 +196,8 @@ features/chart/
     │   │   ├── ChartIntent.kt                 # MVI-интенты
     │   │   ├── ChartUiState.kt                # единое состояние + sealed ChartState
     │   │   ├── ChartStatePersistor.kt         # save/restore символа/ТФ/режима/агрегации
-    │   │   ├── ChartToolbar.kt                # верхняя панель: символ, режим, ТФ, рисование
+    │   │   ├── ChartToolbar.kt                # верхняя панель: символ, режим (дропдаун), ТФ, агрегация
+    │   │   ├── DrawingToolPanel.kt            # левая панель рисования (иконки в стиле TradingView)
     │   │   ├── ChartViewModel.kt              # оркестратор: state + dispatch
     │   │   └── chart/
     │   │       ├── CandleStickChart.kt        # тонкая обёртка (публичный API)
@@ -1208,6 +1210,8 @@ data class ChartUiState(
     // TODO this hardcode need change to repository/datalayer initialisation symbol list
     val symbols: List<String> = listOf("BTCUSDT", "ETHUSDT"),
     val currentSymbolFormatter: SymbolFormatter = SymbolFormatter(),
+    /** SymbolInfo текущего символа: baseAsset/contractType/marginAsset. */
+    val currentSymbolInfo: SymbolInfo? = null,
     val historyLoadCount: Int = 0,
     val hasMoreHistory: Boolean = true,
     val footprintCandles: List<FootprintCandle> = emptyList(),
@@ -1283,7 +1287,7 @@ CandleStickChart(
 ChartToolbar(
     currentSymbol = uiState.currentSymbol,
     onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
-    onChartModeToggle = { chartViewModel.dispatch(ChartIntent.ToggleChartMode) },
+    onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
     ...
 )
 ```
@@ -1318,7 +1322,7 @@ LaunchedEffect(Unit) {
 ## 9.6. Почему strict MVI
 
 - Одно место, где меняется состояние, — легче отлаживать («кто поменял
-  `chartMode`?» → только обработчик `ToggleChartMode`).
+  `chartMode`?» → только обработчики `SelectChartMode`/`ToggleChartMode`).
 - `ChartUiState` — обычный `data class`: его легко копировать, тестировать
   и передавать.
 - Новые поля не требуют нового `StateFlow` и нового `collectAsState`.
@@ -1672,8 +1676,9 @@ fun ChartWindow(
 }
 ```
 
-`workspaceId`/`panelId` нужны для персистента рисунков; в legacy `MainScreen`
-они не передаются, и рисование живёт только в памяти панели.
+`workspaceId`/`panelId` нужны для персистента рисунков; вне workspace-панелей
+(например, в preview `ChartWindow()`) они не передаются, и рисование живёт
+только в памяти.
 
 ## 13.2. ChartWindowContent
 
@@ -1749,18 +1754,35 @@ LaunchedEffect(workspaceId, panelId, drawingStore) {
 ### 13.2.4. Основной when по состоянию
 
 ```kotlin
-when (val state = uiState.chartState) {
-    is ChartState.Loading -> { /* "Loading chart data..." */ }
-    is ChartState.Error   -> { /* "Error loading chart" + message */ }
-    is ChartState.Success -> {
-        when (uiState.chartMode) {
-            ChartMode.CANDLESTICK -> CandleStickChart(...)
-            ChartMode.FOOTPRINT   -> { /* loading/error/график */ }
+Column {
+    when (val state = uiState.chartState) {
+        is ChartState.Loading -> { /* "Loading chart data..." */ }
+        is ChartState.Error   -> { /* "Error loading chart" + message */ }
+        is ChartState.Success -> {
+            ChartToolbar(...)                     // верхняя панель (над графиком)
+            Box(Modifier.weight(1f)) {
+                // Водяной знак (нижний слой, как в TradingView):
+                // Row { baseAsset | Column { exchange, contractTypeLabel } }
+                when (uiState.chartMode) {
+                    ChartMode.CANDLESTICK -> CandleStickChart(...)
+                    ChartMode.FOOTPRINT   -> { /* loading/error/график */ }
+                }
+                DrawingToolPanel(...)             // левая панель рисования
+            }
         }
-        ChartToolbar(...)
     }
 }
 ```
+
+**Водяной знак** (нижний слой, данные без хардкода):
+
+- крупный тикер — `SymbolInfo.baseAsset` из exchangeInfo (`ChartUiState.currentSymbolInfo`),
+  fallback — полный `currentSymbol`, пока exchangeInfo не загрузился;
+- биржа — `ProviderConfig.displayName` (метаданные провайдера);
+- тип контракта — `contractTypeLabel(SymbolInfo)`: `contractType == "PERPETUAL"` →
+  `"${marginAsset ?: quoteAsset}-M Perp"` ("USDT-M Perp"); для спота — null.
+  `contractType`/`marginAsset` проброшены в `SymbolInfo` из Binance DTO
+  (`BinanceSymbolInfoAdapter`).
 
 ### 13.2.5. Footprint-ветка: слияние live и completed
 
@@ -1805,7 +1827,6 @@ fun CandleStickChart(
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    crosshairEnabled: Boolean = false,
     onNeedMoreHistory: () -> Unit = {},
     historyLoadCount: Int = 0,
     hasMoreHistory: Boolean = true,
@@ -1825,6 +1846,7 @@ fun CandleStickChart(
 
 - `showPriceScale`/`priceScaleWidth` — берутся из `config`;
 - `onCrosshairEnabledChange` — не использовался;
+- `crosshairEnabled` — crosshair всегда включён (hover), переключатель не нужен;
 - `chartWidth` у `findNearestCandleIndex` — не использовался.
 
 ## 14.2. Модель движка: шкалы и серия
@@ -1970,38 +1992,41 @@ val clampedOffset = timeScale.scrollOffset.coerceIn(-TimeScale.MAX_SCROLL_LEFT, 
 ## 15.2. Панорамирование и вертикальный скролл
 
 ```kotlin
-.pointerInput(crosshairEnabled) {
+.pointerInput(activeDrawingTool, drawingHistory) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        if (crosshairEnabled) {
-            // жест — crosshair
-        } else {
-            var previous = down.position
-            do {
-                val event = awaitPointerEvent()
-                val change = event.changes.firstOrNull() ?: break
-                if (!change.pressed) break
 
-                val alt = event.keyboardModifiers.isAltPressed
-                val deltaX = change.position.x - previous.x
-                val deltaY = change.position.y - previous.y
-                previous = change.position
+        // 1. hit-test по рисункам: drag = move/resize (глава 24.4)
+        // 2. при активном инструменте рисования жесты отдаются DrawingOverlay
+        // 3. иначе — панорамирование
 
-                if (alt && footprintCandles != null) {
-                    // Вертикальный скролл уровней footprint (Alt+drag)
-                    verticalScroll = (verticalScroll + deltaY)
-                        .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
-                } else {
-                    timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
-                }
-                change.consume()
-            } while (true)
-        }
+        var previous = down.position
+        do {
+            val event = awaitPointerEvent()
+            val change = event.changes.firstOrNull() ?: break
+            if (!change.pressed) break
+
+            val alt = event.keyboardModifiers.isAltPressed
+            val deltaX = change.position.x - previous.x
+            val deltaY = change.position.y - previous.y
+            previous = change.position
+
+            if (alt && footprintCandles != null) {
+                // Вертикальный скролл уровней footprint (Alt+drag)
+                verticalScroll = (verticalScroll + deltaY)
+                    .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
+            } else {
+                timeScale.panBy(deltaX, currentCandles.size, chartWidthPx)
+                followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
+            }
+            change.consume()
+        } while (true)
     }
 }
 ```
 
-Когда crosshair включён, drag отдаётся ему, а не панорамированию.
+Drag **всегда** панорамирует — crosshair больше не перехватывает жест
+(он всегда включён и следует за курсором на hover, см. 15.4).
 Вертикальный скролл активен только в footprint-режиме и сдвигает
 диапазон цен (`PriceScale.range`), не трогая данные.
 
@@ -2042,12 +2067,22 @@ timeScale.zoomAt(
 **нового** зума. Кламп по устаревшему значению сдвигал якорь влево при
 приближении — именно это ломало зум «от крайней правой свечи».
 
-## 15.4. Crosshair
+## 15.4. Crosshair (TradingView-стиль, всегда включён)
 
-- Включается кнопкой в тулбаре (кнопка `⧉`).
-- Пока включён — drag не панорамирует, а двигает перекрестие.
-- В footprint-режиме показывается footprint-панель `O/H/L/C/Ticks`
-  (`drawCrosshairForFootprint`), в свечах — `Time/O/H/L` (`drawCrosshair`).
+- **Всегда включён** — кнопки-переключателя больше нет. Позиция курсора
+  отслеживается на hover в отдельном `pointerInput`:
+  - `PointerEventType.Move` → `mousePosition`/`isCrosshairVisible = true`;
+  - `PointerEventType.Exit` → скрыть перекрестие и сбросить `footprintHoverPos`.
+- **Drag по-прежнему панорамирует** — crosshair не перехватывает жесты.
+- Рендер (`drawCrosshair`, единый для свечей и footprint):
+  - две линии через область графика;
+  - **проекция на шкалу цен** — badge в `priceScaleArea` справа со значением
+    `priceFromY(mousePosition.y)` (`formatPrice`);
+  - **проекция на шкалу времени** — badge в `timeScaleArea` по X курсора со
+    временем ближайшей свечи (`formatTime`);
+  - инфо-панель (`Time/O/H/L`) и маркеры high/low удалены — их нет в TradingView.
+- Badge'и рисуются последним слоем (шаг 9 конвейера) поверх шкал;
+  при пересечении с badge текущей цены перекрывают его.
 - При зажатом `Alt` и наведении на footprint-график показывается popup
   с таблицей bid/ask по уровням. `Alt` читается из pointer-события
   (`keyboardModifiers.isAltPressed`), поэтому popup работает независимо
@@ -2166,48 +2201,62 @@ Box(
 
 ---
 
-# 16. ChartToolbar: символ, режим, агрегация, рисование <a name="16"></a>
+# 16. ChartToolbar: верхняя панель и панель рисования <a name="16"></a>
 
-Тулбар — компактная строка поверх графика:
+Тулбар больше не оверлей внутри графика: **верхняя панель** стоит над областью
+графика (`Column` в `ChartWindowContent`: панель → `Box(weight(1f))` с графиком),
+а **инструменты рисования** вынесены в отдельную вертикальную панель слева
+(`DrawingToolPanel`), как в TradingView.
+
+Верхняя панель (дропдауны без текстовых label — только значения):
 
 ```
-[Symbol ▾] [C/FP] [1x|10x|100x] [⧉] [1m 5m 15m 30m 1h 4h 1d 1w] [T H R V Δ] [↶ ↷]
+[Binance ▾] [BTCUSDT ▾] [Candles ▾] [1x|10x|100x] [1h ▾]
 ```
 
-## 16.1. Символ
+## 16.1. Биржа
+
+Первый дропдаун — список бирж: `displayName` всех зарегистрированных в Koin
+`Provider` (`GlobalContext.get().getAll<Provider>()`), текущее значение —
+`provider.config.displayName`. Реального переключения провайдера пока нет —
+выбор хранится локально в `ChartWindowContent`.
+
+## 16.2. Символ
 
 `SymbolSearchDropdown` из `platform-core`: поиск по списку, подсветка
 символов с footprint (`symbolsWithFootprint`).
 
-## 16.2. Режим и агрегация
+## 16.3. Режим и агрегация
 
-Кнопка `C`/`FP` переключает `ChartMode`; при footprint появляется селектор
-агрегации `1x/10x/100x`, который меняет `ChartConfig.footprintConfig.aggregationLevel`.
+Режим графика — дропдаун «Candles/Footprint» (`TerminalDropdownWithLabel`
+из platform-core, интент `SelectChartMode`); при footprint появляется
+селектор агрегации `1x/10x/100x`, который меняет
+`ChartConfig.footprintConfig.aggregationLevel`.
 
-## 16.3. Таймфреймы
+## 16.4. Таймфреймы
 
-`1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w`. Маппинг в интервал биржи — `Timeframes`
+Дропдаун `TF` со списком `1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w` (тот же
+паттерн, что у режима: `TerminalDropdownWithLabel` + `DropdownMenu`,
+текущий пункт подсвечен). Маппинг в интервал биржи — `Timeframes`
 (platform-core), `30m`/`1w` работают корректно.
 
-## 16.4. Инструменты рисования
+## 16.5. Левая панель рисования (DrawingToolPanel)
 
-```kotlin
-private val drawingTools = listOf(
-    DrawingToolType.TREND_LINE to "T",
-    DrawingToolType.HORIZONTAL to "H",
-    DrawingToolType.RECTANGLE to "R",
-    DrawingToolType.VERTICAL to "V",
-    DrawingToolType.RULER to "\u0394",
-)
-```
+Вертикальный ряд иконок, нарисованных на `Canvas` в стиле TradingView:
+трендовая линия, горизонтальная, прямоугольник, вертикальная, линейка
+(все — с точками-ручками на концах, как в TV), затем разделитель и
+undo/redo (дуговые стрелки).
 
 Поведение:
 
-- клик по инструменту активирует его (подсветка);
+- клик по инструменту активирует его (подсветка accent-фоном);
 - повторный клик по активному — сбрасывает в `NONE`;
-- `↶`/`↷` — undo/redo (`DrawingHistory.canUndo/canRedo`);
+- undo/redo — неактивны (полупрозрачны), когда история пуста;
 - после создания фигуры `DrawingOverlay` сам сбрасывает инструмент через
-  `onActiveDrawingToolChange` (раньше колбэк не пробрасывался).
+  `onActiveDrawingToolChange`.
+
+Панель плавающая: `Alignment.CenterStart` внутри области графика (слева,
+как в TradingView), не перекрывает шкалу цен.
 
 ---
 
@@ -2225,7 +2274,6 @@ fun FootprintChart(
     currentPrice: Float? = null,
     modifier: Modifier = Modifier,
     config: ChartConfig = DefaultChartConfig,
-    crosshairEnabled: Boolean = false,
 ) {
     val allCandles = remember(completedCandles, liveCandle) {
         if (liveCandle != null) completedCandles + liveCandle else completedCandles
@@ -2240,7 +2288,6 @@ fun FootprintChart(
         currentPrice = currentPrice ?: skeleton.lastOrNull()?.close,
         modifier = modifier,
         config = config,
-        crosshairEnabled = crosshairEnabled,
         footprintCandles = allCandles,   // включает footprint-режим движка
         hasMoreHistory = false,          // пагинация — на стороне bidasker (DataLoader)
     )
@@ -2251,8 +2298,8 @@ fun FootprintChart(
 
 - вертикальный скролл (`Alt+drag`), double-tap сброс, zум с Ctrl и кнопка
   `⇥` — автоматически работают и в bidasker, потому что живут в движке;
-- footprint-crosshair (O/H/L/C/Ticks), popup, пунктирная линия цены —
-  тоже из движка;
+- crosshair с проекциями на шкалы (единый для свечей и footprint),
+  Alt-popup и пунктирная линия цены — тоже из движка;
 - кэш и пагинация — по-прежнему на стороне `bidasker-web` (`DataLoader`).
 
 ---
@@ -2395,7 +2442,7 @@ fun DrawScope.drawTimeScale(
 
 ---
 
-# 21. ChartCrosshairRenderer и ChartTextRenderer <a name="21"></a>
+# 21. ChartCrosshairRenderer <a name="21"></a>
 
 ## 21.1. drawCrosshair
 
@@ -2416,29 +2463,18 @@ fun DrawScope.drawCrosshair(
 
 1. Проверка, что курсор внутри `chartMainArea` — иначе выходим.
 2. Две линии: вертикальная и горизонтальная.
-3. `findNearestCandleIndex(mouseX, candles, scrollOffset, zoomLevel)` —
-   параметр `chartWidth` удалён, он не использовался.
-4. Маркеры high (красный) и low (зелёный).
-5. Инфо-панель `Time/O/H/L` — цены через `config.priceFormatter`.
-6. Ценовая метка на оси Y (правая сторона).
-7. Временная метка на оси X (низ).
+3. **Проекция на шкалу цен** — badge в `priceScaleArea` справа со значением
+   `priceFromY(mousePosition.y)` через `config.priceFormatter`.
+4. **Проекция на шкалу времени** — `findNearestCandleIndex(mouseX, candles,
+   scrollOffset, zoomLevel)` и badge в `timeScaleArea` с `formatTime`.
+   Параметр `chartWidth` удалён, он не использовался.
+
+Инфо-панель `Time/O/H/L`, маркеры high/low и `ChartTextRenderer` (утилита
+`drawTextLine`) удалены: в TradingView у crosshair только линии и подписи
+на шкалах.
 
 Все Y-координаты считаются по `chartMainArea.height` — тому же, по которому
 рисуются свечи.
-
-## 21.2. ChartTextRenderer
-
-```kotlin
-fun DrawScope.drawTextLine(text: String, x: Float, y: Float,
-                           textMeasurer: TextMeasurer, color: Color)
-```
-
-Утилита для одной строки моноширинного текста 10sp. Используется
-в crosshair-панели и в метках рисунков.
-
-**Технический долг.** Текст меряется заново на каждом кадре. Для статичных
-надписей имеет смысл кэшировать `TextLayoutResult` (например, в
-`remember`/мапе по строке).
 
 ---
 
@@ -2505,8 +2541,9 @@ fun aggregateLevels(
 
 ## 22.4. Вспомогательные рендереры
 
-- `drawCrosshairForFootprint` — crosshair с инфо-панелью `O/H/L/C/Ticks`;
-  движок вызывает его в footprint-режиме вместо свечного `drawCrosshair`.
+- `drawCrosshairForFootprint` удалён: crosshair унифицирован — для свечей
+  и footprint используется один `drawCrosshair` (линии + проекции на шкалы),
+  а детальная таблица уровней осталась за `drawFootprintPopup` (Alt+hover).
 - Отдельной шкалы времени для footprint больше нет: движок рисует общую
   `drawTimeScale` по каркасным свечам (`toSkeletonCandle`), поэтому
   `drawTimeScaleForFootprint` удалён за ненадобностью.
@@ -3055,7 +3092,7 @@ priceScaleArea: top = chartMainArea.top
 | 6 | Шкала цен + badge | `drawPriceScale` |
 | 7 | Popup footprint (Alt) | `drawFootprintPopup` |
 | 8 | Рисунки пользователя | `drawDrawings` |
-| 9 | Crosshair (свечный или footprint) | `drawCrosshair` / `drawCrosshairForFootprint` |
+| 9 | Crosshair (единый для свечей и footprint) | `drawCrosshair` |
 
 В фазе F эти слои планируется перевести на `ChartPanePrimitive` с
 zOrder (`bottom/normal/top`), как в lightweight-charts.
@@ -3125,19 +3162,18 @@ ChartWindow(
 - При закрытии панели VM удаляется из `liveViewModels` и получает
   `dispose()`.
 
-## 29.2. Legacy MainScreen
+## 29.2. Welcome-экран (было: legacy MainScreen)
 
-`MainScreen` (когда workspace выключен) работает с одним `ChartViewModel`:
+Legacy `MainScreen` (фиксированный Chart+DOM+Trades с глобальными VM) удалён.
+Когда открытых workspace нет, `main.kt` показывает `WelcomeScreen`
+(platform-core): шаблоны (`Templates.scalping/classic/orderFlow/multiChart/domGrid/empty`)
+с мини-превью раскладки, недавние workspace'ы (`WorkspaceRepository.getAll()`,
+сортировка по `updatedAt`) и краткая инструкция по горячим клавишам.
 
-```kotlin
-LaunchedEffect(Unit) { chartViewModel.dispatch(ChartIntent.RestoreState) }
-LaunchedEffect(selectedSymbol, selectedTimeframe) {
-    chartViewModel.dispatch(ChartIntent.LoadChart(selectedSymbol, selectedTimeframe))
-}
-```
+Клик по шаблону = `workspaceRepo.create(config)` + `tabManager.openWorkspace(config)`;
+после закрытия последней вкладки снова показывается Welcome.
 
-Символ/ТФ синхронизируются из `state.map { ... }.distinctUntilChanged()`.
-Рисунки здесь не персистятся: `workspaceId`/`panelId` не передаются.
+Рисунки в workspace-панелях персистятся через `workspaceId`/`panelId`.
 
 ## 29.3. Полная картина жизненного цикла
 
@@ -3346,7 +3382,7 @@ val indicatorRenderers = remember(candles) {
 
 1. `Timeframes.supported` — добавить строку.
 2. `Timeframes.millis` — добавить длительность.
-3. `ChartToolbar.timeframes` — добавить кнопку.
+3. `ChartToolbar.timeframes` — добавить пункт в дропдаун `TF`.
 4. Если это footprint-таймфрейм — обновить
    `FootprintAggregator.resolveFootprintSourceTimeframe`.
 
@@ -3360,7 +3396,7 @@ val indicatorRenderers = remember(candles) {
 2. `DrawingToolType` — новое значение.
 3. `DrawingOverlay.addDrawing` — обработка жеста и создание модели.
 4. `DrawingRenderer.drawDrawings` — отрисовка (и метки, если нужны).
-5. `ChartToolbar.drawingTools` — кнопка.
+5. `DrawingToolPanel.drawingTools` — иконка в левой панели.
 
 Персистент заработает автоматически: список сериализуется целиком.
 
