@@ -7,6 +7,7 @@ package com.aandios.nous.core.ui.workspace
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -14,7 +15,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -22,23 +27,47 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.workspace.PanelConfig
 import com.aandios.nous.core.workspace.PanelType
 
+/**
+ * Обработчики перетаскивания панели за заголовок.
+ */
+class PanelDragHandlers(
+    val onDragStart: () -> Unit,
+    val onDrag: (Offset) -> Unit,
+    val onDragEnd: () -> Unit,
+)
+
 @Composable
 fun PanelHeader(
     config: PanelConfig,
     onClose: (() -> Unit)? = null,
     onSplitH: ((PanelType) -> Unit)? = null,
     onSplitV: ((PanelType) -> Unit)? = null,
+    onDrag: PanelDragHandlers? = null,
     modifier: Modifier = Modifier
 ) {
     var splitMenuExpanded by remember { mutableStateOf(false) }
     var splitDirection by remember { mutableStateOf(false) } // false=H, true=V
     var menuX by remember { mutableFloatStateOf(0f) }
+    var headerOrigin by remember { mutableStateOf(Offset.Zero) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
             .height(22.dp)
             .background(Color(0xFF1A1A1A))
+            .onGloballyPositioned { headerOrigin = it.positionInWindow() }
+            .then(
+                if (onDrag != null) {
+                    Modifier.pointerInput(onDrag) {
+                        detectDragGestures(
+                            onDragStart = { onDrag.onDragStart() },
+                            onDrag = { change, _ -> onDrag.onDrag(headerOrigin + change.position) },
+                            onDragEnd = { onDrag.onDragEnd() },
+                            onDragCancel = { onDrag.onDragEnd() },
+                        )
+                    }
+                } else Modifier
+            )
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

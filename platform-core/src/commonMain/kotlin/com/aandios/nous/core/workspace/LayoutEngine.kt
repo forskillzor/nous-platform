@@ -6,10 +6,13 @@
 package com.aandios.nous.core.workspace
 
 /**
- * Операции над деревом LayoutNode — split, remove, replace, collect.
+ * Операции над деревом LayoutNode — split, remove, replace, collect, move.
  * Все функции immutable: возвращают новый root, не мутируют оригинал.
  */
 object LayoutEngine {
+
+    /** Зоны дропа при перетаскивании панели (как в IntelliJ IDEA). */
+    enum class DropZone { LEFT, RIGHT, TOP, BOTTOM, CENTER }
 
     /** Разделить панель на две (вертикально или горизонтально) */
     fun split(
@@ -62,6 +65,70 @@ object LayoutEngine {
         }
         walk(root)
         return ids
+    }
+
+    /**
+     * Переместить панель [panelId] относительно [targetPanelId] в зону [zone]:
+     * края — сплит целевой панели, CENTER — замена целевой панели.
+     */
+    fun movePanel(
+        root: LayoutNode,
+        panelId: String,
+        targetPanelId: String,
+        zone: DropZone,
+    ): LayoutNode {
+        if (panelId == targetPanelId) return root
+
+        val (withoutMoved, removed) = removeNode(root, panelId)
+        if (!removed) return root
+        val without = withoutMoved ?: return root
+
+        return insertRelative(without, panelId, targetPanelId, zone)
+    }
+
+    private fun removeNode(node: LayoutNode, panelId: String): Pair<LayoutNode?, Boolean> {
+        return when (node) {
+            is LayoutNode.Leaf ->
+                if (node.panelId == panelId) null to true else node to false
+            is LayoutNode.Split -> {
+                var removed = false
+                val children = node.children.mapNotNull { child ->
+                    val (newChild, wasRemoved) = removeNode(child, panelId)
+                    if (wasRemoved) removed = true
+                    newChild
+                }
+                val result = when (children.size) {
+                    0 -> null
+                    1 -> children[0]
+                    else -> node.copy(children = children)
+                }
+                result to removed
+            }
+        }
+    }
+
+    private fun insertRelative(
+        node: LayoutNode,
+        panelId: String,
+        targetPanelId: String,
+        zone: DropZone,
+    ): LayoutNode {
+        return when (node) {
+            is LayoutNode.Leaf -> {
+                if (node.panelId == targetPanelId) {
+                    val moved = LayoutNode.Leaf(panelId)
+                    when (zone) {
+                        DropZone.CENTER -> moved
+                        DropZone.LEFT -> LayoutNode.Split(LayoutNode.Direction.HORIZONTAL, 0.5f, listOf(moved, node))
+                        DropZone.RIGHT -> LayoutNode.Split(LayoutNode.Direction.HORIZONTAL, 0.5f, listOf(node, moved))
+                        DropZone.TOP -> LayoutNode.Split(LayoutNode.Direction.VERTICAL, 0.5f, listOf(moved, node))
+                        DropZone.BOTTOM -> LayoutNode.Split(LayoutNode.Direction.VERTICAL, 0.5f, listOf(node, moved))
+                    }
+                } else node
+            }
+            is LayoutNode.Split ->
+                node.copy(children = node.children.map { insertRelative(it, panelId, targetPanelId, zone) })
+        }
     }
 
     private fun transform(node: LayoutNode, fn: (LayoutNode) -> LayoutNode): LayoutNode {
