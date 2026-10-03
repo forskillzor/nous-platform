@@ -55,6 +55,16 @@ fun WorkspaceView(
         persistConfig()
     }
 
+    fun disposePanelVm(pc: PanelConfig) {
+        val suffix = when (pc.type) {
+            PanelType.CHART -> "_chart"
+            PanelType.DOM -> "_dom"
+            PanelType.TRADES -> "_trades"
+        }
+        val vmKey = "${pc.id}$suffix"
+        (ws.liveViewModels.remove(vmKey) as? com.aandios.nous.core.Disposable)?.dispose()
+    }
+
     LayoutRenderer(
         node = layoutState,
         panels = panelConfigs,
@@ -66,15 +76,7 @@ fun WorkspaceView(
                 layoutState = newLayout
                 val removedPc = panelConfigs[panelId]
                 panelConfigs = panelConfigs - panelId
-                removedPc?.let { pc ->
-                    val suffix = when (pc.type) {
-                        PanelType.CHART -> "_chart"
-                        PanelType.DOM -> "_dom"
-                        PanelType.TRADES -> "_trades"
-                    }
-                    val vmKey = "${pc.id}$suffix"
-                    (ws.liveViewModels.remove(vmKey) as? com.aandios.nous.core.Disposable)?.dispose()
-                }
+                removedPc?.let { disposePanelVm(it) }
                 persistConfig()
             }
         },
@@ -94,6 +96,15 @@ fun WorkspaceView(
                 }
             )
             panelConfigs = panelConfigs + (newPanelId to newConfig)
+            persistConfig()
+        },
+        onMovePanel = { panelId, targetPanelId, zone ->
+            layoutState = LayoutEngine.movePanel(layoutState, panelId, targetPanelId, zone)
+            if (zone == LayoutEngine.DropZone.CENTER) {
+                val removedPc = panelConfigs[targetPanelId]
+                panelConfigs = panelConfigs - targetPanelId
+                removedPc?.let { disposePanelVm(it) }
+            }
             persistConfig()
         }
     ) { panelId ->
