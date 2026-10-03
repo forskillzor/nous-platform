@@ -159,6 +159,11 @@ fun WorkspaceView(
                 history.push(snapshot())
                 layoutState = LayoutEngine.movePanel(layoutState, panelId, targetPanelId, zone)
                 persistConfig()
+            },
+            onMovePanelToRoot = { panelId, zone ->
+                history.push(snapshot())
+                layoutState = LayoutEngine.movePanelToRoot(layoutState, panelId, zone, ratio = 0.5f)
+                persistConfig()
             }
         ) { panelId ->
             panelConfigs[panelId]?.let { pc ->

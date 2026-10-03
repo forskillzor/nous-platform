@@ -90,6 +90,31 @@ object LayoutEngine {
         return insertRelative(without, panelId, targetPanelId, zone)
     }
 
+    /**
+     * Переместить панель на корневой уровень: над/под/слева/справа от ВСЕХ панелей.
+     * Края — новая ветка сплита вокруг всего дерева; панель занимает [ratio] (по умолч. половину).
+     */
+    fun movePanelToRoot(
+        root: LayoutNode,
+        panelId: String,
+        zone: DropZone,
+        ratio: Float = 0.5f,
+    ): LayoutNode {
+        if (zone == DropZone.CENTER) return root
+        val (withoutMoved, removed) = removeNode(root, panelId)
+        if (!removed) return root
+        val rest = withoutMoved ?: return root // была единственная панель — некуда двигать
+
+        val moved = LayoutNode.Leaf(panelId)
+        return when (zone) {
+            DropZone.TOP -> LayoutNode.Split(LayoutNode.Direction.VERTICAL, ratio, listOf(moved, rest))
+            DropZone.BOTTOM -> LayoutNode.Split(LayoutNode.Direction.VERTICAL, 1f - ratio, listOf(rest, moved))
+            DropZone.LEFT -> LayoutNode.Split(LayoutNode.Direction.HORIZONTAL, ratio, listOf(moved, rest))
+            DropZone.RIGHT -> LayoutNode.Split(LayoutNode.Direction.HORIZONTAL, 1f - ratio, listOf(rest, moved))
+            DropZone.CENTER -> root
+        }
+    }
+
     /** Обмен местами: [panelId] встаёт на место [targetPanelId] и наоборот. */
     private fun swapPanels(root: LayoutNode, panelId: String, targetPanelId: String): LayoutNode {
         val ids = collectPanelIds(root)

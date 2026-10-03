@@ -90,4 +90,61 @@ class LayoutEngineMoveTest {
         val single = leaf("only")
         assertNull(LayoutEngine.removePanel(single, "only"))
     }
+
+    @Test
+    fun `move to root top puts panel above all at half`() {
+        val root = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(leaf("a"), LayoutNode.Split(LayoutNode.Direction.VERTICAL, 0.5f, listOf(leaf("b"), leaf("c"))))
+        )
+        val result = LayoutEngine.movePanelToRoot(root, "c", LayoutEngine.DropZone.TOP)
+        val split = result as LayoutNode.Split
+        assertEquals(LayoutNode.Direction.VERTICAL, split.direction)
+        assertEquals(0.5f, split.ratio)
+        assertEquals("c", (split.children[0] as LayoutNode.Leaf).panelId)
+        assertEquals(listOf("c", "a", "b"), LayoutEngine.collectPanelIds(split))
+    }
+
+    @Test
+    fun `move to root bottom keeps moved last`() {
+        val root = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(leaf("a"), leaf("b"))
+        )
+        val result = LayoutEngine.movePanelToRoot(root, "a", LayoutEngine.DropZone.BOTTOM)
+        val split = result as LayoutNode.Split
+        assertEquals(LayoutNode.Direction.VERTICAL, split.direction)
+        assertEquals(listOf("b", "a"), LayoutEngine.collectPanelIds(split))
+        assertEquals("a", (split.children[1] as LayoutNode.Leaf).panelId)
+    }
+
+    @Test
+    fun `move to root left and right`() {
+        val root = LayoutNode.Split(
+            LayoutNode.Direction.VERTICAL, 0.5f,
+            listOf(leaf("a"), leaf("b"))
+        )
+        val left = LayoutEngine.movePanelToRoot(root, "b", LayoutEngine.DropZone.LEFT) as LayoutNode.Split
+        assertEquals(LayoutNode.Direction.HORIZONTAL, left.direction)
+        assertEquals(listOf("b", "a"), LayoutEngine.collectPanelIds(left))
+
+        val right = LayoutEngine.movePanelToRoot(root, "a", LayoutEngine.DropZone.RIGHT) as LayoutNode.Split
+        assertEquals(LayoutNode.Direction.HORIZONTAL, right.direction)
+        assertEquals(listOf("b", "a"), LayoutEngine.collectPanelIds(right))
+    }
+
+    @Test
+    fun `move to root is no-op for single panel or center`() {
+        val single = leaf("only")
+        assertEquals(single, LayoutEngine.movePanelToRoot(single, "only", LayoutEngine.DropZone.TOP))
+
+        val root = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(leaf("a"), leaf("b"))
+        )
+        assertEquals(
+            LayoutEngine.collectPanelIds(root),
+            LayoutEngine.collectPanelIds(LayoutEngine.movePanelToRoot(root, "a", LayoutEngine.DropZone.CENTER))
+        )
+    }
 }

@@ -37,6 +37,8 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
@@ -51,6 +53,7 @@ private class PanelDragState {
     var panelId by mutableStateOf<String?>(null)
     var targetId by mutableStateOf<String?>(null)
     var zone by mutableStateOf<LayoutEngine.DropZone?>(null)
+    var rootZone by mutableStateOf<LayoutEngine.DropZone?>(null)
     var cancelled by mutableStateOf(false)
     var panelRects by mutableStateOf<Map<String, Rect>>(emptyMap())
 
@@ -58,7 +61,15 @@ private class PanelDragState {
         panelId = null
         targetId = null
         zone = null
+        rootZone = null
         cancelled = true
+    }
+
+    fun clearTargets() {
+        panelId = null
+        targetId = null
+        zone = null
+        rootZone = null
     }
 }
 
@@ -72,14 +83,27 @@ fun LayoutRenderer(
     onRatioChange: (() -> Unit)? = null,
     onRatioChangeStart: (() -> Unit)? = null,
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)? = null,
+    onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     val dragState = remember { PanelDragState() }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
+    var rootSize by remember { mutableStateOf(IntSize.Zero) }
     val focusInteraction = remember { MutableInteractionSource() }
+    val density = LocalDensity.current
+    val rootBandPx = with(density) { 28.dp.toPx() }
+    val rootStripPx = with(density) { 6.dp.toPx() }
+
+    val wsRectWindow = Rect(
+        left = rootOrigin.x,
+        top = rootOrigin.y,
+        right = rootOrigin.x + rootSize.width,
+        bottom = rootOrigin.y + rootSize.height,
+    )
 
     Box(
         modifier = modifier
+            .onSizeChanged { rootSize = it }
             .onGloballyPositioned { rootOrigin = it.positionInWindow() }
             .clickable(interactionSource = focusInteraction, indication = null) { /* focusable for Esc */ }
             .onPreviewKeyEvent { event ->
@@ -101,15 +125,23 @@ fun LayoutRenderer(
             onRatioChange = onRatioChange,
             onRatioChangeStart = onRatioChangeStart,
             onMovePanel = onMovePanel,
+            onMovePanelToRoot = onMovePanelToRoot,
+            wsRect = wsRectWindow,
+            rootBandPx = rootBandPx,
             dragState = dragState,
             panelContent = panelContent,
         )
 
         // Анимированный «призрак» панели: показывает, куда и какого размера
-        // она встанет при отпускании (половина цели для краёв, вся цель для CENTER)
-        val landingWindow = dragState.targetId
-            ?.let { id -> dragState.panelRects[id] }
-            ?.let { r -> dragState.zone?.let { z -> landingRect(r, z) } }
+        // она встанет при отпускании. Для зон панели — половина/цель панели,
+        // для корневых зон — тонкая полоска на всю ширину/высоту воркспейса.
+        val landingWindow = when {
+            dragState.rootZone != null ->
+                rootLandingRect(wsRectWindow, dragState.rootZone!!, rootStripPx)
+            else -> dragState.targetId
+                ?.let { id -> dragState.panelRects[id] }
+                ?.let { r -> dragState.zone?.let { z -> landingRect(r, z) } }
+        }
         val landing = landingWindow?.let {
             Rect(
                 left = it.left - rootOrigin.x,
@@ -132,6 +164,9 @@ private fun RenderNode(
     onRatioChange: (() -> Unit)?,
     onRatioChangeStart: (() -> Unit)?,
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)?,
+    onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
+    wsRect: Rect = Rect.Zero,
+    rootBandPx: Float = 0f,
     dragState: PanelDragState,
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
@@ -152,29 +187,40 @@ private fun RenderNode(
                         onClose = onClosePanel?.let { { it(panelId) } },
                         onSplitH = onSplitPanel?.let { fn -> { type -> fn(panelId, LayoutNode.Direction.HORIZONTAL, type) } },
                         onSplitV = onSplitPanel?.let { fn -> { type -> fn(panelId, LayoutNode.Direction.VERTICAL, type) } },
-                        onDrag = if (onMovePanel != null) {
+                        onDrag = if (onMovePanel != null || onMovePanelToRoot != null) {
                             PanelDragHandlers(
                                 onDragStart = {
                                     dragState.panelId = panelId
                                     dragState.targetId = null
                                     dragState.zone = null
+                                    dragState.rootZone = null
                                     dragState.cancelled = false
                                 },
                                 onDrag = { globalPos ->
                                     if (!dragState.cancelled) {
-                                        resolveDropTarget(dragState, globalPos, excludeId = panelId)
+                                        resolveDropTarget(
+                                            dragState = dragState,
+                                            globalPos = globalPos,
+                                            excludeId = panelId,
+                                            wsRect = wsRect,
+                                            rootBandPx = rootBandPx,
+                                        )
                                     }
                                 },
                                 onDragEnd = {
                                     val target = dragState.targetId
                                     val zone = dragState.zone
+                                    val rootZone = dragState.rootZone
                                     val wasCancelled = dragState.cancelled
-                                    dragState.panelId = null
-                                    dragState.targetId = null
-                                    dragState.zone = null
+                                    dragState.clearTargets()
                                     dragState.cancelled = false
-                                    if (!wasCancelled && target != null && zone != null) {
-                                        onMovePanel(panelId, target, zone)
+                                    if (!wasCancelled) {
+                                        when {
+                                            rootZone != null && onMovePanelToRoot != null ->
+                                                onMovePanelToRoot(panelId, rootZone)
+                                            target != null && zone != null && onMovePanel != null ->
+                                                onMovePanel(panelId, target, zone)
+                                        }
                                     }
                                 },
                             )
@@ -203,7 +249,7 @@ private fun RenderNode(
                             node.children.forEachIndexed { index, child ->
                                 val weight =
                                     if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, dragState = dragState, panelContent = panelContent)
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
                                 if (index < node.children.lastIndex) {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.HORIZONTAL,
@@ -226,7 +272,7 @@ private fun RenderNode(
                             node.children.forEachIndexed { index, child ->
                                 val weight =
                                     if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, dragState = dragState, panelContent = panelContent)
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
                                 if (index < node.children.lastIndex) {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.VERTICAL,
@@ -249,8 +295,36 @@ private fun RenderNode(
     }
 }
 
-/** Hit-test по панелям во время drag: определяет целевой panel и зону. */
-private fun resolveDropTarget(dragState: PanelDragState, globalPos: Offset, excludeId: String) {
+/** Hit-test во время drag: корневые зоны (края воркспейса) в приоритете, затем панели. */
+private fun resolveDropTarget(
+    dragState: PanelDragState,
+    globalPos: Offset,
+    excludeId: String,
+    wsRect: Rect,
+    rootBandPx: Float,
+) {
+    // 1) Корневые зоны: курсор в полосе у внешнего края воркспейса
+    if (wsRect.width > 0f && wsRect.height > 0f && rootBandPx > 0f) {
+        val dLeft = globalPos.x - wsRect.left
+        val dRight = wsRect.right - globalPos.x
+        val dTop = globalPos.y - wsRect.top
+        val dBottom = wsRect.bottom - globalPos.y
+        val min = minOf(dLeft, dRight, dTop, dBottom)
+        if (min < rootBandPx) {
+            dragState.rootZone = when {
+                min == dLeft -> LayoutEngine.DropZone.LEFT
+                min == dRight -> LayoutEngine.DropZone.RIGHT
+                min == dTop -> LayoutEngine.DropZone.TOP
+                else -> LayoutEngine.DropZone.BOTTOM
+            }
+            dragState.targetId = null
+            dragState.zone = null
+            return
+        }
+    }
+    dragState.rootZone = null
+
+    // 2) Зоны внутри панелей
     val entry = dragState.panelRects.entries.firstOrNull { (id, r) ->
         id != excludeId && r.contains(globalPos)
     }
@@ -280,6 +354,15 @@ private fun landingRect(target: Rect, zone: LayoutEngine.DropZone): Rect = when 
     LayoutEngine.DropZone.TOP -> Rect(target.left, target.top, target.right, target.top + target.height / 2f)
     LayoutEngine.DropZone.BOTTOM -> Rect(target.left, target.top + target.height / 2f, target.right, target.bottom)
     LayoutEngine.DropZone.CENTER -> target
+}
+
+/** Корневая зона → тонкая полоска на всю ширину/высоту воркспейса. */
+private fun rootLandingRect(ws: Rect, zone: LayoutEngine.DropZone, thickness: Float): Rect = when (zone) {
+    LayoutEngine.DropZone.TOP -> Rect(ws.left, ws.top, ws.right, ws.top + thickness)
+    LayoutEngine.DropZone.BOTTOM -> Rect(ws.left, ws.bottom - thickness, ws.right, ws.bottom)
+    LayoutEngine.DropZone.LEFT -> Rect(ws.left, ws.top, ws.left + thickness, ws.bottom)
+    LayoutEngine.DropZone.RIGHT -> Rect(ws.right - thickness, ws.top, ws.right, ws.bottom)
+    LayoutEngine.DropZone.CENTER -> ws
 }
 
 /**
@@ -361,3 +444,4 @@ private fun SplitHandle(
             }
     )
 }
+
