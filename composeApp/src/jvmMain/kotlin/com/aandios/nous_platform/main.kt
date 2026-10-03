@@ -58,6 +58,7 @@ fun main() = application {
             val tabManager: TabManager = koinInject()
             val workspaceRepo: WorkspaceRepository = koinInject()
             val templateRepo: TemplateRepository = koinInject()
+            val workspaceBus: WorkspaceBus = koinInject()
             val scope = rememberCoroutineScope()
 
             // Restore workspace session on startup
@@ -69,6 +70,7 @@ fun main() = application {
                 tabManager = tabManager,
                 workspaceRepo = workspaceRepo,
                 templateRepo = templateRepo,
+                workspaceBus = workspaceBus,
                 onOpenWorkspace = { config ->
                     scope.launch { tabManager.openWorkspace(config) }
                 },
@@ -97,12 +99,16 @@ fun main() = application {
                 var recentConfigs by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
                 var userTemplates by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
                 var hiddenBuiltins by remember { mutableStateOf<Set<String>>(emptySet()) }
-                LaunchedEffect(workspaces.size) {
-                    recentConfigs = workspaceRepo.getAll()
-                        .sortedByDescending { it.updatedAt }
-                        .take(8)
-                    userTemplates = templateRepo.getAll()
-                    hiddenBuiltins = templateRepo.hiddenBuiltins()
+                // Реактивная загрузка: начальная + при каждом изменении через WorkspaceBus
+                // (удаления из ProjectTree/боковой панели и из WelcomeScreen синхронизируются).
+                LaunchedEffect(Unit) {
+                    workspaceBus.version.collect {
+                        recentConfigs = workspaceRepo.getAll()
+                            .sortedByDescending { it.updatedAt }
+                            .take(8)
+                        userTemplates = templateRepo.getAll()
+                        hiddenBuiltins = templateRepo.hiddenBuiltins()
+                    }
                 }
                 if (workspaces.isEmpty()) {
                     WelcomeScreen(
@@ -118,6 +124,7 @@ fun main() = application {
                                 )
                                 workspaceRepo.create(fresh)
                                 tabManager.openWorkspace(fresh)
+                                workspaceBus.workspaceChanged()
                             }
                         },
                         onOpenRecent = { config ->
@@ -126,22 +133,43 @@ fun main() = application {
                         onDeleteTemplate = { template ->
                             scope.launch {
                                 templateRepo.delete(template.id)
-                                userTemplates = templateRepo.getAll()
+                                workspaceBus.workspaceChanged()
+                            }
+                        },
+                        onRenameTemplate = { template, newName ->
+                            scope.launch {
+                                templateRepo.create(template.copy(name = newName.ifBlank { template.name }))
+                                workspaceBus.workspaceChanged()
+                            }
+                        },
+                        onDuplicateTemplate = { template ->
+                            scope.launch {
+                                templateRepo.create(
+                                    template.copy(
+                                        id = generateId(),
+                                        name = "${template.name} (copy)"
+                                    )
+                                )
+                                workspaceBus.workspaceChanged()
+                            }
+                        },
+                        onChangeTemplateDescription = { template, description ->
+                            scope.launch {
+                                templateRepo.create(template.copy(description = description))
+                                workspaceBus.workspaceChanged()
                             }
                         },
                         onHideBuiltinTemplate = { builtinId ->
                             scope.launch {
                                 templateRepo.hideBuiltin(builtinId)
-                                hiddenBuiltins = templateRepo.hiddenBuiltins()
+                                workspaceBus.workspaceChanged()
                             }
                         },
                         onDeleteRecent = { config ->
                             scope.launch {
                                 tabManager.closeWorkspace(config.id)
                                 workspaceRepo.delete(config.id)
-                                recentConfigs = workspaceRepo.getAll()
-                                    .sortedByDescending { it.updatedAt }
-                                    .take(8)
+                                workspaceBus.workspaceChanged()
                             }
                         },
                         modifier = Modifier.fillMaxWidth().weight(1f),

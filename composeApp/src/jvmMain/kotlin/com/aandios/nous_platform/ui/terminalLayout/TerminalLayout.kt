@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.workspace.ProjectTree
 import com.aandios.nous.core.workspace.TemplateRepository
+import com.aandios.nous.core.workspace.WorkspaceBus
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.viewmodel.TabManager
@@ -97,6 +98,7 @@ fun TerminalLayout(
     tabManager: TabManager? = null,
     workspaceRepo: WorkspaceRepository? = null,
     templateRepo: TemplateRepository? = null,
+    workspaceBus: WorkspaceBus? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
@@ -110,14 +112,20 @@ fun TerminalLayout(
     val useWorkspaces = tabManager != null && workspaceRepo != null
     var allWorkspaceConfigs by remember { mutableStateOf<List<WorkspaceConfig>>(emptyList()) }
     if (useWorkspaces) {
-        LaunchedEffect(Unit) { allWorkspaceConfigs = workspaceRepo!!.getAll() }
+        // Реактивная загрузка: начальная + при каждом изменении через WorkspaceBus
+        // (в т.ч. удаления из WelcomeScreen).
+        LaunchedEffect(Unit) {
+            allWorkspaceConfigs = workspaceRepo!!.getAll()
+            workspaceBus?.version?.collect { allWorkspaceConfigs = workspaceRepo!!.getAll() }
+        }
     }
 
-    // Recollect after changes
+    // Recollect after changes + уведомить подписчиков (WelcomeScreen)
     fun refreshWorkspaces() {
         scope.launch {
             allWorkspaceConfigs = workspaceRepo?.getAll() ?: emptyList()
         }
+        workspaceBus?.workspaceChanged()
     }
 
     Column(
@@ -311,6 +319,7 @@ fun TerminalLayout(
                                 { ws ->
                                     scope.launch {
                                         repo.create(ws.copy(id = com.aandios.nous.core.workspace.generateId()))
+                                        workspaceBus?.workspaceChanged()
                                     }
                                 }
                             },
