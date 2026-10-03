@@ -57,6 +57,21 @@ class SymbolFormatter(
 
     fun formatVolume(volume: Float): String = formatVolume(volume.toDouble())
 
+    /**
+     * Полное значение объёма без сокращений (K/M) и без потери знаков:
+     * разделители тысяч и значащие десятичные, например 1,234 или 12,345.6.
+     */
+    fun formatVolumeFull(volume: Double): String {
+        val plain = formatNumber(abs(volume), volumeDecimals)
+        val parts = plain.split(".")
+        val intPart = parts[0]
+        val decPart = if (parts.size > 1) parts[1] else ""
+        val grouped = intPart.reversed().chunked(3).joinToString(",").reversed()
+        val trimmedDec = decPart.trimEnd('0')
+        val sign = if (volume < 0) "-" else ""
+        return if (trimmedDec.isEmpty()) "$sign$grouped" else "$sign$grouped.$trimmedDec"
+    }
+
     private fun coerceMaxDecimals(d: Int) = d.coerceAtMost(volumeDecimals).coerceAtLeast(0)
 
     companion object {

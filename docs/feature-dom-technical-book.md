@@ -399,23 +399,25 @@ On ViewModel initialization:
 
 ---
 
-# 6. Incremental Data: SnapshotStateMap
+# 6. Одна таблица уровней: SnapshotStateMap
 
 ## 6.1. The Problem
 
-The order book updates very frequently — hundreds of updates per second. Copying the entire level map every time would cause:
-- Many allocations (garbage for the GC)
-- UI delays
-- Unnecessary recompositions
+Книга обновляется с максимальной частотой partial-стрима — 10 раз в секунду
+(100мс), каждое окно содержит до `depth*2` уровней. Копирование карты уровней
+на каждое окно давало бы аллокации и лишние рекомпозиции.
 
-## 6.2. Solution: SnapshotStateMap
+## 6.2. Solution: SnapshotStateMap + derivedStateOf
 
 ```kotlin
-private val _incrementalBids = mutableStateMapOf<Double, Double>()
-val incrementalBids: Map<Double, Double> = _incrementalBids
+// ЕДИНСТВЕННАЯ таблица уровней: сюда окна применяются целиком, её читает UI
+private val levels = mutableStateMapOf<Long, DomLevel>()
 
-private val _incrementalAsks = mutableStateMapOf<Double, Double>()
-val incrementalAsks: Map<Double, Double> = _incrementalAsks
+// Отсортированный вид — пересчитывается только при изменении levels
+private val sortedLevelsState = derivedStateOf {
+    levels.values.sortedByDescending { it.priceTicks }
+}
+val sortedLevels: List<DomLevel> get() = sortedLevelsState.value
 ```
 
 ### 6.2.1. What Is SnapshotStateMap?
@@ -427,12 +429,12 @@ val incrementalAsks: Map<Double, Double> = _incrementalAsks
 ### 6.2.2. Advantages
 
 ```kotlin
-// ❌ Without SnapshotStateMap — the whole map is copied
+// ❌ Без SnapshotStateMap — карта копируется целиком
 private val _bids = MutableStateFlow<Map<Double, Double>>(emptyMap())
 _bids.value = _bids.value + (price to newQty) // O(N) copy of the whole map!
 
-// ✅ With SnapshotStateMap — in-place mutation
-_incrementalBids[price] = newQty // O(1), no copies
+// ✅ SnapshotStateMap — точечная инвалидация
+levels[key] = DomLevel(key, bidSteps = qs) // O(1), без копий
 ```
 
 ### 6.2.3. Comparison with StateFlow
@@ -444,29 +446,29 @@ _incrementalBids[price] = newQty // O(1), no copies
 | GC pressure | High | Low |
 | Complexity | Simpler | Requires `derivedStateOf` |
 
-## 6.3. How It Is Read in the UI
+## 6.3. Обработка окна: полная замена
 
 ```kotlin
-// In DomWindow.kt — directly, via a Map reference
-val incrementalBids = domViewModel.incrementalBids  // Returns Map<Double, Double>
-val incrementalAsks = domViewModel.incrementalAsks
-
-// Whereas StateFlow requires collectAsState()
-val incrementalBestBid by domViewModel.incrementalBestBid.collectAsState()
+private fun handleBookWindow(event: DomEvent.BookWindow) {
+    bidsByPrice.clear()
+    asksByPrice.clear()
+    event.bids.forEach { u -> bidsByPrice[u.price] = u.quantity }
+    event.asks.forEach { u -> asksByPrice[u.price] = u.quantity }
+    if (scaleReady) rebuildLevelsFromWindow()
+}
 ```
 
-**Why?** `SnapshotStateMap` is Compose state. Compose tracks reads of it automatically. No `collectAsState()` needed.
+`levels.clear()` в SnapshotStateMap атомарен — Compose увидит замену всех
+записей как одно изменение и перерисует UI один раз.
 
 ## 6.4. Best Prices Stored Separately
 
 ```kotlin
-private val _incrementalBestBid = MutableStateFlow<Double?>(null)
-private val _incrementalBestAsk = MutableStateFlow<Double?>(null)
-private val _incrementalBestBidQuantity = MutableStateFlow<Double?>(null)
-private val _incrementalBestAskQuantity = MutableStateFlow<Double?>(null)
+private val _bestPrices = MutableStateFlow(BestPricesState())
 ```
 
-The best prices (best bid/ask) are stored **not in the maps** but in separate StateFlows. This data comes from a separate WebSocket stream (`@bookTicker`), not from depth.
+Лучшие цены хранятся отдельно от таблицы уровней: они приходят из отдельного
+стрима (`@bookTicker`) и используются для обрезки уровней по глубине.
 
 ---
 
@@ -533,70 +535,37 @@ Only a change to provider, symbol, or depth triggers a resubscription. A change 
 ```kotlin
 private fun processDomEvent(event: DomEvent) {
     when (event) {
-        is DomEvent.Snapshot -> {
-            _incrementalBids.clear()
-            _incrementalAsks.clear()
-
-            event.snapshot.bids.forEach { (priceStr, qtyStr) ->
-                val price = priceStr.toDoubleOrNull()
-                val quantity = qtyStr.toDoubleOrNull()
-                if (price != null && quantity != null && quantity > 0.0) {
-                    _incrementalBids[price] = quantity
-                }
-            }
-
-            event.snapshot.asks.forEach { (priceStr, qtyStr) ->
-                val price = priceStr.toDoubleOrNull()
-                val quantity = qtyStr.toDoubleOrNull()
-                if (price != null && quantity != null && quantity > 0.0) {
-                    _incrementalAsks[price] = quantity
-                }
-            }
-        }
-
-        is DomEvent.UpdateBid -> {
-            if (event.quantity == 0.0) _incrementalBids.remove(event.price)
-            else _incrementalBids[event.price] = event.quantity
-        }
-
-        is DomEvent.UpdateAsk -> {
-            if (event.quantity == 0.0) _incrementalAsks.remove(event.price)
-            else _incrementalAsks[event.price] = event.quantity
-        }
-
-        is DomEvent.BestPrices -> {
-            _incrementalBestBid.value = event.bestBid
-            _incrementalBestAsk.value = event.bestAsk
-            _incrementalBestBidQuantity.value = event.bestBidQuantity
-            _incrementalBestAskQuantity.value = event.bestAskQuantity
-        }
-
-        DomEvent.Reset -> {
-            _incrementalBids.clear()
-            _incrementalAsks.clear()
-            _incrementalBestBid.value = null
-            _incrementalBestAsk.value = null
-            _incrementalBestBidQuantity.value = null
-            _incrementalBestAskQuantity.value = null
-        }
+        is DomEvent.BookWindow -> handleBookWindow(event)
+        is DomEvent.BestPrices -> handleBestPrices(event)
     }
 }
+
+private fun handleBookWindow(event: DomEvent.BookWindow) {
+    bidsByPrice.clear()
+    asksByPrice.clear()
+    event.bids.forEach { u -> bidsByPrice[u.price] = u.quantity }
+    event.asks.forEach { u -> asksByPrice[u.price] = u.quantity }
+
+    // Метаданные (tickSize/stepSize) могли ещё не прийти — окно пропускаем,
+    // следующее (через 100мс) отрисует книгу целиком
+    if (scaleReady) rebuildLevelsFromWindow()
+}
 ```
+
+Каждое окно **полностью заменяет** книгу: `levels.clear()` → заполнение из окна
+(bucket-агрегация, правило «ask вытесняет bid»), затем `trimLevelsIfNeeded()`.
 
 ### 7.2.1. Event Types
 
 | Event | Source | Description |
 |---|---|---|
-| `Snapshot` | REST API | Full order book snapshot (initial load) |
-| `UpdateBid` | WebSocket | Volume change at a specific buy price |
-| `UpdateAsk` | WebSocket | Volume change at a specific sell price |
+| `BookWindow` | WebSocket (partial depth) | Топ-N уровней с абсолютными объёмами; заменяет книгу целиком |
 | `BestPrices` | WebSocket (@bookTicker) | Best bid/ask prices |
-| `Reset` | Repository | Synchronization failure, reinitialization required |
 
 ### 7.2.2. SnapshotStateMap.clear()
 
 ```kotlin
-_incrementalBids.clear()
+levels.clear()
 ```
 
 `clear()` on a SnapshotStateMap is an atomic operation. Compose will see the changes to all entries as a single change and redraw the UI once.
@@ -642,95 +611,59 @@ The `OrderIntent` sealed class is converted into a `TradingCommand` (from compos
 
 ---
 
-# 8. DomRepositoryImpl: Order Book Synchronization
+# 8. DomRepositoryImpl: Book Window Subscription
 
-This is the most complex file in the module. It implements the Binance WebSocket synchronization protocol.
+Простой репозиторий на partial-стриме: инкрементальной синхронизации больше нет.
 
-## 8.1. The Binance Depth Stream Protocol
+## 8.1. Partial Book Depth Stream (Binance Futures)
 
-Binance uses the following protocol to synchronize the order book:
+Стрим `<symbol>@depth<levels>@100ms` шлёт **самодостаточные окна книги**:
 
-```
-1. Open the WebSocket @depth stream — buffer all events into a queue
-2. Fetch the snapshot via the REST API
-3. Discard events where u < lastUpdateId
-4. First event to process: U <= lastUpdateId+1 AND u >= lastUpdateId+1
-5. Each subsequent event: pu == previous u
-6. If pu != previous u — reset and repeat from step 1
-```
+- каждое сообщение содержит топ-N уровней с **абсолютными объёмами**;
+- уровни, выпавшие из топ-N, в следующем сообщении просто отсутствуют;
+- синхронизация с REST-снапшотом, валидация U/u/pu — **не нужны**.
 
-Where:
-- `lastUpdateId` — ID of the last update in the snapshot
-- `U` — first update ID in the event
-- `u` — final update ID in the event
-- `pu` — previous update ID (stream only)
+Важно: на Binance Futures частичные окна существуют **только для уровней
+5/10/20** (стримы `depth50/100/500/1000@...` сервер отвергает). Поэтому
+`DepthLimit` ограничен диапазоном 5..20, значения — {5, 10, 20}, дефолт 20.
+Частота — 100мс (максимальная).
 
 ## 8.2. Implementation in DomRepositoryImpl
 
 ```kotlin
 override suspend fun subscribeToDomEvents(symbol: String, depth: Int): Flow<DomEvent> = callbackFlow {
-    var reconnectAttempts = 0
-    val maxReconnectAttempts = 5
-
+    var attempt = 0
     while (true) {
         try {
-            val state = OrderBookState()
-
-            // Step 1: Start the depth WebSocket and buffer events
-            val depthJob = launch {
-                domAdapter.subscribeToDepthUpdates(symbol, depth)
-                    .catch { e -> println("⚠️ Depth updates error: ${e.message}") }
-                    .collect { depthUpdate ->
-                        state.bufferEvent(depthUpdate)
-                    }
+            val windowJob = launch {
+                domAdapter.subscribeToBookWindow(symbol, depth)
+                    .catch { e -> println("⚠️ Book window stream error: ${e.message}") }
+                    .collect { window -> trySend(DomEvent.fromWindow(window)) }
             }
-
-            // Give the WebSocket time to connect
-            delay(500)
-
-            // Step 2: Fetch the snapshot via REST
-            val snapshot = domAdapter.getOrderBookSnapshot(symbol, depth)
-            state.updateFromSnapshot(snapshot)
-
-            // Send Snapshot
-            trySend(DomEvent.fromSnapshot(snapshot, symbol))
-
-            // Step 3: Apply the buffered events
-            if (!state.flushPendingEvents()) {
-                depthJob.cancel()
-                trySend(DomEvent.Reset)
-                continue
-            }
-
-            // Steps 4+5: Keep listening to depth and bookTicker
-            val bookTickerJob = launch {
+            val tickerJob = launch {
                 bookTickerAdapter.subscribeToBookTicker(symbol)
-                    .collect { bookTicker ->
-                        trySend(DomEvent.fromBookTicker(bookTicker, symbol))
-                    }
+                    .catch { e -> println("⚠️ BestPrices stream error: ${e.message}") }
+                    .collect { bookTicker -> trySend(DomEvent.fromBookTicker(bookTicker, symbol)) }
             }
 
-            // Switch depth to direct validation
-            depthJob.cancel()
-            val depthDirectJob = launch {
-                domAdapter.subscribeToDepthUpdates(symbol, depth)
-                    .collect { depthUpdate ->
-                        if (!state.applyUpdateWithValidation(depthUpdate)) {
-                            trySend(DomEvent.Reset)
-                            reinitRequested = true
-                            return@collect
-                        }
-                        DomEvent.emitDepthUpdates(depthUpdate, symbol) { event ->
-                            trySend(event)
-                        }
-                    }
+            select {
+                windowJob.onJoin { }
+                tickerJob.onJoin { }
             }
+            windowJob.cancel()
+            tickerJob.cancel()
 
-            bookTickerJob.join()
-            depthDirectJob.join()
-            // ...
+            attempt++
+            val delayMs = (250L * 2.0.pow((attempt - 1).coerceAtMost(5))).toLong().coerceAtMost(8000L)
+            delay(delayMs)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            close(e)
+            break
         }
     }
+    close()
 }
 ```
 
@@ -748,165 +681,58 @@ callbackFlow {
 
 ### 8.2.2. Reconnection with Exponential Backoff
 
-```kotlin
-catch (e: Exception) {
-    reconnectAttempts++
-    if (reconnectAttempts > maxReconnectAttempts) {
-        close(e)
-        break
-    }
-    val delayMs = (1000 * 2.0.pow(reconnectAttempts - 1.0)).toLong()
-    delay(delayMs)
-    trySend(DomEvent.Reset)
-}
-```
-
-On error:
-1. Increment the attempt counter
-2. If it exceeds 5 — close the Flow
-3. Otherwise: `delay(1000 * 2^(attempt-1))` — 1s, 2s, 4s, 8s, 16s (exponential backoff)
-4. Send `DomEvent.Reset`
-
-### 8.2.3. Custom Exception for Reinitialization
-
-```kotlin
-private class ReinitializationException(message: String) : Exception(message)
-```
-
-A private exception for control flow — when synchronization goes out of sync, `continue` restarts the loop.
+Если один из стримов завершился (обрыв/ошибка) — оба джоба отменяются, и после
+`delay(250 * 2^(attempt-1))` (250мс → 8с, потолок) оба стрима переподписываются.
+Отдельный `Reset` не нужен: при реконнекте следующее окно само восстановит книгу.
 
 ---
 
-# 9. OrderBook: The Order Book Model
+# 9. DomLevel: Одна таблица уровней
 
-## 9.1. The OrderBook Class
+Классы `OrderBook` и `DomAggregator` **удалены** вместе с инкрементальным
+протоколом. Агрегация и модель уровня упрощены:
+
+## 9.1. DomLevel
 
 ```kotlin
-data class OrderBook(
-    val symbol: String,
-    val levels: List<OrderBookLevel>,
-    val timestamp: Long,
-    val bestBid: Double?,
-    val bestAsk: Double?,
-    val spread: Double?,
-    val spreadPercent: Double?
-) {
-    fun maxVolume(): Double {
-        return levels.maxOfOrNull { level ->
-            maxOf(
-                level.bidQty.toDoubleOrNull() ?: 0.0,
-                level.askQty.toDoubleOrNull() ?: 0.0
-            )
-        } ?: 1.0
-    }
+/**
+ * Один уровень книги. Правило «одна сторона на цене»:
+ * уровень либо bid, либо ask (объём другой стороны null).
+ */
+data class DomLevel(
+    val priceTicks: Long,
+    val bidSteps: Long? = null,
+    val askSteps: Long? = null
+)
+```
 
-    fun aggregate(aggregationLevel: AggregationLevel, baseTickSize: Double): OrderBook {
-        // ...
+Ключ карты — `bucketKey(priceTicks) = priceTicks / aggMultiplier * aggMultiplier`
+(цена, округлённая вниз до корзины агрегации).
+
+## 9.2. rebuildLevelsFromWindow()
+
+```kotlin
+private fun rebuildLevelsFromWindow() {
+    levels.clear()
+    bidsByPrice.forEach { (price, qty) ->
+        val pt = toPriceTicks(price)
+        val qs = toQtySteps(qty)
+        if (qs <= 0L) return@forEach
+        val key = bucketKey(pt)
+        val cur = levels[key]?.bidSteps ?: 0L
+        levels[key] = DomLevel(key, bidSteps = cur + qs)
     }
+    // ask вытесняет bid при совпадении ключа (правило одной стороны)
+    asksByPrice.forEach { (price, qty) -> /* ...askSteps... */ }
 }
 ```
 
-### 9.1.1. maxVolume()
+Вызывается на каждое окно и при смене агрегации. Агрегация — просто
+суммирование шагов объёма в корзину (`bucketKey`), без отдельного агрегатора.
 
-Finds the maximum volume among all levels to scale the visualization (the width of the horizontal bars).
-
-### 9.1.2. aggregate()
-
-```kotlin
-fun aggregate(aggregationLevel: AggregationLevel, baseTickSize: Double): OrderBook {
-    val aggregatedLevels = DomAggregator.aggregateUnifiedLevels(
-        levels, aggregationLevel, baseTickSize
-    )
-    val aggregatedBestBid = bestBid?.let {
-        aggregationLevel.roundDown(it, baseTickSize)
-    }
-    val aggregatedBestAsk = bestAsk?.let {
-        aggregationLevel.roundDown(it, baseTickSize)
-    }
-    // ...
-    return copy(levels = aggregatedLevels, bestBid = aggregatedBestBid, ...)
-}
-```
-
-Creates a new `OrderBook` with aggregated levels. The original object is not modified (a data class is immutable).
-
----
-
-# 10. DomAggregator: Price Level Aggregation
-
-## 10.1. Why Is Aggregation Needed?
-
-When prices have a small step (tickSize = 0.01), the order book contains hundreds of levels. Aggregation groups them:
-
-```
-Without aggregation:    With aggregation (10×):
-67000.01  0.5          
-67000.02  0.3          
-67000.03  1.2          67000.0  1.5
-67000.04  0.8          
-67000.05  0.2          
-67000.06  0.9          67000.1  0.9
-```
-
-## 10.2. Single-Pass Aggregation
-
-```kotlin
-object DomAggregator {
-    fun aggregateLevels(
-        levels: List<OrderBookLevel>,
-        aggregationLevel: AggregationLevel,
-        baseTickSize: Double
-    ): List<OrderBookLevel> {
-        val aggregated = linkedMapOf<String, AggregatedBucket>()
-        
-        for (level in levels) {
-            val key = aggregationLevel.aggregationKey(level.price, baseTickSize)
-            val bucket = aggregated.getOrPut(key) { AggregatedBucket() }
-            bucket.totalQty += level.quantity.toDoubleOrNull() ?: 0.0
-            bucket.totalBidQty += level.bidQty.toDoubleOrNull() ?: 0.0
-            bucket.totalAskQty += level.askQty.toDoubleOrNull() ?: 0.0
-        }
-
-        return aggregated.map { (aggregatedPrice, bucket) ->
-            OrderBookLevel(price = aggregatedPrice, quantity = bucket.totalQty.toString(), ...)
-        }.sortedBy { it.price.toDoubleOrNull() ?: 0.0 }
-    }
-}
-```
-
-### 10.2.1. `linkedMapOf` — Preserving Order
-
-`LinkedHashMap` preserves insertion order. This matters because the source list is sorted, and we want to keep that sort order in the aggregated result.
-
-### 10.2.2. `getOrPut` — the "Get or Create" Pattern
-
-```kotlin
-val bucket = aggregated.getOrPut(key) { AggregatedBucket() }
-```
-
-Equivalent to:
-```kotlin
-val bucket = aggregated[key]
-if (bucket == null) {
-    val newBucket = AggregatedBucket()
-    aggregated[key] = newBucket
-    newBucket
-} else {
-    bucket
-}
-```
-
-### 10.2.3. Internal Classes
-
-```kotlin
-private class AggregatedBucket {
-    var totalQty: Double = 0.0
-    var totalBidQty: Double = 0.0
-    var totalAskQty: Double = 0.0
-}
-```
-
-Mutable classes for accumulation — without them, a new object would have to be created for every level.
+Обрезки по глубине **нет**: окно partial-стрима уже ограничено (≤ depth×2
+уровней, depth ≤ 20), а для ценовой лесенки уровни должны оставаться на своих
+ценовых строках — скролл по цене видит всю книгу.
 
 ---
 
@@ -1327,78 +1153,72 @@ fun DomHeaderCompact(
 
 ---
 
-# 18. DomContent and DomSection: Rendering the Order Book
+# 18. DomContent and DomSection: Ценовая лесенка
 
 ## 18.1. DomContent — the entry point for content
 
 ```kotlin
 @Composable
 fun DomContent(
-    orderBook: OrderBook,
-    aggregationLevel: AggregationLevel = AggregationLevel.BaseTick,
-    baseTickSize: Double? = null,
-    selectedPrice: Double? = null,
-    onPriceSelected: (Double?) -> Unit = {},
+    symbol: String,
+    levelsMap: Map<Long, DomLevel>,
+    ladderStepTicks: Long,
+    selectedPrice: Double?,
+    bestBidDisplayTicks: Long?,
+    bestAskDisplayTicks: Long?,
+    lastPriceDisplayTicks: Long?,
+    tickSize: Double,
+    stepSize: Double,
+    formatter: SymbolFormatter,
+    onPriceSelected: (Double) -> Unit,
     modifier: Modifier = Modifier
-) {
-    Column(modifier = modifier.fillMaxSize()) {
-        DomSection(
-            orderBook = orderBook,
-            selectedPrice = selectedPrice,
-            onPriceSelected = { price -> onPriceSelected(price) },
-            aggregationLevel = aggregationLevel,
-            baseTickSize = baseTickSize,
-            modifier = Modifier.weight(1f)
-        )
-    }
-}
+) { /* DomSection(...) */ }
 ```
 
-A simple wrapper over `DomSection`. Can be extended in the future (for example, to add a chart on top of the DOM).
+Тонкая обёртка над `DomSection`.
 
-## 18.2. DomSection — a LazyColumn with the order book
+## 18.2. DomSection — классическая лесенка (price ladder)
 
-### 18.2.1. Header
+Рендерится **сплошная ось цен**: одна строка = одна цена (корзина агрегации),
+**включая пустые уровни**. Объёмы привязаны к своим ценовым строкам и при
+движении рынка остаются на месте — движение видно по смещению подсветок
+(best bid/ask, последняя сделка) и перетеканию объёмов между строками.
 
-```kotlin
-Row {
-    Text("Bid Vol", modifier = Modifier.weight(0.8f))
-    Text("Price", modifier = Modifier.weight(0.6f))
-    Text("Ask Vol", modifier = Modifier.weight(0.8f))
-}
-```
-
-Column headers: Bid Vol / Price / Ask Vol.
-
-### 18.2.2. LazyColumn with LevelRow
+Строки генерируются вокруг якоря:
 
 ```kotlin
-LazyColumn(state = lazyListState, modifier = Modifier.weight(1f)) {
+private const val ROWS_ABOVE = 120
+private const val ROWS_BELOW = 120
+
+// Якорь: best ask → best bid → верхний уровень книги
+val anchorTicks = bestAskDisplayTicks ?: bestBidDisplayTicks
+    ?: levelsMap.keys.maxOrNull() ?: 0L
+
+LazyColumn {
     items(
-        items = levels,
-        key = { "level-${it.price}" }
-    ) { level ->
-        LevelRow(
-            level = level,
-            maxVolume = maxVolume,
-            selectedPrice = selectedPrice,
-            bestBid = aggregatedBestBid,
-            bestAsk = aggregatedBestAsk,
-            aggregationLevel = aggregationLevel,
-            baseTickSize = baseTickSize,
-            onPriceClick = onPriceSelected
-        )
+        count = ROWS_ABOVE + 1 + ROWS_BELOW,
+        key = { index -> anchorTicks + (ROWS_ABOVE - index) * step }
+    ) { index ->
+        val key = anchorTicks + (ROWS_ABOVE - index) * step
+        LevelRow(priceTicks = key, level = levelsMap[key], ...)
     }
 }
 ```
 
-### 18.2.3. `key` for items
+Ключ LazyColumn — **цена** (`bucketKey`): при перегенерации строк Compose
+переиспользует строки по цене, объёмы «перетекают» без полного пересоздания.
 
-```kotlin
-key = { "level-${it.price}" }
-```
+## 18.3. Следование за последней ценой
 
-Keys help LazyColumn efficiently reuse items when data updates. Without keys, the entire list would be redrawn on any change.
+- Якорь лесенки — **последняя сделка** (`lastPriceDisplayTicks`); до её
+  прихода — best ask → best bid → верхний уровень книги.
+- Строки генерируются вокруг якоря, поэтому строка якоря всегда имеет индекс
+  `ROWS_ABOVE`. Если она уходит за край видимой зоны (запас 3 строки),
+  список **минимально подтягивается обратно**: якорь ставится на строку
+  `MARGIN_ROWS` от края — далеко (>30 строк) мгновенно (`scrollToItem`),
+  близко — плавно (`animateScrollToItem`).
+- Пока якорь болтается внутри зоны — скролла нет, рынок «дышит» внутри
+  книги, двигаются только подсветка и объёмы.
 
 ---
 
@@ -1418,118 +1238,46 @@ Keys help LazyColumn efficiently reuse items when data updates. Without keys, th
 ```kotlin
 @Composable
 fun LevelRow(
-    level: OrderBookLevel,
-    maxVolume: Double,
-    selectedPrice: Double?,
-    bestBid: Double?,
-    bestAsk: Double?,
-    aggregationLevel: AggregationLevel,
-    baseTickSize: Double? = null,
-    onPriceClick: (Double) -> Unit
+    priceTicks: Long,
+    level: DomLevel?,          // null = пустой уровень (только цена)
+    maxSteps: Long,
+    selectedDisplayTicks: Long?,
+    bestBidDisplayTicks: Long?,
+    bestAskDisplayTicks: Long?,
+    lastPriceDisplayTicks: Long?,
+    tickSize: Double,
+    stepSize: Double,
+    formatter: SymbolFormatter,
+    onPriceClick: (Long, Double) -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isHovered by interactionSource.collectIsHoveredAsState()
-
-    val price = level.price.toDoubleOrNull() ?: return
-    val bidQty = level.bidQty.toDoubleOrNull() ?: 0.0
-    val askQty = level.askQty.toDoubleOrNull() ?: 0.0
-
-    // Determine: best price? selected price? hover?
-    val isBestBid = bestBid?.let { comparePrices(it, price) } ?: false
-    val isBestAsk = bestAsk?.let { comparePrices(it, price) } ?: false
-    val isSelected = selectedPrice?.let { comparePrices(it, price) } ?: false
-
-    // Colors
-    val backgroundColor = when {
-        isSelected -> Color.Yellow.copy(alpha = 0.3f)
-        isHovered -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        else -> Color.Transparent
-    }
-
-    Row(modifier = Modifier
-        .fillMaxWidth()
-        .hoverable(interactionSource)
-        .clickable(interactionSource = interactionSource, indication = null) {
-            onPriceClick(price)
-        }
-        .background(backgroundColor)
-        .border(if (isBestPrice) 1.dp else 0.dp, borderColor)
-        .padding(horizontal = 8.dp, vertical = 1.dp)
-    ) {
-        // Bid Volume (left) — horizontal bar
-        Box(Modifier.weight(0.8f).height(20.dp)) {
-            if (bidQty > 0) {
-                val volumeWidth = (bidQty / maxVolume).coerceIn(0.0, 1.0)
-                Box(Modifier.fillMaxHeight()
-                    .fillMaxWidth(volumeWidth.toFloat())
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)))
-            }
-            if (bidQty > 0) {
-                Text(formatVolume(bidQty), ...)  // ← text on top of the bar
-            }
-        }
-
-        // Price (center)
-        Text(formatPrice(price), ...)
-
-        // Ask Volume (right) — horizontal bar
-        Box(Modifier.weight(0.8f).height(20.dp).align(CenterEnd)) {
-            if (askQty > 0) {
-                val volumeWidth = (askQty / maxVolume).coerceIn(0.0, 1.0)
-                Box(Modifier.fillMaxHeight()
-                    .fillMaxWidth(volumeWidth.toFloat())
-                    .align(Alignment.CenterEnd)
-                    .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f)))
-            }
-            if (askQty > 0) {
-                Text(formatVolume(askQty), ..., align(CenterEnd))
-            }
-        }
-    }
+    val price = priceTicks * tickSize
+    val bidQty = level?.bidSteps?.let { it * stepSize }
+    val askQty = level?.askSteps?.let { it * stepSize }
+    // ...
 }
 ```
 
-## 19.3. Visualizing volumes
+Строка лесенки знает только свою цену и читает уровень по ключу —
+точечная реактивность: при обновлении объёма на цене рекомпозится только
+эта строка.
 
-### 19.3.1. Bid Volume (left)
+## 19.3. Подсветки
 
+- **Последняя сделка** (`lastPriceDisplayTicks`) — фон `tertiary` (14% alpha)
+  и цена цветом `tertiary`: маркер прыгает по строкам, показывая поток сделок.
+- **Выбранная цена** — жёлтый фон (клик по строке).
+- **Пустой уровень** (`level == null`) — цена приглушена (35% alpha).
+
+## 19.4. Visualizing volumes
+
+Горизонтальные бары, ширина пропорциональна объёму:
 ```kotlin
-val volumeWidth = (bidQty / maxVolume).coerceIn(0.0, 1.0)
-Box(Modifier.fillMaxWidth(volumeWidth.toFloat()).background(bidColor))
+val volumeWidth = (bidSteps.toFloat() / maxSteps.toFloat()).coerceIn(0f, 1f)
+Box(Modifier.fillMaxWidth(volumeWidth).background(primary.copy(alpha = 0.3f)))
 ```
 
-A horizontal bar whose width is proportional to the volume. `maxVolume` is the maximum volume among all levels (from `OrderBook.maxVolume()`).
-
-### 19.3.2. Ask Volume (right)
-
-Similar, but aligned to the right edge:
-```kotlin
-Box(Modifier.fillMaxWidth(volumeWidth.toFloat()).align(Alignment.CenterEnd))
-```
-
-### 19.3.3. Highlighting the best prices
-
-```kotlin
-val borderColor = when {
-    isBestBid -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)    // Blue
-    isBestAsk -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.7f)  // Red
-    else -> Color.Transparent
-}
-```
-
-The best bid is highlighted with a blue border, the best ask with a red one.
-
-### 19.3.4. Highlighting the selected price
-
-```kotlin
-val backgroundColor = when {
-    isSelected -> Color.Yellow.copy(alpha = 0.3f)  // Yellow background
-    isHovered -> surfaceVariant
-    else -> Transparent
-}
-```
-
-When the user clicks a price, the row is highlighted in yellow.
+`maxSteps` — максимум по всей таблице уровней (`derivedStateOf` по `levelsMap`).
+Ask-бар выравнивается по правому краю (`align(CenterEnd)`).
 
 ---
 
@@ -1609,79 +1357,60 @@ A local kill-switch — disables the ability to send orders without disabling th
 
 ---
 
-# 21. Automatic Scroll to Best Price
+# 21. Следование лесенки за последней ценой
 
 ## 21.1. The problem
 
-The best bid price constantly changes. If it moves outside the visible area, the user loses their reference point.
+Последняя цена постоянно меняется. Если лесенка неподвижна, рынок «уезжает»
+из видимой области, и трейдер теряет точку отсчёта.
 
 ## 21.2. The solution
 
+Строки лесенки генерируются вокруг последней сделки, поэтому содержание
+вьюпорта автоматически следует за рынком, пока позиция скролла привязана
+к строкам по цене. Остаётся только дотягивать строку якоря (индекс
+`ROWS_ABOVE` — константа) до края видимой зоны, когда рынок выходит
+за неё с запасом в 3 строки:
+
 ```kotlin
-val scrollTargetPrice = remember(orderBook, aggregationLevel, baseTickSize) {
-    orderBook?.bestBid?.let { bestBid ->
-        if (baseTickSize != null) {
-            aggregationLevel.roundDown(bestBid, baseTickSize)
-        } else {
-            bestBid
-        }
-    }
-}
+LaunchedEffect(anchorTicks, step) {
+    if (lazyListState.isScrollInProgress) return@LaunchedEffect
+    val visible = lazyListState.layoutInfo.visibleItemsInfo
+    if (visible.isEmpty()) return@LaunchedEffect
 
-LaunchedEffect(scrollTargetPrice) {
-    if (scrollTargetPrice == null) return@LaunchedEffect
-    if (lazyListState.isScrollInProgress) return@LaunchedEffect  // ← do NOT interfere with the user
+    val first = visible.first().index
+    val last = visible.last().index
+    val allowedTop = first + MARGIN_ROWS
+    val allowedBottom = last - MARGIN_ROWS
+    val anchorIndex = ROWS_ABOVE
 
-    val targetIndex = levels.indexOfFirst { level ->
-        val levelPrice = level.price.toDoubleOrNull() ?: return@indexOfFirst false
-        // Compare via aggregation
-        aggregationLevel.aggregationKey(levelPrice.toString(), baseTickSize) ==
-            aggregationLevel.aggregationKey(scrollTargetPrice.toString(), baseTickSize)
-    }.takeIf { it >= 0 } ?: return@LaunchedEffect
-
-    // Check whether the target price is already visible
-    val visibleItems = lazyListState.layoutInfo.visibleItemsInfo
-    val isTargetVisible = visibleItems.any { visibleItem ->
-        val visibleIndex = visibleItem.index
-        if (visibleIndex in levels.indices) {
-            val levelPrice = levels[visibleIndex].price.toDoubleOrNull() ?: return@any false
-            aggregationLevel.aggregationKey(levelPrice.toString(), baseTickSize) ==
-                aggregationLevel.aggregationKey(scrollTargetPrice.toString(), baseTickSize)
-        } else false
+    val distance = when {
+        anchorIndex < allowedTop -> allowedTop - anchorIndex
+        anchorIndex > allowedBottom -> anchorIndex - allowedBottom
+        else -> return@LaunchedEffect          // в зоне — ничего не делаем
     }
 
-    if (!isTargetVisible) {
-        lazyListState.animateScrollToItem(targetIndex, 0)
-    }
+    // Минимальная коррекция: якорь на строку MARGIN_ROWS от края
+    val targetIndex = if (anchorIndex < allowedTop) {
+        anchorIndex - MARGIN_ROWS
+    } else {
+        anchorIndex - (visible.size - 1) + MARGIN_ROWS
+    }.coerceAtLeast(0)
+
+    if (distance > 30) lazyListState.scrollToItem(targetIndex, 0)
+    else lazyListState.animateScrollToItem(targetIndex, 0)
 }
 ```
 
 ### 21.2.1. Key points
 
-1. **Only when the user is NOT scrolling themselves**
-   ```kotlin
-   if (lazyListState.isScrollInProgress) return@LaunchedEffect
-   ```
-
-2. **Do not scroll if the price is already visible**
-   ```kotlin
-   val isTargetVisible = visibleItems.any { ... }
-   if (!isTargetVisible) { animateScrollToItem(...) }
-   ```
-
-3. **Comparison via aggregation**
-   ```kotlin
-   aggregationLevel.aggregationKey(price1, baseTickSize) ==
-       aggregationLevel.aggregationKey(price2, baseTickSize)
-   ```
-
-### 21.2.2. `remember` for scrollTargetPrice
-
-```kotlin
-val scrollTargetPrice = remember(orderBook, aggregationLevel, baseTickSize) { ... }
-```
-
-Recalculated only when the order book, aggregation level, or tickSize changes.
+1. **Запас 3 строки** (`MARGIN_ROWS`): пока последняя цена болтается в видимой
+   зоне с запасом — скролла нет, рынок «дышит» внутри книги.
+2. **Минимальная коррекция**: якорь подтягивается к краю зоны, а не в центр —
+   вид пользователя сохраняется насколько возможно.
+3. **Не мешаем жесту**: `isScrollInProgress` → пропуск.
+4. **Далеко — мгновенно, близко — плавно**: `distance > 30` → `scrollToItem`,
+   иначе `animateScrollToItem` (первое центрирование/смена символа не рвёт глаз).
 
 ---
 
@@ -1751,25 +1480,22 @@ Similar to `formatPrice`, but located in the `DomUtils.kt` file and used in the 
    ├── koinInject() → DomViewModel
    │   │
    │   └── init():
-   │       ├── fetchSymbolTickSize("BTCUSD_PERP")    ← loading tickSize
+   │       ├── fetchSymbolMetadata(symbol)             ← loading tickSize/stepSize
    │       └── restartSubscription(options)           ← starting WebSocket
    │           │
-   │           └── subscribeToIncrementalDom():
+   │           └── subscribeToBookWindows():
    │               │
    │               └── domRepository.subscribeToDomEvents(symbol, depth)
    │                   │
-   │                   ├── WebSocket @depth → buffer
-   │                   ├── REST snapshot → OrderBookState.updateFromSnapshot()
-   │                   ├── buffer flush → validation
-   │                   ├── WebSocket @depth (direct) → applyUpdateWithValidation()
+   │                   ├── WebSocket depth<levels>@100ms → BookWindow (замена книги)
    │                   └── WebSocket @bookTicker → BestPrices
    │
    ├── collectAsState() → domOptions, selectedPrice, symbolTickSize, etc.
    │
-   ├── derivedStateOf → buildDisplayOrderBook()
+   ├── derivedStateOf → sortedLevels
    │   │
-   │   └── Merges incrementalBids + incrementalAsks → OrderBook
-   │       └── Applies aggregation → aggregated OrderBook
+   │   └── levels (SnapshotStateMap<Long, DomLevel>) sorted desc
+   │       └── bucket-агрегация уже применена при записи в levels
    │
    └── Column:
        ├── DomHeader (provider, symbol, depth, aggregation selection)
@@ -1780,20 +1506,20 @@ Similar to `formatPrice`, but located in the `DomUtils.kt` file and used in the 
 ## 23.2. Data update cycle
 
 ```
-WebSocket @depth event
+WebSocket partial depth event (каждые 100мс)
     │
     ▼
-DomAdapter → DomRepositoryImpl (validation) → callbackFlow
+DomAdapter → BookWindowLevels → DomRepositoryImpl → callbackFlow
     │
-    ▼ trySend(DomEvent.UpdateBid)
-DomViewModel.processDomEvent()
+    ▼ trySend(DomEvent.BookWindow)
+DomViewModel.handleBookWindow()
     │
-    ├── _incrementalBids[price] = quantity  ← in-place mutation
+    ├── levels.clear() + заполнение корзин (bucket-агрегация)
     │
-    ▼ Compose tracks the Entry change in SnapshotStateMap
-derivedStateOf { buildDisplayOrderBook(...) }
+    ▼ Compose tracks the changes in SnapshotStateMap
+derivedStateOf { levels.values.sortedByDescending { it.priceTicks } }
     │
-    ▼ New OrderBook
+    ▼ Новый список DomLevel
 DomSection → LazyColumn recomposition
     │
     ▼ Compose compares keys and updates only the changed rows

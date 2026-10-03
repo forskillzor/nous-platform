@@ -13,14 +13,16 @@ import androidx.compose.runtime.Immutable
  *   цена  = priceTicks * tickSize
  *   объём = steps    * stepSize
  *
- * @see plan: plans/dom-aprove-performance-plan.md §7
+ * Уровень ОДНОСТОРОННИЙ: либо bidSteps, либо askSteps (другое — null).
+ * Правило: апдейт одной стороны затирает другую на той же цене —
+ * меньше записей в памяти и не бывает «bid и ask на одной цене».
  */
 @Immutable
 data class DomLevel(
     /** Цена как число тиков (tickSize) — целое, точное, стабильный ключ */
     val priceTicks: Long,
-    /** Объём bid как число степов (stepSize); 0 = нет bid на этом уровне */
-    val bidSteps: Long,
-    /** Объём ask как число степов (stepSize); 0 = нет ask на этом уровне */
-    val askSteps: Long,
+    /** Объём bid как число степов (stepSize); null = нет bid на этом уровне */
+    val bidSteps: Long? = null,
+    /** Объём ask как число степов (stepSize); null = нет ask на этом уровне */
+    val askSteps: Long? = null,
 )

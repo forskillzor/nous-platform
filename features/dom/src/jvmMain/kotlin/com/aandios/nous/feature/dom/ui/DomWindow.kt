@@ -43,15 +43,12 @@ fun DomWindow(
     val symbolStepSize by domViewModel.symbolStepSize.collectAsState()
     val selectedPrice by domViewModel.selectedPrice.collectAsState()
 
-    val incrementalBestBid by domViewModel.incrementalBestBid.collectAsState()
-    val incrementalBestAsk by domViewModel.incrementalBestAsk.collectAsState()
-    val incrementalBestBidQuantity by domViewModel.incrementalBestBidQuantity.collectAsState()
-    val incrementalBestAskQuantity by domViewModel.incrementalBestAskQuantity.collectAsState()
+    // Одно состояние лучших цен
+    val bestPrices by domViewModel.bestPrices.collectAsState()
 
-    val displayLevels by domViewModel.displayLevels.collectAsState()
-    val maxSteps by remember { derivedStateOf { displayLevels.maxOfOrNull { maxOf(it.bidSteps, it.askSteps) } ?: 0L } }
-    val bestBidDisplayTicks by domViewModel.bestBidDisplayTicks.collectAsState()
-    val bestAskDisplayTicks by domViewModel.bestAskDisplayTicks.collectAsState()
+    // Таблица уровней для лесенки (SnapshotStateMap — чтение по ключу реактивно)
+    val levelsMap = domViewModel.levelsMap
+    val ladderStepTicks = domViewModel.ladderStepTicks
 
     val formatter = remember(symbolTickSize, symbolStepSize) {
         SymbolFormatter(
@@ -60,8 +57,8 @@ fun DomWindow(
         )
     }
 
-    val bestBidPrice = incrementalBestBid ?: 0.0
-    val bestAskPrice = incrementalBestAsk ?: 0.0
+    val bestBidPrice = bestPrices.bestBid ?: 0.0
+    val bestAskPrice = bestPrices.bestAsk ?: 0.0
 
     Column(modifier = modifier.fillMaxSize()) {
         DomHeader(
@@ -77,11 +74,12 @@ fun DomWindow(
                 .fillMaxWidth()
         ) {
             DomContent(
-                levels = displayLevels,
-                maxSteps = maxSteps,
+                levelsMap = levelsMap,
+                ladderStepTicks = ladderStepTicks,
                 selectedPrice = selectedPrice,
-                bestBidDisplayTicks = bestBidDisplayTicks,
-                bestAskDisplayTicks = bestAskDisplayTicks,
+                bestBidDisplayTicks = bestPrices.bestBidDisplayTicks,
+                bestAskDisplayTicks = bestPrices.bestAskDisplayTicks,
+                lastPriceDisplayTicks = bestPrices.lastPriceDisplayTicks,
                 tickSize = symbolTickSize ?: 0.01,
                 stepSize = symbolStepSize ?: 0.001,
                 formatter = formatter,

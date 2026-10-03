@@ -14,11 +14,12 @@ import com.aandios.nous.feature.dom.ui.model.DomLevel
 
 @Composable
 fun DomContent(
-    levels: List<DomLevel>,
-    maxSteps: Long,
+    levelsMap: Map<Long, DomLevel>,
+    ladderStepTicks: Long,
     selectedPrice: Double?,
     bestBidDisplayTicks: Long?,
     bestAskDisplayTicks: Long?,
+    lastPriceDisplayTicks: Long?,
     tickSize: Double,
     stepSize: Double,
     formatter: SymbolFormatter,
@@ -27,11 +28,12 @@ fun DomContent(
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         DomSection(
-            levels = levels,
-            maxSteps = maxSteps,
+            levelsMap = levelsMap,
+            ladderStepTicks = ladderStepTicks,
             selectedPrice = selectedPrice,
             bestBidDisplayTicks = bestBidDisplayTicks,
             bestAskDisplayTicks = bestAskDisplayTicks,
+            lastPriceDisplayTicks = lastPriceDisplayTicks,
             tickSize = tickSize,
             stepSize = stepSize,
             formatter = formatter,

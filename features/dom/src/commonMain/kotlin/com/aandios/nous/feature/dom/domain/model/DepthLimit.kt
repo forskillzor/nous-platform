@@ -7,7 +7,10 @@ package com.aandios.nous.feature.dom.domain.model
 
 /**
  * Ограничение глубины отображения книги заявок (количество уровней).
- * Диапазон значений: от 20 до 500 уровней.
+ * Диапазон значений: от 5 до 20 уровней.
+ *
+ * Binance Futures partial-стримы (`depth<levels>@100ms`) существуют только
+ * для уровней 5/10/20 — для большей глубины частичного стрима нет.
  */
 data class DepthLimit(
     val value: Int
@@ -19,12 +22,12 @@ data class DepthLimit(
     }
 
     companion object {
-        const val MIN_VALUE = 20
-        const val MAX_VALUE = 1000
-        const val DEFAULT_VALUE = 1000
+        const val MIN_VALUE = 5
+        const val MAX_VALUE = 20
+        const val DEFAULT_VALUE = 20
 
         /**
-         * Создает DepthLimit с значением по умолчанию (100 уровней).
+         * Создает DepthLimit с значением по умолчанию (20 уровней).
          */
         fun default(): DepthLimit = DepthLimit(DEFAULT_VALUE)
 
@@ -38,7 +41,7 @@ data class DepthLimit(
         /**
          * Список стандартных значений для выбора в UI.
          */
-        val standardValues = listOf(10, 20, 50, 100, 200, 500, 1000)
+        val standardValues = listOf(5, 10, 20)
     }
 
     /**

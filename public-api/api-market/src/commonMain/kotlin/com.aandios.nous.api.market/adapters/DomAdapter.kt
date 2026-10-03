@@ -5,18 +5,14 @@
 
 package com.aandios.nous.api.market.adapters
 
-import com.aandios.nous.api.market.model.orderbook.DepthSnapshot
-import com.aandios.nous.api.market.model.orderbook.DepthUpdate
+import com.aandios.nous.api.market.model.orderbook.BookWindowLevels
 import kotlinx.coroutines.flow.Flow
 
 interface DomAdapter: MarketAdapter {
     /**
-     * Dom Snapshot
+     * Подписка на окна стакана (partial-стрим, самодостаточные срезы топ-N уровней).
+     * Для глубины больше 20 поставщик может отдать более широкое окно —
+     * обрезка до запрошенной глубины выполняется потребителем.
      */
-    suspend fun getOrderBookSnapshot(symbol: String, depth: Int = 20): DepthSnapshot
-
-    /**
-     * Subscribe to order book updates
-     */
-    suspend fun subscribeToDepthUpdates(symbol: String, depth: Int): Flow<DepthUpdate>
+    suspend fun subscribeToBookWindow(symbol: String, depth: Int): Flow<BookWindowLevels>
 }

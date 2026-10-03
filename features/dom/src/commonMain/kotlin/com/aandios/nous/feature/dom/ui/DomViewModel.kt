@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.dom.ui
 
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import com.aandios.nous.api.market.commands.*
 import com.aandios.nous.api.market.model.orderbook.DomEvent
@@ -14,6 +15,7 @@ import com.aandios.nous.core.domain.repository.SymbolInfoRepository
 import com.aandios.nous.feature.dom.domain.DomOptions
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
+import com.aandios.nous.feature.dom.ui.model.BestPricesState
 import com.aandios.nous.feature.dom.ui.model.DomLevel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,12 +24,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlin.math.roundToLong
 
+/**
+ * Стакан (DOM). Архитектура «одна таблица» на partial-стриме:
+ * каждое окно (топ-N уровней с абсолютными объёмами) полностью заменяет
+ * книгу — [levels] (SnapshotStateMap, O(1), точечная инвалидация), а UI
+ * читает отсортированный вид [sortedLevels] (derivedStateOf).
+ *
+ * События обрабатываются на Main-диспетчере — записи и чтения UI на одном
+ * потоке, гонок нет в принципе; рекомпозиция коалесцируется по кадрам.
+ */
 class DomViewModel(
     private val domRepository: DomRepository,
     private val symbolInfoRepository: SymbolInfoRepository? = null,
     private val coroutineDispatcher: CoroutineDispatcher? = null,
 ) : Disposable {
-    private val dispatcher = coroutineDispatcher ?: Dispatchers.Default
+    private val dispatcher = coroutineDispatcher ?: Dispatchers.Main
     private val viewModelScope = CoroutineScope(dispatcher + SupervisorJob())
     private var subscriptionJob: Job? = null
 
@@ -61,48 +72,32 @@ class DomViewModel(
     private var stepSize: Double = 0.0
     private val scaleReady: Boolean get() = tickSize > 0.0 && stepSize > 0.0
 
-    private val rawBids = HashMap<Long, Long>()
-    private val rawAsks = HashMap<Long, Long>()
-
-    private val bidBuckets = HashMap<Long, Long>()
-    private val askBuckets = HashMap<Long, Long>()
-
     private var aggMultiplier: Long = 1
 
-    private val _displayLevels = ArrayList<DomLevel>()
-    private val _displayLevelsFlow = MutableStateFlow<List<DomLevel>>(emptyList())
-    val displayLevels: StateFlow<List<DomLevel>> = _displayLevelsFlow.asStateFlow()
-
-    private fun publishDisplayLevels() {
-        _displayLevelsFlow.value = ArrayList(_displayLevels)
+    // ЕДИНСТВЕННАЯ таблица уровней: её читает UI (лесенка: levelAt(key) по строке цены)
+    private val levels = mutableStateMapOf<Long, DomLevel>()
+    private val sortedLevelsState = derivedStateOf {
+        levels.values.sortedByDescending { it.priceTicks }
     }
+    val sortedLevels: List<DomLevel> get() = sortedLevelsState.value
 
-    private val _incrementalBestBid = MutableStateFlow<Double?>(null)
-    val incrementalBestBid: StateFlow<Double?> = _incrementalBestBid.asStateFlow()
+    /** Таблица уровней для рендера лесенки (чтение по ключу реактивно). */
+    internal val levelsMap: Map<Long, DomLevel> get() = levels
 
-    private val _incrementalBestAsk = MutableStateFlow<Double?>(null)
-    val incrementalBestAsk: StateFlow<Double?> = _incrementalBestAsk.asStateFlow()
+    /** Шаг строки лесенки в тиках (размер корзины агрегации). */
+    internal val ladderStepTicks: Long get() = aggMultiplier
 
-    private val _incrementalBestBidQuantity = MutableStateFlow<Double?>(null)
-    val incrementalBestBidQuantity: StateFlow<Double?> = _incrementalBestBidQuantity.asStateFlow()
+    // Одно состояние лучших цен (1 запись на тик вместо шести)
+    private val _bestPrices = MutableStateFlow(BestPricesState())
+    val bestPrices: StateFlow<BestPricesState> = _bestPrices.asStateFlow()
 
-    private val _incrementalBestAskQuantity = MutableStateFlow<Double?>(null)
-    val incrementalBestAskQuantity: StateFlow<Double?> = _incrementalBestAskQuantity.asStateFlow()
+    // Последнее окно книги по цене (Double) — источник для пересборки при смене агрегации
+    private val bidsByPrice = HashMap<Double, Double>()
+    private val asksByPrice = HashMap<Double, Double>()
 
-    private var bestBidTicks: Long? = null
-    private var bestAskTicks: Long? = null
-
-    private val _bestBidDisplayTicks = MutableStateFlow<Long?>(null)
-    val bestBidDisplayTicks: StateFlow<Long?> = _bestBidDisplayTicks.asStateFlow()
-
-    private val _bestAskDisplayTicks = MutableStateFlow<Long?>(null)
-    val bestAskDisplayTicks: StateFlow<Long?> = _bestAskDisplayTicks.asStateFlow()
-
-    private val _incrementalBids = mutableStateMapOf<Double, Double>()
-    internal val incrementalBids: Map<Double, Double> get() = _incrementalBids
-
-    private val _incrementalAsks = mutableStateMapOf<Double, Double>()
-    internal val incrementalAsks: Map<Double, Double> get() = _incrementalAsks
+    // Читаются только тестами
+    internal val windowBids: Map<Double, Double> get() = bidsByPrice
+    internal val windowAsks: Map<Double, Double> get() = asksByPrice
 
     override fun dispose() {
         subscriptionJob?.cancel()
@@ -121,7 +116,6 @@ class DomViewModel(
     fun updateDomOptions(newOptions: DomOptions) {
         val oldOptions = _domOptions.value
         if (oldOptions != newOptions) {
-            println("📊 VM: DomOptions updated")
             val aggChanged = oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
             _domOptions.value = newOptions
             updateAggMultiplier()
@@ -138,7 +132,7 @@ class DomViewModel(
                 fetchSymbolMetadata(newOptions.symbol.symbol)
             }
             if (aggChanged && !subscriptionChanged) {
-                rebuildBucketsAndDisplay()
+                rebuildLevelsFromWindow()
             }
         }
     }
@@ -151,19 +145,14 @@ class DomViewModel(
         subscriptionJob?.cancel()
         subscriptionJob = viewModelScope.launch {
             updateAggMultiplier()
-            subscribeToIncrementalDom(options)
+            subscribeToBookWindows(options)
         }
     }
 
-    private suspend fun subscribeToIncrementalDom(options: DomOptions) {
-        rawBids.clear(); rawAsks.clear()
-        bidBuckets.clear(); askBuckets.clear()
-        _displayLevels.clear()
-        _incrementalBids.clear(); _incrementalAsks.clear()
-        _incrementalBestBid.value = null; _incrementalBestAsk.value = null
-        _incrementalBestBidQuantity.value = null; _incrementalBestAskQuantity.value = null
-        bestBidTicks = null; bestAskTicks = null
-        _bestBidDisplayTicks.value = null; _bestAskDisplayTicks.value = null
+    private suspend fun subscribeToBookWindows(options: DomOptions) {
+        bidsByPrice.clear(); asksByPrice.clear()
+        levels.clear()
+        _bestPrices.value = BestPricesState()
 
         domRepository.subscribeToDomEvents(
             symbol = options.symbol.symbol,
@@ -180,229 +169,70 @@ class DomViewModel(
 
     private fun processDomEvent(event: DomEvent) {
         when (event) {
-            is DomEvent.Snapshot -> handleSnapshot(event)
-            is DomEvent.UpdateBid -> handleUpdate(event.price, event.quantity, Side.BID)
-            is DomEvent.UpdateAsk -> handleUpdate(event.price, event.quantity, Side.ASK)
+            is DomEvent.BookWindow -> handleBookWindow(event)
             is DomEvent.BestPrices -> handleBestPrices(event)
-            DomEvent.Reset -> handleReset()
         }
     }
 
-    private fun handleSnapshot(event: DomEvent.Snapshot) {
-        rawBids.clear(); rawAsks.clear()
-        bidBuckets.clear(); askBuckets.clear()
-        _displayLevels.clear()
-        _incrementalBids.clear(); _incrementalAsks.clear()
+    /** Окно полностью заменяет книгу (partial-стрим, абсолютные объёмы). */
+    private fun handleBookWindow(event: DomEvent.BookWindow) {
+        bidsByPrice.clear()
+        asksByPrice.clear()
+        event.bids.forEach { u -> bidsByPrice[u.price] = u.quantity }
+        event.asks.forEach { u -> asksByPrice[u.price] = u.quantity }
 
-        event.snapshot.bids.forEach { (priceStr, qtyStr) ->
-            val dPrice = priceStr.toDoubleOrNull() ?: return@forEach
-            val dQty = qtyStr.toDoubleOrNull() ?: return@forEach
-            _incrementalBids[dPrice] = dQty
-            if (!scaleReady) return@forEach
-            val pt = toPriceTicks(dPrice)
-            val qs = toQtySteps(dQty)
-            if (qs <= 0L) return@forEach
-            rawBids[pt] = qs
-            accumulateBucket(bidBuckets, pt, qs)
-        }
-
-        event.snapshot.asks.forEach { (priceStr, qtyStr) ->
-            val dPrice = priceStr.toDoubleOrNull() ?: return@forEach
-            val dQty = qtyStr.toDoubleOrNull() ?: return@forEach
-            _incrementalAsks[dPrice] = dQty
-            if (!scaleReady) return@forEach
-            val pt = toPriceTicks(dPrice)
-            val qs = toQtySteps(dQty)
-            if (qs <= 0L) return@forEach
-            rawAsks[pt] = qs
-            accumulateBucket(askBuckets, pt, qs)
-        }
-
-        rebuildDisplayFromBuckets()
-    }
-
-    private fun handleUpdate(price: Double, quantity: Double, side: Side) {
-        if (side == Side.BID) {
-            if (quantity == 0.0) _incrementalBids.remove(price) else _incrementalBids[price] = quantity
-        } else {
-            if (quantity == 0.0) _incrementalAsks.remove(price) else _incrementalAsks[price] = quantity
-        }
-        if (!scaleReady) return
-
-        val pt = toPriceTicks(price)
-        val qs = toQtySteps(quantity)
-        val raw = if (side == Side.BID) rawBids else rawAsks
-        val buckets = if (side == Side.BID) bidBuckets else askBuckets
-
-        val oldSteps = raw[pt] ?: 0L
-        val deltaSteps = qs - oldSteps
-        if (deltaSteps == 0L) return
-
-        if (qs == 0L) raw.remove(pt) else raw[pt] = qs
-
-        val bi = bucketIndex(pt)
-        val currentTotal = buckets[bi] ?: 0L
-        val newTotal = currentTotal + deltaSteps
-        if (newTotal <= 0L) buckets.remove(bi) else buckets[bi] = newTotal
-
-        if (isOutsideDepthWindow(bi)) return
-        patchDisplayLevel(bi)
-    }
-
-    private fun isOutsideDepthWindow(bucketIndex: Long): Boolean {
-        val depth = _domOptions.value.depth.value
-        val bbBucket = bestBidTicks?.let { bucketIndex(it) }
-        val baBucket = bestAskTicks?.let { bucketIndex(it) }
-        if (bbBucket == null || baBucket == null) return false
-        val lower = bbBucket - depth
-        val upper = baBucket + depth
-        return bucketIndex < lower || bucketIndex > upper
+        // Метаданные (tickSize/stepSize) могли ещё не прийти — окно пропускаем,
+        // следующее (через 100мс) отрисует книгу целиком
+        if (scaleReady) rebuildLevelsFromWindow()
     }
 
     private fun handleBestPrices(event: DomEvent.BestPrices) {
-        _incrementalBestBid.value = event.bestBid
-        _incrementalBestAsk.value = event.bestAsk
-        _incrementalBestBidQuantity.value = event.bestBidQuantity
-        _incrementalBestAskQuantity.value = event.bestAskQuantity
-        bestBidTicks = toPriceTicksOrNull(event.bestBid)
-        bestAskTicks = toPriceTicksOrNull(event.bestAsk)
-        _bestBidDisplayTicks.value = bestBidTicks?.let { displayBucket(it) }
-        _bestAskDisplayTicks.value = bestAskTicks?.let { displayBucket(it) }
+        val bidTicks = toPriceTicksOrNull(event.bestBid)
+        val askTicks = toPriceTicksOrNull(event.bestAsk)
+        _bestPrices.value = BestPricesState(
+            bestBid = event.bestBid,
+            bestAsk = event.bestAsk,
+            bestBidQuantity = event.bestBidQuantity,
+            bestAskQuantity = event.bestAskQuantity,
+            bestBidDisplayTicks = bidTicks?.let { bucketKey(it) },
+            bestAskDisplayTicks = askTicks?.let { bucketKey(it) },
+            lastPriceDisplayTicks = if (event.lastPrice > 0.0) {
+                toPriceTicksOrNull(event.lastPrice)?.let { bucketKey(it) }
+            } else null,
+        )
     }
 
-    private fun handleReset() {
-        rawBids.clear(); rawAsks.clear()
-        bidBuckets.clear(); askBuckets.clear()
-        _displayLevels.clear()
-        _incrementalBids.clear(); _incrementalAsks.clear()
-        _incrementalBestBid.value = null; _incrementalBestAsk.value = null
-        _incrementalBestBidQuantity.value = null; _incrementalBestAskQuantity.value = null
-        bestBidTicks = null; bestAskTicks = null
-        _bestBidDisplayTicks.value = null; _bestAskDisplayTicks.value = null
-        publishDisplayLevels()
-    }
+    // ── Пересборка и обрезка ──
 
-    // ── Управление списком ──
-
-    private fun patchDisplayLevel(bucketIndex: Long) {
-        val priceTicks = bucketIndex * aggMultiplier
-        val bid = bidBuckets[bucketIndex] ?: 0L
-        val ask = askBuckets[bucketIndex] ?: 0L
-
-        if (bid == 0L && ask == 0L) {
-            removeDisplayLevel(priceTicks)
-            publishDisplayLevels()
-            return
+    /** Пересборка уровней из последнего окна (новое окно, смена агрегации). */
+    private fun rebuildLevelsFromWindow() {
+        levels.clear()
+        bidsByPrice.forEach { (price, qty) ->
+            val pt = toPriceTicks(price)
+            val qs = toQtySteps(qty)
+            if (qs <= 0L) return@forEach
+            val key = bucketKey(pt)
+            val cur = levels[key]?.bidSteps ?: 0L
+            levels[key] = DomLevel(key, bidSteps = cur + qs)
         }
-
-        val level = DomLevel(priceTicks, bid, ask)
-        putDisplayLevel(level)
-        enforceDepth()
-        publishDisplayLevels()
-    }
-
-    private fun putDisplayLevel(level: DomLevel) {
-        for (i in _displayLevels.indices) {
-            val existing = _displayLevels[i]
-            if (existing.priceTicks == level.priceTicks) {
-                if (existing != level) _displayLevels[i] = level
-                return
-            }
-            if (existing.priceTicks < level.priceTicks) {
-                _displayLevels.add(i, level)
-                return
-            }
+        // ask вытесняет bid при совпадении ключа (правило одной стороны)
+        asksByPrice.forEach { (price, qty) ->
+            val pt = toPriceTicks(price)
+            val qs = toQtySteps(qty)
+            if (qs <= 0L) return@forEach
+            val key = bucketKey(pt)
+            val cur = levels[key]?.askSteps ?: 0L
+            levels[key] = DomLevel(key, askSteps = cur + qs)
         }
-        _displayLevels.add(level)
-    }
-
-    private fun removeDisplayLevel(priceTicks: Long) {
-        val idx = _displayLevels.indexOfFirst { it.priceTicks == priceTicks }
-        if (idx >= 0) _displayLevels.removeAt(idx)
-    }
-
-    private fun enforceDepth() {
-        val depth = _domOptions.value.depth.value
-        val bbBucket = bestBidTicks?.let { bucketIndex(it) }
-        val baBucket = bestAskTicks?.let { bucketIndex(it) }
-
-        // До прихода BookTicker — усекаем до 2*depth верхних по цене
-        if (bbBucket == null && baBucket == null) {
-            while (_displayLevels.size > depth * 2) {
-                _displayLevels.removeAt(_displayLevels.lastIndex)
-            }
-            return
-        }
-
-        var bidCount = 0
-        var askCount = 0
-        val toRemove = mutableListOf<Int>()
-
-        for (i in _displayLevels.indices) {
-            val pt = _displayLevels[i].priceTicks
-            when (classify(pt, bbBucket, baBucket)) {
-                PriceZone.BID -> {
-                    if (bidCount >= depth) toRemove.add(i) else bidCount++
-                }
-                PriceZone.ASK -> {
-                    if (askCount >= depth) toRemove.add(i) else askCount++
-                }
-                PriceZone.BETWEEN -> {}
-            }
-        }
-        if (toRemove.isNotEmpty()) {
-            for (i in toRemove.reversed()) _displayLevels.removeAt(i)
-        }
-    }
-
-    private enum class PriceZone { BID, ASK, BETWEEN }
-    private enum class Side { BID, ASK }
-
-    private fun classify(pt: Long, bb: Long?, ba: Long?): PriceZone {
-        if (bb != null && pt <= bb) return PriceZone.BID
-        if (ba != null && pt >= ba) return PriceZone.ASK
-        return PriceZone.BETWEEN
-    }
-
-    private fun accumulateBucket(buckets: HashMap<Long, Long>, priceTicks: Long, steps: Long) {
-        val bi = bucketIndex(priceTicks)
-        buckets[bi] = (buckets[bi] ?: 0L) + steps
-    }
-
-    private fun rebuildDisplayFromBuckets() {
-        _displayLevels.clear()
-        val ptToBid = HashMap<Long, Long>()
-        bidBuckets.forEach { (bi, s) -> ptToBid[bi * aggMultiplier] = (ptToBid[bi * aggMultiplier] ?: 0L) + s }
-        val ptToAsk = HashMap<Long, Long>()
-        askBuckets.forEach { (bi, s) -> ptToAsk[bi * aggMultiplier] = (ptToAsk[bi * aggMultiplier] ?: 0L) + s }
-        val allPts = LinkedHashSet<Long>()
-        ptToBid.keys.sortedDescending().forEach { allPts.add(it) }
-        ptToAsk.keys.sortedDescending().forEach { allPts.add(it) }
-        for (pt in allPts.sortedDescending()) {
-            val bid = ptToBid[pt] ?: 0L
-            val ask = ptToAsk[pt] ?: 0L
-            if (bid > 0L || ask > 0L) _displayLevels.add(DomLevel(pt, bid, ask))
-        }
-        enforceDepth()
-        publishDisplayLevels()
-    }
-
-    private fun rebuildBucketsAndDisplay() {
-        bidBuckets.clear(); askBuckets.clear()
-        rawBids.forEach { (pt, qs) -> accumulateBucket(bidBuckets, pt, qs) }
-        rawAsks.forEach { (pt, qs) -> accumulateBucket(askBuckets, pt, qs) }
-        rebuildDisplayFromBuckets()
     }
 
     // ── Конвертация ──
 
-    private fun bucketIndex(priceTicks: Long): Long = priceTicks / aggMultiplier
-    private fun displayBucket(priceTicks: Long): Long = bucketIndex(priceTicks) * aggMultiplier
+    private fun bucketKey(priceTicks: Long): Long = priceTicks / aggMultiplier * aggMultiplier
 
     private fun toPriceTicks(price: Double): Long = (price / tickSize).roundToLong()
     private fun toQtySteps(qty: Double): Long = (qty / stepSize).roundToLong()
     private fun toPriceTicksOrNull(price: Double): Long? = if (scaleReady) toPriceTicks(price) else null
-    private fun toQtyStepsOrNull(qty: Double): Long? = if (scaleReady) toQtySteps(qty) else null
 
     // ── Команды (без изменений) ──
 
@@ -470,6 +300,11 @@ class DomViewModel(
                 stepSize = info.stepSize
                 _symbolTickSize.value = tickSize
                 _symbolStepSize.value = stepSize
+                // Метаданные могли прийти после первого окна — пересобираем
+                // книгу из последнего окна, чтобы стакан появился сразу
+                if (bidsByPrice.isNotEmpty() || asksByPrice.isNotEmpty()) {
+                    rebuildLevelsFromWindow()
+                }
             } catch (e: Exception) {
                 println("❌ Failed to fetch metadata for $symbol: ${e.message}")
             }

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (C) 2026 Sergey Orlov
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
@@ -6,23 +6,24 @@
 package com.aandios.nous.feature.dom.ui
 
 import com.aandios.nous.api.market.model.SymbolInfo
-import com.aandios.nous.api.market.model.orderbook.DepthSnapshot
 import com.aandios.nous.api.market.model.orderbook.DomEvent
+import com.aandios.nous.api.market.model.orderbook.PriceUpdate
 import com.aandios.nous.core.domain.repository.DomRepository
 import com.aandios.nous.core.domain.repository.SymbolInfoRepository
 import com.aandios.nous.feature.dom.domain.DomOptions
 import com.aandios.nous.feature.dom.domain.TradingProvider
 import com.aandios.nous.feature.dom.domain.TradingSymbol
+import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.domain.model.DepthLimit
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -75,7 +76,7 @@ class DomViewModelTest {
     fun `updateDomOptions changes options and triggers subscription`() = testScope.runTest {
         val newOptions = DomOptions.default().copy(
             symbol = TradingSymbol("ETHUSDT", "ETH/USDT", TradingProvider.BINANCE),
-            depth = DepthLimit.create(50)
+            depth = DepthLimit.create(20)
         )
 
         viewModel.updateDomOptions(newOptions)
@@ -84,9 +85,8 @@ class DomViewModelTest {
         val currentOptions = viewModel.domOptions.first()
         assertEquals(newOptions, currentOptions)
 
-        // Verify subscription was triggered (fake repository should have been called)
         assertEquals("ETHUSDT", fakeDomRepository.lastSubscribedSymbol)
-        assertEquals(50, fakeDomRepository.lastSubscribedDepth)
+        assertEquals(20, fakeDomRepository.lastSubscribedDepth)
     }
 
     @Test
@@ -129,89 +129,198 @@ class DomViewModelTest {
     }
 
     @Test
-    fun `processDomEvent Snapshot updates incremental data`() = testScope.runTest {
-        // Simulate receiving a snapshot via repository flow
-        val snapshot = DepthSnapshot(
-            lastUpdateId = 100,
-            bids = listOf(listOf("50000.0", "1.5"), listOf("49900.0", "2.0")),
-            asks = listOf(listOf("50100.0", "0.8"), listOf("50200.0", "1.2"))
+    fun `book window stores window data`() = testScope.runTest {
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(PriceUpdate(50000.0, 1.5), PriceUpdate(49900.0, 2.0)),
+                asks = listOf(PriceUpdate(50100.0, 0.8), PriceUpdate(50200.0, 1.2))
+            )
         )
-        val event = DomEvent.Snapshot(snapshot, "BTCUSDT")
-        fakeDomRepository.domEventsFlow.emit(event)
         advanceUntilIdle()
 
-        val bids = viewModel.incrementalBids
+        val bids = viewModel.windowBids
         assertEquals(2, bids.size)
         assertEquals(1.5, bids[50000.0])
         assertEquals(2.0, bids[49900.0])
 
-        val asks = viewModel.incrementalAsks
+        val asks = viewModel.windowAsks
         assertEquals(2, asks.size)
         assertEquals(0.8, asks[50100.0])
         assertEquals(1.2, asks[50200.0])
     }
 
     @Test
-    fun `processDomEvent UpdateBid updates bids`() = testScope.runTest {
-        // First, set up some initial bids via snapshot
-        val snapshot = DepthSnapshot(
-            lastUpdateId = 100,
-            bids = listOf(listOf("50000.0", "1.5")),
-            asks = emptyList()
+    fun `book window replaces previous window`() = testScope.runTest {
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(PriceUpdate(50000.0, 1.5), PriceUpdate(49900.0, 2.0)),
+                asks = emptyList()
+            )
         )
-        fakeDomRepository.domEventsFlow.emit(DomEvent.Snapshot(snapshot, "BTCUSDT"))
+        advanceUntilIdle()
+        assertEquals(2, viewModel.sortedLevels.size)
+
+        // РќРѕРІРѕРµ РѕРєРЅРѕ Р±РµР· СѓСЂРѕРІРЅСЏ 49900 вЂ” СѓСЂРѕРІРµРЅСЊ РёСЃС‡РµР·Р°РµС‚ РёР· РєРЅРёРіРё
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(PriceUpdate(50000.0, 1.5)),
+                asks = emptyList()
+            )
+        )
         advanceUntilIdle()
 
-        // Then emit an update
-        fakeDomRepository.domEventsFlow.emit(DomEvent.UpdateBid(50000.0, 0.0)) // remove
-        advanceUntilIdle()
-
-        assertTrue(viewModel.incrementalBids.isEmpty())
-
-        // Add new bid
-        fakeDomRepository.domEventsFlow.emit(DomEvent.UpdateBid(49900.0, 3.0))
-        advanceUntilIdle()
-
-        val updatedBids = viewModel.incrementalBids
-        assertEquals(1, updatedBids.size)
-        assertEquals(3.0, updatedBids[49900.0])
+        assertEquals(1, viewModel.sortedLevels.size)
+        assertEquals(50000L, viewModel.sortedLevels.first().priceTicks)
     }
 
     @Test
     fun `processDomEvent BestPrices updates best prices`() = testScope.runTest {
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
         fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BestPrices(50000.0, 1.5, 50100.0, 0.8, "BTCUSDT")
+            DomEvent.BestPrices(50000.0, 1.5, 50100.0, 0.8, 50050.0, "BTCUSDT")
         )
         advanceUntilIdle()
 
-        assertEquals(50000.0, viewModel.incrementalBestBid.first())
-        assertEquals(50100.0, viewModel.incrementalBestAsk.first())
-        assertEquals(1.5, viewModel.incrementalBestBidQuantity.first())
-        assertEquals(0.8, viewModel.incrementalBestAskQuantity.first())
+        val best = viewModel.bestPrices.first()
+        assertEquals(50000.0, best.bestBid)
+        assertEquals(50100.0, best.bestAsk)
+        assertEquals(1.5, best.bestBidQuantity)
+        assertEquals(0.8, best.bestAskQuantity)
+        // Последняя сделка — в корзине агрегации (BaseTick: 1 тик = 1.0)
+        assertEquals(50050L, best.lastPriceDisplayTicks)
     }
 
     @Test
-    fun `processDomEvent Reset clears incremental data`() = testScope.runTest {
-        // Set up some data
-        val snapshot = DepthSnapshot(
-            lastUpdateId = 100,
-            bids = listOf(listOf("50000.0", "1.5")),
-            asks = listOf(listOf("50100.0", "0.8"))
+    fun `sorted levels are built from window in descending price order`() = testScope.runTest {
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(PriceUpdate(50000.0, 1.0), PriceUpdate(49900.0, 2.0)),
+                asks = listOf(PriceUpdate(50100.0, 3.0))
+            )
         )
-        fakeDomRepository.domEventsFlow.emit(DomEvent.Snapshot(snapshot, "BTCUSDT"))
-        fakeDomRepository.domEventsFlow.emit(DomEvent.BestPrices(50000.0, 1.5, 50100.0, 0.8, "BTCUSDT"))
         advanceUntilIdle()
 
-        // Emit reset
-        fakeDomRepository.domEventsFlow.emit(DomEvent.Reset)
+        val levels = viewModel.sortedLevels
+        assertEquals(3, levels.size)
+        assertEquals(listOf(50100L, 50000L, 49900L), levels.map { it.priceTicks })
+        // ask-СѓСЂРѕРІРµРЅСЊ РЅР° 50100: С‚РѕР»СЊРєРѕ askSteps
+        assertNull(levels[0].bidSteps)
+        assertEquals(300L, levels[0].askSteps)
+        // bid-СѓСЂРѕРІРµРЅСЊ РЅР° 50000: С‚РѕР»СЊРєРѕ bidSteps
+        assertEquals(100L, levels[1].bidSteps)
+        assertNull(levels[1].askSteps)
+        // bid-СѓСЂРѕРІРµРЅСЊ РЅР° 49900
+        assertEquals(200L, levels[2].bidSteps)
+        assertNull(levels[2].askSteps)
+    }
+
+    @Test
+    fun `ask wins over bid on the same price (one side rule)`() = testScope.runTest {
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
         advanceUntilIdle()
 
-        assertTrue(viewModel.incrementalBids.isEmpty())
-        assertTrue(viewModel.incrementalAsks.isEmpty())
-        assertNull(viewModel.incrementalBestBid.first())
-        assertNull(viewModel.incrementalBestAsk.first())
-        assertNull(viewModel.incrementalBestBidQuantity.first())
-        assertNull(viewModel.incrementalBestAskQuantity.first())
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(PriceUpdate(50000.0, 1.0)),
+                asks = listOf(PriceUpdate(50000.0, 2.0))
+            )
+        )
+        advanceUntilIdle()
+
+        assertEquals(1, viewModel.sortedLevels.size)
+        val level = viewModel.sortedLevels.first()
+        assertNull(level.bidSteps)
+        assertEquals(200L, level.askSteps)
+    }
+
+    @Test
+    fun `aggregation buckets levels`() = testScope.runTest {
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        viewModel.updateDomOptions(
+            DomOptions.default().copy(aggregation = AggregationLevel.TenTick)
+        )
+        advanceUntilIdle()
+
+        // 50001, 50005, 50009 в†’ РѕРґРЅР° РєРѕСЂР·РёРЅР° 50000; 50010 в†’ 50010
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(
+                    PriceUpdate(50001.0, 1.0),
+                    PriceUpdate(50005.0, 2.0),
+                    PriceUpdate(50009.0, 3.0),
+                    PriceUpdate(50010.0, 4.0)
+                ),
+                asks = emptyList()
+            )
+        )
+        advanceUntilIdle()
+
+        val levels = viewModel.sortedLevels
+        assertEquals(2, levels.size)
+        assertEquals(listOf(50010L, 50000L), levels.map { it.priceTicks })
+        assertEquals(400L, levels[0].bidSteps)
+        assertEquals(600L, levels[1].bidSteps)  // 100 + 200 + 300
+    }
+
+    @Test
+    fun `window keeps all levels - ladder shows full book`() = testScope.runTest {
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        // 30 bid-уровней — окно сохраняется целиком (без обрезки: лесенка скроллится по цене)
+        val bids = (0 until 30).map { i -> PriceUpdate((50000.0 - i), 1.0) }
+        fakeDomRepository.domEventsFlow.emit(DomEvent.BookWindow(bids = bids, asks = emptyList()))
+        advanceUntilIdle()
+
+        assertEquals(30, viewModel.sortedLevels.size)
+        assertEquals(50000L, viewModel.sortedLevels.first().priceTicks)
+        assertEquals(49971L, viewModel.sortedLevels.last().priceTicks)
+    }
+
+    @Test
+    fun `window before metadata - book is drawn after metadata arrives`() = testScope.runTest {
+        // Окно приходит ДО метаданных (fetch задержан на 500мс) — уровней ещё нет.
+        // runCurrent обрабатывает задачи только в текущем виртуальном времени (t=0),
+        // не пересекая delay(500) — окно успевает прийти первым
+        fakeDomRepository.domEventsFlow.emit(
+            DomEvent.BookWindow(
+                bids = listOf(PriceUpdate(50000.0, 1.5)),
+                asks = listOf(PriceUpdate(50100.0, 0.8))
+            )
+        )
+        runCurrent()
+        assertEquals(0, viewModel.sortedLevels.size)
+        assertEquals(1, viewModel.windowBids.size)
+        assertEquals(1, viewModel.windowAsks.size)
+
+        // Приходят метаданные (tickSize=1.0, stepSize=0.01) — книга строится из последнего окна
+        fakeSymbolInfoRepository.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        val levels = viewModel.sortedLevels
+        assertEquals(2, levels.size)
+        assertEquals(listOf(50100L, 50000L), levels.map { it.priceTicks })
+        assertNull(levels[0].bidSteps)
+        assertEquals(80L, levels[0].askSteps)   // 0.8 / 0.01
+        assertEquals(150L, levels[1].bidSteps)  // 1.5 / 0.01
+        assertNull(levels[1].askSteps)
     }
 
     @Test
