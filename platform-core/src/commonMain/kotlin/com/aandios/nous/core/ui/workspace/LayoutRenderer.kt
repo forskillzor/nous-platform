@@ -440,7 +440,11 @@ private fun RenderNode(
                             val weight =
                                 if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
                             key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
+                                // fillMaxWidth: дети V-сплита занимают всю ширину
+                                // слота — иначе фикс-цепочка (без chart) оборачивается
+                                // по контенту и сжимает панели через дефолтный
+                                // parentSizePx, хотя места достаточно.
+                                RenderNode(node = child, modifier = Modifier.weight(weight).fillMaxWidth(), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
                             if (index < node.children.lastIndex) {
                                 SplitHandle(

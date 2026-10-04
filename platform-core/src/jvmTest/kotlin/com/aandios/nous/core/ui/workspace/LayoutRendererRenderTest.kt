@@ -613,4 +613,80 @@ class LayoutRendererRenderTest {
             "charts должны делить пропорционально: chart0=$chart0w, inner=$innerChartW"
         )
     }
+
+    @Test
+    fun fixedChainUnderChartInVSplitKeepsFullWidth() = runDesktopComposeUiTest(width = 2200, height = 900) {
+        // Регрессия SOL Daytrading: V[chart, H[dom, trades, trades, dom]] —
+        // дети V-сплита обязаны занимать всю ширину слота, иначе фикс-цепочка
+        // оборачивается по контенту (дефолтный parentSizePx 800) и панели
+        // сжимаются до 200 при достаточном месте.
+        val sizes = mutableMapOf<String, IntSize>()
+        val tree = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(
+                LayoutNode.Split(
+                    LayoutNode.Direction.VERTICAL, 0.5f,
+                    listOf(
+                        LayoutNode.Leaf("chart"),
+                        LayoutNode.Split(
+                            LayoutNode.Direction.HORIZONTAL, 0.5f,
+                            listOf(
+                                LayoutNode.Leaf("dom1"),
+                                LayoutNode.Split(
+                                    LayoutNode.Direction.HORIZONTAL, 0.5f,
+                                    listOf(
+                                        LayoutNode.Leaf("trades1"),
+                                        LayoutNode.Split(
+                                            LayoutNode.Direction.HORIZONTAL, 0.5f,
+                                            listOf(LayoutNode.Leaf("trades2"), LayoutNode.Leaf("dom2"))
+                                        )
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+                LayoutNode.Leaf("tradesRight")
+            )
+        )
+        val panels = mapOf(
+            "chart" to panel("chart"),
+            "dom1" to panel("dom1").copy(type = PanelType.DOM),
+            "dom2" to panel("dom2").copy(type = PanelType.DOM),
+            "trades1" to panel("trades1").copy(type = PanelType.TRADES),
+            "trades2" to panel("trades2").copy(type = PanelType.TRADES),
+            "tradesRight" to panel("tradesRight").copy(type = PanelType.TRADES),
+        )
+
+        setContent {
+            LayoutRenderer(
+                node = tree,
+                panels = panels,
+                modifier = Modifier.fillMaxSize(),
+                fixedPanelWidths = panels
+                    .filterValues { it.type != PanelType.CHART }
+                    .mapValues { 240.dp },
+            ) { panelId ->
+                Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
+            }
+        }
+        waitForIdle()
+
+        // Панели цепочки по 240 — НЕ сжаты до 200 (слот ~1960, места достаточно)
+        val chainIds = listOf("dom1", "trades1", "trades2", "dom2")
+        chainIds.forEach { id ->
+            val w = sizes.getValue(id).width
+            assertTrue(w in 235..245, "$id должен быть 240, а не $w; sizes=$sizes")
+        }
+        val wRight = sizes.getValue("tradesRight").width
+        assertTrue(wRight in 235..245, "tradesRight должен быть 240, а не $wRight")
+        // Chart растянут на всю ширину V-слота и не уже цепочки
+        val wChart = sizes.getValue("chart").width
+        assertTrue(wChart >= 960, "chart должен тянуться по ширине цепочки, а не $wChart")
+        // Цепочка плотная: 4×240 = 960
+        assertEquals(960, chainIds.sumOf { sizes.getValue(it).width }, "цепочка должна быть 4×240")
+        // Дыр нет: chart/цепочка (V-слот 1960) + tradesRight (240) = 2200
+        val total = wChart + wRight
+        assertTrue(total in 2192..2200, "дыра/переполнение: total=$total")
+    }
 }
