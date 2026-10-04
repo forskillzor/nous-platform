@@ -6,7 +6,6 @@
 package com.aandios.nous.core.ui.workspace
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateValueAsState
@@ -258,11 +257,15 @@ private fun RenderNode(
             // контент AnimatedContent не обновляется при том же ключе.
             val signature = layoutSignature(node)
             AnimatedContent(
+                modifier = modifier,   // занимаем весь weight-слот — иначе
+                // контент меряется с неограниченными констрейнтами,
+                // и weight-дети схлопываются в нулевой размер.
                 targetState = signature,
                 transitionSpec = {
+                    // Без SizeTransform: он ломает измерение weight-детей
+                    // (неограниченные констрейнты → нулевые размеры панелей).
                     (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200)))
                         .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.97f, animationSpec = tween(150)))
-                        .using(SizeTransform(clip = true))
                 },
                 label = "split-content",
             ) {

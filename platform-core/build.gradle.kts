@@ -48,6 +48,8 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.junit.jupiter)
             implementation(libs.kotlinx.coroutines.test)
+            implementation(compose.desktop.currentOs)
+            implementation(compose.desktop.uiTestJUnit4)
         }
     }
 }
