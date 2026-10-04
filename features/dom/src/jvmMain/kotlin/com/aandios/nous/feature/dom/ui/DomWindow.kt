@@ -31,8 +31,8 @@ fun DomWindow() {
     DomWindow(domViewModel = domViewModel)
 }
 
-/** Рекомендуемая ширина DOM-панели в workspace (как в preview). */
-val DomRecommendedWidth: Dp = 300.dp
+/** Рекомендуемая ширина DOM-панели в workspace. */
+val DomRecommendedWidth: Dp = 240.dp
 
 @Composable
 fun DomWindow(

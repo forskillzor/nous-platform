@@ -32,8 +32,8 @@ fun TradesWindow() {
     TradesWindow(tradesViewModel = tradesViewModel)
 }
 
-/** Рекомендуемая ширина Trades-панели в workspace (как в preview). */
-val TradesRecommendedWidth: Dp = 400.dp
+/** Рекомендуемая ширина Trades-панели в workspace (как у DOM). */
+val TradesRecommendedWidth: Dp = 240.dp
 
 /**
  * Trades-панель для использования внутри workspace-панелей (и др. композитов).
