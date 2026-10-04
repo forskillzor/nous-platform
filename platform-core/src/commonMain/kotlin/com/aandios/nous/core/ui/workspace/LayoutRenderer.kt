@@ -44,6 +44,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.workspace.LayoutEngine
@@ -300,8 +301,10 @@ private fun RenderNode(
             val numChildren = node.children.size
             var parentSizePx by remember { mutableFloatStateOf(800f) }
 
-            // Sync mutable ratio to node for persistence
-            LaunchedEffect(ratio) { node.ratio = ratio }
+            // Sync mutable ratio to node for persistence.
+            // Ключ node: при пересборке дерева эффект пишет в АКТУАЛЬНЫЙ инстанс
+            // (иначе с equals-true remember эффект продолжал писать в старый узел).
+            LaunchedEffect(ratio, node) { node.ratio = ratio }
 
             when (node.direction) {
                 LayoutNode.Direction.HORIZONTAL -> {
@@ -517,6 +520,14 @@ private fun SplitHandle(
     val isHovered by interactionSource.collectIsHoveredAsState()
     val bgColor = if (isHovered) Color(0xFF00C853).copy(alpha = 0.4f) else Color(0xFF333333)
 
+    // Свежие ссылки: pointerInput(Unit) создаётся один раз, и без
+    // rememberUpdatedState он навсегда держал бы СТАРЫЕ onResize/onResizeStart
+    // и старый parentSize. После move/split (remember(node) пересоздаёт ratio-
+    // state) жест писал бы в откреплённый state — resize «умирал».
+    val currentOnResizeStart by rememberUpdatedState(onResizeStart)
+    val currentOnResize by rememberUpdatedState(onResize)
+    val currentParentSize by rememberUpdatedState(parentSize)
+
     Box(
         modifier = Modifier
             .then(
@@ -526,20 +537,21 @@ private fun SplitHandle(
             )
             .background(bgColor)
             .hoverable(interactionSource)
+            .testTag("split-handle-${if (direction == LayoutNode.Direction.HORIZONTAL) "h" else "v"}")
             .pointerInput(Unit) {
-                val size = if (parentSize > 0f) parentSize else 500f
+                val size = if (currentParentSize > 0f) currentParentSize else 500f
                 if (direction == LayoutNode.Direction.HORIZONTAL) {
                     detectHorizontalDragGestures(
-                        onDragStart = { onResizeStart?.invoke() },
+                        onDragStart = { currentOnResizeStart?.invoke() },
                         onHorizontalDrag = { _, dragAmount ->
-                            onResize(dragAmount / size)
+                            currentOnResize(dragAmount / size)
                         }
                     )
                 } else {
                     detectVerticalDragGestures(
-                        onDragStart = { onResizeStart?.invoke() },
+                        onDragStart = { currentOnResizeStart?.invoke() },
                         onVerticalDrag = { _, dragAmount ->
-                            onResize(dragAmount / size)
+                            currentOnResize(dragAmount / size)
                         }
                     )
                 }
