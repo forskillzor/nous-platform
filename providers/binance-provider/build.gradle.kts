@@ -18,5 +18,8 @@ kotlin {
         jvmMain.dependencies {
             implementation("io.ktor:ktor-client-cio:3.4.1")
         }
+        jvmTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
     }
 }
