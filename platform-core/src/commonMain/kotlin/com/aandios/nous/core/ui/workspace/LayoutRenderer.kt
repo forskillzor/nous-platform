@@ -45,8 +45,16 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
@@ -125,6 +133,23 @@ fun LayoutRenderer(
     // drag'а и анимации перелёта. Живёт дольше dragState.
     val panelRects = remember { mutableStateOf<Map<String, Rect>>(emptyMap()) }
 
+    // Фиксированные ширины DOM/Trades-панелей: считаются по содержимому хедера
+    // (textMeasurer + размеры кнопок), чтобы в хедер всё влезало; CHART — гибкие.
+    val textMeasurer = rememberTextMeasurer()
+    val fixedWidthsPx = remember(node, panels, onSplitPanel, onClosePanel, density) {
+        panels.values
+            .filter { it.type != PanelType.CHART }
+            .associate {
+                it.id to panelFixedWidthPx(
+                    config = it,
+                    hasSplitButtons = onSplitPanel != null,
+                    hasCloseButton = onClosePanel != null,
+                    textMeasurer = textMeasurer,
+                    density = density,
+                )
+            }
+    }
+
     // Анимация перелёта панелей при изменении дерева (split/close/move/undo).
     val flyProgress = remember { Animatable(1f) }
     val fly = remember { PanelFlyContext(flyProgress, panelRects) }
@@ -180,6 +205,7 @@ fun LayoutRenderer(
             rootBandPx = rootBandPx,
             dragState = dragState,
             fly = fly,
+            fixedWidthsPx = fixedWidthsPx,
             panelContent = panelContent,
         )
 
@@ -220,6 +246,7 @@ private fun RenderNode(
     rootBandPx: Float = 0f,
     dragState: PanelDragState,
     fly: PanelFlyContext,
+    fixedWidthsPx: Map<String, Float> = emptyMap(),
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
     when (node) {
@@ -300,25 +327,48 @@ private fun RenderNode(
             var ratio by remember(node) { mutableFloatStateOf(node.ratio) }
             val numChildren = node.children.size
             var parentSizePx by remember { mutableFloatStateOf(800f) }
+            val density = LocalDensity.current
 
             // Sync mutable ratio to node for persistence.
             // Ключ node: при пересборке дерева эффект пишет в АКТУАЛЬНЫЙ инстанс
             // (иначе с equals-true remember эффект продолжал писать в старый узел).
             LaunchedEffect(ratio, node) { node.ratio = ratio }
 
+            fun fixedWidthOf(child: LayoutNode): Float? =
+                (child as? LayoutNode.Leaf)?.let { fixedWidthsPx[it.panelId] }
+
             when (node.direction) {
                 LayoutNode.Direction.HORIZONTAL -> {
+                    // DOM/Trades — фиксированная ширина по контенту хедера,
+                    // CHART (и вложенные сплиты) — гибкие веса.
+                    val flexIndices = node.children.mapIndexedNotNull { index, child ->
+                        if (fixedWidthOf(child) == null) index else null
+                    }
+                    val flexCount = flexIndices.size
+                    val fixedSumPx = node.children.fold(0f) { acc, child -> acc + (fixedWidthOf(child) ?: 0f) }
+
                     Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
                         node.children.forEachIndexed { index, child ->
-                            val weight =
-                                if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                            key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, panelContent = panelContent)
+                            val fixedPx = fixedWidthOf(child)
+                            val childModifier = if (fixedPx != null) {
+                                Modifier.width(with(density) { fixedPx.toDp() })
+                            } else {
+                                val flexIndex = flexIndices.indexOf(index)
+                                val weight = when {
+                                    flexCount == 1 -> 1f
+                                    flexIndex == 0 -> ratio
+                                    else -> (1f - ratio) / (flexCount - 1).coerceAtLeast(1)
+                                }
+                                Modifier.weight(weight)
                             }
-                            if (index < node.children.lastIndex) {
+                            key(layoutSignature(child)) {
+                                RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedWidthsPx = fixedWidthsPx, panelContent = panelContent)
+                            }
+                            if (index < node.children.lastIndex && flexCount > 0) {
                                 SplitHandle(
                                     direction = LayoutNode.Direction.HORIZONTAL,
-                                    parentSize = parentSizePx,
+                                    // Свободный (гибкий) отрезок — без фиксированных панелей
+                                    parentSize = (parentSizePx - fixedSumPx).coerceAtLeast(1f),
                                     onResizeStart = onRatioChangeStart,
                                     onResize = { delta ->
                                         val newRatio = ratio + delta
@@ -329,6 +379,10 @@ private fun RenderNode(
                                 )
                             }
                         }
+                        if (flexCount == 0) {
+                            // Нет гибких панелей — заполняем остаток, чтобы Row занял всю ширину
+                            Spacer(Modifier.weight(1f))
+                        }
                     }
                 }
 
@@ -338,7 +392,7 @@ private fun RenderNode(
                             val weight =
                                 if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
                             key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, panelContent = panelContent)
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedWidthsPx = fixedWidthsPx, panelContent = panelContent)
                             }
                             if (index < node.children.lastIndex) {
                                 SplitHandle(
@@ -369,6 +423,54 @@ private fun layoutSignature(node: LayoutNode): String = when (node) {
     is LayoutNode.Leaf -> "L:${node.panelId}"
     is LayoutNode.Split ->
         "S:${node.direction}(" + node.children.joinToString(",") { layoutSignature(it) } + ")"
+}
+
+/**
+ * Фиксированная ширина панели (DOM/Trades): контент хедера, посчитанный
+ * textMeasurer'ом — префикс, «symbol · state», кнопки сплита и закрытия,
+ * паддинги, рамка и небольшой запас. Кламп от 120 до 360 dp.
+ */
+private fun panelFixedWidthPx(
+    config: PanelConfig,
+    hasSplitButtons: Boolean,
+    hasCloseButton: Boolean,
+    textMeasurer: TextMeasurer,
+    density: Density,
+): Float {
+    val labelStyle = TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+    val buttonStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+    val closeStyle = TextStyle(
+        fontSize = 14.sp,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+    )
+
+    fun textW(text: String, style: TextStyle): Float =
+        textMeasurer.measure(AnnotatedString(text), style).size.width.toFloat()
+
+    val prefix = when (config.type) {
+        PanelType.CHART -> "▤"
+        PanelType.DOM -> "▥"
+        PanelType.TRADES -> "▦"
+    }
+    val label = "${config.symbol} · ${panelStateLabel(config)}"
+
+    var w = textW(prefix, labelStyle) +
+            with(density) { 4.dp.toPx() } +
+            textW(label, labelStyle)
+    if (hasSplitButtons) {
+        w += textW("┃", buttonStyle) + with(density) { 2.dp.toPx() } +
+                textW("━", buttonStyle) + with(density) { 2.dp.toPx() }
+    }
+    if (hasCloseButton) {
+        w += with(density) { 4.dp.toPx() } + textW("×", closeStyle)
+    }
+    w += with(density) { (6.dp * 2 + 1.dp * 2 + 6.dp).toPx() } // паддинги + рамка + запас
+
+    return w.coerceIn(
+        with(density) { 120.dp.toPx() },
+        with(density) { 360.dp.toPx() },
+    )
 }
 
 /**

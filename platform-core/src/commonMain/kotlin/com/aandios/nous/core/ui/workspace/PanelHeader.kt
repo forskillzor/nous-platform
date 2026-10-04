@@ -23,6 +23,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.workspace.PanelConfig
@@ -111,6 +112,8 @@ fun PanelHeader(
         Text(
             text = "${config.symbol} · ${panelStateLabel(config)}",
             color = Color(0xFFAAAAAA), fontSize = 10.sp, fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
         )
 
@@ -153,7 +156,7 @@ fun PanelHeader(
     }
 }
 
-private fun panelStateLabel(config: PanelConfig): String = when (val state = config.state) {
+internal fun panelStateLabel(config: PanelConfig): String = when (val state = config.state) {
     is com.aandios.nous.core.workspace.PanelState.Chart -> state.timeframe
     is com.aandios.nous.core.workspace.PanelState.Dom -> "${state.depth}lvl"
     is com.aandios.nous.core.workspace.PanelState.Trades -> "trades"
