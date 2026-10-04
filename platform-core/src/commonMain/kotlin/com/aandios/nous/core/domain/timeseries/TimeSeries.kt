@@ -61,18 +61,23 @@ class TimeSeriesController<T>(
     private var liveJob: Job? = null
 
     /** Загружает начальные данные и подписывается на realtime. */
-    fun start() {
+    fun start(skipInitialLoad: Boolean = false) {
         liveJob?.cancel()
-        _state.value = TimeSeriesState(loading = true)
+        _state.value = TimeSeriesState(loading = !skipInitialLoad)
         liveJob = scope.launch {
             try {
-                val initial = source.loadInitial()
-                _state.update {
-                    it.copy(
-                        items = initial,
-                        loading = false,
-                        hasMore = initial.isNotEmpty(),
-                    )
+                if (!skipInitialLoad) {
+                    val initial = source.loadInitial()
+                    _state.update {
+                        it.copy(
+                            items = initial,
+                            loading = false,
+                            hasMore = initial.isNotEmpty(),
+                        )
+                    }
+                } else {
+                    // Данные уже есть (например, из кэша) — сразу идём в live.
+                    _state.update { it.copy(loading = false) }
                 }
                 source.liveUpdates().collect { update ->
                     _state.update { it.copy(items = source.mergeItem(it.items, update)) }

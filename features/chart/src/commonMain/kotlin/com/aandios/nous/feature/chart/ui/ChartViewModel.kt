@@ -13,6 +13,7 @@ import com.aandios.nous.core.domain.cache.CandleCacheStore
 import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.domain.repository.ChartRepository
 import com.aandios.nous.core.domain.timeseries.TimeSeriesController
+import com.aandios.nous.core.domain.timeseries.Timeframes
 import com.aandios.nous.core.currentTimeMillis
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.storage.StateStore
@@ -241,28 +242,6 @@ class ChartViewModel(
 
         _state.update { it.copy(chartState = ChartState.Loading) }
 
-        // Быстрый показ из кэша, пока грузится свежая история с биржи.
-        // Guard внутри update: кэш не может перетереть свежие данные
-        viewModelScope.launch {
-            val cache = candleCache ?: return@launch
-            try {
-                val cached = cache.getCandles(EXCHANGE, ticker, timeframe, CACHE_LIMIT)
-                _state.update { s ->
-                    if (cached.isNotEmpty() &&
-                        s.currentSymbol == ticker &&
-                        s.currentTimeframe == timeframe &&
-                        s.chartState is ChartState.Loading
-                    ) {
-                        s.copy(chartState = ChartState.Success(cached, cached.last().close))
-                    } else {
-                        s
-                    }
-                }
-            } catch (_: Exception) {
-                // кэш не критичен для работы графика
-            }
-        }
-
         val controller = TimeSeriesController(
             source = chartRepository.candleSource(ticker, timeframe),
             scope = viewModelScope,
@@ -288,7 +267,37 @@ class ChartViewModel(
             }
         }
 
-        controller.start()
+        // Быстрый показ из кэша; если кэш свежий (последняя закрытая свеча —
+        // текущий таймфрейм) — пропускаем REST loadInitial и стартуем сразу
+        // с live-стрима: меньше запросов при открытии workspace с N графиками.
+        viewModelScope.launch {
+            val cache = candleCache
+            val cached = if (cache != null) {
+                runCatching { cache.getCandles(EXCHANGE, ticker, timeframe, CACHE_LIMIT) }
+                    .getOrDefault(emptyList())
+            } else {
+                emptyList()
+            }
+
+            _state.update { s ->
+                if (cached.isNotEmpty() &&
+                    s.currentSymbol == ticker &&
+                    s.currentTimeframe == timeframe &&
+                    s.chartState is ChartState.Loading
+                ) {
+                    s.copy(chartState = ChartState.Success(cached, cached.last().close))
+                } else {
+                    s
+                }
+            }
+
+            val timeframeMs = Timeframes.millis(timeframe)
+            val now = currentTimeMillis()
+            val freshCache = cached.isNotEmpty() &&
+                    cached.last().timestamp + timeframeMs > now - timeframeMs
+
+            controller.start(skipInitialLoad = freshCache)
+        }
     }
 
     /** Throttled-запись свечей в кэш (не чаще раза в 30 секунд). */
