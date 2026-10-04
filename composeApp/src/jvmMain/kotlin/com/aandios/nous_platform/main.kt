@@ -6,6 +6,7 @@
 package com.aandios.nous_platform
 
 import androidx.compose.runtime.*
+import java.awt.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
@@ -54,6 +55,9 @@ fun main() {
                     title = "Nous Platform • v 0.1",
                     state = wsState,
                 ) {
+                    // Тёмный фон AWT-окна: без него при ресайзе проблёскивает белый
+                    // (фрейм перерисовывается раньше Compose-слоя).
+                    window.background = Color(0x0A0A0A)
                     TradingTerminalTheme(
                         darkTheme = true,
                         nightMode = false

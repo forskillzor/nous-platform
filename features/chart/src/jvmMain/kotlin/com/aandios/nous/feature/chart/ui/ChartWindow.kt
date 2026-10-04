@@ -14,6 +14,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+//import androidx.compose.ui.graphics.Color
+import java.awt.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -353,6 +355,8 @@ fun main() = application {
         title = "Nous Platform • Chart Preview",
         state = rememberWindowState(width = 800.dp, height = 600.dp)
     ) {
+        // Тёмный фон AWT-окна: без него при ресайзе проблёскивает белый
+        window.background = Color(0x0A0A0A)
         KoinContext {
             TradingTerminalTheme {
                 ChartWindow()

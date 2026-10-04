@@ -141,7 +141,13 @@ fun TerminalLayout(
         workspaceBus?.workspaceChanged()
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            // Тёмный фон под всем терминалом: иначе при анимациях панелей
+            // в щелях проблёскивает фон AWT-окна.
+            .background(MaterialTheme.colorScheme.background)
+    ) {
         Row(modifier = Modifier.fillMaxSize()) {
             // Основная панель с иконками (всегда видима)
             Column(
