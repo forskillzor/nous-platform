@@ -53,6 +53,11 @@ import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
 import com.aandios.nous.core.workspace.PanelType
 
+// Минимальные ширины панелей (тайл-менеджерская логика):
+// charts — гибкие, но не уже CHART_MIN; dom/trades — фиксированные preferred,
+// при нехватке места сжимаются через k-масштаб.
+private val ChartMinWidthDp = 200.dp
+
 /**
  * Состояние перетаскивания панели внутри workspace (IntelliJ-стиль).
  * Передаётся вниз по рекурсии рендера — единый источник для всех панелей.
@@ -323,49 +328,97 @@ private fun RenderNode(
 
             when (node.direction) {
                 LayoutNode.Direction.HORIZONTAL -> {
-                    // DOM/Trades — фиксированная ширина по контенту хедера,
-                    // CHART (и вложенные сплиты) — гибкие веса.
-                    val flexIndices = node.children.mapIndexedNotNull { index, child ->
-                        if (fixedWidthOf(child) == null) index else null
-                    }
+                    // Тайл-менеджерская логика:
+                    //  * FIXED (DOM/Trades, preferred из fixedPanelWidths) держат
+                    //    ширину и НЕ ресайзятся никогда (ручек рядом с ними нет);
+                    //    при нехватке места сжимаются пропорционально
+                    //    (k-масштаб), но не до нуля;
+                    //  * FLEX (chart и вложенные сплиты) делят остаток через
+                    //    ratio, но не уже CHART_MIN;
+                    //  * ручка рендерится ТОЛЬКО между двумя FLEX-детьми —
+                    //    только там ресайз что-то меняет.
+                    val prefsPx = node.children.map { child -> fixedWidthOf(child) }
+                    val isFlex = prefsPx.map { it == null }
+                    val flexIndices = node.children.indices.filter { isFlex[it] }
                     val flexCount = flexIndices.size
-                    val fixedSumPx = node.children.fold(0f) { acc, child -> acc + (fixedWidthOf(child) ?: 0f) }
+                    val fixedSumPx = prefsPx.fold(0f) { acc, p -> acc + (p ?: 0f) }
+
+                    val chartMinPx = with(density) { ChartMinWidthDp.toPx() }
+
+                    // Минимальная ширина поддерева: fixed-leaf → preferred,
+                    // chart-leaf → CHART_MIN, H-сплит → сумма детей,
+                    // V-сплит → максимум детей (ширина = широчайшей строки).
+                    fun minWidthPxOf(child: LayoutNode): Float = when (child) {
+                        is LayoutNode.Leaf -> fixedWidthOf(child) ?: chartMinPx
+                        is LayoutNode.Split -> when (child.direction) {
+                            LayoutNode.Direction.HORIZONTAL ->
+                                child.children.fold(0f) { acc, c -> acc + minWidthPxOf(c) }
+                            LayoutNode.Direction.VERTICAL ->
+                                child.children.maxOfOrNull { minWidthPxOf(it) } ?: chartMinPx
+                        }
+                    }
+                    val flexMins = flexIndices.map { minWidthPxOf(node.children[it]) }
+                    val flexMinsTotal = flexMins.sum()
+                    val firstFlexMin = flexMins.firstOrNull() ?: 0f
+                    val restMinsSum = flexMins.drop(1).sum()
+
+                    // k-масштаб фиксированных при нехватке места под минимумы FLEX
+                    val fixedScaleK = if (fixedSumPx > 0f) {
+                        ((parentSizePx - flexMinsTotal) / fixedSumPx).coerceIn(0f, 1f)
+                    } else 1f
+                    val effectiveFixedSumPx = fixedSumPx * fixedScaleK
+
+                    // Границы ratio (пиксельные минимумы flex-детей)
+                    val spanPx = if (flexCount > 0) {
+                        (parentSizePx - effectiveFixedSumPx).coerceAtLeast(1f)
+                    } else {
+                        parentSizePx.coerceAtLeast(1f)
+                    }
+                    val (minRatio, maxRatio) = if (flexCount >= 2) {
+                        firstFlexMin / spanPx to 1f - restMinsSum / spanPx
+                    } else 0.15f to 0.85f
+                    val clampMin = if (minRatio > maxRatio) 0.15f else minRatio
+                    val clampMax = if (minRatio > maxRatio) 0.85f else maxRatio
+                    val effectiveRatio = ratio.coerceIn(clampMin, clampMax)
 
                     Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
                         node.children.forEachIndexed { index, child ->
-                            val fixedPx = fixedWidthOf(child)
-                            val childModifier = if (fixedPx != null) {
-                                Modifier.width(with(density) { fixedPx.toDp() })
-                            } else {
-                                val flexIndex = flexIndices.indexOf(index)
-                                val weight = when {
-                                    flexCount == 1 -> 1f
-                                    flexIndex == 0 -> ratio
-                                    else -> (1f - ratio) / (flexCount - 1).coerceAtLeast(1)
+                            val prefPx = prefsPx[index]
+                            val childModifier = when {
+                                // Фиксированная панель (k-масштаб при нехватке)
+                                prefPx != null -> Modifier.width(
+                                    with(density) { (prefPx * fixedScaleK).toDp() }
+                                )
+                                flexCount == 1 -> Modifier.weight(1f)
+                                else -> {
+                                    val flexIndex = flexIndices.indexOf(index)
+                                    val weight = when {
+                                        flexIndex == 0 -> effectiveRatio
+                                        restMinsSum > 0f ->
+                                            (1f - effectiveRatio) * flexMins[flexIndex] / restMinsSum
+                                        else -> (1f - effectiveRatio) / (flexCount - 1).coerceAtLeast(1)
+                                    }
+                                    Modifier.weight(weight)
                                 }
-                                Modifier.weight(weight)
                             }
                             key(layoutSignature(child)) {
                                 RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
-                            if (index < node.children.lastIndex && flexCount > 0) {
+                            // Ручка только между двумя FLEX-детьми: dom/trades
+                            // не ресайзятся никогда.
+                            if (index < node.children.lastIndex && isFlex[index] && isFlex[index + 1]) {
                                 SplitHandle(
                                     direction = LayoutNode.Direction.HORIZONTAL,
-                                    // Свободный (гибкий) отрезок — без фиксированных панелей
-                                    parentSize = (parentSizePx - fixedSumPx).coerceAtLeast(1f),
+                                    parentSize = spanPx,
                                     onResizeStart = onRatioChangeStart,
                                     onResize = { delta ->
-                                        val newRatio = ratio + delta
-                                        if (newRatio in 0.15f..0.85f) {
+                                        val newRatio = (ratio + delta).coerceIn(clampMin, clampMax)
+                                        if (newRatio != ratio) {
                                             ratio = newRatio; onRatioChange?.invoke()
                                         }
                                     }
                                 )
                             }
-                        }
-                        if (flexCount == 0) {
-                            // Нет гибких панелей — заполняем остаток, чтобы Row занял всю ширину
-                            Spacer(Modifier.weight(1f))
                         }
                     }
                 }

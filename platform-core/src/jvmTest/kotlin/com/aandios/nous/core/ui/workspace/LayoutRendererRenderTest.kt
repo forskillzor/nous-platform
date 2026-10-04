@@ -14,11 +14,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performMouseInput
 import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
@@ -111,6 +113,147 @@ class LayoutRendererRenderTest {
         waitForIdle()
 
         assertEquals(setOf("a", "b", "x"), rendered)
+    }
+
+    @Test
+    fun fixedPanelsKeepWidthAndLeaveNoGaps() = runDesktopComposeUiTest {
+        // [chart | dom(240) | trades(240)] — dom/trades фиксированные,
+        // chart забирает остаток; дыр нет (сумма = ширине окна).
+        val sizes = mutableMapOf<String, IntSize>()
+        var tree by mutableStateOf<LayoutNode>(
+            LayoutNode.Split(
+                LayoutNode.Direction.HORIZONTAL, 0.5f,
+                listOf(LayoutNode.Leaf("chart"), LayoutNode.Leaf("dom"), LayoutNode.Leaf("trades"))
+            )
+        )
+        var panels by mutableStateOf(
+            mapOf("chart" to panel("chart"), "dom" to panel("dom"), "trades" to panel("trades"))
+        )
+
+        setContent {
+            LayoutRenderer(
+                node = tree,
+                panels = panels,
+                modifier = Modifier.fillMaxSize(),
+                fixedPanelWidths = mapOf("dom" to 240.dp, "trades" to 240.dp),
+            ) { panelId ->
+                Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
+            }
+        }
+        waitForIdle()
+
+        val wDom = sizes.getValue("dom").width
+        val wTrades = sizes.getValue("trades").width
+        val wChart = sizes.getValue("chart").width
+        assertTrue(wDom in 235..245, "dom должен быть ~240, а не $wDom; sizes=$sizes")
+        assertTrue(wTrades in 235..245, "trades должен быть ~240, а не $wTrades")
+        assertTrue(wChart > 400, "chart должен занять остаток, а не $wChart")
+        assertTrue(
+            wChart + wDom + wTrades in 1015..1024,
+            "дыр быть не должно: сумма=${wChart + wDom + wTrades}"
+        )
+    }
+
+    @Test
+    fun allFixedSplitKeepsFixedWidthsWithoutHandles() = runDesktopComposeUiTest {
+        // [domA(240) | domB(240)] — оба фиксированные: остаются по 240,
+        // ручек между ними НЕТ (dom/trades не ресайзятся никогда).
+        val sizes = mutableMapOf<String, IntSize>()
+        var tree by mutableStateOf<LayoutNode>(
+            LayoutNode.Split(
+                LayoutNode.Direction.HORIZONTAL, 0.5f,
+                listOf(LayoutNode.Leaf("a"), LayoutNode.Leaf("b"))
+            )
+        )
+        var panels by mutableStateOf(
+            mapOf(
+                "a" to panel("a").copy(type = PanelType.DOM),
+                "b" to panel("b").copy(type = PanelType.DOM),
+            )
+        )
+
+        setContent {
+            LayoutRenderer(
+                node = tree,
+                panels = panels,
+                modifier = Modifier.fillMaxSize(),
+                fixedPanelWidths = mapOf("a" to 240.dp, "b" to 240.dp),
+            ) { panelId ->
+                Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
+            }
+        }
+        waitForIdle()
+
+        val wA = sizes.getValue("a").width
+        val wB = sizes.getValue("b").width
+        assertTrue(wA in 235..245, "domA должен остаться 240, а не $wA")
+        assertTrue(wB in 235..245, "domB должен остаться 240, а не $wB")
+        val handles = onAllNodesWithTag("split-handle-h", useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        assertEquals(0, handles, "между двумя фиксированными dom ручки быть не должно")
+    }
+
+    @Test
+    fun handlesPresentInNestedTradesPair() = runDesktopComposeUiTest {
+        // Точное дерево активного workspace пользователя (LTC Daytrading):
+        // root H(0.797): [ V(0.591): [ H[chart, chart], H[chart, chart] ], H(0.5): [trades, trades] ]
+        val sizes = mutableMapOf<String, IntSize>()
+        val tree = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.7972905f,
+            listOf(
+                LayoutNode.Split(
+                    LayoutNode.Direction.VERTICAL, 0.5913869f,
+                    listOf(
+                        LayoutNode.Split(
+                            LayoutNode.Direction.HORIZONTAL, 0.5f,
+                            listOf(LayoutNode.Leaf("chart"), LayoutNode.Leaf("chart2"))
+                        ),
+                        LayoutNode.Split(
+                            LayoutNode.Direction.HORIZONTAL, 0.44440296f,
+                            listOf(LayoutNode.Leaf("chart3"), LayoutNode.Leaf("chart4"))
+                        )
+                    )
+                ),
+                LayoutNode.Split(
+                    LayoutNode.Direction.HORIZONTAL, 0.5f,
+                    listOf(LayoutNode.Leaf("trades1"), LayoutNode.Leaf("trades2"))
+                )
+            )
+        )
+        val panels = mapOf(
+            "chart" to panel("chart"),
+            "chart2" to panel("chart2"),
+            "chart3" to panel("chart3"),
+            "chart4" to panel("chart4"),
+            "trades1" to panel("trades1").copy(type = PanelType.TRADES),
+            "trades2" to panel("trades2").copy(type = PanelType.TRADES),
+        )
+
+        setContent {
+            LayoutRenderer(
+                node = tree,
+                panels = panels,
+                modifier = Modifier.fillMaxSize(),
+                fixedPanelWidths = mapOf(
+                    "trades1" to 240.dp,
+                    "trades2" to 240.dp,
+                ),
+            ) { panelId ->
+                Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
+            }
+        }
+        waitForIdle()
+
+        val hHandles = onAllNodesWithTag("split-handle-h", useUnmergedTree = true)
+            .fetchSemanticsNodes().size
+        assertEquals(
+            3, hHandles,
+            "ручки только между FLEX-парами: root(V-group|trades-pair), chart|chart, chart|chart"
+        )
+        val w1 = sizes.getValue("trades1").width
+        val w2 = sizes.getValue("trades2").width
+        assertTrue(w1 in 235..245, "trades1 должен остаться 240, а не $w1")
+        assertTrue(w2 in 235..245, "trades2 должен остаться 240, а не $w2")
     }
 
     @Test
