@@ -79,6 +79,12 @@ object LayoutEngine {
     ): LayoutNode {
         if (panelId == targetPanelId) return root
 
+        // Защита от битой цели (например, из протухших rect'ов drag-состояния):
+        // иначе removeNode вырежет панель, insertRelative не найдёт цель —
+        // и панель молча исчезнет из дерева.
+        val ids = collectPanelIds(root)
+        if (panelId !in ids || targetPanelId !in ids) return root
+
         if (zone == DropZone.CENTER) {
             return swapPanels(root, panelId, targetPanelId)
         }

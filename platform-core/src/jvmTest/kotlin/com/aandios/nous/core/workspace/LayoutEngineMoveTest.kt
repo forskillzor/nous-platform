@@ -86,6 +86,29 @@ class LayoutEngineMoveTest {
     }
 
     @Test
+    fun `move with missing target does not lose the panel`() {
+        // Регрессия: раньше при битой цели (протухшие rect'ы drag-состояния)
+        // removeNode вырезал панель, insertRelative не находил цель,
+        // и панель молча исчезала из дерева.
+        val root = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(leaf("a"), leaf("b"))
+        )
+        val result = LayoutEngine.movePanel(root, "a", "ghost-target", LayoutEngine.DropZone.LEFT)
+        assertEquals(listOf("a", "b"), LayoutEngine.collectPanelIds(result))
+    }
+
+    @Test
+    fun `center swap with missing target does not lose the panel`() {
+        val root = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(leaf("a"), leaf("b"))
+        )
+        val result = LayoutEngine.movePanel(root, "a", "ghost-target", LayoutEngine.DropZone.CENTER)
+        assertEquals(listOf("a", "b"), LayoutEngine.collectPanelIds(result))
+    }
+
+    @Test
     fun `removePanel returns null when removing last panel`() {
         val single = leaf("only")
         assertNull(LayoutEngine.removePanel(single, "only"))

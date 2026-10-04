@@ -35,6 +35,7 @@ class PanelDragHandlers(
     val onDragStart: () -> Unit,
     val onDrag: (Offset) -> Unit,
     val onDragEnd: () -> Unit,
+    val onDragCancel: () -> Unit = onDragEnd,
 )
 
 @Composable
@@ -92,7 +93,7 @@ fun PanelHeader(
                             },
                             onDragCancel = {
                                 val handler = currentOnDrag
-                                if (dragActive) handler?.onDragEnd()
+                                if (dragActive) handler?.onDragCancel()
                                 dragActive = false
                             },
                         )

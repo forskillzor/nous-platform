@@ -86,7 +86,11 @@ fun LayoutRenderer(
     onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
     panelContent: @Composable (panelId: String) -> Unit
 ) {
-    val dragState = remember { PanelDragState() }
+    // Drag-состояние привязано к дереву: при любом split/close/move/undo или
+    // смене воркспейса дерево — новый инстанс, и состояние (в т.ч. rect'ы панелей)
+    // начинается с чистого листа. Иначе протухшие rect'ы давали битую цель
+    // дропа (панель «закрывалась») и плейсхолдер неправильного размера.
+    val dragState = remember(node) { PanelDragState() }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     val focusInteraction = remember { MutableInteractionSource() }
@@ -202,6 +206,7 @@ private fun RenderNode(
                                             dragState = dragState,
                                             globalPos = globalPos,
                                             excludeId = panelId,
+                                            validPanelIds = panels.keys,
                                             wsRect = wsRect,
                                             rootBandPx = rootBandPx,
                                         )
@@ -222,6 +227,12 @@ private fun RenderNode(
                                                 onMovePanel(panelId, target, zone)
                                         }
                                     }
+                                },
+                                onDragCancel = {
+                                    // Прерванный жест (фокус ушёл и т.п.) — только чистим
+                                    // состояние, перенос НЕ коммитим.
+                                    dragState.clearTargets()
+                                    dragState.cancelled = false
                                 },
                             )
                         } else null,
@@ -300,6 +311,7 @@ private fun resolveDropTarget(
     dragState: PanelDragState,
     globalPos: Offset,
     excludeId: String,
+    validPanelIds: Set<String>,
     wsRect: Rect,
     rootBandPx: Float,
 ) {
@@ -324,9 +336,10 @@ private fun resolveDropTarget(
     }
     dragState.rootZone = null
 
-    // 2) Зоны внутри панелей
+    // 2) Зоны внутри панелей. Протухшие rect'ы (удалённые панели, другие
+    // воркспейсы) отфильтровываются по текущему набору панелей.
     val entry = dragState.panelRects.entries.firstOrNull { (id, r) ->
-        id != excludeId && r.contains(globalPos)
+        id != excludeId && id in validPanelIds && r.contains(globalPos)
     }
     if (entry == null) {
         dragState.targetId = null
