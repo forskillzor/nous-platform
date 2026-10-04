@@ -8,23 +8,25 @@ package com.aandios.nous.provider.binance.adapter
 import com.aandios.nous.api.market.ProviderConfig
 import com.aandios.nous.api.market.adapters.LiquidationAdapter
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
+import com.aandios.nous.provider.binance.BinanceRestGate
+import com.aandios.nous.provider.binance.BinanceStreamHub
 import com.aandios.nous.provider.binance.model.BinanceForceOrderResponse
 import com.aandios.nous.provider.binance.model.BinanceLiquidationEvent
 import com.aandios.nous.provider.binance.model.toLiquidationOrder
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.plugins.websocket.*
-import io.ktor.client.request.*
-import io.ktor.websocket.*
-import kotlinx.coroutines.delay
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.parameter
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.json.Json
 
 class BinanceLiquidationAdapter(
     private val httpClient: HttpClient,
-    private val config: ProviderConfig
+    private val config: ProviderConfig,
+    private val restGate: BinanceRestGate,
+    private val streamHub: BinanceStreamHub,
 ) : LiquidationAdapter {
 
     private val json = Json {
@@ -33,48 +35,16 @@ class BinanceLiquidationAdapter(
         encodeDefaults = true
     }
 
-    override fun subscribeToLiquidations(symbol: String): Flow<LiquidationOrder> = callbackFlow {
+    override fun subscribeToLiquidations(symbol: String): Flow<LiquidationOrder> {
+        // Глобальный стрим всех ликвидаций — hub дедуплицирует его между панелями.
         val streamName = "${symbol.lowercase()}@forceOrder"
-        val endpoint = if (config.isTestnet) {
-            "wss://testnet.binance.vision/ws/$streamName"
-        } else {
-            "wss://fstream.binance.com/market/ws/$streamName"
+        return streamHub.subscribe(streamName).mapNotNull { text ->
+            runCatching {
+                val event = json.decodeFromString<BinanceLiquidationEvent>(text)
+                val liqOrder = event.order.toLiquidationOrder()
+                liqOrder.takeIf { it.quantity > 0.0 }
+            }.getOrNull()
         }
-
-        var retryDelay = 1_000L
-        val maxRetryDelay = 30_000L
-
-        while (isActive) {
-            try {
-                println("\uD83D\uDC80 Liquidation WebSocket: connecting to $streamName")
-                retryDelay = 1_000L
-
-                httpClient.webSocket(urlString = endpoint) {
-                    println("\uD83D\uDC80 Liquidation WebSocket: connected to $streamName")
-                    for (frame in incoming) {
-                        if (frame is Frame.Text) {
-                            val text = frame.readText()
-                            try {
-                                val event = json.decodeFromString<BinanceLiquidationEvent>(text)
-                                val liqOrder = event.order.toLiquidationOrder()
-                                if (liqOrder.quantity > 0.0) {
-                                    trySend(liqOrder)
-                                }
-                            } catch (e: Exception) {
-                                println("⚠️ Liquidation parse error: ${e.message}")
-                            }
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                if (!isActive) break
-                println("❌ Liquidation WebSocket error: ${e.message}. Reconnecting in ${retryDelay}ms...")
-                delay(retryDelay)
-                retryDelay = (retryDelay * 2).coerceAtMost(maxRetryDelay)
-            }
-        }
-        println("💀 Liquidation WebSocket: closed $streamName")
-        close()
     }
 
     override suspend fun getHistoricalLiquidations(
@@ -89,13 +59,15 @@ class BinanceLiquidationAdapter(
             "https://fapi.binance.com/fapi/v1/allForceOrders"
         }
         return try {
-            val response: List<BinanceForceOrderResponse> = httpClient.get(endpoint) {
-                parameter("symbol", symbol)
-                startTime?.let { parameter("startTime", it) }
-                endTime?.let { parameter("endTime", it) }
-                parameter("limit", limit.coerceAtMost(1000))
-            }.body()
-            response.map { it.toLiquidationOrder() }.filter { it.quantity > 0.0 }
+            restGate.execute(key = "allForceOrders:$symbol:$startTime:$endTime:$limit", weight = 20) {
+                val response: List<BinanceForceOrderResponse> = httpClient.get(endpoint) {
+                    parameter("symbol", symbol)
+                    startTime?.let { parameter("startTime", it) }
+                    endTime?.let { parameter("endTime", it) }
+                    parameter("limit", limit.coerceAtMost(1000))
+                }.body()
+                response.map { it.toLiquidationOrder() }.filter { it.quantity > 0.0 }
+            }
         } catch (e: Exception) {
             println("⚠️ Liquidation history fetch failed: ${e.message}")
             emptyList()

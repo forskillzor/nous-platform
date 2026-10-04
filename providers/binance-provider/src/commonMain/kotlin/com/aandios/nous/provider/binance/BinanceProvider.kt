@@ -25,16 +25,21 @@ class BinanceProvider(
     override val config: ProviderConfig,
     override val networkManager: NetworkManager,  // Оставляем для совместимости, но не используем его httpClient
 ) : Provider {
-    
+
     // Создаём отдельный HttpClient для Binance с правильным classDiscriminator
     private val binanceHttpClient: HttpClient = BinanceHttpClientFactory.create()
-    
-    override val trades by lazy { BinanceTradesAdapter(binanceHttpClient, config) }
-    override val dom: DomAdapter by lazy { BinanceDomAdapter(binanceHttpClient, config) }
-    override val bookTicker: BookTickerAdapter by lazy { BinanceBookTickerAdapter(binanceHttpClient, config) }
-    override val chart: ChartAdapter by lazy { BinanceChartAdapter(binanceHttpClient, config) }
+
+    // Общие гейты: один на провайдер — все адаптеры ходят через них,
+    // чтобы не пробивать rate limit Binance при открытии workspace с N панелями.
+    private val restGate: BinanceRestGate = BinanceRestGate()
+    private val streamHub: BinanceStreamHub = BinanceStreamHub(binanceHttpClient, config)
+
+    override val trades by lazy { BinanceTradesAdapter(binanceHttpClient, config, streamHub) }
+    override val dom: DomAdapter by lazy { BinanceDomAdapter(binanceHttpClient, config, streamHub) }
+    override val bookTicker: BookTickerAdapter by lazy { BinanceBookTickerAdapter(binanceHttpClient, config, restGate, streamHub) }
+    override val chart: ChartAdapter by lazy { BinanceChartAdapter(binanceHttpClient, config, restGate, streamHub) }
     override val trading: TradingAdapter by lazy { BinanceTradingAdapter(binanceHttpClient, config) }
-    override val symbolInfo: SymbolInfoAdapter by lazy { BinanceSymbolInfoAdapter(binanceHttpClient, config) }
-    override val liquidation: LiquidationAdapter by lazy { BinanceLiquidationAdapter(binanceHttpClient, config) }
+    override val symbolInfo: SymbolInfoAdapter by lazy { BinanceSymbolInfoAdapter(binanceHttpClient, config, restGate) }
+    override val liquidation: LiquidationAdapter by lazy { BinanceLiquidationAdapter(binanceHttpClient, config, restGate, streamHub) }
 
 }

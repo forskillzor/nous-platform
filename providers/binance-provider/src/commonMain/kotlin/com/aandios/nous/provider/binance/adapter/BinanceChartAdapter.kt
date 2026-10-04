@@ -5,26 +5,29 @@
 
 package com.aandios.nous.provider.binance.adapter
 
-import com.aandios.nous.api.market.adapters.ChartAdapter
 import com.aandios.nous.api.market.ProviderConfig
+import com.aandios.nous.api.market.adapters.ChartAdapter
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.provider.binance.BinanceRestGate
+import com.aandios.nous.provider.binance.BinanceStreamHub
 import com.aandios.nous.provider.binance.model.BinanceCandle
 import com.aandios.nous.provider.binance.model.BinanceWebSocketCandle
 import com.aandios.nous.provider.binance.model.BinanceWebSocketResponse
-import io.ktor.client.*
+import io.ktor.client.HttpClient
 import io.ktor.client.call.body
-import io.ktor.client.plugins.websocket.webSocket
 import io.ktor.client.request.get
-import io.ktor.websocket.Frame
-import io.ktor.websocket.readText
+import io.ktor.client.request.parameter
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.json.Json
 
 class BinanceChartAdapter(
     private val client: HttpClient,
     private val config: ProviderConfig,
-): ChartAdapter {
+    private val restGate: BinanceRestGate,
+    private val streamHub: BinanceStreamHub,
+) : ChartAdapter {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -35,8 +38,10 @@ class BinanceChartAdapter(
         symbol: String,
         interval: String,
         limit: Int
-    ): List<Candle> {
-        // Меняем на фьючерсный endpoint
+    ): List<Candle> = restGate.execute(
+        key = "klines:$symbol:$interval:$limit",
+        weight = if (limit > 499) 2 else 1,
+    ) {
         val response: List<List<String>> = client.get("https://fapi.binance.com/fapi/v1/klines") {
             url {
                 parameters.append("symbol", symbol)
@@ -45,7 +50,7 @@ class BinanceChartAdapter(
             }
         }.body()
 
-        return response.map { rawCandle ->
+        response.map { rawCandle ->
             BinanceCandle(
                 openTime = rawCandle[0].toLong(),
                 open = rawCandle[1],
@@ -67,7 +72,10 @@ class BinanceChartAdapter(
         interval: String,
         endTime: Long,
         limit: Int
-    ): List<Candle> {
+    ): List<Candle> = restGate.execute(
+        key = "klinesBefore:$symbol:$interval:$endTime:$limit",
+        weight = if (limit > 499) 2 else 1,
+    ) {
         val response: List<List<String>> = client.get("https://fapi.binance.com/fapi/v1/klines") {
             url {
                 parameters.append("symbol", symbol)
@@ -77,7 +85,7 @@ class BinanceChartAdapter(
             }
         }.body()
 
-        return response.map { rawCandle ->
+        response.map { rawCandle ->
             BinanceCandle(
                 openTime = rawCandle[0].toLong(),
                 open = rawCandle[1],
@@ -97,49 +105,24 @@ class BinanceChartAdapter(
     override fun subscribeToCandles(
         symbol: String,
         interval: String
-    ): Flow<Candle> = callbackFlow {
-        // Kline - market stream: wss://fstream.binance.com/market/ws/<symbol>@kline_<interval>
-        val streamName = "${symbol.lowercase()}@kline_${interval}"
-        val endpoint = "wss://fstream.binance.com/market/ws/$streamName"
-
-        try {
-            client.webSocket(urlString = endpoint) {
-                for (frame in incoming) {
-                    when (frame) {
-                        is Frame.Text -> {
-                            try {
-                                val text = frame.readText()
-                                val wsResponse = json.decodeFromString<BinanceWebSocketResponse>(text)
-
-                                if (wsResponse.eventType == "kline") {
-                                    val kline = wsResponse.kline
-
-                                    val webSocketCandle = BinanceWebSocketCandle(
-                                        symbol = wsResponse.symbol,
-                                        openTime = kline.startTime,
-                                        closeTime = kline.endTime,
-                                        open = kline.open,
-                                        high = kline.high,
-                                        low = kline.low,
-                                        close = kline.close,
-                                        volume = kline.volume,
-                                        isClosed = kline.isClosed
-                                    )
-
-                                    trySend(webSocketCandle.toCandle())
-                                }
-                            } catch (_: Exception) {
-                                // Игнорируем ошибки парсинга
-                            }
-                        }
-                        else -> {}
-                    }
-                }
-            }
-        } catch (_: Exception) {
-            // WebSocket ошибки логируются выше
+    ): Flow<Candle> {
+        val streamName = "${symbol.lowercase()}@kline_$interval"
+        return streamHub.subscribe(streamName).map { text ->
+            json.decodeFromString<BinanceWebSocketResponse>(text)
+        }.mapNotNull { wsResponse ->
+            if (wsResponse.eventType != "kline") return@mapNotNull null
+            val kline = wsResponse.kline
+            BinanceWebSocketCandle(
+                symbol = wsResponse.symbol,
+                openTime = kline.startTime,
+                closeTime = kline.endTime,
+                open = kline.open,
+                high = kline.high,
+                low = kline.low,
+                close = kline.close,
+                volume = kline.volume,
+                isClosed = kline.isClosed
+            ).toCandle()
         }
-
-        close()
     }
 }

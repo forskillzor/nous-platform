@@ -8,43 +8,56 @@ package com.aandios.nous.provider.binance.adapter
 import com.aandios.nous.api.market.ProviderConfig
 import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
 import com.aandios.nous.api.market.model.SymbolInfo
+import com.aandios.nous.provider.binance.BinanceRestGate
+import com.aandios.nous.provider.binance.currentTimeMillis
 import com.aandios.nous.provider.binance.model.*
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.request.*
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import kotlin.concurrent.Volatile
 import kotlinx.serialization.json.Json
 
+/**
+ * SymbolInfo с кэшем: exchangeInfo (весь список символов) грузится один раз
+ * на процесс и живёт [CACHE_TTL_MS] — несколько ChartViewModel-панелей
+ * больше не шлют по exchangeInfo каждая.
+ */
 class BinanceSymbolInfoAdapter(
     private val client: HttpClient,
     private val config: ProviderConfig,
+    private val restGate: BinanceRestGate,
 ) : SymbolInfoAdapter {
+
+    companion object {
+        private const val CACHE_TTL_MS = 10 * 60_000L
+    }
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    override suspend fun getSymbolInfo(symbol: String): SymbolInfo? {
-        return try {
-            val response = client.get("${baseUrl()}/fapi/v1/exchangeInfo") {
-                url {
-                    parameters.append("symbol", symbol)
-                }
-            }.body<BinanceExchangeInfoResponse>()
+    @Volatile
+    private var cachedAll: List<SymbolInfo>? = null
 
-            response.symbols.firstOrNull { it.symbol == symbol }?.toSymbolInfo()
-        } catch (e: Exception) {
-            println("❌ Failed to fetch symbol info for $symbol: ${e.message}")
-            null
-        }
+    @Volatile
+    private var cachedAt = 0L
+
+    override suspend fun getSymbolInfo(symbol: String): SymbolInfo? {
+        return allSymbols().firstOrNull { it.symbol == symbol }
     }
 
-    override suspend fun getAllSymbolsInfo(): List<SymbolInfo> {
-        return try {
+    override suspend fun getAllSymbolsInfo(): List<SymbolInfo> = allSymbols()
+
+    private suspend fun allSymbols(): List<SymbolInfo> {
+        cachedAll?.let { cached ->
+            if (currentTimeMillis() - cachedAt < CACHE_TTL_MS) return cached
+        }
+        val fetched = restGate.execute(key = "exchangeInfo", weight = 1) {
             val response = client.get("${baseUrl()}/fapi/v1/exchangeInfo")
                 .body<BinanceExchangeInfoResponse>()
             response.symbols.map { it.toSymbolInfo() }
-        } catch (e: Exception) {
-            println("❌ Failed to fetch all symbols info: ${e.message}")
-            emptyList()
         }
+        cachedAll = fetched
+        cachedAt = currentTimeMillis()
+        return fetched
     }
 
     private fun baseUrl(): String = if (config.isTestnet) {
