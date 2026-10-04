@@ -329,21 +329,18 @@ private fun RenderNode(
             when (node.direction) {
                 LayoutNode.Direction.HORIZONTAL -> {
                     // Тайл-менеджерская логика:
-                    //  * FIXED (DOM/Trades, preferred из fixedPanelWidths) держат
-                    //    ширину и НЕ ресайзятся никогда (ручек рядом с ними нет);
-                    //    при нехватке места сжимаются пропорционально
-                    //    (k-масштаб), но не до нуля;
-                    //  * FLEX (chart и вложенные сплиты) делят остаток через
-                    //    ratio, но не уже CHART_MIN;
-                    //  * ручка рендерится ТОЛЬКО между двумя FLEX-детьми —
-                    //    только там ресайз что-то меняет.
-                    val prefsPx = node.children.map { child -> fixedWidthOf(child) }
-                    val isFlex = prefsPx.map { it == null }
-                    val flexIndices = node.children.indices.filter { isFlex[it] }
-                    val flexCount = flexIndices.size
-                    val fixedSumPx = prefsPx.fold(0f) { acc, p -> acc + (p ?: 0f) }
-
+                    //  * поддерево С chart-листьями — FLEX: делит остаток через
+                    //    ratio, но не уже своих минимумов;
+                    //  * поддерево БЕЗ chart — FIXED (ширина = сумма preferred,
+                    //    k-масштаб при тесноте): никогда не ресайзится,
+                    //    весь остаток автоматически достаётся chart'ам;
+                    //  * ручка рендерится ТОЛЬКО между двумя FLEX-детьми.
                     val chartMinPx = with(density) { ChartMinWidthDp.toPx() }
+
+                    fun containsChart(child: LayoutNode): Boolean = when (child) {
+                        is LayoutNode.Leaf -> fixedWidthOf(child) == null
+                        is LayoutNode.Split -> child.children.any { containsChart(it) }
+                    }
 
                     // Минимальная ширина поддерева: fixed-leaf → preferred,
                     // chart-leaf → CHART_MIN, H-сплит → сумма детей,
@@ -357,16 +354,29 @@ private fun RenderNode(
                                 child.children.maxOfOrNull { minWidthPxOf(it) } ?: chartMinPx
                         }
                     }
+
+                    val isFlex = node.children.map { containsChart(it) }
+                    val flexIndices = node.children.indices.filter { isFlex[it] }
+                    val flexCount = flexIndices.size
+                    val fixedWidthsPx = node.children.mapIndexed { index, child ->
+                        if (isFlex[index]) null else fixedWidthOf(child) ?: minWidthPxOf(child)
+                    }
+                    val fixedSumPx = fixedWidthsPx.fold(0f) { acc, p -> acc + (p ?: 0f) }
+
                     val flexMins = flexIndices.map { minWidthPxOf(node.children[it]) }
                     val flexMinsTotal = flexMins.sum()
                     val firstFlexMin = flexMins.firstOrNull() ?: 0f
                     val restMinsSum = flexMins.drop(1).sum()
 
-                    // k-масштаб фиксированных при нехватке места под минимумы FLEX
-                    val fixedScaleK = if (fixedSumPx > 0f) {
-                        ((parentSizePx - flexMinsTotal) / fixedSumPx).coerceIn(0f, 1f)
+                    // Глобальный масштаб при нехватке места: пропорционально
+                    // сжимаются и фикс-панели, и flex-минимумы — никто не
+                    // схлопывается в ноль. Когда места хватает — scaleK = 1,
+                    // фикс стоят по preferred, chart забирает остаток.
+                    val totalMinPx = fixedSumPx + flexMinsTotal
+                    val scaleK = if (totalMinPx > 0f) {
+                        (parentSizePx / totalMinPx).coerceAtMost(1f)
                     } else 1f
-                    val effectiveFixedSumPx = fixedSumPx * fixedScaleK
+                    val effectiveFixedSumPx = fixedSumPx * scaleK
 
                     // Границы ratio (пиксельные минимумы flex-детей)
                     val spanPx = if (flexCount > 0) {
@@ -375,7 +385,8 @@ private fun RenderNode(
                         parentSizePx.coerceAtLeast(1f)
                     }
                     val (minRatio, maxRatio) = if (flexCount >= 2) {
-                        firstFlexMin / spanPx to 1f - restMinsSum / spanPx
+                        firstFlexMin * scaleK / spanPx to
+                            1f - restMinsSum * scaleK / spanPx
                     } else 0.15f to 0.85f
                     val clampMin = if (minRatio > maxRatio) 0.15f else minRatio
                     val clampMax = if (minRatio > maxRatio) 0.85f else maxRatio
@@ -383,11 +394,11 @@ private fun RenderNode(
 
                     Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
                         node.children.forEachIndexed { index, child ->
-                            val prefPx = prefsPx[index]
+                            val fixedPx = fixedWidthsPx[index]
                             val childModifier = when {
-                                // Фиксированная панель (k-масштаб при нехватке)
-                                prefPx != null -> Modifier.width(
-                                    with(density) { (prefPx * fixedScaleK).toDp() }
+                                // Фиксированное поддерево (масштаб при нехватке)
+                                fixedPx != null -> Modifier.width(
+                                    with(density) { (fixedPx * scaleK).toDp() }
                                 )
                                 flexCount == 1 -> Modifier.weight(1f)
                                 else -> {
@@ -404,8 +415,8 @@ private fun RenderNode(
                             key(layoutSignature(child)) {
                                 RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
-                            // Ручка только между двумя FLEX-детьми: dom/trades
-                            // не ресайзятся никогда.
+                            // Ручка только между двумя FLEX-поддеревьями:
+                            // dom/trades не ресайзятся никогда.
                             if (index < node.children.lastIndex && isFlex[index] && isFlex[index + 1]) {
                                 SplitHandle(
                                     direction = LayoutNode.Direction.HORIZONTAL,
