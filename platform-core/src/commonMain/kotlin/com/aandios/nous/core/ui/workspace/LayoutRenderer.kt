@@ -5,16 +5,13 @@
 
 package com.aandios.nous.core.ui.workspace
 
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateValueAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,7 +29,10 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.GraphicsLayerScope
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -61,7 +61,6 @@ private class PanelDragState {
     var zone by mutableStateOf<LayoutEngine.DropZone?>(null)
     var rootZone by mutableStateOf<LayoutEngine.DropZone?>(null)
     var cancelled by mutableStateOf(false)
-    var panelRects by mutableStateOf<Map<String, Rect>>(emptyMap())
 
     fun cancel() {
         panelId = null
@@ -79,6 +78,24 @@ private class PanelDragState {
     }
 }
 
+/**
+ * Контекст анимации перелёта панелей (IntelliJ-стиль): при изменении дерева
+ * панели плавно перемещаются и ресайзятся из старых позиций в новые.
+ */
+private class PanelFlyContext(
+    val progress: Animatable<Float, AnimationVector1D>,
+    val rects: MutableState<Map<String, Rect>>,
+) {
+    /** Позиции панелей ДО изменения дерева (координаты окна). */
+    var oldRects: Map<String, Rect> = emptyMap()
+
+    /** Дерево, для которого сняты oldRects. */
+    var node: LayoutNode? = null
+
+    /** Запускать анимацию по завершении текущей рекомпозиции. */
+    var animateOnChange = false
+}
+
 @Composable
 fun LayoutRenderer(
     node: LayoutNode,
@@ -93,9 +110,8 @@ fun LayoutRenderer(
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     // Drag-состояние привязано к дереву: при любом split/close/move/undo или
-    // смене воркспейса дерево — новый инстанс, и состояние (в т.ч. rect'ы панелей)
-    // начинается с чистого листа. Иначе протухшие rect'ы давали битую цель
-    // дропа (панель «закрывалась») и плейсхолдер неправильного размера.
+    // смене воркспейса дерево — новый инстанс, и состояние начинается с чистого
+    // листа. Иначе протухшие rect'ы давали битую цель дропа.
     val dragState = remember(node) { PanelDragState() }
     var rootOrigin by remember { mutableStateOf(Offset.Zero) }
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
@@ -103,6 +119,29 @@ fun LayoutRenderer(
     val density = LocalDensity.current
     val rootBandPx = with(density) { 28.dp.toPx() }
     val rootStripPx = with(density) { 6.dp.toPx() }
+
+    // Позиции панелей (координаты окна) — единый источник для hit-test'а
+    // drag'а и анимации перелёта. Живёт дольше dragState.
+    val panelRects = remember { mutableStateOf<Map<String, Rect>>(emptyMap()) }
+
+    // Анимация перелёта панелей при изменении дерева (split/close/move/undo).
+    val flyProgress = remember { Animatable(1f) }
+    val fly = remember { PanelFlyContext(flyProgress, panelRects) }
+    if (fly.node === null) {
+        fly.node = node
+    } else if (fly.node !== node) {
+        // Фиксируем старые позиции ДО ре-лэйаута нового дерева (composition-time)
+        fly.node = node
+        fly.oldRects = panelRects.value
+        fly.animateOnChange = true
+    }
+    LaunchedEffect(node) {
+        if (fly.animateOnChange) {
+            fly.animateOnChange = false
+            flyProgress.snapTo(0f)
+            flyProgress.animateTo(1f, tween(260, easing = FastOutSlowInEasing))
+        }
+    }
 
     val wsRectWindow = Rect(
         left = rootOrigin.x,
@@ -139,6 +178,7 @@ fun LayoutRenderer(
             wsRect = wsRectWindow,
             rootBandPx = rootBandPx,
             dragState = dragState,
+            fly = fly,
             panelContent = panelContent,
         )
 
@@ -149,7 +189,7 @@ fun LayoutRenderer(
             dragState.rootZone != null ->
                 rootLandingRect(wsRectWindow, dragState.rootZone!!, rootStripPx)
             else -> dragState.targetId
-                ?.let { id -> dragState.panelRects[id] }
+                ?.let { id -> panelRects.value[id] }
                 ?.let { r -> dragState.zone?.let { z -> landingRect(r, z) } }
         }
         val landing = landingWindow?.let {
@@ -178,6 +218,7 @@ private fun RenderNode(
     wsRect: Rect = Rect.Zero,
     rootBandPx: Float = 0f,
     dragState: PanelDragState,
+    fly: PanelFlyContext,
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
     when (node) {
@@ -188,8 +229,9 @@ private fun RenderNode(
                 modifier = modifier
                     .border(1.dp, Color(0xFF222222))
                     .onGloballyPositioned {
-                        dragState.panelRects = dragState.panelRects + (panelId to it.boundsInWindow())
+                        fly.rects.value = fly.rects.value + (panelId to it.boundsInWindow())
                     }
+                    .graphicsLayer { applyFlyTransform(fly, panelId) }
             ) {
                 if (config != null) {
                     PanelHeader(
@@ -213,6 +255,7 @@ private fun RenderNode(
                                             globalPos = globalPos,
                                             excludeId = panelId,
                                             validPanelIds = panels.keys,
+                                            rects = fly.rects.value,
                                             wsRect = wsRect,
                                             rootBandPx = rootBandPx,
                                         )
@@ -250,80 +293,62 @@ private fun RenderNode(
             }
         }
         is LayoutNode.Split -> {
-            // Анимация структурных изменений (split/remove/move/undo/redo):
-            // targetState — сигнатура структуры БЕЗ ratio (ресайз сплит-ручкой
-            // остаётся мгновенным). Контент рендерится из АКТУАЛЬНОГО дерева
-            // (rememberUpdatedState) — иначе правки глубже «замерзали»: keyed-
-            // контент AnimatedContent не обновляется при том же ключе.
-            val signature = layoutSignature(node)
-            AnimatedContent(
-                modifier = modifier,   // занимаем весь weight-слот — иначе
-                // контент меряется с неограниченными констрейнтами,
-                // и weight-дети схлопываются в нулевой размер.
-                targetState = signature,
-                transitionSpec = {
-                    // Без SizeTransform: он ломает измерение weight-детей
-                    // (неограниченные констрейнты → нулевые размеры панелей).
-                    (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200)))
-                        .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.97f, animationSpec = tween(150)))
-                },
-                label = "split-content",
-            ) {
-                val currentNode by rememberUpdatedState(node)
-                var ratio by remember(currentNode) { mutableFloatStateOf(currentNode.ratio) }
-                val numChildren = currentNode.children.size
-                var parentSizePx by remember(currentNode) { mutableFloatStateOf(800f) }
+            // Без AnimatedContent: перелёт панелей делается на уровне листьев
+            // (graphicsLayer + PanelFlyContext) — анимируются движение и ресайз
+            // панелей, а не fade всего сплита.
+            var ratio by remember(node) { mutableFloatStateOf(node.ratio) }
+            val numChildren = node.children.size
+            var parentSizePx by remember { mutableFloatStateOf(800f) }
 
-                // Sync mutable ratio to node for persistence
-                LaunchedEffect(ratio) { currentNode.ratio = ratio }
+            // Sync mutable ratio to node for persistence
+            LaunchedEffect(ratio) { node.ratio = ratio }
 
-                when (currentNode.direction) {
-                    LayoutNode.Direction.HORIZONTAL -> {
-                        Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
-                            currentNode.children.forEachIndexed { index, child ->
-                                val weight =
-                                    if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                key(layoutSignature(child)) {
-                                    RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
-                                }
-                                if (index < currentNode.children.lastIndex) {
-                                    SplitHandle(
-                                        direction = LayoutNode.Direction.HORIZONTAL,
-                                        parentSize = parentSizePx,
-                                        onResizeStart = onRatioChangeStart,
-                                        onResize = { delta ->
-                                            val newRatio = ratio + delta
-                                            if (newRatio in 0.15f..0.85f) {
-                                                ratio = newRatio; onRatioChange?.invoke()
-                                            }
+            when (node.direction) {
+                LayoutNode.Direction.HORIZONTAL -> {
+                    Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
+                        node.children.forEachIndexed { index, child ->
+                            val weight =
+                                if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
+                            key(layoutSignature(child)) {
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, panelContent = panelContent)
+                            }
+                            if (index < node.children.lastIndex) {
+                                SplitHandle(
+                                    direction = LayoutNode.Direction.HORIZONTAL,
+                                    parentSize = parentSizePx,
+                                    onResizeStart = onRatioChangeStart,
+                                    onResize = { delta ->
+                                        val newRatio = ratio + delta
+                                        if (newRatio in 0.15f..0.85f) {
+                                            ratio = newRatio; onRatioChange?.invoke()
                                         }
-                                    )
-                                }
+                                    }
+                                )
                             }
                         }
                     }
+                }
 
-                    LayoutNode.Direction.VERTICAL -> {
-                        Column(modifier.onSizeChanged { parentSizePx = it.height.toFloat() }) {
-                            currentNode.children.forEachIndexed { index, child ->
-                                val weight =
-                                    if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                key(layoutSignature(child)) {
-                                    RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
-                                }
-                                if (index < currentNode.children.lastIndex) {
-                                    SplitHandle(
-                                        direction = LayoutNode.Direction.VERTICAL,
-                                        parentSize = parentSizePx,
-                                        onResizeStart = onRatioChangeStart,
-                                        onResize = { delta ->
-                                            val newRatio = ratio + delta
-                                            if (newRatio in 0.15f..0.85f) {
-                                                ratio = newRatio; onRatioChange?.invoke()
-                                            }
+                LayoutNode.Direction.VERTICAL -> {
+                    Column(modifier.onSizeChanged { parentSizePx = it.height.toFloat() }) {
+                        node.children.forEachIndexed { index, child ->
+                            val weight =
+                                if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
+                            key(layoutSignature(child)) {
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, panelContent = panelContent)
+                            }
+                            if (index < node.children.lastIndex) {
+                                SplitHandle(
+                                    direction = LayoutNode.Direction.VERTICAL,
+                                    parentSize = parentSizePx,
+                                    onResizeStart = onRatioChangeStart,
+                                    onResize = { delta ->
+                                        val newRatio = ratio + delta
+                                        if (newRatio in 0.15f..0.85f) {
+                                            ratio = newRatio; onRatioChange?.invoke()
                                         }
-                                    )
-                                }
+                                    }
+                                )
                             }
                         }
                     }
@@ -334,13 +359,39 @@ private fun RenderNode(
 }
 
 /**
- * Сигнатура структуры поддерева для анимации: direction + идентификаторы
- * панелей, БЕЗ ratio (ресайз не должен триггерить переход).
+ * Сигнатура структуры поддерева: direction + идентификаторы панелей,
+ * БЕЗ ratio — стабильный ключ identity панели в композиции.
  */
 private fun layoutSignature(node: LayoutNode): String = when (node) {
     is LayoutNode.Leaf -> "L:${node.panelId}"
     is LayoutNode.Split ->
         "S:${node.direction}(" + node.children.joinToString(",") { layoutSignature(it) } + ")"
+}
+
+/**
+ * Перелёт панели из старой позиции/размера в новую (IntelliJ-стиль):
+ * translation + scale от oldRects к текущему rect. Новые панели — плавное
+ * появление. Вне анимации (progress = 1) — no-op.
+ */
+private fun GraphicsLayerScope.applyFlyTransform(fly: PanelFlyContext, panelId: String) {
+    val p = fly.progress.value
+    if (p >= 1f) return
+    val cur = fly.rects.value[panelId]
+    val old = fly.oldRects[panelId]
+    if (old != null && cur != null && cur.width > 0f && cur.height > 0f) {
+        transformOrigin = TransformOrigin(0f, 0f)
+        translationX = (old.left - cur.left) * (1f - p)
+        translationY = (old.top - cur.top) * (1f - p)
+        val sx = old.width / cur.width
+        val sy = old.height / cur.height
+        scaleX = sx + (1f - sx) * p
+        scaleY = sy + (1f - sy) * p
+    } else if (cur != null) {
+        alpha = p
+        val s = 0.96f + 0.04f * p
+        scaleX = s
+        scaleY = s
+    }
 }
 
 /** Hit-test во время drag: корневые зоны (края воркспейса) в приоритете, затем панели. */
@@ -349,6 +400,7 @@ private fun resolveDropTarget(
     globalPos: Offset,
     excludeId: String,
     validPanelIds: Set<String>,
+    rects: Map<String, Rect>,
     wsRect: Rect,
     rootBandPx: Float,
 ) {
@@ -375,7 +427,7 @@ private fun resolveDropTarget(
 
     // 2) Зоны внутри панелей. Протухшие rect'ы (удалённые панели, другие
     // воркспейсы) отфильтровываются по текущему набору панелей.
-    val entry = dragState.panelRects.entries.firstOrNull { (id, r) ->
+    val entry = rects.entries.firstOrNull { (id, r) ->
         id != excludeId && id in validPanelIds && r.contains(globalPos)
     }
     if (entry == null) {
