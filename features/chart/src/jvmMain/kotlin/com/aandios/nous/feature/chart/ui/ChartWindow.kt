@@ -164,109 +164,111 @@ private fun ChartWindowContent(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        when (val state = uiState.chartState) {
-            is ChartState.Loading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "Loading chart data...",
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontSize = 14.sp
-                    )
-                }
-            }
-            is ChartState.Error -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        // Верхняя панель — всегда видна, не зависит от состояния загрузки графика:
+        // символ/ТФ/режим/агрегацию можно менять даже при Loading/Error.
+        val exchanges = remember(provider) {
+            runCatching {
+                org.koin.core.context.GlobalContext.get().getAll<Provider>()
+                    .map { it.config.displayName }.distinct()
+            }.getOrNull() ?: listOf(provider.config.displayName)
+        }
+        var currentExchange by remember(provider) { mutableStateOf(provider.config.displayName) }
+
+        ChartToolbar(
+            currentSymbol = uiState.currentSymbol,
+            currentTimeframe = uiState.currentTimeframe,
+            availableSymbols = uiState.symbols,
+            onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
+            onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
+            exchanges = exchanges,
+            currentExchange = currentExchange,
+            onExchangeChange = { currentExchange = it },
+            chartMode = uiState.chartMode,
+            onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
+            symbolsWithFootprint = uiState.symbolsWithFootprint,
+            fpAggregation = uiState.fpAggregation,
+            onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
+            modifier = Modifier.padding(8.dp)
+        )
+
+        // Область графика: Loading/Error — только внутри неё.
+        // Панель рисования и водяной знак видны всегда.
+        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+            // Водяной знак символа — самый нижний слой, ничего не перекрывает:
+            // крупный тикер монеты + биржа и тип контракта (как в TradingView)
+            val symbolInfo = uiState.currentSymbolInfo
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 48.dp, top = 4.dp)
+            ) {
+                Text(
+                    text = symbolInfo?.baseAsset ?: uiState.currentSymbol,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                    fontSize = 72.sp,
+                    fontWeight = FontWeight.Light,
+                    fontFamily = FontFamily.Monospace,
+                )
+                if (symbolInfo != null) {
+                    Spacer(Modifier.width(10.dp))
+                    Column(verticalArrangement = Arrangement.Center) {
                         Text(
-                            text = "Error loading chart",
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 16.sp
+                            text = provider.config.displayName,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                            fontSize = 26.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
                         )
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
+                        contractTypeLabel(symbolInfo)?.let { label ->
+                            Text(
+                                text = label,
+                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                                fontSize = 26.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                        }
                     }
                 }
             }
-            is ChartState.Success -> {
-                // Верхняя панель — вне области графика, над ним
-                val exchanges = remember(provider) {
-                    runCatching {
-                        org.koin.core.context.GlobalContext.get().getAll<Provider>()
-                            .map { it.config.displayName }.distinct()
-                    }.getOrNull() ?: listOf(provider.config.displayName)
-                }
-                var currentExchange by remember(provider) { mutableStateOf(provider.config.displayName) }
 
-                ChartToolbar(
-                    currentSymbol = uiState.currentSymbol,
-                    currentTimeframe = uiState.currentTimeframe,
-                    availableSymbols = uiState.symbols,
-                    onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
-                    onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
-                    exchanges = exchanges,
-                    currentExchange = currentExchange,
-                    onExchangeChange = { currentExchange = it },
-                    chartMode = uiState.chartMode,
-                    onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
-                    symbolsWithFootprint = uiState.symbolsWithFootprint,
-                    fpAggregation = uiState.fpAggregation,
-                    onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
-                    modifier = Modifier.padding(8.dp)
-                )
-
-                // Область графика + левая панель рисования (TradingView-стиль)
-                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
-                    // Водяной знак символа — самый нижний слой, ничего не перекрывает:
-                    // крупный тикер монеты + биржа и тип контракта (как в TradingView)
-                    val symbolInfo = uiState.currentSymbolInfo
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = 48.dp, top = 4.dp)
-                    ) {
-                        Text(
-                            text = symbolInfo?.baseAsset ?: uiState.currentSymbol,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
-                            fontSize = 72.sp,
-                            fontWeight = FontWeight.Light,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                        if (symbolInfo != null) {
-                            Spacer(Modifier.width(10.dp))
-                            Column(verticalArrangement = Arrangement.Center) {
+            when (uiState.chartMode) {
+                ChartMode.CANDLESTICK -> {
+                    when (val state = uiState.chartState) {
+                        is ChartState.Loading -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
                                 Text(
-                                    text = provider.config.displayName,
-                                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
-                                    fontSize = 26.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace,
+                                    text = "Loading chart data...",
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    fontSize = 14.sp
                                 )
-                                contractTypeLabel(symbolInfo)?.let { label ->
+                            }
+                        }
+                        is ChartState.Error -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
-                                        text = label,
-                                        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
-                                        fontSize = 26.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = FontFamily.Monospace,
+                                        text = "Error loading chart",
+                                        color = MaterialTheme.colorScheme.error,
+                                        fontSize = 16.sp
+                                    )
+                                    Text(
+                                        text = state.message,
+                                        color = MaterialTheme.colorScheme.onBackground,
+                                        fontSize = 12.sp,
+                                        modifier = Modifier.padding(top = 8.dp)
                                     )
                                 }
                             }
                         }
-                    }
-
-                    when (uiState.chartMode) {
-                        ChartMode.CANDLESTICK -> {
+                        is ChartState.Success -> {
                             CandleStickChart(
                                 candles = state.candles,
                                 currentPrice = state.currentPrice,
@@ -283,61 +285,61 @@ private fun ChartWindowContent(
                                 onZoomChange = onZoomChange,
                             )
                         }
-                        ChartMode.FOOTPRINT -> {
-                            if (uiState.footprintLoading && uiState.footprintCandles.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Text("Loading footprint data...", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
-                                }
-                            } else if (uiState.footprintError != null && uiState.footprintCandles.isEmpty()) {
-                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("Footprint data error", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
-                                        Text(uiState.footprintError!!, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
-                                    }
-                                }
-                            } else {
-                                // Merge completed + live: live overrides same startTime
-                                val allFp = buildList {
-                                    val liveStart = uiState.liveFootprintCandle?.startTime
-                                    addAll(uiState.footprintCandles.filter { it.startTime != liveStart })
-                                    uiState.liveFootprintCandle?.let { add(it) }
-                                }
-                                val fpToCandle = remember(allFp) {
-                                    allFp.map { it.toSkeletonCandle() }
-                                }
-                                CandleStickChart(
-                                    candles = fpToCandle,
-                                    currentPrice = uiState.footprintCurrentPrice ?: fpToCandle.lastOrNull()?.close,
-                                    config = chartConfig,
-                                    liquidationOrders = liquidationState.orders,
-                                    indicatorRenderers = indicatorRenderers,
-                                    footprintCandles = allFp,
-                                    onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
-                                    hasMoreHistory = uiState.hasMoreFootprintHistory,
-                                    drawingHistory = drawingHistory,
-                                    activeDrawingTool = activeDrawingTool,
-                                    onActiveDrawingToolChange = { activeDrawingTool = it },
-                                    modifier = Modifier.fillMaxSize(),
-                                    initialZoomLevel = initialZoomLevel,
-                                    onZoomChange = onZoomChange,
-                                )
+                    }
+                }
+                ChartMode.FOOTPRINT -> {
+                    if (uiState.footprintLoading && uiState.footprintCandles.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text("Loading footprint data...", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
+                        }
+                    } else if (uiState.footprintError != null && uiState.footprintCandles.isEmpty()) {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Footprint data error", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
+                                Text(uiState.footprintError!!, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
                             }
                         }
+                    } else {
+                        // Merge completed + live: live overrides same startTime
+                        val allFp = buildList {
+                            val liveStart = uiState.liveFootprintCandle?.startTime
+                            addAll(uiState.footprintCandles.filter { it.startTime != liveStart })
+                            uiState.liveFootprintCandle?.let { add(it) }
+                        }
+                        val fpToCandle = remember(allFp) {
+                            allFp.map { it.toSkeletonCandle() }
+                        }
+                        CandleStickChart(
+                            candles = fpToCandle,
+                            currentPrice = uiState.footprintCurrentPrice ?: fpToCandle.lastOrNull()?.close,
+                            config = chartConfig,
+                            liquidationOrders = liquidationState.orders,
+                            indicatorRenderers = indicatorRenderers,
+                            footprintCandles = allFp,
+                            onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
+                            hasMoreHistory = uiState.hasMoreFootprintHistory,
+                            drawingHistory = drawingHistory,
+                            activeDrawingTool = activeDrawingTool,
+                            onActiveDrawingToolChange = { activeDrawingTool = it },
+                            modifier = Modifier.fillMaxSize(),
+                            initialZoomLevel = initialZoomLevel,
+                            onZoomChange = onZoomChange,
+                        )
                     }
-
-                    DrawingToolPanel(
-                        activeTool = activeDrawingTool,
-                        onToolChange = { activeDrawingTool = it },
-                        canUndo = drawingHistory.canUndo,
-                        canRedo = drawingHistory.canRedo,
-                        onUndo = { drawingHistory.undo() },
-                        onRedo = { drawingHistory.redo() },
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp)
-                    )
                 }
             }
+
+            DrawingToolPanel(
+                activeTool = activeDrawingTool,
+                onToolChange = { activeDrawingTool = it },
+                canUndo = drawingHistory.canUndo,
+                canRedo = drawingHistory.canRedo,
+                onUndo = { drawingHistory.undo() },
+                onRedo = { drawingHistory.redo() },
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+            )
         }
     }
 }
