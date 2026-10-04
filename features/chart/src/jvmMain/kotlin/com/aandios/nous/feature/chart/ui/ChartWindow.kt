@@ -29,6 +29,7 @@ import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
+import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.model.PriceRange
@@ -359,6 +360,8 @@ fun main() = application {
         // До показа окна: тёмный фон AWT-фрейма — без белых вспышек при ресайзе.
         init = { w -> applyWindowDarkBackground(w) },
     ) {
+        // Тёмный заголовок окна (Windows, DWM); no-op на других ОС.
+        LaunchedEffect(Unit) { applyWindowsDarkTitleBar(window) }
         KoinContext {
             TradingTerminalTheme {
                 ChartWindow()

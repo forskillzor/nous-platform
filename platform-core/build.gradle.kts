@@ -42,6 +42,7 @@ kotlin {
             implementation(compose.components.uiToolingPreview)
             api(libs.koin.core)
             api(libs.koin.compose)
+            implementation(libs.jna)
         }
 
         jvmTest.dependencies {

@@ -15,6 +15,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
+import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
@@ -65,6 +66,8 @@ fun main() {
                     // без белых вспышек.
                     init = { w -> applyWindowDarkBackground(w) },
                 ) {
+                    // Тёмный заголовок окна (Windows, DWM); no-op на других ОС.
+                    LaunchedEffect(Unit) { applyWindowsDarkTitleBar(window) }
                     TradingTerminalTheme(
                         darkTheme = true,
                         nightMode = false

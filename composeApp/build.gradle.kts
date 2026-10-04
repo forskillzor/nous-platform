@@ -82,6 +82,8 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "com.aandios.nous_platform.MainKt"
+        // macOS: тёмный тайтл-бар следует системной теме (официальный JVM-флаг)
+        jvmArgs += "-Dapple.awt.application.appearance=system"
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
