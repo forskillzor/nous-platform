@@ -12,22 +12,23 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.v2.SwingWindow
 import androidx.compose.ui.geometry.Rect
-//import androidx.compose.ui.graphics.Color
-import java.awt.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
+import com.aandios.nous.core.ui.window.applyWindowDarkBackground
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.model.PriceRange
@@ -346,17 +347,18 @@ private fun ChartWindowContent(
     }
 }
 
+@OptIn(ExperimentalComposeUiApi::class)
 fun main() = application {
     stopKoin()
     initKoinForPreview()
 
-    Window(
+    SwingWindow(
         onCloseRequest = ::exitApplication,
         title = "Nous Platform • Chart Preview",
-        state = rememberWindowState(width = 800.dp, height = 600.dp)
+        state = rememberWindowStateWithBounds(initialSize = DpSize(800.dp, 600.dp)),
+        // До показа окна: тёмный фон AWT-фрейма — без белых вспышек при ресайзе.
+        init = { w -> applyWindowDarkBackground(w) },
     ) {
-        // Тёмный фон AWT-окна: без него при ресайзе проблёскивает белый
-        window.background = Color(0x0A0A0A)
         KoinContext {
             TradingTerminalTheme {
                 ChartWindow()

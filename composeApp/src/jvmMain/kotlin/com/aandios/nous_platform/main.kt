@@ -6,13 +6,15 @@
 package com.aandios.nous_platform
 
 import androidx.compose.runtime.*
-import java.awt.Color
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.awt.v2.SwingWindow
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
+import com.aandios.nous.core.ui.window.applyWindowDarkBackground
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
@@ -21,6 +23,7 @@ import com.aandios.nous_platform.ui.main.TerminalWindowContent
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import org.koin.compose.koinInject
 
+@OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     initKoin()
     application {
@@ -40,24 +43,28 @@ fun main() {
 
         sessions.forEach { session ->
             key(session.id) {
-                val wsState = rememberWindowState(
-                    position = if (session.x != null && session.y != null)
-                        WindowPosition(x = session.x!!.dp, y = session.y!!.dp)
-                    else WindowPosition.PlatformDefault,
-                    width = session.width.dp,
-                    height = session.height.dp,
-                )
-                Window(
+                val wsState = if (session.x != null && session.y != null) {
+                    rememberWindowStateWithBounds(
+                        initialPosition = DpOffset(session.x!!.dp, session.y!!.dp),
+                        initialSize = DpSize(session.width.dp, session.height.dp),
+                    )
+                } else {
+                    rememberWindowStateWithBounds(
+                        initialSize = DpSize(session.width.dp, session.height.dp),
+                    )
+                }
+                SwingWindow(
                     onCloseRequest = {
                         // Закрытие последнего окна завершает приложение
                         if (!windowManager.closeSession(session.id)) exitApplication()
                     },
                     title = "Nous Platform • v 0.1",
                     state = wsState,
+                    // Выполняется ДО показа окна: AWT-фрейм получает тёмный фон
+                    // до создания нативного peer — при ресайзе заливка тёмная,
+                    // без белых вспышек.
+                    init = { w -> applyWindowDarkBackground(w) },
                 ) {
-                    // Тёмный фон AWT-окна: без него при ресайзе проблёскивает белый
-                    // (фрейм перерисовывается раньше Compose-слоя).
-                    window.background = Color(0x0A0A0A)
                     TradingTerminalTheme(
                         darkTheme = true,
                         nightMode = false

@@ -12,9 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.window.WindowState
+import androidx.compose.ui.unit.isSpecified
+import androidx.compose.ui.window.v2.WindowState
 import com.aandios.nous.core.ui.workspace.TabBar
 import com.aandios.nous.core.ui.workspace.WelcomeScreen
 import com.aandios.nous.core.workspace.*
@@ -29,6 +31,7 @@ import kotlinx.coroutines.launch
  * Содержимое одного окна терминала: сессия вкладок, TabBar, активный workspace
  * или WelcomeScreen. Общее для всех окон (multi-window как в браузере).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TerminalWindowContent(
     session: WindowSessionState,
