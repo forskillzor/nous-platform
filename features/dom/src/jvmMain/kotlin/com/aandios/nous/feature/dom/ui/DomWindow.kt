@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -29,6 +30,9 @@ fun DomWindow() {
     val domViewModel: DomViewModel = koinInject()
     DomWindow(domViewModel = domViewModel)
 }
+
+/** Рекомендуемая ширина DOM-панели в workspace (как в preview). */
+val DomRecommendedWidth: Dp = 300.dp
 
 @Composable
 fun DomWindow(

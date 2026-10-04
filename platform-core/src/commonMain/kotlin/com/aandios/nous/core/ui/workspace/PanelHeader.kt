@@ -156,7 +156,7 @@ fun PanelHeader(
     }
 }
 
-internal fun panelStateLabel(config: PanelConfig): String = when (val state = config.state) {
+private fun panelStateLabel(config: PanelConfig): String = when (val state = config.state) {
     is com.aandios.nous.core.workspace.PanelState.Chart -> state.timeframe
     is com.aandios.nous.core.workspace.PanelState.Dom -> "${state.depth}lvl"
     is com.aandios.nous.core.workspace.PanelState.Trades -> "trades"

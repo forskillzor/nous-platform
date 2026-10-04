@@ -31,9 +31,11 @@ import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.ui.DomViewModel
 import com.aandios.nous.feature.dom.ui.DomWindow
+import com.aandios.nous.feature.dom.ui.DomRecommendedWidth
 import com.aandios.nous.feature.trades.ui.SizeFilter
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.feature.trades.ui.TradesWindow
+import com.aandios.nous.feature.trades.ui.TradesRecommendedWidth
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -128,6 +130,15 @@ fun WorkspaceView(
             node = layoutState,
             panels = panelConfigs,
             modifier = Modifier.fillMaxSize(),
+            // DOM/Trades — фиксированная ширина (рекомендованная самим виджетом),
+            // CHART и вложенные сплиты делят остаток.
+            fixedPanelWidths = panelConfigs.mapNotNull { (id, pc) ->
+                when (pc.type) {
+                    PanelType.DOM -> id to DomRecommendedWidth
+                    PanelType.TRADES -> id to TradesRecommendedWidth
+                    PanelType.CHART -> null
+                }
+            }.toMap(),
             onRatioChange = { persistConfig() },
             onRatioChangeStart = { history.push(snapshot()) },
             onClosePanel = { panelId ->

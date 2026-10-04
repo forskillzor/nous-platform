@@ -45,16 +45,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
@@ -116,6 +109,7 @@ fun LayoutRenderer(
     onRatioChangeStart: (() -> Unit)? = null,
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)? = null,
     onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
+    fixedPanelWidths: Map<String, Dp> = emptyMap(),
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     // Drag-состояние привязано к дереву: при любом split/close/move/undo или
@@ -133,21 +127,11 @@ fun LayoutRenderer(
     // drag'а и анимации перелёта. Живёт дольше dragState.
     val panelRects = remember { mutableStateOf<Map<String, Rect>>(emptyMap()) }
 
-    // Фиксированные ширины DOM/Trades-панелей: считаются по содержимому хедера
-    // (textMeasurer + размеры кнопок), чтобы в хедер всё влезало; CHART — гибкие.
-    val textMeasurer = rememberTextMeasurer()
-    val fixedWidthsPx = remember(node, panels, onSplitPanel, onClosePanel, density) {
-        panels.values
-            .filter { it.type != PanelType.CHART }
-            .associate {
-                it.id to panelFixedWidthPx(
-                    config = it,
-                    hasSplitButtons = onSplitPanel != null,
-                    hasCloseButton = onClosePanel != null,
-                    textMeasurer = textMeasurer,
-                    density = density,
-                )
-            }
+    // Фиксированные ширины панелей (например, DOM/Trades): приходят от
+    // вызывающего кода (ширина хедера конкретного виджета). Панель из этой
+    // карты получает фиксированную ширину, остальные делят остаток весами.
+    val fixedPanelWidthsPx = remember(node, panels, fixedPanelWidths, density) {
+        fixedPanelWidths.mapValues { (_, width) -> with(density) { width.toPx() } }
     }
 
     // Анимация перелёта панелей при изменении дерева (split/close/move/undo).
@@ -205,7 +189,7 @@ fun LayoutRenderer(
             rootBandPx = rootBandPx,
             dragState = dragState,
             fly = fly,
-            fixedWidthsPx = fixedWidthsPx,
+            fixedPanelWidthsPx = fixedPanelWidthsPx,
             panelContent = panelContent,
         )
 
@@ -246,7 +230,7 @@ private fun RenderNode(
     rootBandPx: Float = 0f,
     dragState: PanelDragState,
     fly: PanelFlyContext,
-    fixedWidthsPx: Map<String, Float> = emptyMap(),
+    fixedPanelWidthsPx: Map<String, Float> = emptyMap(),
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
     when (node) {
@@ -335,7 +319,7 @@ private fun RenderNode(
             LaunchedEffect(ratio, node) { node.ratio = ratio }
 
             fun fixedWidthOf(child: LayoutNode): Float? =
-                (child as? LayoutNode.Leaf)?.let { fixedWidthsPx[it.panelId] }
+                (child as? LayoutNode.Leaf)?.let { fixedPanelWidthsPx[it.panelId] }
 
             when (node.direction) {
                 LayoutNode.Direction.HORIZONTAL -> {
@@ -362,7 +346,7 @@ private fun RenderNode(
                                 Modifier.weight(weight)
                             }
                             key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedWidthsPx = fixedWidthsPx, panelContent = panelContent)
+                                RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
                             if (index < node.children.lastIndex && flexCount > 0) {
                                 SplitHandle(
@@ -392,7 +376,7 @@ private fun RenderNode(
                             val weight =
                                 if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
                             key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedWidthsPx = fixedWidthsPx, panelContent = panelContent)
+                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
                             if (index < node.children.lastIndex) {
                                 SplitHandle(
@@ -423,54 +407,6 @@ private fun layoutSignature(node: LayoutNode): String = when (node) {
     is LayoutNode.Leaf -> "L:${node.panelId}"
     is LayoutNode.Split ->
         "S:${node.direction}(" + node.children.joinToString(",") { layoutSignature(it) } + ")"
-}
-
-/**
- * Фиксированная ширина панели (DOM/Trades): контент хедера, посчитанный
- * textMeasurer'ом — префикс, «symbol · state», кнопки сплита и закрытия,
- * паддинги, рамка и небольшой запас. Кламп от 120 до 360 dp.
- */
-private fun panelFixedWidthPx(
-    config: PanelConfig,
-    hasSplitButtons: Boolean,
-    hasCloseButton: Boolean,
-    textMeasurer: TextMeasurer,
-    density: Density,
-): Float {
-    val labelStyle = TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace)
-    val buttonStyle = TextStyle(fontSize = 12.sp, fontFamily = FontFamily.Monospace)
-    val closeStyle = TextStyle(
-        fontSize = 14.sp,
-        fontFamily = FontFamily.Monospace,
-        fontWeight = FontWeight.Bold,
-    )
-
-    fun textW(text: String, style: TextStyle): Float =
-        textMeasurer.measure(AnnotatedString(text), style).size.width.toFloat()
-
-    val prefix = when (config.type) {
-        PanelType.CHART -> "▤"
-        PanelType.DOM -> "▥"
-        PanelType.TRADES -> "▦"
-    }
-    val label = "${config.symbol} · ${panelStateLabel(config)}"
-
-    var w = textW(prefix, labelStyle) +
-            with(density) { 4.dp.toPx() } +
-            textW(label, labelStyle)
-    if (hasSplitButtons) {
-        w += textW("┃", buttonStyle) + with(density) { 2.dp.toPx() } +
-                textW("━", buttonStyle) + with(density) { 2.dp.toPx() }
-    }
-    if (hasCloseButton) {
-        w += with(density) { 4.dp.toPx() } + textW("×", closeStyle)
-    }
-    w += with(density) { (6.dp * 2 + 1.dp * 2 + 6.dp).toPx() } // паддинги + рамка + запас
-
-    return w.coerceIn(
-        with(density) { 120.dp.toPx() },
-        with(density) { 360.dp.toPx() },
-    )
 }
 
 /**
