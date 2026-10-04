@@ -306,6 +306,9 @@ All data models live **only in `public-api` modules**. This ensures:
 - Exchange rate-limit handling
 - Data caching to reduce load
 
+Реализация rate-limit-защиты для Binance описана отдельно:
+[Binance StreamHub: как работает WS-хаб и rate-limit защита](binance-stream-hub.md)
+
 #### 5.1.2. Supported exchanges (MVP)
 - **Binance** (Spot & Futures)
 - **Bybit** (Spot & Futures)
