@@ -49,12 +49,18 @@ fun TerminalWindowContent(
 
     // Публикуем границы окна (px) для hit-test переноса вкладок + персистим геометрию
     LaunchedEffect(session.id, windowState) {
-        snapshotFlow { windowState.size to windowState.position }.collectLatest {
-            val pos = windowState.position
+        snapshotFlow {
+            // v2 WindowState бросает исключение при чтении size/position до
+            // инициализации окна — ждём isInitialized и реагируем на него.
+            if (windowState.isInitialized) windowState.size to windowState.position else null
+        }.collectLatest { bounds ->
+            if (bounds == null) return@collectLatest
+            val size = bounds.first
+            val pos = bounds.second
             val x = if (pos.isSpecified) with(density) { pos.x.roundToPx() } else null
             val y = if (pos.isSpecified) with(density) { pos.y.roundToPx() } else null
-            val w = with(density) { windowState.size.width.roundToPx() }
-            val h = with(density) { windowState.size.height.roundToPx() }
+            val w = with(density) { size.width.roundToPx() }
+            val h = with(density) { size.height.roundToPx() }
             if (x != null && y != null) {
                 WindowBoundsRegistry.update(session.id, WindowBoundsRegistry.Bounds(x, y, w, h))
             }
