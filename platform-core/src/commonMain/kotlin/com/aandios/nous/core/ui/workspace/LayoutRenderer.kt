@@ -5,10 +5,17 @@
 
 package com.aandios.nous.core.ui.workspace
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateValueAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -244,24 +251,36 @@ private fun RenderNode(
             }
         }
         is LayoutNode.Split -> {
-            // key() ensures recomposition when children list changes (new split/close)
-            val splitKey = node.children.map { it.hashCode() }.hashCode()
-            key(splitKey) {
-                var ratio by remember { mutableFloatStateOf(node.ratio) }
-                val numChildren = node.children.size
-                var parentSizePx by remember { mutableFloatStateOf(800f) }
+            // Анимация структурных изменений (split/remove/move/undo/redo):
+            // контент ключуется по сигнатуре дерева БЕЗ ratio — ресайз
+            // сплит-ручкой остаётся мгновенным, без «резиновости».
+            AnimatedContent(
+                targetState = node,
+                contentKey = { layoutSignature(it) },
+                transitionSpec = {
+                    (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200)))
+                        .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.97f, animationSpec = tween(150)))
+                        .using(SizeTransform(clip = true))
+                },
+                label = "split-content",
+            ) { currentNode ->
+                var ratio by remember(currentNode) { mutableFloatStateOf(currentNode.ratio) }
+                val numChildren = currentNode.children.size
+                var parentSizePx by remember(currentNode) { mutableFloatStateOf(800f) }
 
                 // Sync mutable ratio to node for persistence
-                LaunchedEffect(ratio) { node.ratio = ratio }
+                LaunchedEffect(ratio) { currentNode.ratio = ratio }
 
-                when (node.direction) {
+                when (currentNode.direction) {
                     LayoutNode.Direction.HORIZONTAL -> {
                         Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
-                            node.children.forEachIndexed { index, child ->
+                            currentNode.children.forEachIndexed { index, child ->
                                 val weight =
                                     if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
-                                if (index < node.children.lastIndex) {
+                                key(layoutSignature(child)) {
+                                    RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
+                                }
+                                if (index < currentNode.children.lastIndex) {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.HORIZONTAL,
                                         parentSize = parentSizePx,
@@ -280,11 +299,13 @@ private fun RenderNode(
 
                     LayoutNode.Direction.VERTICAL -> {
                         Column(modifier.onSizeChanged { parentSizePx = it.height.toFloat() }) {
-                            node.children.forEachIndexed { index, child ->
+                            currentNode.children.forEachIndexed { index, child ->
                                 val weight =
                                     if (index == 0) ratio else (1f - ratio) / (numChildren - 1).coerceAtLeast(1)
-                                RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
-                                if (index < node.children.lastIndex) {
+                                key(layoutSignature(child)) {
+                                    RenderNode(node = child, modifier = Modifier.weight(weight), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, panelContent = panelContent)
+                                }
+                                if (index < currentNode.children.lastIndex) {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.VERTICAL,
                                         parentSize = parentSizePx,
@@ -304,6 +325,16 @@ private fun RenderNode(
             }
         }
     }
+}
+
+/**
+ * Сигнатура структуры поддерева для анимации: direction + идентификаторы
+ * панелей, БЕЗ ratio (ресайз не должен триггерить переход).
+ */
+private fun layoutSignature(node: LayoutNode): String = when (node) {
+    is LayoutNode.Leaf -> "L:${node.panelId}"
+    is LayoutNode.Split ->
+        "S:${node.direction}(" + node.children.joinToString(",") { layoutSignature(it) } + ")"
 }
 
 /** Hit-test во время drag: корневые зоны (края воркспейса) в приоритете, затем панели. */
