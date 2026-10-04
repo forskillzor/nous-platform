@@ -252,18 +252,21 @@ private fun RenderNode(
         }
         is LayoutNode.Split -> {
             // Анимация структурных изменений (split/remove/move/undo/redo):
-            // контент ключуется по сигнатуре дерева БЕЗ ratio — ресайз
-            // сплит-ручкой остаётся мгновенным, без «резиновости».
+            // targetState — сигнатура структуры БЕЗ ratio (ресайз сплит-ручкой
+            // остаётся мгновенным). Контент рендерится из АКТУАЛЬНОГО дерева
+            // (rememberUpdatedState) — иначе правки глубже «замерзали»: keyed-
+            // контент AnimatedContent не обновляется при том же ключе.
+            val signature = layoutSignature(node)
             AnimatedContent(
-                targetState = node,
-                contentKey = { layoutSignature(it) },
+                targetState = signature,
                 transitionSpec = {
                     (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200)))
                         .togetherWith(fadeOut(tween(150)) + scaleOut(targetScale = 0.97f, animationSpec = tween(150)))
                         .using(SizeTransform(clip = true))
                 },
                 label = "split-content",
-            ) { currentNode ->
+            ) {
+                val currentNode by rememberUpdatedState(node)
                 var ratio by remember(currentNode) { mutableFloatStateOf(currentNode.ratio) }
                 val numChildren = currentNode.children.size
                 var parentSizePx by remember(currentNode) { mutableFloatStateOf(800f) }
