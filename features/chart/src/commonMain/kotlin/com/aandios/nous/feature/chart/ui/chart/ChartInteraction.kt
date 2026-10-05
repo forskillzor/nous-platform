@@ -990,9 +990,12 @@ private fun TradingOrderBadge(
 ) {
     val isBuy = order.side == OrderSide.BUY
     val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+    // reduce-only закрывает позицию со стороны ордера, но бейдж пишет, ЧТО
+    // закрываем: SELL reduce-only = Close Long, BUY reduce-only = Close Short
+    val longTitle = if (order.reduceOnly) !isBuy else isBuy
     val title = buildString {
         append(if (order.reduceOnly) "Close " else "Open ")
-        append(if (isBuy) "Long " else "Short ")
+        append(if (longTitle) "Long " else "Short ")
         append(priceText)
     }
 
