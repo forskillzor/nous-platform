@@ -253,6 +253,7 @@ class ChartViewModel(
             ordersLiveJob = null
             ordersLiveAdapter = null
             _openOrders.value = emptyList()
+            _pendingOrder.value = null
         }
     }
 
@@ -297,6 +298,10 @@ class ChartViewModel(
 
     /** Подтвердить отложенный ордер (Confirm orders: ON). */
     fun confirmPendingOrder() {
+        if (!_tradingEnabled.value) {
+            _pendingOrder.value = null
+            return
+        }
         val request = _pendingOrder.value ?: return
         _pendingOrder.value = null
         executeOrder(request)
@@ -402,6 +407,11 @@ class ChartViewModel(
     }
 
     private fun submitOrConfirm(request: OrderRequest) {
+        // Trading выключен на графике — ордера не размещаются вообще
+        if (!_tradingEnabled.value) {
+            _lastTradingMessage.value = "Trading disabled"
+            return
+        }
         if (_confirmOrders.value) {
             _pendingOrder.value = request
         } else {
@@ -431,6 +441,7 @@ class ChartViewModel(
 
     /** Отменить ордер с графика (✕ на бейдже). */
     fun cancelChartOrder(orderId: String) {
+        if (!_tradingEnabled.value) return
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
@@ -448,11 +459,13 @@ class ChartViewModel(
      * цене (как в MEXC/TradingView — ордер «переезжает»).
      */
     fun moveChartOrder(order: Order, newPrice: Double) {
+        if (!_tradingEnabled.value) return
         replaceChartOrder(order, newPrice, order.quantity)
     }
 
     /** Правка qty на бейдже: cancel+replace с новым количеством. */
     fun resizeChartOrder(order: Order, newQuantity: Double) {
+        if (!_tradingEnabled.value) return
         replaceChartOrder(order, order.price, newQuantity)
     }
 

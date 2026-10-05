@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -51,12 +52,14 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isAltPressed
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.drawText
@@ -147,6 +150,8 @@ fun CandleStickChartInteraction(
     // Перетаскивание торгового ордера (грип бейджа): ордер рисуется по drag-цене
     var draggingOrderId by remember { mutableStateOf<String?>(null) }
     var draggingOrderPrice by remember { mutableStateOf<Double?>(null) }
+    // Измеренные размеры бейджей ордеров (для исключения кликов по ним)
+    val orderBadgeSizes = remember { mutableStateMapOf<String, IntSize>() }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -162,6 +167,10 @@ fun CandleStickChartInteraction(
     // Актуальные данные для обработчиков жестов (pointerInput не перезапускается)
     val currentCandles by rememberUpdatedState(candles)
     val currentTradingOrders by rememberUpdatedState(tradingOrders)
+    // Колбэки Trading, включённого ПОСЛЕ старта pointerInput, иначе жест
+    // держит старый null и клик «не размещает» до пересоздания композиции
+    val currentOnChartTradingClick by rememberUpdatedState(onChartTradingClick)
+    val currentOnMoveTradingOrder by rememberUpdatedState(onMoveTradingOrder)
 
     val zoomStep = 1.25f
     val minZoom = config.minZoom
@@ -275,7 +284,7 @@ fun CandleStickChartInteraction(
                     if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
 
                     // 1b. Перетаскивание торгового ордера за грип бейджа
-                    if (onMoveTradingOrder != null && currentTradingOrders.isNotEmpty()) {
+                    if (currentOnMoveTradingOrder != null && currentTradingOrders.isNotEmpty()) {
                         val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
                         val gripW = with(density) { TRADING_GRIP_WIDTH.toPx() }
                         val hitOrder = currentTradingOrders.firstOrNull { o ->
@@ -311,7 +320,7 @@ fun CandleStickChartInteraction(
                             } while (true)
                             draggingOrderId = null
                             draggingOrderPrice = null
-                            if (moved) onMoveTradingOrder?.invoke(hitOrder, newPrice)
+                            if (moved) currentOnMoveTradingOrder?.invoke(hitOrder, newPrice)
                             return@awaitEachGesture
                         }
                     }
@@ -346,11 +355,23 @@ fun CandleStickChartInteraction(
                     } while (true)
                     // Клик по пустому месту — снимаем выделение рисунка
                     if (!moved) selectedDrawingId = null
-                    // Chart trading: клик по области графика размещает ордер
-                    // (клики, поглощённые бейджами/кнопками, не размещают)
-                    if (!moved && !down.isConsumed && onChartTradingClick != null) {
+                    // Chart trading: клик по области графика размещает ордер.
+                    // Клики по бейджам (грип/qty/✕) ордер не размещают; проверка —
+                    // по измеренным размерам бейджей (down.isConsumed не годится:
+                    // double-tap детектор footprint потребляет down в каждом клике).
+                    if (!moved && currentOnChartTradingClick != null) {
+                        val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
+                        val overBadge = currentTradingOrders.any { o ->
+                            val size = orderBadgeSizes[o.orderId] ?: return@any false
+                            if (o.price <= 0.0) return@any false
+                            val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
+                            val top = y - badgeH / 2f
+                            down.position.x in 0f..size.width.toFloat() &&
+                                down.position.y in top..(top + badgeH)
+                        }
                         // chartMainArea — Rect(0, 0, chartWidthPx, chartHeightPx)
-                        if (down.position.x >= 0f && down.position.x <= chartWidthPx &&
+                        if (!overBadge &&
+                            down.position.x >= 0f && down.position.x <= chartWidthPx &&
                             down.position.y >= 0f && down.position.y <= chartHeightPx
                         ) {
                             val price = priceFromY(
@@ -358,7 +379,7 @@ fun CandleStickChartInteraction(
                                 priceRange = currentPriceRange,
                                 chartHeight = chartHeightPx,
                             )
-                            if (price > 0) onChartTradingClick(price.toDouble())
+                            if (price > 0) currentOnChartTradingClick?.invoke(price.toDouble())
                         }
                     }
                 }
@@ -768,7 +789,8 @@ fun CandleStickChartInteraction(
                     onResize = { qty -> onResizeTradingOrder?.invoke(order, qty) },
                     modifier = Modifier
                         .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
-                        .height(TRADING_BADGE_HEIGHT),
+                        .height(TRADING_BADGE_HEIGHT)
+                        .onSizeChanged { orderBadgeSizes[order.orderId] = it },
                 )
             }
         }
