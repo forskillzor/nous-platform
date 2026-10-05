@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
+import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingToolType
@@ -24,6 +25,9 @@ import com.aandios.nous.feature.chart.ui.DefaultChartConfig
  * Тонкая обёртка над [CandleStickChartInteraction].
  * Если передан footprintCandles — рисует footprint вместо свечей,
  * используя ту же логику взаимодействия, кросхаир, шкалы и линию цены.
+ *
+ * [tradingOrders] — линии открытых ордеров на графике (chart trading);
+ * [onChartTradingClick] — клик по графику с ценой (размещение ордера).
  */
 
 // todo дублирование сигнатур, раздуте кода, какой смысл???
@@ -44,6 +48,8 @@ fun CandleStickChart(
     onActiveDrawingToolChange: (DrawingToolType) -> Unit = {},
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
+    tradingOrders: List<Order> = emptyList(),
+    onChartTradingClick: ((Double) -> Unit)? = null,
 ) {
     CandleStickChartInteraction(
         candles = candles,
@@ -61,5 +67,7 @@ fun CandleStickChart(
         onActiveDrawingToolChange = onActiveDrawingToolChange,
         initialZoomLevel = initialZoomLevel,
         onZoomChange = onZoomChange,
+        tradingOrders = tradingOrders,
+        onChartTradingClick = onChartTradingClick,
     )
 }

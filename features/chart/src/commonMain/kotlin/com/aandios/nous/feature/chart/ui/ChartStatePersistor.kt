@@ -23,6 +23,25 @@ class ChartStatePersistor(private val store: StateStore) {
         val providerId: String? = null,
     )
 
+    data class TradingState(
+        val enabled: Boolean = false,
+        val confirmOrders: Boolean = false,
+        val quantity: Double? = null,
+    )
+
+    suspend fun saveTrading(enabled: Boolean, confirmOrders: Boolean, quantity: Double?) {
+        store.putString(KEY_TRADING_ENABLED, if (enabled) "1" else "0")
+        store.putString(KEY_CONFIRM_ORDERS, if (confirmOrders) "1" else "0")
+        store.putString(KEY_TRADING_QUANTITY, quantity?.toString() ?: "")
+    }
+
+    suspend fun restoreTrading(): TradingState {
+        val enabled = store.getString(KEY_TRADING_ENABLED) == "1"
+        val confirm = store.getString(KEY_CONFIRM_ORDERS) == "1"
+        val quantity = store.getString(KEY_TRADING_QUANTITY)?.toDoubleOrNull()?.takeIf { it > 0 }
+        return TradingState(enabled, confirm, quantity)
+    }
+
     suspend fun save(
         symbol: String,
         timeframe: String,
@@ -80,5 +99,8 @@ class ChartStatePersistor(private val store: StateStore) {
         const val KEY_PROVIDER_ID = "chart_provider_id"
         const val KEY_FP_AGGREGATION = "fp_aggregation"
         const val KEY_ZOOM = "chart_zoom"
+        const val KEY_TRADING_ENABLED = "chart_trading_enabled"
+        const val KEY_CONFIRM_ORDERS = "chart_confirm_orders"
+        const val KEY_TRADING_QUANTITY = "chart_trading_quantity"
     }
 }

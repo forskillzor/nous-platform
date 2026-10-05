@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.key.Key
@@ -48,6 +49,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.drawText
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
@@ -70,6 +72,7 @@ import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.tools.hitTestDrawings
 import com.aandios.nous.feature.chart.tools.moveDrawing
 import com.aandios.nous.feature.chart.utils.prependedCount
+import com.aandios.nous.feature.chart.utils.priceFromY
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max
@@ -97,6 +100,8 @@ fun CandleStickChartInteraction(
     onActiveDrawingToolChange: (DrawingToolType) -> Unit = {},
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
+    tradingOrders: List<com.aandios.nous.api.market.model.trading.Order> = emptyList(),
+    onChartTradingClick: ((Double) -> Unit)? = null,
 ) {
     if (candles.isEmpty()) return
 
@@ -272,6 +277,20 @@ fun CandleStickChartInteraction(
                     } while (true)
                     // Клик по пустому месту — снимаем выделение рисунка
                     if (!moved) selectedDrawingId = null
+                    // Chart trading: клик по области графика размещает ордер
+                    if (!moved && onChartTradingClick != null) {
+                        // chartMainArea — Rect(0, 0, chartWidthPx, chartHeightPx)
+                        if (down.position.x >= 0f && down.position.x <= chartWidthPx &&
+                            down.position.y >= 0f && down.position.y <= chartHeightPx
+                        ) {
+                            val price = priceFromY(
+                                y = down.position.y,
+                                priceRange = currentPriceRange,
+                                chartHeight = chartHeightPx,
+                            )
+                            if (price > 0) onChartTradingClick(price.toDouble())
+                        }
+                    }
                 }
             }
             // Зум: без Ctrl — от правого края, с Ctrl — от свечи под курсором
@@ -509,6 +528,11 @@ fun CandleStickChartInteraction(
                 )
             }
 
+            // 2b. Линии открытых торговых ордеров (chart trading)
+            if (tradingOrders.isNotEmpty()) {
+                drawTradingOrderLines(tradingOrders, priceRange, layout.chartMainArea, textMeasurer)
+            }
+
             // 3. Шкала времени (по каркасным свечам — общая для обоих режимов)
             drawTimeScale(
                 candles = candles,
@@ -694,5 +718,48 @@ fun CandleStickChartInteraction(
                 onPreviewChange = { previewDrawing = it },
             )
         }
+    }
+}
+
+/**
+ * ����� �������� ������� �� ������� (chart trading): ��������������
+ * ���������� ����� �� ���� ������ + ������� side/qty.
+ */
+private fun DrawScope.drawTradingOrderLines(
+    orders: List<com.aandios.nous.api.market.model.trading.Order>,
+    priceRange: PriceRange,
+    chartArea: Rect,
+    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+) {
+    orders.forEach { order ->
+        if (order.price <= 0.0) return@forEach
+        val y = com.aandios.nous.feature.chart.utils.priceToY(order.price.toFloat(), priceRange, chartArea.height)
+        if (y < 0f || y > chartArea.height) return@forEach
+
+        val isBuy = order.side == com.aandios.nous.api.market.model.orderbook.OrderSide.BUY
+        val color = if (isBuy) Color(0xFF5B9BD5) else Color(0xFFE05B5B)
+        val dash = 8f
+
+        drawLine(
+            color = color.copy(alpha = 0.75f),
+            start = Offset(chartArea.left, chartArea.top + y),
+            end = Offset(chartArea.right, chartArea.top + y),
+            strokeWidth = 1.5f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)),
+        )
+
+        val label = "${if (isBuy) "B" else "S"} ${order.quantity}"
+        val layout = textMeasurer.measure(
+            androidx.compose.ui.text.AnnotatedString(label),
+            style = androidx.compose.ui.text.TextStyle(
+                color = color,
+                fontSize = 10.sp,
+                background = Color.Black.copy(alpha = 0.55f),
+            )
+        )
+        drawText(
+            textLayoutResult = layout,
+            topLeft = Offset(chartArea.left + 4f, chartArea.top + y - layout.size.height - 2f),
+        )
     }
 }

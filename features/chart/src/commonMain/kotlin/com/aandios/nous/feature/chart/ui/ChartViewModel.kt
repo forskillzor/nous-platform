@@ -8,6 +8,10 @@ package com.aandios.nous.feature.chart.ui
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
+import com.aandios.nous.api.market.model.orderbook.OrderSide
+import com.aandios.nous.api.market.model.orderbook.OrderType
+import com.aandios.nous.api.market.model.trading.Order
+import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.core.data.repository.ChartRepositoryImpl
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.cache.CandleCacheStore
@@ -42,6 +46,24 @@ class ChartViewModel(
     val state: StateFlow<ChartUiState> = _state.asStateFlow()
 
     private val _symbolInfoMap = MutableStateFlow<Map<String, SymbolInfo>>(emptyMap())
+
+    // ── Chart trading (вкл/выкл) ──
+
+    private val _tradingEnabled = MutableStateFlow(false)
+    val tradingEnabled: StateFlow<Boolean> = _tradingEnabled.asStateFlow()
+
+    /** Количество для chart-ордеров (null — minQty инструмента). */
+    private val _tradingQuantity = MutableStateFlow<Double?>(null)
+    val tradingQuantity: StateFlow<Double?> = _tradingQuantity.asStateFlow()
+
+    private val _confirmOrders = MutableStateFlow(false)
+    val confirmOrders: StateFlow<Boolean> = _confirmOrders.asStateFlow()
+
+    private val _openOrders = MutableStateFlow<List<Order>>(emptyList())
+    val openOrders: StateFlow<List<Order>> = _openOrders.asStateFlow()
+
+    private val _lastTradingMessage = MutableStateFlow<String?>(null)
+    val lastTradingMessage: StateFlow<String?> = _lastTradingMessage.asStateFlow()
 
     private val footprintCacheStore: FootprintCacheStore? = footprintCache
     private var footprintController: FootprintController? = null
@@ -179,6 +201,98 @@ class ChartViewModel(
         saveState()
     }
 
+    // ── Chart trading ──
+
+    fun setTradingEnabled(enabled: Boolean) {
+        if (_tradingEnabled.value == enabled) return
+        _tradingEnabled.value = enabled
+        saveTradingState()
+        if (enabled) refreshOpenOrders()
+        else _openOrders.value = emptyList()
+    }
+
+    fun setTradingQuantity(quantity: Double?) {
+        _tradingQuantity.value = quantity?.takeIf { it > 0 }
+        saveTradingState()
+    }
+
+    fun setConfirmOrders(confirm: Boolean) {
+        _confirmOrders.value = confirm
+        saveTradingState()
+    }
+
+    fun clearTradingMessage() {
+        _lastTradingMessage.value = null
+    }
+
+    /** Перечитать открытые ордера текущего символа (для линий на графике). */
+    fun refreshOpenOrders() {
+        val symbol = _state.value.currentSymbol
+        viewModelScope.launch {
+            val adapter = activeProvider()?.trading
+            if (adapter == null) {
+                _openOrders.value = emptyList()
+                return@launch
+            }
+            val orders = runCatching { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
+            _openOrders.value = orders.filter { it.symbol.uppercase() == symbol.uppercase() }
+        }
+    }
+
+    /**
+     * Разместить лимитный ордер кликом по графику: ниже текущей цены — BUY,
+     * выше — SELL. Количество — [_tradingQuantity] или minQty инструмента.
+     */
+    fun placeChartOrder(price: Double) {
+        viewModelScope.launch {
+            val adapter = activeProvider()?.trading
+            if (adapter == null) {
+                _lastTradingMessage.value = "Trading adapter not available"
+                return@launch
+            }
+            val symbol = _state.value.currentSymbol
+            val lastPrice = (chartLastPrice() ?: 0.0)
+            val side = if (lastPrice > 0 && price >= lastPrice) OrderSide.SELL else OrderSide.BUY
+            val quantity = _tradingQuantity.value
+                ?: _state.value.currentSymbolInfo?.minQty?.takeIf { it > 0 }
+                ?: 0.001
+            val response = runCatching {
+                adapter.placeOrder(
+                    OrderRequest(
+                        symbol = symbol,
+                        side = side,
+                        orderType = OrderType.LIMIT,
+                        quantity = quantity,
+                        price = price,
+                    )
+                )
+            }.getOrNull()
+            _lastTradingMessage.value = when {
+                response == null -> "Order failed (network)"
+                response.success -> "Limit ${side.name} $quantity @ $price → ${response.orderId}"
+                else -> response.message ?: "Order failed"
+            }
+            refreshOpenOrders()
+        }
+    }
+
+    /** Последняя цена для определения стороны chart-ордера. */
+    fun chartLastPrice(): Double? = when (val s = _state.value.chartState) {
+        is ChartState.Success -> s.currentPrice?.toDouble() ?: s.candles.lastOrNull()?.close?.toDouble()
+        else -> null
+    }
+
+    private fun saveTradingState() {
+        val persistor = persistor ?: return
+        viewModelScope.launch {
+            persistor.saveTrading(
+                enabled = _tradingEnabled.value,
+                confirmOrders = _confirmOrders.value,
+                quantity = _tradingQuantity.value,
+            )
+        }
+    }
+
     private fun saveState() {
         val persistor = persistor ?: return
         val current = _state.value
@@ -210,6 +324,11 @@ class ChartViewModel(
                     currentProviderId = activeProviderId,
                 )
             }
+            val trading = persistor.restoreTrading()
+            _tradingEnabled.value = trading.enabled
+            _confirmOrders.value = trading.confirmOrders
+            _tradingQuantity.value = trading.quantity
+            if (_tradingEnabled.value) refreshOpenOrders()
             loadSymbols()
         }
     }

@@ -115,6 +115,17 @@ private fun ChartWindowContent(
     val uiState by chartViewModel.state.collectAsState()
     val registry: ProviderRegistry = koinInject()
 
+    // Chart trading
+    val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
+    val tradingOrders by chartViewModel.openOrders.collectAsState()
+    val tradingQuantity by chartViewModel.tradingQuantity.collectAsState()
+    val confirmOrders by chartViewModel.confirmOrders.collectAsState()
+    val lastTradingMessage by chartViewModel.lastTradingMessage.collectAsState()
+
+    LaunchedEffect(uiState.currentSymbol, tradingEnabled) {
+        if (tradingEnabled) chartViewModel.refreshOpenOrders()
+    }
+
     // Ликвидации — от адаптера АКТИВНОГО провайдера (у MEXC его нет → null)
     val liquidationViewModel = remember(registry) {
         LiquidationViewModel(registry.get(uiState.currentProviderId)?.liquidation)
@@ -197,6 +208,8 @@ private fun ChartWindowContent(
             symbolsWithFootprint = uiState.symbolsWithFootprint,
             fpAggregation = uiState.fpAggregation,
             onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
+            tradingEnabled = tradingEnabled,
+            onTradingToggle = { chartViewModel.setTradingEnabled(it) },
             modifier = Modifier.padding(8.dp)
         )
 
@@ -292,6 +305,10 @@ private fun ChartWindowContent(
                                 modifier = Modifier.fillMaxSize(),
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
+                                tradingOrders = tradingOrders,
+                                onChartTradingClick = if (tradingEnabled) {
+                                    { price -> chartViewModel.placeChartOrder(price) }
+                                } else null,
                             )
                         }
                     }
@@ -333,6 +350,10 @@ private fun ChartWindowContent(
                             modifier = Modifier.fillMaxSize(),
                             initialZoomLevel = initialZoomLevel,
                             onZoomChange = onZoomChange,
+                            tradingOrders = tradingOrders,
+                            onChartTradingClick = if (tradingEnabled) {
+                                { price -> chartViewModel.placeChartOrder(price) }
+                            } else null,
                         )
                     }
                 }
@@ -349,6 +370,21 @@ private fun ChartWindowContent(
                     .align(Alignment.TopStart)
                     .padding(8.dp)
             )
+
+            // Панель настроек chart trading (видна при включённом Trading)
+            if (tradingEnabled) {
+                ChartTradingPanel(
+                    minQty = uiState.currentSymbolInfo?.minQty,
+                    quantity = tradingQuantity,
+                    confirmOrders = confirmOrders,
+                    lastMessage = lastTradingMessage,
+                    onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
+                    onConfirmChanged = { c -> chartViewModel.setConfirmOrders(c) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 8.dp, end = 8.dp),
+                )
+            }
         }
     }
 }
