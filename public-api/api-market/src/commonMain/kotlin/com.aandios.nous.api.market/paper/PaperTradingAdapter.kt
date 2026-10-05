@@ -20,8 +20,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -63,6 +65,9 @@ class PaperTradingAdapter(
     private val _positions = MutableStateFlow<List<Position>>(emptyList())
     private val _openOrders = MutableStateFlow<List<Order>>(emptyList())
     private val _history = MutableStateFlow<List<TradeFill>>(emptyList())
+
+    /** Живые обновления ордеров (OPEN/CANCELED/FILLED) для UI-подписок. */
+    private val _orderUpdates = MutableSharedFlow<Order>(extraBufferCapacity = 64)
 
     val balancesFlow: StateFlow<List<Balance>> = _balances.asStateFlow()
     val positionsFlow: StateFlow<List<Position>> = _positions.asStateFlow()
@@ -160,21 +165,30 @@ class PaperTradingAdapter(
                 timestamp = now(),
             )
             _openOrders.value = _openOrders.value + order
+            _orderUpdates.tryEmit(order)
             OrderResponse(order.orderId, execPrice, success = true)
         }
     }
 
     override suspend fun cancelOrder(orderId: String): Boolean = mutex.withLock {
-        val before = _openOrders.value.size
+        val order = _openOrders.value.firstOrNull { it.orderId == orderId } ?: return@withLock false
         _openOrders.value = _openOrders.value.filterNot { it.orderId == orderId }
-        _openOrders.value.size < before
+        _orderUpdates.tryEmit(order.copy(status = OrderStatus.CANCELED))
+        true
     }
 
     override suspend fun cancelAllOrders(symbol: String?): Boolean = mutex.withLock {
-        _openOrders.value = if (symbol != null) {
+        val removed = if (symbol != null) {
             val sym = symbol.uppercase()
-            _openOrders.value.filterNot { it.symbol == sym }
-        } else emptyList()
+            val gone = _openOrders.value.filter { it.symbol == sym }
+            _openOrders.value = _openOrders.value.filterNot { it.symbol == sym }
+            gone
+        } else {
+            val gone = _openOrders.value
+            _openOrders.value = emptyList()
+            gone
+        }
+        removed.forEach { _orderUpdates.tryEmit(it.copy(status = OrderStatus.CANCELED)) }
         true
     }
 
@@ -251,7 +265,7 @@ class PaperTradingAdapter(
     }
 
     override fun subscribeToPositions(): Flow<Position>? = null
-    override fun subscribeToOrders(): Flow<Order>? = null
+    override fun subscribeToOrders(): Flow<Order>? = _orderUpdates.asSharedFlow()
     override fun subscribeToBalances(): Flow<Balance>? = null
 
     // ── Внутреннее ──
@@ -359,7 +373,10 @@ class PaperTradingAdapter(
                 true
             } else false
         }
-        toExecute.forEach { (_, req) -> executeFillLocked(symbol, req, req.price, price) }
+        toExecute.forEach { (order, req) ->
+            executeFillLocked(symbol, req, req.price, price)
+            _orderUpdates.tryEmit(order.copy(status = OrderStatus.FILLED))
+        }
     }
 
     private fun balancesIndex(currency: String): Int =

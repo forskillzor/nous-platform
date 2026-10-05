@@ -7,15 +7,20 @@ package com.aandios.nous.api.market.paper
 
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
+import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.TradeSide
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class PaperTradingAdapterTest {
 
     private suspend fun usdtBalance(adapter: PaperTradingAdapter): Double =
@@ -160,6 +165,44 @@ class PaperTradingAdapterTest {
             PaperTrading.enabled = false
         }
         assertEquals(null, provider.effectiveTrading())
+    }
+
+    @Test
+    fun `order updates flow emits OPEN then CANCELED`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        val updates = mutableListOf<Order>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            adapter.subscribeToOrders()!!.collect { updates += it }
+        }
+        val response = adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 95.0)
+        )
+        adapter.cancelOrder(response.orderId)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(2, updates.size)
+        assertEquals(OrderStatus.OPEN, updates[0].status)
+        assertEquals(response.orderId, updates[0].orderId)
+        assertEquals(OrderStatus.CANCELED, updates[1].status)
+        assertEquals(response.orderId, updates[1].orderId)
+    }
+
+    @Test
+    fun `order updates flow emits FILLED when limit crosses mark`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        val updates = mutableListOf<Order>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            adapter.subscribeToOrders()!!.collect { updates += it }
+        }
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 95.0))
+        adapter.setMarkPrice("BTCUSDT", 94.0)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(2, updates.size)
+        assertEquals(OrderStatus.OPEN, updates[0].status)
+        assertEquals(OrderStatus.FILLED, updates[1].status)
     }
 
     private class FakeProvider : com.aandios.nous.api.market.Provider {

@@ -138,8 +138,7 @@ fun TradingPanel(
                 enabled = paperEnabled,
                 onToggle = {
                     paperEnabled = it
-                    PaperTrading.enabled = it
-                    viewModel.reload()
+                    viewModel.setPaperEnabled(it)
                 },
             )
         }
@@ -205,9 +204,15 @@ fun TradingPanel(
 
         // ── Контент ──
         when (tab) {
-            TradingTab.POSITIONS -> PositionsTable(positions, formatter, onClose = { viewModel.closePosition(it) })
-            TradingTab.ORDERS -> OrdersTable(orders, formatter, onCancel = { viewModel.cancelOrder(it) })
-            TradingTab.BALANCES -> {
+            TradingTab.POSITIONS -> PositionsTable(
+                positions, formatter, onClose = { viewModel.closePosition(it) },
+                modifier = Modifier.weight(1f),
+            )
+            TradingTab.ORDERS -> OrdersTable(
+                orders, formatter, onCancel = { viewModel.cancelOrder(it) },
+                modifier = Modifier.weight(1f),
+            )
+            TradingTab.BALANCES -> Column(modifier = Modifier.weight(1f)) {
                 if (paperEnabled) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
@@ -227,11 +232,11 @@ fun TradingPanel(
                         }
                     }
                 }
-                BalancesTable(balances)
+                BalancesTable(balances, modifier = Modifier.weight(1f))
             }
             TradingTab.HISTORY -> {
                 LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
-                HistoryTable(history, formatter)
+                HistoryTable(history, formatter, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -312,8 +317,9 @@ private fun PositionsTable(
     positions: List<Position>,
     formatter: SymbolFormatter,
     onClose: (Position) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
                 "Symbol" to PW.SYMBOL, "Side" to PW.SIDE, "Qty" to PW.QTY,
@@ -347,8 +353,9 @@ private fun OrdersTable(
     orders: List<Order>,
     formatter: SymbolFormatter,
     onCancel: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
                 "Symbol" to OW.SYMBOL, "Side/Type" to OW.SIDE_TYPE, "Price" to OW.PRICE,
@@ -393,8 +400,8 @@ private fun OrdersTable(
 }
 
 @Composable
-private fun BalancesTable(balances: List<Balance>) {
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
                 "Asset" to BW.ASSET, "Available" to BW.AVAILABLE, "Frozen" to BW.FROZEN,
@@ -422,8 +429,8 @@ private fun BalancesTable(balances: List<Balance>) {
 }
 
 @Composable
-private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter) {
-    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
                 "Symbol" to HW.SYMBOL, "Side" to HW.SIDE, "Price" to HW.PRICE,

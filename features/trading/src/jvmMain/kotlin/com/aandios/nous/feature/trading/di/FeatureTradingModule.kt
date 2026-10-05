@@ -39,5 +39,5 @@ val featureTradingModule = module {
     }
     single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
 
-    factory { TradingViewModel(providerRegistry = get()) }
+    factory { TradingViewModel(providerRegistry = get(), stateStore = getOrNull()) }
 }

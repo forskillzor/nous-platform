@@ -5,6 +5,8 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import com.aandios.nous.api.market.model.orderbook.OrderType
+import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
@@ -27,20 +29,54 @@ class ChartStatePersistor(private val store: StateStore) {
         val enabled: Boolean = false,
         val confirmOrders: Boolean = false,
         val quantity: Double? = null,
+        val orderType: OrderType = OrderType.LIMIT,
+        val reduceOnly: Boolean = false,
+        val leverage: Int? = null,
+        val marginMode: Int = 2,
     )
 
-    suspend fun saveTrading(enabled: Boolean, confirmOrders: Boolean, quantity: Double?) {
+    suspend fun saveTrading(
+        enabled: Boolean,
+        confirmOrders: Boolean,
+        quantity: Double?,
+        orderType: OrderType,
+        reduceOnly: Boolean,
+        leverage: Int?,
+        marginMode: Int,
+    ) {
         store.putString(KEY_TRADING_ENABLED, if (enabled) "1" else "0")
         store.putString(KEY_CONFIRM_ORDERS, if (confirmOrders) "1" else "0")
         store.putString(KEY_TRADING_QUANTITY, quantity?.toString() ?: "")
+        store.putString(KEY_ORDER_TYPE, orderType.name)
+        store.putString(KEY_REDUCE_ONLY, if (reduceOnly) "1" else "0")
+        store.putString(KEY_LEVERAGE, leverage?.toString() ?: "")
+        store.putString(KEY_MARGIN_MODE, marginMode.toString())
     }
 
     suspend fun restoreTrading(): TradingState {
         val enabled = store.getString(KEY_TRADING_ENABLED) == "1"
         val confirm = store.getString(KEY_CONFIRM_ORDERS) == "1"
         val quantity = store.getString(KEY_TRADING_QUANTITY)?.toDoubleOrNull()?.takeIf { it > 0 }
-        return TradingState(enabled, confirm, quantity)
+        val orderType = store.getString(KEY_ORDER_TYPE)?.let { raw ->
+            try {
+                OrderType.valueOf(raw)
+            } catch (e: Exception) {
+                OrderType.LIMIT
+            }
+        } ?: OrderType.LIMIT
+        val reduceOnly = store.getString(KEY_REDUCE_ONLY) == "1"
+        val leverage = store.getString(KEY_LEVERAGE)?.toIntOrNull()?.takeIf { it > 0 }
+        val marginMode = store.getString(KEY_MARGIN_MODE)?.toIntOrNull()?.takeIf { it == 1 || it == 2 } ?: 2
+        return TradingState(enabled, confirm, quantity, orderType, reduceOnly, leverage, marginMode)
     }
+
+    /** Персист глобального тумблера Paper (демо-торговля). */
+    suspend fun savePaperEnabled(enabled: Boolean) {
+        store.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
+    }
+
+    suspend fun restorePaperEnabled(): Boolean =
+        store.getString(PaperTrading.STORE_KEY) == "1"
 
     suspend fun save(
         symbol: String,
@@ -102,5 +138,9 @@ class ChartStatePersistor(private val store: StateStore) {
         const val KEY_TRADING_ENABLED = "chart_trading_enabled"
         const val KEY_CONFIRM_ORDERS = "chart_confirm_orders"
         const val KEY_TRADING_QUANTITY = "chart_trading_quantity"
+        const val KEY_ORDER_TYPE = "chart_order_type"
+        const val KEY_REDUCE_ONLY = "chart_reduce_only"
+        const val KEY_LEVERAGE = "chart_leverage"
+        const val KEY_MARGIN_MODE = "chart_margin_mode"
     }
 }

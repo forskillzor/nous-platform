@@ -50,6 +50,9 @@ fun CandleStickChart(
     onZoomChange: ((Float) -> Unit)? = null,
     tradingOrders: List<Order> = emptyList(),
     onChartTradingClick: ((Double) -> Unit)? = null,
+    onCancelTradingOrder: ((Order) -> Unit)? = null,
+    onMoveTradingOrder: ((Order, Double) -> Unit)? = null,
+    onResizeTradingOrder: ((Order, Double) -> Unit)? = null,
 ) {
     CandleStickChartInteraction(
         candles = candles,
@@ -69,5 +72,8 @@ fun CandleStickChart(
         onZoomChange = onZoomChange,
         tradingOrders = tradingOrders,
         onChartTradingClick = onChartTradingClick,
+        onCancelTradingOrder = onCancelTradingOrder,
+        onMoveTradingOrder = onMoveTradingOrder,
+        onResizeTradingOrder = onResizeTradingOrder,
     )
 }

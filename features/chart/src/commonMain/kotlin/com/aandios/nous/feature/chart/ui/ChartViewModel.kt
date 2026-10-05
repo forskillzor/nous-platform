@@ -6,6 +6,8 @@
 package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.api.market.adapters.TradingAdapter
+import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
@@ -13,6 +15,7 @@ import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
+import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.core.data.repository.ChartRepositoryImpl
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.cache.CandleCacheStore
@@ -60,8 +63,38 @@ class ChartViewModel(
     private val _confirmOrders = MutableStateFlow(false)
     val confirmOrders: StateFlow<Boolean> = _confirmOrders.asStateFlow()
 
+    /** Тип ордера для chart trading (LIMIT/POST_ONLY/IOC/FOK/MARKET). */
+    private val _chartOrderType = MutableStateFlow(OrderType.LIMIT)
+    val chartOrderType: StateFlow<OrderType> = _chartOrderType.asStateFlow()
+
+    /** Reduce-only для chart-ордеров. */
+    private val _reduceOnly = MutableStateFlow(false)
+    val reduceOnly: StateFlow<Boolean> = _reduceOnly.asStateFlow()
+
+    /** Плечо для новых ордеров (null — дефолт биржи). */
+    private val _chartLeverage = MutableStateFlow<Int?>(null)
+    val chartLeverage: StateFlow<Int?> = _chartLeverage.asStateFlow()
+
+    /** Режим маржи для новых ордеров: 1 isolated, 2 cross. */
+    private val _chartMarginMode = MutableStateFlow(2)
+    val chartMarginMode: StateFlow<Int> = _chartMarginMode.asStateFlow()
+
+    private val _takeProfitPrice = MutableStateFlow<Double?>(null)
+    val takeProfitPrice: StateFlow<Double?> = _takeProfitPrice.asStateFlow()
+
+    private val _stopLossPrice = MutableStateFlow<Double?>(null)
+    val stopLossPrice: StateFlow<Double?> = _stopLossPrice.asStateFlow()
+
+    /** Ордер, ожидающий подтверждения (Confirm orders: ON). */
+    private val _pendingOrder = MutableStateFlow<OrderRequest?>(null)
+    val pendingOrder: StateFlow<OrderRequest?> = _pendingOrder.asStateFlow()
+
     private val _openOrders = MutableStateFlow<List<Order>>(emptyList())
     val openOrders: StateFlow<List<Order>> = _openOrders.asStateFlow()
+
+    /** Живые обновления ордеров активного адаптера (отмена/исполнение). */
+    private var ordersLiveJob: Job? = null
+    private var ordersLiveAdapter: TradingAdapter? = null
 
     private val _lastTradingMessage = MutableStateFlow<String?>(null)
     val lastTradingMessage: StateFlow<String?> = _lastTradingMessage.asStateFlow()
@@ -126,10 +159,15 @@ class ChartViewModel(
         val provider = providerRegistry.get(providerId) ?: return
         if (activeProviderId == providerId) return
         activeProviderId = providerId
+        // Подписка на ордера была у старого адаптера — переподпишемся после рефреша
+        ordersLiveJob?.cancel()
+        ordersLiveJob = null
+        ordersLiveAdapter = null
         _state.update { it.copy(currentProviderId = providerId, symbols = emptyList()) }
         saveState()
         loadSymbols()
         loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
+        if (_tradingEnabled.value) refreshOpenOrders()
     }
 
     private fun loadSymbols() {
@@ -208,8 +246,14 @@ class ChartViewModel(
         if (_tradingEnabled.value == enabled) return
         _tradingEnabled.value = enabled
         saveTradingState()
-        if (enabled) refreshOpenOrders()
-        else _openOrders.value = emptyList()
+        if (enabled) {
+            refreshOpenOrders()
+        } else {
+            ordersLiveJob?.cancel()
+            ordersLiveJob = null
+            ordersLiveAdapter = null
+            _openOrders.value = emptyList()
+        }
     }
 
     fun setTradingQuantity(quantity: Double?) {
@@ -222,56 +266,226 @@ class ChartViewModel(
         saveTradingState()
     }
 
+    fun setChartOrderType(orderType: OrderType) {
+        _chartOrderType.value = orderType
+        saveTradingState()
+    }
+
+    fun setReduceOnly(reduceOnly: Boolean) {
+        _reduceOnly.value = reduceOnly
+        saveTradingState()
+    }
+
+    fun setChartLeverage(leverage: Int?) {
+        _chartLeverage.value = leverage?.takeIf { it > 0 }
+        saveTradingState()
+    }
+
+    fun setChartMarginMode(mode: Int) {
+        if (mode != 1 && mode != 2) return
+        _chartMarginMode.value = mode
+        saveTradingState()
+    }
+
+    fun setTakeProfitPrice(price: Double?) {
+        _takeProfitPrice.value = price?.takeIf { it > 0 }
+    }
+
+    fun setStopLossPrice(price: Double?) {
+        _stopLossPrice.value = price?.takeIf { it > 0 }
+    }
+
+    /** Подтвердить отложенный ордер (Confirm orders: ON). */
+    fun confirmPendingOrder() {
+        val request = _pendingOrder.value ?: return
+        _pendingOrder.value = null
+        executeOrder(request)
+    }
+
+    fun cancelPendingOrder() {
+        _pendingOrder.value = null
+    }
+
     fun clearTradingMessage() {
         _lastTradingMessage.value = null
     }
 
+    /**
+     * Глобальный тумблер Paper (демо-торговля): персистится, при смене
+     * адаптера переподписываемся и перечитываем открытые ордера.
+     */
+    fun setPaperEnabled(enabled: Boolean) {
+        if (PaperTrading.enabled == enabled) return
+        PaperTrading.enabled = enabled
+        viewModelScope.launch { persistor?.savePaperEnabled(enabled) }
+        ordersLiveJob?.cancel()
+        ordersLiveJob = null
+        ordersLiveAdapter = null
+        if (_tradingEnabled.value) refreshOpenOrders() else _openOrders.value = emptyList()
+    }
+
     /** Перечитать открытые ордера текущего символа (для линий на графике). */
     fun refreshOpenOrders() {
+        val adapter = activeProvider()?.effectiveTrading()
+            ?: run {
+                _openOrders.value = emptyList()
+                return
+            }
+        ensureOrdersLive(adapter)
         val symbol = _state.value.currentSymbol
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
-            if (adapter == null) {
-                _openOrders.value = emptyList()
-                return@launch
-            }
             val orders = runCatching { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
             _openOrders.value = orders.filter { it.symbol.uppercase() == symbol.uppercase() }
         }
     }
 
     /**
-     * Разместить лимитный ордер кликом по графику: ниже текущей цены — BUY,
-     * выше — SELL. Количество — [_tradingQuantity] или minQty инструмента.
+     * Живые обновления ордеров активного адаптера: отмена/исполнение ордера
+     * (в том числе из Trading panel) сразу убирает линию с графика.
+     */
+    private fun ensureOrdersLive(adapter: TradingAdapter) {
+        if (ordersLiveJob?.isActive == true && ordersLiveAdapter === adapter) return
+        ordersLiveJob?.cancel()
+        ordersLiveAdapter = adapter
+        ordersLiveJob = adapter.subscribeToOrders()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { update -> onOrderUpdate(update) }
+            }
+        }
+    }
+
+    private fun onOrderUpdate(update: Order) {
+        val symbol = _state.value.currentSymbol
+        if (!update.symbol.equals(symbol, ignoreCase = true)) return
+        _openOrders.value = if (update.status != OrderStatus.OPEN) {
+            _openOrders.value.filterNot { it.orderId == update.orderId }
+        } else if (_openOrders.value.any { it.orderId == update.orderId }) {
+            _openOrders.value.map { if (it.orderId == update.orderId) update else it }
+        } else {
+            _openOrders.value + update
+        }
+    }
+
+    /**
+     * Разместить ордер кликом по графику: ниже текущей цены — BUY, выше — SELL.
+     * Тип — выбранный в панели (для MARKET цена клика игнорируется),
+     * количество — [_tradingQuantity] или minQty инструмента.
      */
     fun placeChartOrder(price: Double) {
+        val lastPrice = chartLastPrice() ?: 0.0
+        val side = if (lastPrice > 0 && price >= lastPrice) OrderSide.SELL else OrderSide.BUY
+        val type = _chartOrderType.value
+        submitOrConfirm(buildTradingRequest(side, type, if (type == OrderType.MARKET) 0.0 else price))
+    }
+
+    /** Рыночный ордер по кнопке Buy/Sell (последняя цена графика). */
+    fun placeMarketOrder(side: OrderSide) {
+        submitOrConfirm(buildTradingRequest(side, OrderType.MARKET, 0.0))
+    }
+
+    private fun buildTradingRequest(side: OrderSide, orderType: OrderType, price: Double): OrderRequest {
+        val quantity = _tradingQuantity.value
+            ?: _state.value.currentSymbolInfo?.minQty?.takeIf { it > 0 }
+            ?: 0.001
+        return OrderRequest(
+            symbol = _state.value.currentSymbol,
+            side = side,
+            orderType = orderType,
+            quantity = quantity,
+            price = price,
+            reduceOnly = _reduceOnly.value,
+            leverage = _chartLeverage.value,
+            marginMode = _chartMarginMode.value,
+            stopLossPrice = _stopLossPrice.value,
+            takeProfitPrice = _takeProfitPrice.value,
+        )
+    }
+
+    private fun submitOrConfirm(request: OrderRequest) {
+        if (_confirmOrders.value) {
+            _pendingOrder.value = request
+        } else {
+            executeOrder(request)
+        }
+    }
+
+    private fun executeOrder(request: OrderRequest) {
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
                 _lastTradingMessage.value = "Trading adapter not available"
                 return@launch
             }
-            val symbol = _state.value.currentSymbol
-            val lastPrice = (chartLastPrice() ?: 0.0)
-            val side = if (lastPrice > 0 && price >= lastPrice) OrderSide.SELL else OrderSide.BUY
-            val quantity = _tradingQuantity.value
-                ?: _state.value.currentSymbolInfo?.minQty?.takeIf { it > 0 }
-                ?: 0.001
-            val response = runCatching {
-                adapter.placeOrder(
-                    OrderRequest(
-                        symbol = symbol,
-                        side = side,
-                        orderType = OrderType.LIMIT,
-                        quantity = quantity,
-                        price = price,
-                    )
-                )
-            }.getOrNull()
+            val response = runCatching { adapter.placeOrder(request) }.getOrNull()
             _lastTradingMessage.value = when {
                 response == null -> "Order failed (network)"
-                response.success -> "Limit ${side.name} $quantity @ $price → ${response.orderId}"
+                response.success -> {
+                    val px = if (request.orderType == OrderType.MARKET) "market" else "@ ${request.price}"
+                    "${request.orderType.name} ${request.side.name} ${request.quantity} $px → ${response.orderId}"
+                }
                 else -> response.message ?: "Order failed"
+            }
+            refreshOpenOrders()
+        }
+    }
+
+    /** Отменить ордер с графика (✕ на бейдже). */
+    fun cancelChartOrder(orderId: String) {
+        viewModelScope.launch {
+            val adapter = activeProvider()?.effectiveTrading()
+            if (adapter == null) {
+                _lastTradingMessage.value = "Trading adapter not available"
+                return@launch
+            }
+            val ok = runCatching { adapter.cancelOrder(orderId) }.getOrDefault(false)
+            _lastTradingMessage.value = if (ok) "Order $orderId canceled" else "Failed to cancel $orderId"
+            refreshOpenOrders()
+        }
+    }
+
+    /**
+     * Перетаскивание ордера: старый отменяется, новый размещается по новой
+     * цене (как в MEXC/TradingView — ордер «переезжает»).
+     */
+    fun moveChartOrder(order: Order, newPrice: Double) {
+        replaceChartOrder(order, newPrice, order.quantity)
+    }
+
+    /** Правка qty на бейдже: cancel+replace с новым количеством. */
+    fun resizeChartOrder(order: Order, newQuantity: Double) {
+        replaceChartOrder(order, order.price, newQuantity)
+    }
+
+    private fun replaceChartOrder(order: Order, price: Double, quantity: Double) {
+        viewModelScope.launch {
+            val adapter = activeProvider()?.effectiveTrading()
+            if (adapter == null) {
+                _lastTradingMessage.value = "Trading adapter not available"
+                return@launch
+            }
+            if (quantity <= 0) {
+                _lastTradingMessage.value = "Quantity must be positive"
+                return@launch
+            }
+            runCatching { adapter.cancelOrder(order.orderId) }
+            val request = OrderRequest(
+                symbol = order.symbol.uppercase(),
+                side = order.side,
+                orderType = order.orderType,
+                quantity = quantity,
+                price = if (order.orderType == OrderType.MARKET) 0.0 else price,
+                reduceOnly = order.reduceOnly,
+                leverage = _chartLeverage.value,
+                marginMode = _chartMarginMode.value,
+            )
+            val response = runCatching { adapter.placeOrder(request) }.getOrNull()
+            _lastTradingMessage.value = when {
+                response == null -> "Replace failed (network)"
+                response.success -> {
+                    val px = if (request.orderType == OrderType.MARKET) "market" else "@ ${request.price}"
+                    "${request.orderType.name} ${request.side.name} $quantity $px → ${response.orderId}"
+                }
+                else -> response.message ?: "Replace failed"
             }
             refreshOpenOrders()
         }
@@ -290,6 +504,10 @@ class ChartViewModel(
                 enabled = _tradingEnabled.value,
                 confirmOrders = _confirmOrders.value,
                 quantity = _tradingQuantity.value,
+                orderType = _chartOrderType.value,
+                reduceOnly = _reduceOnly.value,
+                leverage = _chartLeverage.value,
+                marginMode = _chartMarginMode.value,
             )
         }
     }
@@ -329,6 +547,13 @@ class ChartViewModel(
             _tradingEnabled.value = trading.enabled
             _confirmOrders.value = trading.confirmOrders
             _tradingQuantity.value = trading.quantity
+            _chartOrderType.value = trading.orderType
+            _reduceOnly.value = trading.reduceOnly
+            _chartLeverage.value = trading.leverage
+            _chartMarginMode.value = trading.marginMode
+            // Paper переживает перезапуск — иначе ордера уходят в заглушки
+            // провайдеров, которые «успешно» их принимают, но не отслеживают
+            PaperTrading.enabled = persistor.restorePaperEnabled()
             if (_tradingEnabled.value) refreshOpenOrders()
             loadSymbols()
         }

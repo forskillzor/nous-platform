@@ -18,6 +18,9 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 object PaperTrading {
     val adapter: PaperTradingAdapter = PaperTradingAdapter()
 
+    /** Ключ StateStore, под которым UI персистит тумблер демо-торговли. */
+    const val STORE_KEY = "paper_enabled"
+
     @Volatile
     var enabled: Boolean = false
 }

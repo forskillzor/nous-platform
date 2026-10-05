@@ -54,7 +54,7 @@ fun <T> TerminalDropdown(
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
                     text = displayText(currentValue),
@@ -64,7 +64,6 @@ fun <T> TerminalDropdown(
                     letterSpacing = 0.2.sp,
                     maxLines = 1
                 )
-                Spacer(Modifier.weight(1f))
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
                     contentDescription = "Раскрыть список",

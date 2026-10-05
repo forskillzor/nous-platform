@@ -26,6 +26,8 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.orderbook.OrderSide
+import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.api.market.ProviderRegistry
@@ -121,6 +123,14 @@ private fun ChartWindowContent(
     val tradingQuantity by chartViewModel.tradingQuantity.collectAsState()
     val confirmOrders by chartViewModel.confirmOrders.collectAsState()
     val lastTradingMessage by chartViewModel.lastTradingMessage.collectAsState()
+    val chartOrderType by chartViewModel.chartOrderType.collectAsState()
+    val chartReduceOnly by chartViewModel.reduceOnly.collectAsState()
+    val chartLeverage by chartViewModel.chartLeverage.collectAsState()
+    val chartMarginMode by chartViewModel.chartMarginMode.collectAsState()
+    val chartTakeProfit by chartViewModel.takeProfitPrice.collectAsState()
+    val chartStopLoss by chartViewModel.stopLossPrice.collectAsState()
+    val pendingOrder by chartViewModel.pendingOrder.collectAsState()
+    var paperEnabled by remember { mutableStateOf(PaperTrading.enabled) }
 
     LaunchedEffect(uiState.currentSymbol, tradingEnabled) {
         if (tradingEnabled) chartViewModel.refreshOpenOrders()
@@ -215,7 +225,9 @@ private fun ChartWindowContent(
 
         // Область графика: Loading/Error — только внутри неё.
         // Панель рисования и водяной знак видны всегда.
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        // BoxWithConstraints: ширина нужна, чтобы панель chart trading
+        // не вылезала за тайл (в узких тайлах режется соседней панелью).
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
             // Водяной знак символа — самый нижний слой, ничего не перекрывает:
             // крупный тикер монеты + биржа и тип контракта (как в TradingView)
             val symbolInfo = uiState.currentSymbolInfo
@@ -309,6 +321,9 @@ private fun ChartWindowContent(
                                 onChartTradingClick = if (tradingEnabled) {
                                     { price -> chartViewModel.placeChartOrder(price) }
                                 } else null,
+                                onCancelTradingOrder = { chartViewModel.cancelChartOrder(it.orderId) },
+                                onMoveTradingOrder = { order, price -> chartViewModel.moveChartOrder(order, price) },
+                                onResizeTradingOrder = { order, qty -> chartViewModel.resizeChartOrder(order, qty) },
                             )
                         }
                     }
@@ -354,6 +369,9 @@ private fun ChartWindowContent(
                             onChartTradingClick = if (tradingEnabled) {
                                 { price -> chartViewModel.placeChartOrder(price) }
                             } else null,
+                            onCancelTradingOrder = { chartViewModel.cancelChartOrder(it.orderId) },
+                            onMoveTradingOrder = { order, price -> chartViewModel.moveChartOrder(order, price) },
+                            onResizeTradingOrder = { order, qty -> chartViewModel.resizeChartOrder(order, qty) },
                         )
                     }
                 }
@@ -371,19 +389,45 @@ private fun ChartWindowContent(
                     .padding(8.dp)
             )
 
-            // Панель настроек chart trading: свободный угол снизу-справа —
-            // под price scale и правее timescale
+            // Панель chart trading: левый нижний угол — не мешает кнопке
+            // «к последней свече» (справа снизу); ширина ограничена тайлом,
+            // ex/sym берутся с графика. В узких тайлах строки переносятся.
             if (tradingEnabled) {
+                val panelMaxWidth = (maxWidth - 20.dp).coerceAtLeast(160.dp)
                 ChartTradingPanel(
+                    caption = "${uiState.currentSymbol} · ${registry.displayName(uiState.currentProviderId)}",
                     minQty = uiState.currentSymbolInfo?.minQty,
                     quantity = tradingQuantity,
+                    orderType = chartOrderType,
+                    reduceOnly = chartReduceOnly,
+                    leverage = chartLeverage,
+                    marginMode = chartMarginMode,
+                    takeProfit = chartTakeProfit,
+                    stopLoss = chartStopLoss,
                     confirmOrders = confirmOrders,
                     lastMessage = lastTradingMessage,
+                    pendingOrder = pendingOrder,
+                    paperEnabled = paperEnabled,
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
+                    onOrderTypeChanged = { chartViewModel.setChartOrderType(it) },
+                    onReduceOnlyChanged = { chartViewModel.setReduceOnly(it) },
+                    onLeverageChanged = { chartViewModel.setChartLeverage(it) },
+                    onMarginModeChanged = { chartViewModel.setChartMarginMode(it) },
+                    onTakeProfitChanged = { chartViewModel.setTakeProfitPrice(it) },
+                    onStopLossChanged = { chartViewModel.setStopLossPrice(it) },
+                    onBuy = { chartViewModel.placeMarketOrder(OrderSide.BUY) },
+                    onSell = { chartViewModel.placeMarketOrder(OrderSide.SELL) },
+                    onConfirmPending = { chartViewModel.confirmPendingOrder() },
+                    onCancelPending = { chartViewModel.cancelPendingOrder() },
                     onConfirmChanged = { c -> chartViewModel.setConfirmOrders(c) },
+                    onPaperChanged = { v ->
+                        paperEnabled = v
+                        chartViewModel.setPaperEnabled(v)
+                    },
                     modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = chartConfig.priceScaleWidth + 10.dp, bottom = 28.dp),
+                        .align(Alignment.BottomStart)
+                        .padding(start = 8.dp, bottom = 28.dp)
+                        .widthIn(max = panelMaxWidth),
                 )
             }
         }

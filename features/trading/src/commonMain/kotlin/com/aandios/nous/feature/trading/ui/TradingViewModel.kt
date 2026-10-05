@@ -8,10 +8,13 @@ package com.aandios.nous.feature.trading.ui
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.Balance
 import com.aandios.nous.api.market.model.trading.Order
+import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeFill
+import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.core.Disposable
+import com.aandios.nous.core.storage.StateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -35,6 +38,7 @@ import kotlinx.coroutines.launch
  */
 class TradingViewModel(
     private val providerRegistry: ProviderRegistry,
+    private val stateStore: StateStore? = null,
 ) : Disposable {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -88,7 +92,11 @@ class TradingViewModel(
     private fun tradingAdapter() = providerRegistry.get(_providerId.value)?.effectiveTrading()
 
     init {
-        restart()
+        scope.launch {
+            // Paper переживает перезапуск (общий ключ с chart-панелью)
+            stateStore?.getString(PaperTrading.STORE_KEY)?.let { PaperTrading.enabled = it == "1" }
+            restart()
+        }
     }
 
     override fun dispose() {
@@ -110,6 +118,16 @@ class TradingViewModel(
     /** Перезапуск подписок/рефреша (после смены paper/real режима). */
     fun reload() {
         restart()
+    }
+
+    /** Глобальный тумблер Paper: персист + перезапуск на новом адаптере. */
+    fun setPaperEnabled(enabled: Boolean) {
+        if (PaperTrading.enabled == enabled) return
+        PaperTrading.enabled = enabled
+        scope.launch {
+            stateStore?.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
+        }
+        reload()
     }
 
     private fun restart() {
@@ -173,6 +191,8 @@ class TradingViewModel(
     }
 
     private fun upsertOrder(list: List<Order>, update: Order): List<Order> {
+        // Отменённые/исполненные/отклонённые ордера уходят из открытых
+        if (update.status != OrderStatus.OPEN) return list.filterNot { it.orderId == update.orderId }
         val exists = list.any { it.orderId == update.orderId }
         return if (exists) list.map { if (it.orderId == update.orderId) update else it }
         else list + update

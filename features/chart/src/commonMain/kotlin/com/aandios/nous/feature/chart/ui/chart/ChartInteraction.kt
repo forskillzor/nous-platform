@@ -14,9 +14,15 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,10 +35,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -44,7 +52,9 @@ import androidx.compose.ui.input.pointer.isAltPressed
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,6 +63,8 @@ import androidx.compose.ui.text.drawText
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
+import com.aandios.nous.api.market.model.orderbook.OrderSide
+import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.rendering.drawCrosshair
@@ -73,9 +85,14 @@ import com.aandios.nous.feature.chart.tools.hitTestDrawings
 import com.aandios.nous.feature.chart.tools.moveDrawing
 import com.aandios.nous.feature.chart.utils.prependedCount
 import com.aandios.nous.feature.chart.utils.priceFromY
+import com.aandios.nous.feature.chart.utils.priceToY
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max
+
+/** Высота бейджа ордера (перетаскивание/правка qty) и ширина грипа. */
+private val TRADING_BADGE_HEIGHT = 18.dp
+private val TRADING_GRIP_WIDTH = 16.dp
 
 /**
  * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
@@ -102,6 +119,12 @@ fun CandleStickChartInteraction(
     onZoomChange: ((Float) -> Unit)? = null,
     tradingOrders: List<com.aandios.nous.api.market.model.trading.Order> = emptyList(),
     onChartTradingClick: ((Double) -> Unit)? = null,
+    /** Отмена ордера с графика (✕ на бейдже). */
+    onCancelTradingOrder: ((com.aandios.nous.api.market.model.trading.Order) -> Unit)? = null,
+    /** Перемещение ордера: cancel+replace по новой цене (перетаскивание). */
+    onMoveTradingOrder: ((com.aandios.nous.api.market.model.trading.Order, Double) -> Unit)? = null,
+    /** Изменение qty ордера: cancel+replace (правка прямо на бейдже). */
+    onResizeTradingOrder: ((com.aandios.nous.api.market.model.trading.Order, Double) -> Unit)? = null,
 ) {
     if (candles.isEmpty()) return
 
@@ -121,6 +144,9 @@ fun CandleStickChartInteraction(
     // Follow-live: следуем за новой свечой, пока пользователь у правого края
     var followLive by remember { mutableStateOf(true) }
     var prevFirstTs by remember { mutableStateOf<Long?>(null) }
+    // Перетаскивание торгового ордера (грип бейджа): ордер рисуется по drag-цене
+    var draggingOrderId by remember { mutableStateOf<String?>(null) }
+    var draggingOrderPrice by remember { mutableStateOf<Double?>(null) }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -135,6 +161,7 @@ fun CandleStickChartInteraction(
 
     // Актуальные данные для обработчиков жестов (pointerInput не перезапускается)
     val currentCandles by rememberUpdatedState(candles)
+    val currentTradingOrders by rememberUpdatedState(tradingOrders)
 
     val zoomStep = 1.25f
     val minZoom = config.minZoom
@@ -247,6 +274,48 @@ fun CandleStickChartInteraction(
                     // Активный инструмент рисования — жесты обрабатывает DrawingOverlay
                     if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
 
+                    // 1b. Перетаскивание торгового ордера за грип бейджа
+                    if (onMoveTradingOrder != null && currentTradingOrders.isNotEmpty()) {
+                        val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
+                        val gripW = with(density) { TRADING_GRIP_WIDTH.toPx() }
+                        val hitOrder = currentTradingOrders.firstOrNull { o ->
+                            if (o.price <= 0.0) return@firstOrNull false
+                            val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
+                            if (y < 0f || y > chartHeightPx) return@firstOrNull false
+                            val top = y - badgeH / 2f
+                            down.position.x in 0f..gripW && down.position.y in top..(top + badgeH)
+                        }
+                        if (hitOrder != null) {
+                            var moved = false
+                            var newPrice = hitOrder.price
+                            do {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) break
+                                if ((change.position - down.position).getDistance() > tapThresholdPx) {
+                                    moved = true
+                                }
+                                if (moved) {
+                                    val p = priceFromY(
+                                        y = change.position.y,
+                                        priceRange = currentPriceRange,
+                                        chartHeight = chartHeightPx,
+                                    )
+                                    if (p > 0f) {
+                                        newPrice = p.toDouble()
+                                        draggingOrderId = hitOrder.orderId
+                                        draggingOrderPrice = newPrice
+                                    }
+                                }
+                                change.consume()
+                            } while (true)
+                            draggingOrderId = null
+                            draggingOrderPrice = null
+                            if (moved) onMoveTradingOrder?.invoke(hitOrder, newPrice)
+                            return@awaitEachGesture
+                        }
+                    }
+
                     // 2. Панорамирование / Alt+вертикаль (footprint)
                     var previous = down.position
                     var moved = false
@@ -278,7 +347,8 @@ fun CandleStickChartInteraction(
                     // Клик по пустому месту — снимаем выделение рисунка
                     if (!moved) selectedDrawingId = null
                     // Chart trading: клик по области графика размещает ордер
-                    if (!moved && onChartTradingClick != null) {
+                    // (клики, поглощённые бейджами/кнопками, не размещают)
+                    if (!moved && !down.isConsumed && onChartTradingClick != null) {
                         // chartMainArea — Rect(0, 0, chartWidthPx, chartHeightPx)
                         if (down.position.x >= 0f && down.position.x <= chartWidthPx &&
                             down.position.y >= 0f && down.position.y <= chartHeightPx
@@ -530,7 +600,13 @@ fun CandleStickChartInteraction(
 
             // 2b. Линии открытых торговых ордеров (chart trading)
             if (tradingOrders.isNotEmpty()) {
-                drawTradingOrderLines(tradingOrders, priceRange, layout.chartMainArea, textMeasurer)
+                drawTradingOrderLines(
+                    orders = tradingOrders,
+                    priceRange = priceRange,
+                    chartArea = layout.chartMainArea,
+                    draggingOrderId = draggingOrderId,
+                    draggingPrice = draggingOrderPrice,
+                )
             }
 
             // 3. Шкала времени (по каркасным свечам — общая для обоих режимов)
@@ -673,6 +749,29 @@ fun CandleStickChartInteraction(
                 )
             }
         }
+        // Бейджи открытых ордеров поверх графика (TradingView-style):
+        // грип — перетаскивание, поле qty — правка, ✕ — отмена.
+        if (tradingOrders.isNotEmpty()) {
+            tradingOrders.forEach { order ->
+                val displayPrice = if (draggingOrderId == order.orderId) {
+                    draggingOrderPrice ?: order.price
+                } else {
+                    order.price
+                }
+                if (displayPrice <= 0.0) return@forEach
+                val y = priceToY(displayPrice.toFloat(), priceRange, layout.chartMainArea.height)
+                if (y < 0f || y > layout.chartMainArea.height) return@forEach
+                TradingOrderBadge(
+                    order = order,
+                    priceText = config.priceFormatter.formatPrice(displayPrice),
+                    onCancel = { onCancelTradingOrder?.invoke(order) },
+                    onResize = { qty -> onResizeTradingOrder?.invoke(order, qty) },
+                    modifier = Modifier
+                        .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
+                        .height(TRADING_BADGE_HEIGHT),
+                )
+            }
+        }
         // Кнопка «к последней свече» в правом нижнем углу области графика
         val controlsBottomPadding = with(density) {
             (layout.canvasHeight - layout.chartMainArea.bottom).toDp()
@@ -722,44 +821,154 @@ fun CandleStickChartInteraction(
 }
 
 /**
- * ����� �������� ������� �� ������� (chart trading): ��������������
- * ���������� ����� �� ���� ������ + ������� side/qty.
+ * Пунктирные линии открытых ордеров (chart trading). Бейджи (перетаскивание,
+ * qty, отмена) — Compose-оверлей [TradingOrderBadge]; здесь только линии.
+ * Во время перетаскивания линия рисуется по drag-цене.
  */
 private fun DrawScope.drawTradingOrderLines(
-    orders: List<com.aandios.nous.api.market.model.trading.Order>,
+    orders: List<Order>,
     priceRange: PriceRange,
     chartArea: Rect,
-    textMeasurer: androidx.compose.ui.text.TextMeasurer,
+    draggingOrderId: String?,
+    draggingPrice: Double?,
 ) {
     orders.forEach { order ->
-        if (order.price <= 0.0) return@forEach
-        val y = com.aandios.nous.feature.chart.utils.priceToY(order.price.toFloat(), priceRange, chartArea.height)
+        val price = if (order.orderId == draggingOrderId && draggingPrice != null) {
+            draggingPrice
+        } else {
+            order.price
+        }
+        if (price <= 0.0) return@forEach
+        val y = priceToY(price.toFloat(), priceRange, chartArea.height)
         if (y < 0f || y > chartArea.height) return@forEach
 
-        val isBuy = order.side == com.aandios.nous.api.market.model.orderbook.OrderSide.BUY
-        val color = if (isBuy) Color(0xFF5B9BD5) else Color(0xFFE05B5B)
+        val isBuy = order.side == OrderSide.BUY
+        val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
         val dash = 8f
 
         drawLine(
-            color = color.copy(alpha = 0.75f),
+            color = color.copy(alpha = 0.8f),
             start = Offset(chartArea.left, chartArea.top + y),
             end = Offset(chartArea.right, chartArea.top + y),
             strokeWidth = 1.5f,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)),
         )
+    }
+}
 
-        val label = "${if (isBuy) "B" else "S"} ${order.quantity}"
-        val layout = textMeasurer.measure(
-            androidx.compose.ui.text.AnnotatedString(label),
-            style = androidx.compose.ui.text.TextStyle(
-                color = color,
-                fontSize = 10.sp,
-                background = Color.Black.copy(alpha = 0.55f),
-            )
+/**
+ * Бейдж открытого ордера (как в MEXC/TradingView): грип для перетаскивания,
+ * «Open Long/Short {price}», редактируемое qty и ✕ отмены.
+ */
+@Composable
+private fun TradingOrderBadge(
+    order: Order,
+    priceText: String,
+    onCancel: () -> Unit,
+    onResize: (Double) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isBuy = order.side == OrderSide.BUY
+    val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+    val title = buildString {
+        append(if (order.reduceOnly) "Close " else "Open ")
+        append(if (isBuy) "Long " else "Short ")
+        append(priceText)
+    }
+
+    val initialQty = remember(order.orderId) { trimQtyText(order.quantity) }
+    var qtyText by remember(order.orderId) { mutableStateOf(initialQty) }
+    var committed by remember(order.orderId) { mutableStateOf(false) }
+
+    fun commit() {
+        if (committed) return
+        val q = qtyText.toDoubleOrNull()?.takeIf { it > 0 } ?: return
+        if (q == order.quantity) return
+        committed = true
+        onResize(q)
+    }
+
+    Row(
+        modifier = modifier
+            .background(color, RoundedCornerShape(2.dp))
+            // Поглощаем клики по бейджу, чтобы клик не размещал новый ордер
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        GripDots(modifier = Modifier.padding(start = 4.dp, end = 3.dp))
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier.padding(end = 4.dp),
         )
-        drawText(
-            textLayoutResult = layout,
-            topLeft = Offset(chartArea.left + 4f, chartArea.top + y - layout.size.height - 2f),
+        BasicTextField(
+            value = qtyText,
+            onValueChange = { qtyText = it },
+            singleLine = true,
+            textStyle = TextStyle(
+                color = Color(0xFF1A1A1A),
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Medium,
+            ),
+            cursorBrush = SolidColor(color),
+            modifier = Modifier
+                .width(44.dp)
+                .background(Color.White, RoundedCornerShape(2.dp))
+                .padding(horizontal = 3.dp, vertical = 1.dp)
+                .onKeyEvent { event ->
+                    if (event.type == KeyEventType.KeyDown &&
+                        (event.key == Key.Enter || event.key == Key.NumPadEnter)
+                    ) {
+                        commit()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                .onFocusChanged { state -> if (!state.isFocused) commit() },
+        )
+        Text(
+            text = "✕",
+            color = Color.White,
+            fontSize = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            modifier = Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onCancel() }
+                .padding(horizontal = 5.dp),
         )
     }
+}
+
+/** Грип перетаскивания (две колонки точек). */
+@Composable
+private fun GripDots(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.size(width = 6.dp, height = 10.dp)) {
+        val r = 0.9f * density
+        val step = size.height / 3f
+        val xs = listOf(size.width * 0.25f, size.width * 0.75f)
+        val ys = listOf(step * 0.5f, step * 1.5f, step * 2.5f)
+        xs.forEach { x ->
+            ys.forEach { y ->
+                drawCircle(Color.White.copy(alpha = 0.9f), radius = r, center = Offset(x, y))
+            }
+        }
+    }
+}
+
+private fun trimQtyText(v: Double): String {
+    var s = v.toString()
+    if ('.' in s) s = s.trimEnd('0').trimEnd('.')
+    return s
 }
