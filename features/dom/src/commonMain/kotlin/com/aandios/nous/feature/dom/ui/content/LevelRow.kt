@@ -7,6 +7,7 @@ package com.aandios.nous.feature.dom.ui.content
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -30,6 +31,7 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -163,8 +165,8 @@ fun LevelRow(
                     baseText = baseText,
                     onCancel = { onCancelOrder(order.orderId) },
                     onResize = { qty -> onResizeOrder(order, qty) },
-                    // short: крестик к левому краю DOM
-                    crossOnLeft = true,
+                    // short: label слева, qty справа
+                    qtyOnLeft = false,
                     modifier = Modifier.align(Alignment.CenterStart)
                 )
             }
@@ -227,8 +229,8 @@ fun LevelRow(
                     baseText = baseText,
                     onCancel = { onCancelOrder(order.orderId) },
                     onResize = { qty -> onResizeOrder(order, qty) },
-                    // long: крестик к правому краю DOM
-                    crossOnLeft = false,
+                    // long: qty слева, label справа
+                    qtyOnLeft = true,
                     modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
@@ -250,14 +252,15 @@ private fun positionPnlText(position: Position, markPrice: Double, tickSize: Dou
     return text to (if (pnl >= 0) longColor else shortColor)
 }
 
-/** Бейдж ордера как в chart trading: цветной рект, текст, инпут qty, крестик. */
+/** Бейдж ордера как в chart trading: цветной рект, текст, инпут qty. */
 @Composable
 private fun OrderChip(
     order: Order,
     baseText: String?,
     onCancel: () -> Unit,
     onResize: (Double) -> Unit,
-    crossOnLeft: Boolean,
+    /** true — инпут слева от подписи (long), false — справа (short). */
+    qtyOnLeft: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val isBuy = order.side == OrderSide.BUY
@@ -291,8 +294,8 @@ private fun OrderChip(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
         )
-        // Фиксированная часть: инпут qty + крестик
-        val fixedPx = with(density) { (44.dp + 12.dp).toPx() }
+        // Фиксированная часть: инпут qty
+        val fixedPx = with(density) { 44.dp.toPx() }
         val textBudgetPx = with(density) { maxWidth.toPx() } - fixedPx
         val label = listOf(full, short, shortest).firstOrNull { candidate ->
             measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
@@ -307,22 +310,27 @@ private fun OrderChip(
                 .background(color, RoundedCornerShape(2.dp))
                 .padding(horizontal = 3.dp),
         ) {
-            // Крестик всегда у края DOM: short — слева, long — справа
-            if (crossOnLeft) {
-                CancelCross(onCancel)
+            if (qtyOnLeft) {
                 QtyField(qtyText, color, { qtyText = it }, ::commit)
             }
+            // Двойной клик по подписи — отмена ордера (крестик не влезает)
             Text(
                 text = label,
                 style = style,
                 maxLines = 1,
                 softWrap = false,
-                textAlign = if (crossOnLeft) TextAlign.Start else TextAlign.End,
-                modifier = Modifier.weight(1f),
+                textAlign = if (qtyOnLeft) TextAlign.End else TextAlign.Start,
+                modifier = Modifier
+                    .weight(1f)
+                    .pointerInput(order.orderId) {
+                        detectTapGestures(
+                            onTap = { /* consume: не отдаём клик строке лесенки */ },
+                            onDoubleTap = { onCancel() },
+                        )
+                    },
             )
-            if (!crossOnLeft) {
+            if (!qtyOnLeft) {
                 QtyField(qtyText, color, { qtyText = it }, ::commit)
-                CancelCross(onCancel)
             }
         }
     }
@@ -366,23 +374,6 @@ private fun QtyField(
         decorationBox = { inner ->
             Box(contentAlignment = Alignment.Center) { inner() }
         },
-    )
-}
-
-@Composable
-private fun CancelCross(onCancel: () -> Unit) {
-    Text(
-        text = "✕",
-        color = Color.White,
-        fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
-        maxLines = 1,
-        modifier = Modifier
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { onCancel() }
-            .padding(horizontal = 2.dp),
     )
 }
 
