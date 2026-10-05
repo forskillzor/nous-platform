@@ -107,6 +107,47 @@ class DomViewModelTest {
     }
 
     @Test
+    fun `click level without confirm places limit immediately`() = testScope.runTest {
+        val paper = com.aandios.nous.api.market.paper.PaperTrading.adapter
+        paper.reset()
+        advanceUntilIdle()
+        // Рынок ~100: bid 99.9 / ask 100.1 для определения стороны клика
+        fakeBookTickerAdapter.tickerFlow.emit(
+            BookTicker(
+                symbol = "BTCUSDT",
+                bestBid = 99.9,
+                bestBidQty = 1.0,
+                bestAsk = 100.1,
+                bestAskQty = 1.0,
+                lastPrice = 100.0,
+                timestamp = 0,
+            )
+        )
+        advanceUntilIdle()
+        viewModel.setPaperEnabled(true)
+        viewModel.updateOrderQuantity("1.0")
+        advanceUntilIdle()
+
+        // клик ниже рынка — BUY-лимитка по цене уровня
+        viewModel.selectPrice(95.0)
+        advanceUntilIdle()
+        val orders = paper.getOpenOrders()
+        assertEquals(1, orders.size)
+        assertEquals(com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, orders[0].side)
+        assertEquals(95.0, orders[0].price)
+
+        // клик выше рынка — SELL-лимитка
+        viewModel.selectPrice(105.0)
+        advanceUntilIdle()
+        assertEquals(2, paper.getOpenOrders().size)
+        assertTrue(
+            paper.getOpenOrders().any {
+                it.side == com.aandios.nous.api.market.model.orderbook.OrderSide.SELL && it.price == 105.0
+            }
+        )
+    }
+
+    @Test
     fun `initial state`() = testScope.runTest {
         val options = viewModel.domOptions.first()
         assertEquals(DomOptions.default(), options)

@@ -345,10 +345,24 @@ class DomViewModel(
             _selectedPrice.value = null
             return
         }
-        // Подсветка выбранной цены нужна только при Confirm: ON (лимитный
-        // ордер) — чтобы видеть цену до подтверждения. Повторный клик снимает.
-        if (!_confirmOrders.value) return
-        _selectedPrice.value = if (_selectedPrice.value == price) null else price
+        // Confirm: ON — клик выбирает цену (подсветка) для Limit Buy/Sell;
+        // повторный клик снимает. Ордер — только после подтверждения.
+        if (_confirmOrders.value) {
+            _selectedPrice.value = if (_selectedPrice.value == price) null else price
+            return
+        }
+        // Confirm: OFF — клик по уровню сразу размещает лимитку по этой цене:
+        // выше рынка — SELL, ниже — BUY (как click-to-place в chart trading)
+        val symbol = _domOptions.value.symbol.symbol
+        val qty = _orderQuantity.value.toDoubleOrNull() ?: 0.0
+        if (qty <= 0.0) return
+        val ref = currentMarkFromBestPrices()
+        val intent = if (ref > 0.0 && price >= ref) {
+            OrderIntent.LimitSell(symbol, price, qty)
+        } else {
+            OrderIntent.LimitBuy(symbol, price, qty)
+        }
+        handleOrderIntent(intent)
     }
 
     fun updateOrderQuantity(quantity: String) {
