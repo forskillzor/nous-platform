@@ -133,6 +133,7 @@ private fun ChartWindowContent(
     val tradingOrders by chartViewModel.openOrders.collectAsState()
     val tradingQuantity by chartViewModel.tradingQuantity.collectAsState()
     val confirmOrders by chartViewModel.confirmOrders.collectAsState()
+    val tradingMessages by chartViewModel.tradingMessages.collectAsState()
     val chartOrderType by chartViewModel.chartOrderType.collectAsState()
     val chartReduceOnly by chartViewModel.reduceOnly.collectAsState()
     val chartLeverage by chartViewModel.chartLeverage.collectAsState()
@@ -473,6 +474,82 @@ private fun ChartWindowContent(
                         .width(panelWidth),
                 )
             }
+
+            // Snackbar-уведомления: вылетают из-под тулбара, стекаются вниз,
+            // гаснут через несколько секунд или по крестику
+            if (tradingMessages.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp)
+                        .widthIn(max = maxWidth - 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    tradingMessages.forEach { notification ->
+                        ChartNotificationItem(
+                            notification = notification,
+                            onDismiss = { chartViewModel.dismissTradingMessage(it) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** Snackbar чарта: слайд из-под тулбара, таймаут ~4.5с, крестик для закрытия. */
+@Composable
+private fun ChartNotificationItem(
+    notification: ChartNotification,
+    onDismiss: (Long) -> Unit,
+) {
+    var visible by remember(notification.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(notification.id) {
+        visible = true
+        delay(4500)
+        visible = false
+        delay(200)
+        onDismiss(notification.id)
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .background(Color(0xFF14181F).copy(alpha = 0.95f), RoundedCornerShape(4.dp))
+                .border(1.dp, Color(0xFF3A4550), RoundedCornerShape(4.dp))
+                .padding(start = 8.dp, end = 2.dp, top = 3.dp, bottom = 3.dp),
+        ) {
+            Text(
+                text = notification.text,
+                color = Color(0xFFD5DBE1),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(
+                text = "✕",
+                color = Color(0xFF8A97A5),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickable {
+                        visible = false
+                        scope.launch {
+                            delay(200)
+                            onDismiss(notification.id)
+                        }
+                    }
+                    .padding(horizontal = 6.dp),
+            )
         }
     }
 }

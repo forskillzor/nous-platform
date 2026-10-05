@@ -34,6 +34,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.coroutines.cancellation.CancellationException
 
+/** Уведомление chart-трейдинга (snackbar поверх графика под тулбаром). */
+data class ChartNotification(val id: Long, val text: String)
+
 class ChartViewModel(
     private val providerRegistry: ProviderRegistry,
     private val footprintApiClient: FootprintApiClient? = null,
@@ -96,8 +99,10 @@ class ChartViewModel(
     private var ordersLiveJob: Job? = null
     private var ordersLiveAdapter: TradingAdapter? = null
 
-    private val _lastTradingMessage = MutableStateFlow<String?>(null)
-    val lastTradingMessage: StateFlow<String?> = _lastTradingMessage.asStateFlow()
+    // Уведомления chart-трейдинга: snackbar-стек поверх графика (ChartWindow)
+    private val _tradingMessages = MutableStateFlow<List<ChartNotification>>(emptyList())
+    val tradingMessages: StateFlow<List<ChartNotification>> = _tradingMessages.asStateFlow()
+    private var notificationSeq = 0L
 
     private val footprintCacheStore: FootprintCacheStore? = footprintCache
     private var footprintController: FootprintController? = null
@@ -310,7 +315,18 @@ class ChartViewModel(
     }
 
     fun clearTradingMessage() {
-        _lastTradingMessage.value = null
+        _tradingMessages.value = emptyList()
+    }
+
+    /** Показать уведомление (snackbar под тулбаром графика). */
+    private fun notify(text: String) {
+        val id = ++notificationSeq
+        _tradingMessages.value = (_tradingMessages.value + ChartNotification(id, text)).takeLast(5)
+    }
+
+    /** Закрыть уведомление крестиком (или по таймауту в UI). */
+    fun dismissTradingMessage(id: Long) {
+        _tradingMessages.value = _tradingMessages.value.filterNot { it.id == id }
     }
 
     /**
@@ -402,12 +418,12 @@ class ChartViewModel(
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
-                _lastTradingMessage.value = "Trading adapter not available"
+                notify("Trading adapter not available")
                 return@launch
             }
             val symbol = _state.value.currentSymbol
             val ok = runCatching { adapter.cancelAllOrders(symbol) }.getOrDefault(false)
-            _lastTradingMessage.value = if (ok) "All orders canceled ($symbol)" else "Failed to cancel orders"
+            notify(if (ok) "All orders canceled ($symbol)" else "Failed to cancel orders")
             refreshOpenOrders()
         }
     }
@@ -418,14 +434,14 @@ class ChartViewModel(
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
-                _lastTradingMessage.value = "Trading adapter not available"
+                notify("Trading adapter not available")
                 return@launch
             }
             val symbol = _state.value.currentSymbol
             val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
                 .filter { it.symbol.equals(symbol, ignoreCase = true) }
             if (positions.isEmpty()) {
-                _lastTradingMessage.value = "No open positions ($symbol)"
+                notify("No open positions ($symbol)")
                 return@launch
             }
             var closed = 0
@@ -433,7 +449,7 @@ class ChartViewModel(
                 val r = runCatching { adapter.closePosition(p.symbol, p.positionId, p.quantity) }.getOrNull()
                 if (r?.success == true) closed++
             }
-            _lastTradingMessage.value = "Closed $closed/${positions.size} positions ($symbol)"
+            notify("Closed $closed/${positions.size} positions ($symbol)")
             refreshOpenOrders()
         }
     }
@@ -460,7 +476,7 @@ class ChartViewModel(
     private fun submitOrConfirm(request: OrderRequest) {
         // Trading выключен на графике — ордера не размещаются вообще
         if (!_tradingEnabled.value) {
-            _lastTradingMessage.value = "Trading disabled"
+            notify("Trading disabled")
             return
         }
         if (_confirmOrders.value) {
@@ -474,11 +490,11 @@ class ChartViewModel(
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
-                _lastTradingMessage.value = "Trading adapter not available"
+                notify("Trading adapter not available")
                 return@launch
             }
             val response = runCatching { adapter.placeOrder(request) }.getOrNull()
-            _lastTradingMessage.value = when {
+            notify(when {
                 response == null -> "Order failed (network)"
                 response.success -> {
                     val px = if (request.orderType == OrderType.MARKET) "market"
@@ -486,7 +502,7 @@ class ChartViewModel(
                     "${request.orderType.name} ${request.side.name} ${request.quantity} $px → ${response.orderId}"
                 }
                 else -> response.message ?: "Order failed"
-            }
+            })
             refreshOpenOrders()
         }
     }
@@ -497,11 +513,11 @@ class ChartViewModel(
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
-                _lastTradingMessage.value = "Trading adapter not available"
+                notify("Trading adapter not available")
                 return@launch
             }
             val ok = runCatching { adapter.cancelOrder(orderId) }.getOrDefault(false)
-            _lastTradingMessage.value = if (ok) "Order $orderId canceled" else "Failed to cancel $orderId"
+            notify(if (ok) "Order $orderId canceled" else "Failed to cancel $orderId")
             refreshOpenOrders()
         }
     }
@@ -525,11 +541,11 @@ class ChartViewModel(
         viewModelScope.launch {
             val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
-                _lastTradingMessage.value = "Trading adapter not available"
+                notify("Trading adapter not available")
                 return@launch
             }
             if (quantity <= 0) {
-                _lastTradingMessage.value = "Quantity must be positive"
+                notify("Quantity must be positive")
                 return@launch
             }
             runCatching { adapter.cancelOrder(order.orderId) }
@@ -545,7 +561,7 @@ class ChartViewModel(
                 marginMode = _chartMarginMode.value,
             )
             val response = runCatching { adapter.placeOrder(request) }.getOrNull()
-            _lastTradingMessage.value = when {
+            notify(when {
                 response == null -> "Replace failed (network)"
                 response.success -> {
                     val px = if (request.orderType == OrderType.MARKET) "market"
@@ -553,7 +569,7 @@ class ChartViewModel(
                     "${request.orderType.name} ${request.side.name} $quantity $px → ${response.orderId}"
                 }
                 else -> response.message ?: "Replace failed"
-            }
+            })
             refreshOpenOrders()
         }
     }
