@@ -427,6 +427,15 @@ fun CandleStickChartInteraction(
             prevFirstTs = firstCandleTs
         }
 
+        // При ресайзе панели/окна ширина вьюпорта меняется: если прижаты
+        // к последней свече (followLive) — держимся за неё, иначе свеча
+        // «отлипает» и новые данные уходят за правый край.
+        LaunchedEffect(chartWidthPx) {
+            if (followLive) {
+                timeScale.scrollToLatest(candles.size, chartWidthPx)
+            }
+        }
+
         // Автозаполнение вьюпорта: если свечей меньше, чем помещается на экран
         // (например, восстановлен зум «вдаль»), догружаем недостающие
         LaunchedEffect(candles.size, hasMoreHistory) {
