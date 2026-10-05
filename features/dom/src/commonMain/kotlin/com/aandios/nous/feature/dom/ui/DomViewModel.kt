@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
+import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.orderbook.DomEvent
 import com.aandios.nous.api.market.model.orderbook.OrderType
@@ -182,6 +183,11 @@ class DomViewModel(
             println("❌ DOM: provider ${provider.config.displayName} has no DOM/bookTicker adapters")
             return
         }
+        // Paper engine: ставки комиссий из данных активной биржи
+        if (PaperTrading.enabled) {
+            val rates = runCatching { provider.trading?.getFeeRates(options.symbol.symbol) }.getOrNull()
+            PaperTrading.adapter.setFeeRates(options.symbol.symbol, rates)
+        }
         val repository: DomRepository = DomRepositoryImpl(domAdapter, bookTickerAdapter)
 
         repository.subscribeToDomEvents(
@@ -217,6 +223,10 @@ class DomViewModel(
     }
 
     private fun handleBestPrices(event: DomEvent.BestPrices) {
+        // Paper engine: последняя цена — mark для исполнения бумажных ордеров
+        if (event.lastPrice > 0.0) {
+            PaperTrading.adapter.feedMarkPrice(_domOptions.value.symbol.symbol, event.lastPrice)
+        }
         val bidTicks = toPriceTicksOrNull(event.bestBid)
         val askTicks = toPriceTicksOrNull(event.bestAsk)
         _bestPrices.value = BestPricesState(

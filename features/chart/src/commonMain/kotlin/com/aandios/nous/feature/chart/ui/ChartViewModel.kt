@@ -345,6 +345,20 @@ class ChartViewModel(
         ordersLiveJob = null
         ordersLiveAdapter = null
         refreshOpenOrders()
+        refreshPaperFees(_state.value.currentSymbol)
+    }
+
+    /**
+     * Paper: ставки комиссий символа из данных активной биржи (метод
+     * провайдер-агностик — каждый адаптер отдаёт свои ставки; null → 0%).
+     */
+    private fun refreshPaperFees(symbol: String) {
+        if (!PaperTrading.enabled) return
+        val trading = activeProvider()?.trading ?: return
+        viewModelScope.launch {
+            val rates = runCatching { trading.getFeeRates(symbol) }.getOrNull()
+            if (PaperTrading.enabled) PaperTrading.adapter.setFeeRates(symbol, rates)
+        }
     }
 
     /** Перечитать открытые ордера текущего символа (для линий на графике). */
@@ -678,6 +692,7 @@ class ChartViewModel(
     private fun startCandleSeries(ticker: String, timeframe: String) {
         // Сохраняем данные текущего символа перед переключением (без троттла)
         flushCache()
+        refreshPaperFees(ticker)
 
         candleStateJob?.cancel()
         candleController?.dispose()
@@ -714,6 +729,10 @@ class ChartViewModel(
                         chartState = chartState,
                         hasMoreHistory = series.hasMore,
                     )
+                }
+                // Paper engine: mark-цена из последней свечи (исполнение бумажных ордеров)
+                if (series.items.isNotEmpty()) {
+                    PaperTrading.adapter.feedMarkPrice(ticker, series.items.last().close.toDouble())
                 }
                 scheduleCacheWrite(ticker, timeframe, series.items)
             }
@@ -775,6 +794,8 @@ class ChartViewModel(
                         hasMoreFootprintHistory = fp.hasMoreHistory,
                     )
                 }
+                // Paper engine: mark-цена footprint-режима
+                fp.currentPrice?.let { PaperTrading.adapter.feedMarkPrice(symbol, it.toDouble()) }
             }
         }
         controller.start(symbol, timeframe)
