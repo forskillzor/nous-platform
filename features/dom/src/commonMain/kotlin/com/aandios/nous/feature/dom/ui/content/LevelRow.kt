@@ -129,7 +129,11 @@ fun LevelRow(
             .clickable(
                 interactionSource = interactionSource,
                 indication = null
-            ) { onPriceClick(priceTicks, price) }
+            ) {
+                // Уровень с ордером занят: клик по любой точке строки не
+                // выбирает цену и не размещает второй ордер
+                if (order == null) onPriceClick(priceTicks, price)
+            }
             .background(backgroundColor)
             .padding(horizontal = 8.dp, vertical = 1.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
