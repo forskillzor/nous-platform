@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.commands.CommandResult
 import com.aandios.nous.api.market.model.orderbook.OrderType
-import com.aandios.nous.core.ui.component.TerminalButton
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 
@@ -203,17 +202,18 @@ fun OrderPlacementPanel(
                     maxLines = 1,
                 )
                 Spacer(Modifier.weight(1f))
-                TerminalButton(
-                    onClick = { onOrderIntent(OrderIntent.ToggleTrading) },
-                    isActive = !isTradingEnabled,
-                    height = 22.dp,
-                ) {
-                    Text(
-                        text = if (isTradingEnabled) "⚠ OFF" else "✅ ON",
-                        color = if (isTradingEnabled) Color.Red else Color.Green,
-                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    )
-                }
+                // Компактная кнопка TRADE OFF/ON без M3-паддингов (не режет текст)
+                Text(
+                    text = if (isTradingEnabled) "OFF" else "ON",
+                    color = if (isTradingEnabled) Color.Red else Color.Green,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                    maxLines = 1,
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+                        .clickable { onOrderIntent(OrderIntent.ToggleTrading) }
+                        .padding(horizontal = 8.dp, vertical = 3.dp),
+                )
             }
         }
     }
@@ -226,13 +226,22 @@ private fun OrderButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    TerminalButton(onClick = onClick, modifier = modifier, height = 24.dp) {
+    // Своя кнопка вместо M3 Button: фиксированная высота M3 с внутренними
+    // паддингами обрезала текст по вертикали (видны только верхушки букв)
+    Box(
+        modifier = modifier
+            .height(26.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
         Text(
             text = text,
             color = color,
             style = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center,
-            maxLines = 2,
+            maxLines = 1,
             modifier = Modifier.fillMaxWidth(),
         )
     }
