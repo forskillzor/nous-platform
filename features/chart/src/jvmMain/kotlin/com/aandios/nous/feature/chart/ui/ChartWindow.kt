@@ -391,6 +391,7 @@ private fun ChartWindowContent(
                                 onZoomChange = onZoomChange,
                                 tradingOrders = if (showOrders) tradingOrders else emptyList(),
                                 tradingPositions = if (showPositions) tradingPositions else emptyList(),
+                                symbolBase = uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol,
                                 onChartTradingClick = if (tradingEnabled) {
                                     { price -> chartViewModel.placeChartOrder(price) }
                                 } else null,
@@ -450,6 +451,7 @@ private fun ChartWindowContent(
                             onZoomChange = onZoomChange,
                             tradingOrders = if (showOrders) tradingOrders else emptyList(),
                             tradingPositions = if (showPositions) tradingPositions else emptyList(),
+                            symbolBase = uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol,
                             onChartTradingClick = if (tradingEnabled) {
                                 { price -> chartViewModel.placeChartOrder(price) }
                             } else null,

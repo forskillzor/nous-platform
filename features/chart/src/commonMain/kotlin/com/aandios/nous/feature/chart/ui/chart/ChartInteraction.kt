@@ -97,6 +97,7 @@ import com.aandios.nous.feature.chart.utils.priceToY
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max
+import kotlin.math.roundToLong
 
 /** Высота бейджа ордера (перетаскивание/правка qty). */
 private val TRADING_BADGE_HEIGHT = 18.dp
@@ -126,6 +127,8 @@ fun CandleStickChartInteraction(
     onZoomChange: ((Float) -> Unit)? = null,
     tradingOrders: List<com.aandios.nous.api.market.model.trading.Order> = emptyList(),
     tradingPositions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
+    /** Базовый актив символа (SOL/BTC) — для бейджа позиции. */
+    symbolBase: String? = null,
     onChartTradingClick: ((Double) -> Unit)? = null,
     /** Отмена ордера с графика (✕ на бейдже). */
     onCancelTradingOrder: ((com.aandios.nous.api.market.model.trading.Order) -> Unit)? = null,
@@ -844,15 +847,25 @@ fun CandleStickChartInteraction(
                 }
             }
         }
-        // Бейджи позиций (read-only): сторона, qty, вход и нереализованный PnL
+        // Бейджи позиций: сторона, qty, база, вход + живой PnL (тики/USDT)
         if (tradingPositions.isNotEmpty()) {
             tradingPositions.forEach { position ->
                 if (position.avgPrice <= 0.0) return@forEach
                 val y = priceToY(position.avgPrice.toFloat(), priceRange, layout.chartMainArea.height)
                 if (y < 0f || y > layout.chartMainArea.height) return@forEach
-                val pnlText = if (position.markPrice > 0.0) {
-                    val p = position.unrealizedPnl
-                    (if (p > 0) "+" else "") + config.priceFormatter.formatPrice(p)
+                // Живая mark-цена графика (PnL обновляется на каждом тике)
+                val mark = currentPrice?.toDouble()
+                    ?: position.markPrice.takeIf { it > 0.0 }
+                    ?: 0.0
+                val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
+                val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
+                val tick = config.priceFormatter.tickSize
+                val ticks = if (tick > 0.0 && mark > 0.0) {
+                    (mark - position.avgPrice) * dir / tick
+                } else 0.0
+                val pnlLabel = if (mark > 0.0) {
+                    val sign = if (pnl >= 0) "+" else ""
+                    "$sign${ticks.roundToLong()}t  $sign${fmtPnl2(pnl)} USDT"
                 } else null
                 Box(
                     modifier = Modifier
@@ -862,8 +875,10 @@ fun CandleStickChartInteraction(
                 ) {
                     TradingPositionBadge(
                         position = position,
+                        baseText = symbolBase,
                         priceText = config.priceFormatter.formatPrice(position.avgPrice),
-                        pnlText = pnlText,
+                        pnlLabel = pnlLabel,
+                        pnlUp = pnl >= 0,
                         onClose = onCloseTradingPosition?.let { cb -> { cb(position) } },
                         modifier = Modifier
                             .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
@@ -1119,32 +1134,36 @@ private fun positionBadgeKey(p: com.aandios.nous.api.market.model.trading.Positi
     "pos:${p.positionId ?: p.avgPrice}"
 
 /**
- * Бейдж позиции (Show positions): сторона, qty, цена входа и нереализованный
- * PnL + ✕ для закрытия по рынку (когда trading включён).
+ * Бейдж позиции: «Short 10 SOL 120.75» + живой PnL (тики и USDT) на тёмной
+ * плашке (светлее фона графика), зелёный/красный по знаку; ✕ — закрыть
+ * по рынку (когда trading включён).
  */
 @Composable
 private fun TradingPositionBadge(
     position: com.aandios.nous.api.market.model.trading.Position,
+    baseText: String?,
     priceText: String,
-    pnlText: String?,
+    pnlLabel: String?,
+    pnlUp: Boolean,
     onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val isBuy = position.side == TradeSide.BUY
-    val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+    val sideColor = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+    val pnlColor = if (pnlUp) Color(0xFF26A69A) else Color(0xFFEF5350)
     val title = buildString {
         append(if (isBuy) "Long " else "Short ")
         append(trimQtyText(position.quantity))
-        append(" @ ")
-        append(priceText)
-        if (pnlText != null) {
-            append("  ")
-            append(pnlText)
+        if (!baseText.isNullOrBlank()) {
+            append(" ")
+            append(baseText)
         }
+        append(" ")
+        append(priceText)
     }
     Row(
         modifier = modifier
-            .background(color, RoundedCornerShape(2.dp))
+            .background(sideColor, RoundedCornerShape(2.dp))
             // Поглощаем клики по бейджу, чтобы клик не размещал новый ордер
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -1160,8 +1179,25 @@ private fun TradingPositionBadge(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
-            modifier = Modifier.padding(start = 6.dp, end = if (onClose != null) 3.dp else 6.dp),
+            modifier = Modifier.padding(start = 6.dp, end = if (pnlLabel != null) 3.dp else 6.dp),
         )
+        pnlLabel?.let { label ->
+            Box(
+                modifier = Modifier
+                    .background(Color(0xFF1B222B), RoundedCornerShape(2.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+            ) {
+                Text(
+                    text = label,
+                    color = pnlColor,
+                    fontSize = 10.sp,
+                    lineHeight = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+        }
         onClose?.let { close ->
             Text(
                 text = "✕",
@@ -1179,4 +1215,16 @@ private fun TradingPositionBadge(
             )
         }
     }
+}
+
+/** USDT-значение PnL с фиксированными 2 знаками (commonMain, без String.format). */
+private fun fmtPnl2(v: Double): String {
+    val rounded = kotlin.math.round(v * 100.0) / 100.0
+    val s = rounded.toString()
+    val neg = s.startsWith("-")
+    val body = if (neg) s.substring(1) else s
+    val parts = body.split(".")
+    val intPart = parts[0]
+    val decPart = if (parts.size > 1) parts[1].padEnd(2, '0').take(2) else "00"
+    return (if (neg) "-" else "") + intPart + "." + decPart
 }
