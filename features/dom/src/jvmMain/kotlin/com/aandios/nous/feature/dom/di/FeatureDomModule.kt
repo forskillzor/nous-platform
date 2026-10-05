@@ -46,6 +46,6 @@ val featureDomModule = module {
 
     // 2. ViewModel — адаптеры резолвятся из реестра по выбранному провайдеру
     factory {
-        DomViewModel(providerRegistry = get())
+        DomViewModel(providerRegistry = get(), stateStore = getOrNull())
     }
 }

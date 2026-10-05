@@ -280,6 +280,11 @@ private fun DomPanel(
         ws.liveViewModels.getOrPut(vmKey) { koinInject<DomViewModel>() } as DomViewModel
     val domState = pc.state as? PanelState.Dom
 
+    // Paper-режим DOM-панели персистится и восстанавливается по panelId
+    LaunchedEffect(pc.id) {
+        vm.attachPanel(pc.id)
+    }
+
     LaunchedEffect(pc.symbol) {
         val ts = TradingSymbol.fallback(pc.symbol, vm.domOptions.value.provider)
         var opts = vm.domOptions.value.copy(symbol = ts)

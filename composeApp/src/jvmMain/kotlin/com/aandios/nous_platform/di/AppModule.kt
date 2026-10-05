@@ -89,7 +89,7 @@ val appModule = module {
     }
 
     factory {
-        DomViewModel(providerRegistry = get())
+        DomViewModel(providerRegistry = get(), stateStore = get())
     }
 
     factory {

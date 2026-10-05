@@ -74,6 +74,39 @@ class DomViewModelTest {
     }
 
     @Test
+    fun `dom paper order really places into paper engine`() = testScope.runTest {
+        val paper = com.aandios.nous.api.market.paper.PaperTrading.adapter
+        paper.reset()
+        paper.setMarkPrice("BTCUSDT", 100.0)
+        viewModel.setPaperEnabled(true)
+
+        viewModel.handleOrderIntent(OrderIntent.MarketBuy("BTCUSDT", 1.0))
+        advanceUntilIdle()
+
+        val positions = paper.getPositions()
+        assertEquals(1, positions.size)
+        assertEquals(1.0, positions[0].quantity)
+        assertEquals(100.0, positions[0].avgPrice)
+    }
+
+    @Test
+    fun `dom paper limit rests and fills when price crosses`() = testScope.runTest {
+        val paper = com.aandios.nous.api.market.paper.PaperTrading.adapter
+        paper.reset()
+        paper.setMarkPrice("BTCUSDT", 100.0)
+        viewModel.setPaperEnabled(true)
+
+        viewModel.handleOrderIntent(OrderIntent.LimitBuy("BTCUSDT", 95.0, 1.0))
+        advanceUntilIdle()
+        assertEquals(1, paper.getOpenOrders().size)
+
+        paper.setMarkPrice("BTCUSDT", 94.0)
+        advanceUntilIdle()
+        assertEquals(1, paper.getPositions().size)
+        assertEquals(0, paper.getOpenOrders().size)
+    }
+
+    @Test
     fun `initial state`() = testScope.runTest {
         val options = viewModel.domOptions.first()
         assertEquals(DomOptions.default(), options)

@@ -47,6 +47,7 @@ data class DomNotification(val id: Long, val text: String)
 class DomViewModel(
     private val providerRegistry: ProviderRegistry,
     private val coroutineDispatcher: CoroutineDispatcher? = null,
+    private val stateStore: com.aandios.nous.core.storage.StateStore? = null,
 ) : Disposable {
     private val dispatcher = coroutineDispatcher ?: Dispatchers.Main
     private val viewModelScope = CoroutineScope(dispatcher + SupervisorJob())
@@ -78,6 +79,9 @@ class DomViewModel(
      */
     private val _paperEnabled = MutableStateFlow(false)
     val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
+
+    /** id DOM-панели для panel-scoped персиста (paper). */
+    private var panelKey: String? = null
 
     /** Плечо для ордеров DOM (null — дефолт биржи/1x в paper). */
     private val _leverage = MutableStateFlow<Int?>(null)
@@ -259,9 +263,17 @@ class DomViewModel(
     }
 
     private fun handleBestPrices(event: DomEvent.BestPrices) {
-        // Paper engine: последняя цена — mark для исполнения бумажных ордеров
-        if (event.lastPrice > 0.0) {
-            PaperTrading.adapter.feedMarkPrice(_domOptions.value.symbol.symbol, event.lastPrice)
+        // Paper engine: mark-цена (last, иначе середина bid/ask) — чтобы
+        // бумажные ордера исполнялись с любым провайдером
+        val mark = when {
+            event.lastPrice > 0.0 -> event.lastPrice
+            event.bestBid > 0.0 && event.bestAsk > 0.0 -> (event.bestBid + event.bestAsk) / 2
+            event.bestBid > 0.0 -> event.bestBid
+            event.bestAsk > 0.0 -> event.bestAsk
+            else -> 0.0
+        }
+        if (mark > 0.0) {
+            PaperTrading.adapter.feedMarkPrice(_domOptions.value.symbol.symbol, mark)
         }
         val bidTicks = toPriceTicksOrNull(event.bestBid)
         val askTicks = toPriceTicksOrNull(event.bestAsk)
@@ -410,8 +422,31 @@ class DomViewModel(
     /** Переключение paper/live этой DOM-панели. */
     fun setPaperEnabled(enabled: Boolean) {
         _paperEnabled.value = enabled
+        stateStore?.let { store ->
+            viewModelScope.launch {
+                store.putString(paperStoreKey(), if (enabled) "1" else "0")
+            }
+        }
         ensureNoticesSubscription()
     }
+
+    /**
+     * Привязка панели: paper-режим этой DOM-панели персистится отдельно
+     * (как у графиков) и восстанавливается при появлении панели.
+     */
+    fun attachPanel(panelId: String?) {
+        panelKey = panelId
+        val store = stateStore ?: return
+        viewModelScope.launch {
+            val enabled = store.getString(paperStoreKey()) == "1"
+            if (enabled != _paperEnabled.value) {
+                _paperEnabled.value = enabled
+                ensureNoticesSubscription()
+            }
+        }
+    }
+
+    private fun paperStoreKey(): String = "dom_paper_${panelKey ?: "default"}"
 
     /** Подписка на уведомления активного адаптера (отказы движка). */
     private fun ensureNoticesSubscription() {
@@ -497,7 +532,15 @@ class DomViewModel(
     }
 
     /** Построить и выполнить команду по интенту. */
-    private fun executeIntent(intent: OrderIntent) {
+    private fun executeIntent(intent: OrderIntent) {        // Paper: подстраховка mark-ценой из книги — ордер исполнится даже
+        // если стрим последней цены ещё не дошёл (иначе "No price")
+        if (_paperEnabled.value) {
+            val symbol = intentSymbol(intent)
+            val mark = currentMarkFromBestPrices()
+            if (symbol != null && mark > 0.0) {
+                viewModelScope.launch { PaperTrading.adapter.setMarkPrice(symbol, mark) }
+            }
+        }
         val adapter = tradingAdapter()
         val reduceOnly = _reduceOnly.value
         val callback = resultCallback()
@@ -530,6 +573,28 @@ class DomViewModel(
             com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(intent.bestAskPrice)
         }"
         OrderIntent.ToggleTrading -> ""
+    }
+
+    private fun intentSymbol(intent: OrderIntent): String? = when (intent) {
+        is OrderIntent.MarketBuy -> intent.symbol
+        is OrderIntent.MarketSell -> intent.symbol
+        is OrderIntent.LimitBuy -> intent.symbol
+        is OrderIntent.LimitSell -> intent.symbol
+        is OrderIntent.BestBidBuy -> intent.symbol
+        is OrderIntent.BestAskSell -> intent.symbol
+        OrderIntent.ToggleTrading -> null
+    }
+
+    /** Mark-цена из книги: last, иначе середина bid/ask (paper-подстраховка). */
+    private fun currentMarkFromBestPrices(): Double {
+        val bid = _bestPrices.value.bestBid ?: 0.0
+        val ask = _bestPrices.value.bestAsk ?: 0.0
+        return when {
+            bid > 0.0 && ask > 0.0 -> (bid + ask) / 2
+            bid > 0.0 -> bid
+            ask > 0.0 -> ask
+            else -> 0.0
+        }
     }
 
     // ── Загрузка метаданных ──
