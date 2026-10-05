@@ -453,6 +453,7 @@ private fun descOf(config: WorkspaceConfig): String {
         counts[PanelType.CHART]?.let { if (it > 1) "$it Charts" else "Chart" },
         counts[PanelType.DOM]?.let { if (it > 1) "$it DOM" else "DOM" },
         counts[PanelType.TRADES]?.let { if (it > 1) "$it Trades" else "Trades" },
+        counts[PanelType.TRADING]?.let { if (it > 1) "$it Trading" else "Trading" },
     ).joinToString(" + ")
 }
 
@@ -487,12 +488,14 @@ private fun LayoutPreview(config: WorkspaceConfig, modifier: Modifier = Modifier
                 PanelType.CHART -> Color(0xFF14302A)
                 PanelType.DOM -> Color(0xFF14202E)
                 PanelType.TRADES -> Color(0xFF2A2414)
+                PanelType.TRADING -> Color(0xFF241A2E)
                 null -> Color(0xFF1A1A1A)
             }
             val border = when (type) {
                 PanelType.CHART -> Color(0xFF2E7D57)
                 PanelType.DOM -> Color(0xFF2E5F7D)
                 PanelType.TRADES -> Color(0xFF7D6B2E)
+                PanelType.TRADING -> Color(0xFF6B2E7D)
                 null -> Color(0xFF444444)
             }
             drawRect(color = fill, topLeft = Offset(rect.left, rect.top), size = Size(rect.width, rect.height))
@@ -540,6 +543,16 @@ private fun LayoutPreview(config: WorkspaceConfig, modifier: Modifier = Modifier
                             )
                         )
                     }
+                }
+                PanelType.TRADING -> {
+                    val layout = textMeasurer.measure(AnnotatedString("Trading"), labelStyle)
+                    drawText(
+                        layout,
+                        topLeft = Offset(
+                            rect.left + rect.width / 2 - layout.size.width / 2,
+                            rect.top + rect.height / 2 - layout.size.height / 2
+                        )
+                    )
                 }
                 null -> Unit
             }

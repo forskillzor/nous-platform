@@ -543,10 +543,13 @@ class LayoutRendererRenderTest {
             val pc = when (type) {
                 PanelType.DOM -> panel(newId).copy(type = PanelType.DOM)
                 PanelType.TRADES -> panel(newId).copy(type = PanelType.TRADES)
+                PanelType.TRADING -> panel(newId).copy(type = PanelType.TRADING)
                 else -> panel(newId)
             }
             panels = panels + (newId to pc)
-            if (type != PanelType.CHART) fixedWidths = fixedWidths + (newId to 240.dp)
+            if (type != PanelType.CHART && type != PanelType.TRADING) {
+                fixedWidths = fixedWidths + (newId to 240.dp)
+            }
             created += newId
         }
 

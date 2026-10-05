@@ -11,6 +11,7 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
 import com.aandios.nous.api.market.model.orderbook.DomEvent
+import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.repository.DomRepository
@@ -57,6 +58,14 @@ class DomViewModel(
 
     private val _isTradingEnabled = MutableStateFlow(true)
     val isTradingEnabled: StateFlow<Boolean> = _isTradingEnabled.asStateFlow()
+
+    /** Reduce-only для следующих ордеров (закрытие позиций). */
+    private val _reduceOnly = MutableStateFlow(false)
+    val reduceOnly: StateFlow<Boolean> = _reduceOnly.asStateFlow()
+
+    /** Тип лимитных ордеров (LIMIT/POST_ONLY/IOC/FOK). */
+    private val _limitOrderType = MutableStateFlow(OrderType.LIMIT)
+    val limitOrderType: StateFlow<OrderType> = _limitOrderType.asStateFlow()
 
     private val _lastCommandResult = MutableStateFlow<CommandResult?>(null)
     val lastCommandResult: StateFlow<CommandResult?> = _lastCommandResult.asStateFlow()
@@ -259,7 +268,7 @@ class DomViewModel(
     fun executeCommand(command: TradingCommand?) {
         if (command != null) {
             viewModelScope.launch {
-                if (!_isTradingEnabled.value && command !is TradeOffCommand) {
+                if (!_isTradingEnabled.value) {
                     _lastCommandResult.value = CommandResult.TradingDisabled
                     return@launch
                 }
@@ -280,17 +289,42 @@ class DomViewModel(
         _orderQuantity.value = quantity
     }
 
+    fun setReduceOnly(reduceOnly: Boolean) {
+        _reduceOnly.value = reduceOnly
+    }
+
+    fun setLimitOrderType(orderType: OrderType) {
+        _limitOrderType.value = orderType
+    }
+
+    private fun tradingAdapter() =
+        providerRegistry.get(_domOptions.value.provider)?.trading
+
     fun handleOrderIntent(intent: OrderIntent) {
+        val adapter = tradingAdapter()
+        val reduceOnly = _reduceOnly.value
         val command = when (intent) {
-            is OrderIntent.MarketBuy -> BuyMarketCommand(intent.symbol, intent.quantity) { _lastCommandResult.value = it }
-            is OrderIntent.MarketSell -> SellMarketCommand(intent.symbol, intent.quantity) { _lastCommandResult.value = it }
-            is OrderIntent.LimitBuy -> BuyLimitCommand(intent.symbol, intent.price, intent.quantity) { _lastCommandResult.value = it }
-            is OrderIntent.LimitSell -> SellLimitCommand(intent.symbol, intent.price, intent.quantity) { _lastCommandResult.value = it }
-            is OrderIntent.BestBidBuy -> BuyBestBidCommand(intent.symbol, intent.bestBidPrice, intent.quantity) { _lastCommandResult.value = it }
-            is OrderIntent.BestAskSell -> SellBestAskCommand(intent.symbol, intent.bestAskPrice, intent.quantity) { _lastCommandResult.value = it }
-            OrderIntent.ToggleTrading -> TradeOffCommand { _lastCommandResult.value = it }
+            is OrderIntent.MarketBuy -> BuyMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
+            is OrderIntent.MarketSell -> SellMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
+            is OrderIntent.LimitBuy -> BuyLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter) { _lastCommandResult.value = it }
+            is OrderIntent.LimitSell -> SellLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter) { _lastCommandResult.value = it }
+            is OrderIntent.BestBidBuy -> BuyBestBidCommand(intent.symbol, intent.bestBidPrice, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
+            is OrderIntent.BestAskSell -> SellBestAskCommand(intent.symbol, intent.bestAskPrice, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
+            OrderIntent.ToggleTrading -> null // обрабатываем ниже
         }
-        executeCommand(command)
+        if (intent == OrderIntent.ToggleTrading) {
+            val newValue = !_isTradingEnabled.value
+            _isTradingEnabled.value = newValue
+            _lastCommandResult.value = if (newValue) {
+                CommandResult.Success(
+                    OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = 0.0)
+                )
+            } else {
+                CommandResult.TradingDisabled
+            }
+        } else {
+            executeCommand(command)
+        }
     }
 
     // ── Загрузка метаданных ──

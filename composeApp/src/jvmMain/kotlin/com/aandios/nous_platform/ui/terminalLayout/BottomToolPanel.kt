@@ -36,7 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.feature.trading.ui.TradingViewModel
 import org.jetbrains.compose.resources.painterResource
+import org.koin.compose.koinInject
 import nous_platform.composeapp.generated.resources.Res
 import nous_platform.composeapp.generated.resources.close
 
@@ -143,10 +145,14 @@ fun BottomToolPanel(
 
             // Контент
             when (type) {
-                BottomToolType.PORTFOLIO -> PortfolioPanel(
-                    selectedTab = portfolioTab,
-                    modifier = Modifier.Companion.weight(1f)
-                )
+                BottomToolType.PORTFOLIO -> {
+                    val tradingViewModel: TradingViewModel = koinInject()
+                    PortfolioPanel(
+                        tradingViewModel = tradingViewModel,
+                        selectedTab = portfolioTab,
+                        modifier = Modifier.Companion.weight(1f)
+                    )
+                }
                 BottomToolType.CONSOLE -> ConsolePanel(modifier = Modifier.Companion.weight(1f))
                 BottomToolType.EDITOR -> CodeEditorPanel(modifier = Modifier.Companion.weight(1f))
             }

@@ -18,6 +18,7 @@ import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.dom.ui.DomViewModel
 import com.aandios.nous.feature.trades.ui.TradesViewModel
+import com.aandios.nous.feature.trading.ui.TradingViewModel
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import com.aandios.nous.provider.mexc.MexcProviderFactory
 import com.aandios.nous.core.workspace.WorkspaceRepository
@@ -93,6 +94,10 @@ val appModule = module {
 
     factory {
         TradesViewModel(providerRegistry = get())
+    }
+
+    factory {
+        TradingViewModel(providerRegistry = get())
     }
 
     factory {

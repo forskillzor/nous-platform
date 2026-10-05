@@ -48,6 +48,9 @@ fun DomWindow(
     val symbolTickSize by domViewModel.symbolTickSize.collectAsState()
     val symbolStepSize by domViewModel.symbolStepSize.collectAsState()
     val selectedPrice by domViewModel.selectedPrice.collectAsState()
+    val reduceOnly by domViewModel.reduceOnly.collectAsState()
+    val limitOrderType by domViewModel.limitOrderType.collectAsState()
+    val lastCommandResult by domViewModel.lastCommandResult.collectAsState()
 
     // Одно состояние лучших цен
     val bestPrices by domViewModel.bestPrices.collectAsState()
@@ -103,7 +106,12 @@ fun DomWindow(
             onQuantityChanged = { qty -> domViewModel.updateOrderQuantity(qty) },
             onOrderIntent = { intent -> domViewModel.handleOrderIntent(intent) },
             isTradingEnabled = isTradingEnabled,
-            modifier = Modifier.fillMaxWidth().height(180.dp)
+            reduceOnly = reduceOnly,
+            limitOrderType = limitOrderType,
+            lastCommandResult = lastCommandResult,
+            onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
+            onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
+            modifier = Modifier.fillMaxWidth().height(220.dp)
         )
     }
 }

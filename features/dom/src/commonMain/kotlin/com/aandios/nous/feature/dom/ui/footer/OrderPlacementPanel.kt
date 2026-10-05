@@ -7,6 +7,7 @@ package com.aandios.nous.feature.dom.ui.footer
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +24,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.api.market.commands.CommandResult
+import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.core.ui.component.TerminalButton
+import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 
 @Composable
@@ -36,6 +40,11 @@ fun OrderPlacementPanel(
     onQuantityChanged: (String) -> Unit,
     onOrderIntent: (OrderIntent) -> Unit,
     isTradingEnabled: Boolean,
+    reduceOnly: Boolean,
+    limitOrderType: OrderType,
+    lastCommandResult: CommandResult?,
+    onReduceOnlyChanged: (Boolean) -> Unit,
+    onLimitOrderTypeChanged: (OrderType) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -84,6 +93,58 @@ fun OrderPlacementPanel(
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontFamily = FontFamily.Monospace
                     )
+                )
+            }
+
+            // Результат последней команды
+            lastCommandResult?.let { result ->
+                val (text, color) = when (result) {
+                    is CommandResult.Success -> {
+                        val d = result.orderData
+                        val label = when {
+                            d.symbol == "SYSTEM" -> "Trading enabled"
+                            d.type == OrderType.MARKET -> "Market ${d.side} ${d.quantity}"
+                            else -> "${d.type} ${d.side} ${d.quantity} @ ${d.price ?: 0.0}"
+                        }
+                        label to Color.Green
+                    }
+                    is CommandResult.Error -> result.message to Color.Red
+                    CommandResult.TradingDisabled -> "Trading disabled" to Color.Red
+                }
+                Text(
+                    text = text,
+                    color = color,
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
+                    maxLines = 1,
+                )
+            }
+
+            // Настройки ордеров: reduce-only + тип лимитки
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = if (reduceOnly) "Reduce-only: ON" else "Reduce-only: OFF",
+                    color = if (reduceOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier
+                        .background(
+                            if (reduceOnly) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                            else Color.Transparent,
+                            MaterialTheme.shapes.small
+                        )
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .clickableNoIndication { onReduceOnlyChanged(!reduceOnly) }
+                )
+                Spacer(Modifier.weight(1f))
+                TerminalDropdown(
+                    currentValue = limitOrderType,
+                    items = listOf(OrderType.LIMIT, OrderType.POST_ONLY, OrderType.IOC, OrderType.FOK),
+                    onValueChanged = onLimitOrderTypeChanged,
+                    displayText = { it.name },
+                    menuWidth = 110.dp,
                 )
             }
 
@@ -286,3 +347,15 @@ fun OrderPlacementPanel(
 }
 
 private fun formatPrice(price: Double): String = com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(price)
+
+@Composable
+private fun Modifier.clickableNoIndication(onClick: () -> Unit): Modifier {
+    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    return this.then(
+        Modifier.clickable(
+            interactionSource = interaction,
+            indication = null,
+            onClick = onClick,
+        )
+    )
+}

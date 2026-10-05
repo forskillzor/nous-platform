@@ -59,37 +59,6 @@ enum class PortfolioTab {
     STATS
 }
 
-// Мок данные для портфеля
-data class MockPosition(
-    val symbol: String,
-    val side: TradeSide,
-    val quantity: Double,
-    val entryPrice: Double,
-    val currentPrice: Double,
-    val pnl: Double,
-    val pnlPercent: Double
-)
-
-data class MockOrder(
-    val id: String,
-    val symbol: String,
-    val side: TradeSide,
-    val type: String, // "LIMIT" or "MARKET"
-    val price: Double,
-    val quantity: Double,
-    val filled: Double,
-    val timestamp: Long,
-    val status: String // "OPEN", "FILLED", "CANCELLED"
-)
-
-data class MockBalance(
-    val asset: String,
-    val free: Double,
-    val locked: Double,
-    val total: Double,
-    val usdValue: Double
-)
-
 /** Переключение выдвижной панели: тот же тип — свернуть/развернуть, другой — открыть. */
 private fun ToolPanelState.toggle(type: ToolPanelType): ToolPanelState =
     if (this.type == type) copy(isExpanded = !isExpanded)

@@ -35,6 +35,8 @@ import com.aandios.nous.feature.dom.ui.DomRecommendedWidth
 import com.aandios.nous.feature.trades.ui.SizeFilter
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.feature.trades.ui.TradesWindow
+import com.aandios.nous.feature.trading.ui.TradingViewModel
+import com.aandios.nous.feature.trading.ui.TradingWindow
 import com.aandios.nous.feature.trades.ui.TradesRecommendedWidth
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -86,6 +88,7 @@ fun WorkspaceView(
             PanelType.CHART -> "_chart"
             PanelType.DOM -> "_dom"
             PanelType.TRADES -> "_trades"
+            PanelType.TRADING -> "_trading"
         }
         val vmKey = "${pc.id}$suffix"
         (ws.liveViewModels.remove(vmKey) as? com.aandios.nous.core.Disposable)?.dispose()
@@ -137,6 +140,7 @@ fun WorkspaceView(
                     PanelType.DOM -> id to DomRecommendedWidth
                     PanelType.TRADES -> id to TradesRecommendedWidth
                     PanelType.CHART -> null
+                    PanelType.TRADING -> null // гибкая ширина — как у chart
                 }
             }.toMap(),
             onRatioChange = { persistConfig() },
@@ -166,6 +170,7 @@ fun WorkspaceView(
                         PanelType.CHART -> PanelState.Chart()
                         PanelType.DOM -> PanelState.Dom()
                         PanelType.TRADES -> PanelState.Trades()
+                        PanelType.TRADING -> PanelState.Trading()
                     }
                 )
                 panelConfigs = panelConfigs + (newPanelId to newConfig)
@@ -187,6 +192,7 @@ fun WorkspaceView(
                     PanelType.CHART -> ChartPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                     PanelType.DOM -> DomPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                     PanelType.TRADES -> TradesPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
+                    PanelType.TRADING -> TradingPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                 }
             }
         }
@@ -400,4 +406,35 @@ private fun TradesPanel(
         currentSymbol = pc.symbol,
         onSymbolChanged = { s -> vm.subscribeToTrades(s) }
     )
+}
+
+@Composable
+private fun TradingPanel(
+    ws: WorkspaceViewModel,
+    pc: PanelConfig,
+    onPanelConfigChange: (PanelConfig) -> Unit,
+) {
+    val vmKey = "${pc.id}_trading"
+    val vm: TradingViewModel =
+        ws.liveViewModels.getOrPut(vmKey) { koinInject<TradingViewModel>() } as TradingViewModel
+
+    // Активная вкладка сохраняется в PanelState
+    val tradingPc by rememberUpdatedState(pc)
+    LaunchedEffect(pc.id) {
+        val state = pc.state as? PanelState.Trading
+        if (state != null) {
+            vm.restoreTab(state.activeTab)
+        }
+    }
+    LaunchedEffect(Unit) {
+        var skipInitial = true
+        vm.activeTab.collect { tab ->
+            if (skipInitial) {
+                skipInitial = false; return@collect
+            }
+            val curState = tradingPc.state as? PanelState.Trading ?: PanelState.Trading()
+            onPanelConfigChange(tradingPc.copy(state = curState.copy(activeTab = tab)))
+        }
+    }
+    key(ws.activationCount) { TradingWindow(vm) }
 }

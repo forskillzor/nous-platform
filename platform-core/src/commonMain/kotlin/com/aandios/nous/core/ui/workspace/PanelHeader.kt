@@ -105,7 +105,7 @@ fun PanelHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         val prefix = when (config.type) {
-            PanelType.CHART -> "▤"; PanelType.DOM -> "▥"; PanelType.TRADES -> "▦"
+            PanelType.CHART -> "▤"; PanelType.DOM -> "▥"; PanelType.TRADES -> "▦"; PanelType.TRADING -> "▧"
         }
         Text(prefix, color = Color(0xFF00C853), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         Spacer(Modifier.width(4.dp))
@@ -125,7 +125,7 @@ fun PanelHeader(
                         Text("┃", color = Color(0xFF555555), fontSize = 12.sp, fontFamily = FontFamily.Monospace,
                             modifier = Modifier.clickable { splitDirection = true; splitMenuExpanded = true }.padding(horizontal = 2.dp))
                         DropdownMenu(expanded = splitMenuExpanded && splitDirection, onDismissRequest = { splitMenuExpanded = false }) {
-                            listOf(PanelType.CHART to "Chart", PanelType.DOM to "DOM", PanelType.TRADES to "Trades").forEach { (t, label) ->
+                            listOf(PanelType.CHART to "Chart", PanelType.DOM to "DOM", PanelType.TRADES to "Trades", PanelType.TRADING to "Trading").forEach { (t, label) ->
                                 DropdownMenuItem(text = { Text(label, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }, onClick = {
                                     splitMenuExpanded = false; onSplitV(t)
                                 })
@@ -138,7 +138,7 @@ fun PanelHeader(
                         Text("━", color = Color(0xFF555555), fontSize = 12.sp, fontFamily = FontFamily.Monospace,
                             modifier = Modifier.clickable { splitDirection = false; splitMenuExpanded = true }.padding(horizontal = 2.dp))
                         DropdownMenu(expanded = splitMenuExpanded && !splitDirection, onDismissRequest = { splitMenuExpanded = false }) {
-                            listOf(PanelType.CHART to "Chart", PanelType.DOM to "DOM", PanelType.TRADES to "Trades").forEach { (t, label) ->
+                            listOf(PanelType.CHART to "Chart", PanelType.DOM to "DOM", PanelType.TRADES to "Trades", PanelType.TRADING to "Trading").forEach { (t, label) ->
                                 DropdownMenuItem(text = { Text(label, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }, onClick = {
                                     splitMenuExpanded = false; onSplitH(t)
                                 })
@@ -160,4 +160,5 @@ private fun panelStateLabel(config: PanelConfig): String = when (val state = con
     is com.aandios.nous.core.workspace.PanelState.Chart -> state.timeframe
     is com.aandios.nous.core.workspace.PanelState.Dom -> "${state.depth}lvl"
     is com.aandios.nous.core.workspace.PanelState.Trades -> "trades"
+    is com.aandios.nous.core.workspace.PanelState.Trading -> "trading"
 }

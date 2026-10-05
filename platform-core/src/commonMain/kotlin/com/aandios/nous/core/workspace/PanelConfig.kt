@@ -21,7 +21,7 @@ data class PanelConfig(
 )
 
 @Serializable
-enum class PanelType { CHART, DOM, TRADES }
+enum class PanelType { CHART, DOM, TRADES, TRADING }
 
 @Serializable
 sealed class PanelState {
@@ -46,6 +46,11 @@ sealed class PanelState {
         val highlightLarge: Boolean = true,
         val sizeFilter: String? = null,
         val customPresets: List<Double> = emptyList()
+    ) : PanelState()
+
+    @Serializable @SerialName("trading")
+    data class Trading(
+        val activeTab: String = "POSITIONS"
     ) : PanelState()
 
     companion object {

@@ -26,6 +26,7 @@ kotlin {
             implementation(project(":features:chart"))
             implementation(project(":features:dom"))
             implementation(project(":features:trades"))
+            implementation(project(":features:trading"))
             implementation(project(":features:localstorage"))
             implementation(project(":features:settings"))
             implementation(project(":platform-core"))
