@@ -79,6 +79,10 @@ class DomViewModel(
     private val _paperEnabled = MutableStateFlow(false)
     val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
 
+    /** Плечо для ордеров DOM (null — дефолт биржи/1x в paper). */
+    private val _leverage = MutableStateFlow<Int?>(null)
+    val leverage: StateFlow<Int?> = _leverage.asStateFlow()
+
     /**
      * Confirm: включён — клик по уровню выбирает цену (подсветка) и ордера
      * требуют подтверждения.
@@ -347,6 +351,10 @@ class DomViewModel(
         _limitOrderType.value = orderType
     }
 
+    fun setLeverage(leverage: Int?) {
+        _leverage.value = leverage?.takeIf { it > 0 }
+    }
+
     /** Confirm: ON — выбор цены кликом и подтверждение ордеров. */
     fun setConfirmOrders(confirm: Boolean) {
         _confirmOrders.value = confirm
@@ -494,12 +502,12 @@ class DomViewModel(
         val reduceOnly = _reduceOnly.value
         val callback = resultCallback()
         val command = when (intent) {
-            is OrderIntent.MarketBuy -> BuyMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter, callback)
-            is OrderIntent.MarketSell -> SellMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter, callback)
-            is OrderIntent.LimitBuy -> BuyLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter, callback)
-            is OrderIntent.LimitSell -> SellLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter, callback)
-            is OrderIntent.BestBidBuy -> BuyBestBidCommand(intent.symbol, intent.bestBidPrice, intent.quantity, reduceOnly, adapter, callback)
-            is OrderIntent.BestAskSell -> SellBestAskCommand(intent.symbol, intent.bestAskPrice, intent.quantity, reduceOnly, adapter, callback)
+            is OrderIntent.MarketBuy -> BuyMarketCommand(intent.symbol, intent.quantity, reduceOnly, _leverage.value, adapter, callback)
+            is OrderIntent.MarketSell -> SellMarketCommand(intent.symbol, intent.quantity, reduceOnly, _leverage.value, adapter, callback)
+            is OrderIntent.LimitBuy -> BuyLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, _leverage.value, adapter, callback)
+            is OrderIntent.LimitSell -> SellLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, _leverage.value, adapter, callback)
+            is OrderIntent.BestBidBuy -> BuyBestBidCommand(intent.symbol, intent.bestBidPrice, intent.quantity, reduceOnly, _leverage.value, adapter, callback)
+            is OrderIntent.BestAskSell -> SellBestAskCommand(intent.symbol, intent.bestAskPrice, intent.quantity, reduceOnly, _leverage.value, adapter, callback)
             OrderIntent.ToggleTrading -> null
         }
         executeCommand(command)

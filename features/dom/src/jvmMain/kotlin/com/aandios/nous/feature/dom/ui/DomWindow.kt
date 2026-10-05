@@ -66,6 +66,7 @@ fun DomWindow(
     val selectedPrice by domViewModel.selectedPrice.collectAsState()
     val reduceOnly by domViewModel.reduceOnly.collectAsState()
     val limitOrderType by domViewModel.limitOrderType.collectAsState()
+    val leverage by domViewModel.leverage.collectAsState()
     val paperEnabled by domViewModel.paperEnabled.collectAsState()
     val confirmOrders by domViewModel.confirmOrders.collectAsState()
     val pendingIntentText by domViewModel.pendingIntentText.collectAsState()
@@ -144,11 +145,13 @@ fun DomWindow(
             isTradingEnabled = isTradingEnabled,
             reduceOnly = reduceOnly,
             limitOrderType = limitOrderType,
+            leverage = leverage,
             paperEnabled = paperEnabled,
             confirmOrders = confirmOrders,
             pendingText = pendingIntentText,
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
+            onLeverageChanged = { domViewModel.setLeverage(it) },
             onPaperChanged = { domViewModel.setPaperEnabled(it) },
             onConfirmChanged = { domViewModel.setConfirmOrders(it) },
             onConfirmPending = { domViewModel.confirmPendingIntent() },

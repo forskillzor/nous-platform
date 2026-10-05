@@ -17,6 +17,7 @@ class BuyBestBidCommand(
     private val bestBid: Double,
     private val quantity: Double,
     private val reduceOnly: Boolean = false,
+    private val leverage: Int? = null,
     private val tradingAdapter: TradingAdapter? = null,
     private val onResult: (CommandResult) -> Unit,
 ) : TradingCommand {
@@ -43,6 +44,7 @@ class BuyBestBidCommand(
                     quantity = quantity,
                     price = bestBid,
                     reduceOnly = reduceOnly,
+                    leverage = leverage,
                 )
             )
         } catch (e: Exception) {
@@ -63,6 +65,7 @@ class SellBestAskCommand(
     private val bestAsk: Double,
     private val quantity: Double,
     private val reduceOnly: Boolean = false,
+    private val leverage: Int? = null,
     private val tradingAdapter: TradingAdapter? = null,
     private val onResult: (CommandResult) -> Unit,
 ) : TradingCommand {
@@ -89,6 +92,7 @@ class SellBestAskCommand(
                     quantity = quantity,
                     price = bestAsk,
                     reduceOnly = reduceOnly,
+                    leverage = leverage,
                 )
             )
         } catch (e: Exception) {
