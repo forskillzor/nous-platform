@@ -72,6 +72,9 @@ fun OrderPlacementPanel(
     pnlPercent: String?,
     pnlUsdt: String?,
     pnlUp: Boolean,
+    /** Есть открытая позиция Long/Short — для лейблов reduce-only лимиток. */
+    hasLongPosition: Boolean = false,
+    hasShortPosition: Boolean = false,
     onReduceOnlyChanged: (Boolean) -> Unit,
     onLimitOrderTypeChanged: (OrderType) -> Unit,
     onLeverageChanged: (Int?) -> Unit,
@@ -216,9 +219,14 @@ fun OrderPlacementPanel(
             }
 
             // Лимитки по выбранной цене (выбор — Confirm: ON + клик по уровню)
+            // Reduce-only называет, что закрывает: CShort / CLong (как в chart trading)
+            val buyLimitLabel = (if (reduceOnly && hasShortPosition) "CShort" else "Buy Limit") +
+                if (selectedPrice == null) " (click price)" else ""
+            val sellLimitLabel = (if (reduceOnly && hasLongPosition) "CLong" else "Sell Limit") +
+                if (selectedPrice == null) " (click price)" else ""
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
                 LimitButton(
-                    label = if (selectedPrice != null) "Buy Limit" else "Buy Limit (click price)",
+                    label = buyLimitLabel,
                     color = buyColor,
                     ready = selectedPrice != null,
                     modifier = Modifier.weight(1f),
@@ -228,7 +236,7 @@ fun OrderPlacementPanel(
                     }
                 }
                 LimitButton(
-                    label = if (selectedPrice != null) "Sell Limit" else "Sell Limit (click price)",
+                    label = sellLimitLabel,
                     color = sellColor,
                     ready = selectedPrice != null,
                     modifier = Modifier.weight(1f),

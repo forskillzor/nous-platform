@@ -31,6 +31,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.dom.di.initKoinForPreview
 import com.aandios.nous.feature.dom.ui.content.DomContent
@@ -173,6 +174,8 @@ fun DomWindow(
             pnlPercent = pnl?.percent,
             pnlUsdt = pnl?.usdt,
             pnlUp = pnl?.up ?: true,
+            hasLongPosition = positions.any { it.side == TradeSide.BUY },
+            hasShortPosition = positions.any { it.side == TradeSide.SELL },
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
             onLeverageChanged = { domViewModel.setLeverage(it) },
