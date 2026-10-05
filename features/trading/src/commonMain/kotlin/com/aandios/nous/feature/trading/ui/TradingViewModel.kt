@@ -260,6 +260,10 @@ class TradingViewModel(
         }
     }
 
+    fun closeAllPositions() {
+        positions.value.forEach { closePosition(it) }
+    }
+
     fun setMarginMode(mode: Int) {
         _marginMode.value = mode
     }

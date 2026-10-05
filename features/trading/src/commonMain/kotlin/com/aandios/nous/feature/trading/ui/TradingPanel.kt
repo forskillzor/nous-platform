@@ -33,11 +33,9 @@ import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.model.trading.TradeSide
-import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
-import kotlinx.coroutines.launch
 
 enum class TradingTab(val label: String) {
     POSITIONS("Positions"),
@@ -86,8 +84,8 @@ private object HW {
 }
 
 /**
- * Полная торговая панель: заголовок «Trading {exchange}» + провайдер +
- * тумблер Paper, строка настроек (маржа/плечо/режим позиций/cancel all),
+ * Полная торговая панель: верхняя строка (exchange + one-way/hedge + paper
+ * switch + шестерёнка настроек), строка действий (Cancel all / Close all),
  * табы позиции/ордера/балансы/история.
  */
 @Composable
@@ -102,15 +100,12 @@ fun TradingPanel(
     val balances by viewModel.balances.collectAsState()
     val history by viewModel.tradeHistory.collectAsState()
     val positionMode by viewModel.positionMode.collectAsState()
-    val marginMode by viewModel.marginMode.collectAsState()
-    val leverage by viewModel.leverage.collectAsState()
     val lastMessage by viewModel.lastMessage.collectAsState()
     val activeTabRaw by viewModel.activeTab.collectAsState()
     val tab = TradingTab.values().firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
 
     val paperEnabled by viewModel.paperEnabled.collectAsState()
     val paperSettings: PaperSettingsController = org.koin.compose.koinInject()
-    val scope = rememberCoroutineScope()
 
     val tabCounts = mapOf(
         TradingTab.POSITIONS to positions.size,
@@ -119,24 +114,15 @@ fun TradingPanel(
         TradingTab.HISTORY to history.size,
     )
 
-    val exchangeName = registry.get(providerId)?.config?.displayName ?: providerId
     val formatter = remember { SymbolFormatter.DEFAULT }
 
     Column(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
-        // ── Заголовок: Trading {exchange} + провайдер + Paper ──
+        // ── Верхняя строка: exchange (Binance/MEXC) · One-way/Hedge · Paper + шестерёнка ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = "Trading $exchangeName",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
             TerminalDropdown(
                 currentValue = providerId,
                 items = registry.providers.map { it.providerId },
@@ -146,43 +132,33 @@ fun TradingPanel(
                 },
                 menuWidth = 130.dp,
             )
-            PaperToggle(
-                enabled = paperEnabled,
-                onToggle = { viewModel.setPaperEnabled(it) },
-            )
-            if (paperEnabled) {
-                // Настройки paper trading (баланс/сбросы) — отдельное окно
-                Text(
-                    text = "⚙",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .clickableNoIndication { paperSettings.open() }
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
-                )
-            }
-        }
-
-        // ── Настройки: маржа / плечо / режим позиций | Cancel all ──
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            MarginModeSelector(
-                current = marginMode,
-                onChange = { viewModel.setMarginMode(it) },
-            )
-            LeverageSelector(
-                current = leverage,
-                onChange = { viewModel.setLeverage(it) },
-            )
             PositionModeToggle(
                 current = positionMode,
                 onSwitch = { mode -> viewModel.switchPositionMode(mode) },
             )
             Spacer(Modifier.weight(1f))
+            PaperToggle(
+                enabled = paperEnabled,
+                onToggle = { viewModel.setPaperEnabled(it) },
+            )
+            // Настройки paper trading (баланс/сбросы) — отдельное окно
+            Text(
+                text = "⚙",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clickableNoIndication { paperSettings.open() }
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+            )
+        }
+
+        // ── Настройки: только Cancel all / Close all ──
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Text(
                 text = "Cancel all",
                 color = MaterialTheme.colorScheme.error,
@@ -190,6 +166,16 @@ fun TradingPanel(
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .clickableNoIndication { viewModel.cancelAllOrders() }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "Close all",
+                color = Color(0xFFE05B5B),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clickableNoIndication { viewModel.closeAllPositions() }
                     .padding(horizontal = 4.dp, vertical = 2.dp),
             )
         }
@@ -233,28 +219,7 @@ fun TradingPanel(
                 orders, formatter, onCancel = { viewModel.cancelOrder(it) },
                 modifier = Modifier.weight(1f),
             )
-            TradingTab.BALANCES -> Column(modifier = Modifier.weight(1f)) {
-                if (paperEnabled) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        PaperAction("Top up USDT +1000") {
-                            scope.launch {
-                                PaperTrading.adapter.topUp("USDT", 1000.0)
-                                viewModel.reload()
-                            }
-                        }
-                        PaperAction("Top up BTC +0.1") {
-                            scope.launch {
-                                PaperTrading.adapter.topUp("BTC", 0.1)
-                                viewModel.reload()
-                            }
-                        }
-                    }
-                }
-                BalancesTable(balances, modifier = Modifier.weight(1f))
-            }
+            TradingTab.BALANCES -> BalancesTable(balances, modifier = Modifier.weight(1f))
             TradingTab.HISTORY -> {
                 LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
                 HistoryTable(history, formatter, modifier = Modifier.weight(1f))
@@ -286,41 +251,6 @@ private fun PaperToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
             )
         }
     }
-}
-
-@Composable
-private fun PaperAction(label: String, onClick: () -> Unit) {
-    Text(
-        text = label,
-        color = MaterialTheme.colorScheme.primary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .clickableNoIndication(onClick)
-            .padding(horizontal = 2.dp, vertical = 2.dp),
-    )
-}
-
-@Composable
-private fun MarginModeSelector(current: Int, onChange: (Int) -> Unit) {
-    TerminalDropdown(
-        currentValue = current,
-        items = listOf(1, 2),
-        onValueChanged = onChange,
-        displayText = { if (it == 1) "Isolated" else "Cross" },
-        menuWidth = 120.dp,
-    )
-}
-
-@Composable
-private fun LeverageSelector(current: Int?, onChange: (Int) -> Unit) {
-    TerminalDropdown(
-        currentValue = current ?: 0,
-        items = listOf(1, 2, 3, 5, 10, 20, 50, 100, 125),
-        onValueChanged = { if (it > 0) onChange(it) },
-        displayText = { if (it <= 0) "Lev" else "${it}x" },
-        menuWidth = 90.dp,
-    )
 }
 
 @Composable
