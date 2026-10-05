@@ -13,6 +13,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,6 +43,11 @@ fun ChartTradingPanel(
     onConfirmChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Локальный текст поля: ввод «0.05» не затирается валидацией
+    var qtyText by remember(quantity) {
+        mutableStateOf(quantity?.let { trimZeros(it) } ?: "")
+    }
+
     Column(
         modifier = modifier
             .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(6.dp))
@@ -69,15 +78,21 @@ fun ChartTradingPanel(
                             if (quantity == null) Color(0xFF00C853).copy(alpha = 0.2f) else Color.Transparent,
                             RoundedCornerShape(3.dp)
                         )
-                        .clickableNoIndication { onQuantityChanged(null) }
+                        .clickableNoIndication {
+                            qtyText = ""
+                            onQuantityChanged(null)
+                        }
                         .padding(horizontal = 5.dp, vertical = 2.dp),
                 )
             }
 
             // Своё значение
             BasicTextField(
-                value = quantity?.let { trimZeros(it) } ?: "",
-                onValueChange = { text ->
+                value = qtyText,
+                onValueChange = { text: String ->
+                    qtyText = text
+                    // В VM кладём только корректное положительное число;
+                    // незавершённый ввод ("0.") не стирает поле и не падает
                     onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
                 },
                 singleLine = true,
