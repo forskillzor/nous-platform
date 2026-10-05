@@ -45,6 +45,8 @@ class FootprintController(
     private val footprintApiClient: FootprintApiClient?,
     private val tradesAdapter: TradesAdapter?,
     private val footprintCache: FootprintCacheStore? = null,
+    /** Пространство имён биржи для кэша и запросов (displayName провайдера). */
+    private val exchange: String = "Binance",
 ) : Disposable {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -88,7 +90,7 @@ class FootprintController(
         scope.launch {
             val cache = footprintCache ?: return@launch
             try {
-                val cached = cache.getFootprintCandles(EXCHANGE, symbol, CACHE_LIMIT)
+                val cached = cache.getFootprintCandles(exchange, symbol, CACHE_LIMIT)
                 _state.update { s ->
                     if (cached.isNotEmpty() && s.candles.isEmpty()) s.copy(candles = cached) else s
                 }
@@ -458,7 +460,7 @@ class FootprintController(
         val currentSymbol = symbol
         scope.launch {
             try {
-                cache.saveFootprintCandles(EXCHANGE, currentSymbol, candles)
+                cache.saveFootprintCandles(exchange, currentSymbol, candles)
             } catch (_: Exception) {
                 // кэш не критичен
             }
@@ -466,7 +468,6 @@ class FootprintController(
     }
 
     companion object {
-        private const val EXCHANGE = "Binance"
         private const val CACHE_LIMIT = 200
         private const val FORMING_POLL_INTERVAL_MS = 30_000L
     }

@@ -32,6 +32,7 @@ class ChartStatePersistorTest {
             timeframe = "15m",
             chartMode = ChartMode.FOOTPRINT,
             fpAggregation = AggregationLevel.TenTick,
+            providerId = "mexc-nous-0.0.1",
         )
 
         val restored = persistor.restore()
@@ -39,6 +40,7 @@ class ChartStatePersistorTest {
         assertEquals("15m", restored.timeframe)
         assertEquals(ChartMode.FOOTPRINT, restored.chartMode)
         assertEquals(AggregationLevel.TenTick, restored.fpAggregation)
+        assertEquals("mexc-nous-0.0.1", restored.providerId)
     }
 
     @Test
@@ -76,12 +78,13 @@ class ChartStatePersistorTest {
         val store = FakeStateStore()
         val persistor = ChartStatePersistor(store)
 
-        persistor.save("BTCUSDT", "1h", ChartMode.CANDLESTICK, AggregationLevel.HundredTick)
+        persistor.save("BTCUSDT", "1h", ChartMode.CANDLESTICK, AggregationLevel.HundredTick, "binance-nous-0.0.1")
 
         assertEquals("BTCUSDT", store.data["chart_symbol"])
         assertEquals("1h", store.data["chart_timeframe"])
         assertEquals("CANDLESTICK", store.data["chart_mode"])
         assertEquals("HundredTick", store.data["fp_aggregation"])
+        assertEquals("binance-nous-0.0.1", store.data["chart_provider_id"])
     }
 
     @Test

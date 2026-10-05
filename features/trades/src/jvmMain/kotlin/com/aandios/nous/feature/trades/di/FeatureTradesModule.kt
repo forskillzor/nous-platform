@@ -8,13 +8,8 @@ package com.aandios.nous.feature.trades.di
 import com.aandios.nous.api.market.NetworkManager
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderConfig
-import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
-import com.aandios.nous.api.market.adapters.TradesAdapter
-import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
-import com.aandios.nous.core.data.repository.TradesRepositoryImpl
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.di.coreModule
-import com.aandios.nous.core.domain.repository.SymbolInfoRepository
-import com.aandios.nous.core.domain.repository.TradesRepository
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import org.koin.core.context.startKoin
@@ -36,50 +31,17 @@ fun initKoinForPreview() {
 
 val featureTradesModule = module {
 
-    // 1. Конфигурация для превью
-    single<ProviderConfig> {
-        ProviderConfig(
-            apiKey = null,
-            secretKey = null,
-            isTestnet = false,
-            customSettings = emptyMap()
-        )
-    }
-
-    // 2. Создаём Provider через фабрику
+    // 1. Провайдер Binance (превью живут на одном провайдере) + реестр
     single<Provider> {
-        val config = get<ProviderConfig>()
-        val networkManager = get<NetworkManager>()
-
         BinanceProviderFactory().createProvider(
-            config = config,
-            networkManager = networkManager
+            config = ProviderConfig(displayName = "Binance"),
+            networkManager = get<NetworkManager>(),
         )
     }
+    single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
 
-    // 3. Адаптеры из провайдера
-    single<TradesAdapter> {
-        get<Provider>().trades ?: error("Trades adapter not available")
-    }
-
-    single<SymbolInfoAdapter> {
-        get<Provider>().symbolInfo ?: error("SymbolInfo adapter not available")
-    }
-
-    // 4. Репозитории
-    single<TradesRepository> {
-        TradesRepositoryImpl(tradesAdapter = get())
-    }
-
-    single<SymbolInfoRepository> {
-        SymbolInfoRepositoryImpl(symbolInfoAdapter = get())
-    }
-
-    // 5. ViewModel
+    // 2. ViewModel — адаптеры резолвятся из реестра по выбранному провайдеру
     factory {
-        TradesViewModel(
-            tradesRepository = get(),
-            symbolInfoRepository = get()
-        )
+        TradesViewModel(providerRegistry = get())
     }
 }

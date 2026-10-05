@@ -19,6 +19,8 @@ data class ChartUiState(
     val chartState: ChartState = ChartState.Loading,
     val currentSymbol: String = "BTCUSDT",
     val currentTimeframe: String = "1h",
+    /** Текущий провайдер данных (id из ProviderRegistry). */
+    val currentProviderId: String = "",
     // TODO this hardcode need change to repository/datalayer initialisation symbol list
     val symbols: List<String> = listOf("BTCUSDT", "ETHUSDT"),
     val currentSymbolFormatter: SymbolFormatter = SymbolFormatter(),

@@ -12,6 +12,7 @@ import com.aandios.nous.provider.mexc.MEXC_BASE_URL
 import com.aandios.nous.provider.mexc.MexcRestGate
 import com.aandios.nous.provider.mexc.MexcStreamHub
 import com.aandios.nous.provider.mexc.MexcSubscriptions
+import com.aandios.nous.provider.mexc.toMexcSymbol
 import com.aandios.nous.provider.mexc.MexcWeights
 import com.aandios.nous.provider.mexc.model.MexcDeal
 import com.aandios.nous.provider.mexc.model.MexcDealsResponse
@@ -54,7 +55,7 @@ class MexcTradesAdapter(
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     override fun subscribeToTrades(symbol: String): Flow<Trade> {
-        val sub = MexcSubscriptions.deal(symbol)
+        val sub = MexcSubscriptions.deal(toMexcSymbol(symbol))
         return streamHub.subscribe(sub)
             .map { text -> parseDeals(text).map { it.toTrade(symbol, fallbackId(it.t)) } }
             .flatMapConcat { it.asFlow() }
@@ -65,7 +66,7 @@ class MexcTradesAdapter(
             key = "deals:$symbol:$limit",
             weight = MexcWeights.DEALS,
         ) {
-            val response = client.get("$MEXC_BASE_URL/api/v1/contract/deals/$symbol") {
+            val response = client.get("$MEXC_BASE_URL/api/v1/contract/deals/${toMexcSymbol(symbol)}") {
                 parameter("limit", limit.coerceIn(1, 100))
             }.body<MexcDealsResponse>()
             response.data.map { it.toTrade(symbol, fallbackId(it.t)) }

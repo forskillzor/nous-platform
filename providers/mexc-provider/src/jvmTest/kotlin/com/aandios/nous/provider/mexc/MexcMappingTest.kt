@@ -32,6 +32,21 @@ class MexcMappingTest {
     }
 
     @Test
+    fun symbolConversionToUnifiedFormat() {
+        // Единый формат → нативный MEXC
+        assertEquals("BTC_USDT", toMexcSymbol("BTCUSDT"))
+        assertEquals("ETH_USDC", toMexcSymbol("ETHUSDC"))
+        assertEquals("SOL_USDT", toMexcSymbol("solusdt"))
+        assertEquals("BTC_USDT", toMexcSymbol("BTC_USDT")) // нативный пропускаем
+        // Нативный → единый
+        assertEquals("BTCUSDT", fromMexcSymbol("BTC_USDT"))
+        assertEquals("SOLUSDT", fromMexcSymbol("sol_usdt"))
+        // Roundtrip
+        assertEquals("BTCUSDT", fromMexcSymbol(toMexcSymbol("BTCUSDT")))
+        assertEquals("ETHUSDT", fromMexcSymbol(toMexcSymbol("ETHUSDT")))
+    }
+
+    @Test
     fun timeToMillisConvertsSeconds() {
         assertEquals(1_790_574_900_000L, MexcTimeframes.timeToMillis(1_790_574_900L))
         assertEquals(1_791_174_875_439L, MexcTimeframes.timeToMillis(1_791_174_875_439L))
@@ -97,7 +112,7 @@ class MexcMappingTest {
             timestamp = 1_791_174_875_439L,
         )
         val bt = ticker.toBookTicker()
-        assertEquals("BTC_USDT", bt.symbol)
+        assertEquals("BTCUSDT", bt.symbol) // единый формат платформы
         assertEquals(85578.6, bt.bestBid)
         assertEquals(85578.7, bt.bestAsk)
         assertEquals(85578.7, bt.lastPrice)
@@ -110,7 +125,7 @@ class MexcMappingTest {
             priceUnit = 0.1, volUnit = 1.0, minVol = 1.0, state = 0,
         )
         val info = detail.toSymbolInfo()
-        assertEquals("BTC_USDT", info.symbol)
+        assertEquals("BTCUSDT", info.symbol) // единый формат платформы
         assertEquals(0.1, info.tickSize)
         assertEquals(1.0, info.stepSize)
         assertEquals(1.0, info.minQty)

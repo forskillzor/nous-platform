@@ -20,6 +20,7 @@ class ChartStatePersistor(private val store: StateStore) {
         val chartMode: ChartMode? = null,
         val fpAggregation: AggregationLevel? = null,
         val zoomLevel: Float? = null,
+        val providerId: String? = null,
     )
 
     suspend fun save(
@@ -27,10 +28,12 @@ class ChartStatePersistor(private val store: StateStore) {
         timeframe: String,
         chartMode: ChartMode,
         fpAggregation: AggregationLevel,
+        providerId: String,
     ) {
         store.putString(KEY_SYMBOL, symbol)
         store.putString(KEY_TIMEFRAME, timeframe)
         store.putString(KEY_CHART_MODE, chartMode.name)
+        store.putString(KEY_PROVIDER_ID, providerId)
         store.putString(KEY_FP_AGGREGATION, when (fpAggregation) {
             AggregationLevel.BaseTick -> "BaseTick"
             AggregationLevel.TenTick -> "TenTick"
@@ -66,6 +69,7 @@ class ChartStatePersistor(private val store: StateStore) {
             timeframe = store.getString(KEY_TIMEFRAME),
             chartMode = mode,
             fpAggregation = aggregation,
+            providerId = store.getString(KEY_PROVIDER_ID),
         )
     }
 
@@ -73,6 +77,7 @@ class ChartStatePersistor(private val store: StateStore) {
         const val KEY_SYMBOL = "chart_symbol"
         const val KEY_TIMEFRAME = "chart_timeframe"
         const val KEY_CHART_MODE = "chart_mode"
+        const val KEY_PROVIDER_ID = "chart_provider_id"
         const val KEY_FP_AGGREGATION = "fp_aggregation"
         const val KEY_ZOOM = "chart_zoom"
     }

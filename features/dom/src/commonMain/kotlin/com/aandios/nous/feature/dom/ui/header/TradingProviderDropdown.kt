@@ -10,15 +10,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalDropdownWithLabel
-import com.aandios.nous.feature.dom.domain.TradingProvider
 
 /**
- * Вспомогательная функция для создания dropdown с label для TradingProvider.
+ * Дропдаун выбора провайдера данных для DOM.
+ * Список — только реально зарегистрированные провайдеры (из ProviderRegistry),
+ * значение — [Provider.providerId].
  */
 @Composable
 fun TradingProviderDropdown(
-    currentProvider: TradingProvider,
-    onProviderChanged: (TradingProvider) -> Unit,
+    currentProviderId: String,
+    providers: List<com.aandios.nous.api.market.Provider>,
+    onProviderChanged: (String) -> Unit,
     modifier: Modifier = Modifier.Companion
 ) {
     TerminalDropdownWithLabel(
@@ -26,10 +28,12 @@ fun TradingProviderDropdown(
         modifier = modifier
     ) {
         TerminalDropdown(
-            currentValue = currentProvider,
-            items = TradingProvider.all(),
+            currentValue = currentProviderId,
+            items = providers.map { it.providerId },
             onValueChanged = onProviderChanged,
-            displayText = { it.displayName },
+            displayText = { id ->
+                providers.firstOrNull { it.providerId == id }?.config?.displayName ?: id
+            },
             menuWidth = 180.dp
         )
     }

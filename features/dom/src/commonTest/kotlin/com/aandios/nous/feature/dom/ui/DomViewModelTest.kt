@@ -5,18 +5,28 @@
 
 package com.aandios.nous.feature.dom.ui
 
+import com.aandios.nous.api.market.NetworkManager
+import com.aandios.nous.api.market.Provider
+import com.aandios.nous.api.market.ProviderConfig
+import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.api.market.adapters.BookTickerAdapter
+import com.aandios.nous.api.market.adapters.ChartAdapter
+import com.aandios.nous.api.market.adapters.DomAdapter
+import com.aandios.nous.api.market.adapters.LiquidationAdapter
+import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
+import com.aandios.nous.api.market.adapters.TradesAdapter
+import com.aandios.nous.api.market.adapters.TradingAdapter
+import com.aandios.nous.api.market.model.BookTicker
 import com.aandios.nous.api.market.model.SymbolInfo
-import com.aandios.nous.api.market.model.orderbook.DomEvent
+import com.aandios.nous.api.market.model.orderbook.BookWindowLevels
 import com.aandios.nous.api.market.model.orderbook.PriceUpdate
-import com.aandios.nous.core.domain.repository.DomRepository
-import com.aandios.nous.core.domain.repository.SymbolInfoRepository
 import com.aandios.nous.feature.dom.domain.DomOptions
-import com.aandios.nous.feature.dom.domain.TradingProvider
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.domain.model.DepthLimit
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -29,7 +39,6 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -39,14 +48,24 @@ class DomViewModelTest {
     private val testScope = TestScope(testDispatcher)
 
     private lateinit var viewModel: DomViewModel
-    private lateinit var fakeDomRepository: FakeDomRepository
-    private lateinit var fakeSymbolInfoRepository: FakeSymbolInfoRepository
+    private lateinit var fakeDomAdapter: FakeDomAdapter
+    private lateinit var fakeBookTickerAdapter: FakeBookTickerAdapter
+    private lateinit var fakeSymbolInfoAdapter: FakeSymbolInfoAdapter
 
     @BeforeTest
     fun setUp() {
-        fakeDomRepository = FakeDomRepository()
-        fakeSymbolInfoRepository = FakeSymbolInfoRepository()
-        viewModel = DomViewModel(fakeDomRepository, fakeSymbolInfoRepository, testDispatcher)
+        fakeDomAdapter = FakeDomAdapter()
+        fakeBookTickerAdapter = FakeBookTickerAdapter()
+        fakeSymbolInfoAdapter = FakeSymbolInfoAdapter()
+        val provider = FakeDomProvider(
+            domAdapter = fakeDomAdapter,
+            bookTickerAdapter = fakeBookTickerAdapter,
+            symbolInfoAdapter = fakeSymbolInfoAdapter,
+        )
+        viewModel = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(provider)),
+            coroutineDispatcher = testDispatcher,
+        )
     }
 
     @AfterTest
@@ -75,7 +94,7 @@ class DomViewModelTest {
     @Test
     fun `updateDomOptions changes options and triggers subscription`() = testScope.runTest {
         val newOptions = DomOptions.default().copy(
-            symbol = TradingSymbol("ETHUSDT", "ETH/USDT", TradingProvider.BINANCE),
+            symbol = TradingSymbol("ETHUSDT", "ETH/USDT", "binance-nous-0.0.1"),
             depth = DepthLimit.create(20)
         )
 
@@ -85,8 +104,8 @@ class DomViewModelTest {
         val currentOptions = viewModel.domOptions.first()
         assertEquals(newOptions, currentOptions)
 
-        assertEquals("ETHUSDT", fakeDomRepository.lastSubscribedSymbol)
-        assertEquals(20, fakeDomRepository.lastSubscribedDepth)
+        assertEquals("ETHUSDT", fakeDomAdapter.lastSubscribedSymbol)
+        assertEquals(20, fakeDomAdapter.lastSubscribedDepth)
     }
 
     @Test
@@ -109,11 +128,7 @@ class DomViewModelTest {
         val intent = OrderIntent.MarketBuy("BTCUSDT", 0.5)
         viewModel.handleOrderIntent(intent)
         advanceUntilIdle()
-
-        // Verify command execution (fake repository doesn't execute, but we can check lastCommandResult)
-        val result = viewModel.lastCommandResult.first()
-        // Since command execution is async and uses fake, result may be null or something else
-        // We'll just ensure no crash
+        // Команды исполняются асинхронно через фейк — просто убеждаемся, что не падает
     }
 
     @Test
@@ -121,17 +136,14 @@ class DomViewModelTest {
         val intent = OrderIntent.ToggleTrading
         viewModel.handleOrderIntent(intent)
         advanceUntilIdle()
-
-        // TradeOffCommand should set isTradingEnabled to false
-        val enabled = viewModel.isTradingEnabled.first()
-        // Actually TradeOffCommand toggles via callback; we can't easily test without mocking
-        // We'll just ensure no crash
+        // TradeOffCommand переключает через callback — просто убеждаемся, что не падает
     }
 
     @Test
     fun `book window stores window data`() = testScope.runTest {
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        runCurrent() // даём подписке (callbackFlow + адаптеры) подняться
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5), PriceUpdate(49900.0, 2.0)),
                 asks = listOf(PriceUpdate(50100.0, 0.8), PriceUpdate(50200.0, 1.2))
             )
@@ -151,12 +163,12 @@ class DomViewModelTest {
 
     @Test
     fun `book window replaces previous window`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5), PriceUpdate(49900.0, 2.0)),
                 asks = emptyList()
             )
@@ -164,9 +176,9 @@ class DomViewModelTest {
         advanceUntilIdle()
         assertEquals(2, viewModel.sortedLevels.size)
 
-        // РќРѕРІРѕРµ РѕРєРЅРѕ Р±РµР· СѓСЂРѕРІРЅСЏ 49900 вЂ” СѓСЂРѕРІРµРЅСЊ РёСЃС‡РµР·Р°РµС‚ РёР· РєРЅРёРіРё
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        // Новое окно без уровня 49900 — уровень исчезает из книги
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5)),
                 asks = emptyList()
             )
@@ -179,12 +191,20 @@ class DomViewModelTest {
 
     @Test
     fun `processDomEvent BestPrices updates best prices`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BestPrices(50000.0, 1.5, 50100.0, 0.8, 50050.0, "BTCUSDT")
+        fakeBookTickerAdapter.tickerFlow.emit(
+            BookTicker(
+                symbol = "BTCUSDT",
+                bestBid = 50000.0,
+                bestBidQty = 1.5,
+                bestAsk = 50100.0,
+                bestAskQty = 0.8,
+                lastPrice = 50050.0,
+                timestamp = 0,
+            )
         )
         advanceUntilIdle()
 
@@ -199,12 +219,12 @@ class DomViewModelTest {
 
     @Test
     fun `sorted levels are built from window in descending price order`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.0), PriceUpdate(49900.0, 2.0)),
                 asks = listOf(PriceUpdate(50100.0, 3.0))
             )
@@ -214,25 +234,25 @@ class DomViewModelTest {
         val levels = viewModel.sortedLevels
         assertEquals(3, levels.size)
         assertEquals(listOf(50100L, 50000L, 49900L), levels.map { it.priceTicks })
-        // ask-СѓСЂРѕРІРµРЅСЊ РЅР° 50100: С‚РѕР»СЊРєРѕ askSteps
+        // ask-уровень на 50100: только askSteps
         assertNull(levels[0].bidSteps)
         assertEquals(300L, levels[0].askSteps)
-        // bid-СѓСЂРѕРІРµРЅСЊ РЅР° 50000: С‚РѕР»СЊРєРѕ bidSteps
+        // bid-уровень на 50000: только bidSteps
         assertEquals(100L, levels[1].bidSteps)
         assertNull(levels[1].askSteps)
-        // bid-СѓСЂРѕРІРµРЅСЊ РЅР° 49900
+        // bid-уровень на 49900
         assertEquals(200L, levels[2].bidSteps)
         assertNull(levels[2].askSteps)
     }
 
     @Test
     fun `ask wins over bid on the same price (one side rule)`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.0)),
                 asks = listOf(PriceUpdate(50000.0, 2.0))
             )
@@ -247,7 +267,7 @@ class DomViewModelTest {
 
     @Test
     fun `aggregation buckets levels`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
@@ -256,9 +276,9 @@ class DomViewModelTest {
         )
         advanceUntilIdle()
 
-        // 50001, 50005, 50009 в†’ РѕРґРЅР° РєРѕСЂР·РёРЅР° 50000; 50010 в†’ 50010
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        // 50001, 50005, 50009 → одна корзина 50000; 50010 → 50010
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(
                     PriceUpdate(50001.0, 1.0),
                     PriceUpdate(50005.0, 2.0),
@@ -279,13 +299,13 @@ class DomViewModelTest {
 
     @Test
     fun `window keeps all levels - ladder shows full book`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
         // 30 bid-уровней — окно сохраняется целиком (без обрезки: лесенка скроллится по цене)
         val bids = (0 until 30).map { i -> PriceUpdate((50000.0 - i), 1.0) }
-        fakeDomRepository.domEventsFlow.emit(DomEvent.BookWindow(bids = bids, asks = emptyList()))
+        fakeDomAdapter.windowFlow.emit(BookWindowLevels(bids = bids, asks = emptyList()))
         advanceUntilIdle()
 
         assertEquals(30, viewModel.sortedLevels.size)
@@ -298,8 +318,9 @@ class DomViewModelTest {
         // Окно приходит ДО метаданных (fetch задержан на 500мс) — уровней ещё нет.
         // runCurrent обрабатывает задачи только в текущем виртуальном времени (t=0),
         // не пересекая delay(500) — окно успевает прийти первым
-        fakeDomRepository.domEventsFlow.emit(
-            DomEvent.BookWindow(
+        runCurrent() // даём подписке (callbackFlow + адаптеры) подняться без продвижения времени
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5)),
                 asks = listOf(PriceUpdate(50100.0, 0.8))
             )
@@ -310,7 +331,7 @@ class DomViewModelTest {
         assertEquals(1, viewModel.windowAsks.size)
 
         // Приходят метаданные (tickSize=1.0, stepSize=0.01) — книга строится из последнего окна
-        fakeSymbolInfoRepository.tickSize = 1.0
+        fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()
 
@@ -325,8 +346,10 @@ class DomViewModelTest {
 
     @Test
     fun `fetchSymbolTickSize updates tickSize`() = testScope.runTest {
-        fakeSymbolInfoRepository.tickSize = 0.01
-        viewModel.updateDomOptions(DomOptions.default().copy(symbol = TradingSymbol("BTCUSDT", "BTC/USDT", TradingProvider.BINANCE)))
+        fakeSymbolInfoAdapter.tickSize = 0.01
+        viewModel.updateDomOptions(
+            DomOptions.default().copy(symbol = TradingSymbol("BTCUSDT", "BTC/USDT", "binance-nous-0.0.1"))
+        )
         advanceUntilIdle()
 
         // Wait for fetch (there's a delay in init)
@@ -338,19 +361,29 @@ class DomViewModelTest {
     }
 }
 
-// Fake repositories
-class FakeDomRepository : DomRepository {
-    val domEventsFlow = MutableSharedFlow<DomEvent>(extraBufferCapacity = 10)
+// Fake adapters / provider
+
+class FakeDomAdapter : DomAdapter {
+    val windowFlow = MutableSharedFlow<BookWindowLevels>(extraBufferCapacity = 10)
     var lastSubscribedSymbol: String? = null
     var lastSubscribedDepth: Int? = null
 
-    override suspend fun subscribeToDomEvents(symbol: String, depth: Int) = domEventsFlow.also {
-        lastSubscribedSymbol = symbol
-        lastSubscribedDepth = depth
-    }
+    override suspend fun subscribeToBookWindow(symbol: String, depth: Int): Flow<BookWindowLevels> =
+        windowFlow.also {
+            lastSubscribedSymbol = symbol
+            lastSubscribedDepth = depth
+        }
 }
 
-class FakeSymbolInfoRepository : SymbolInfoRepository {
+class FakeBookTickerAdapter : BookTickerAdapter {
+    val tickerFlow = MutableSharedFlow<BookTicker>(extraBufferCapacity = 10)
+
+    override fun subscribeToBookTicker(symbol: String): Flow<BookTicker> = tickerFlow
+
+    override suspend fun getBookTickerRest(symbol: String): BookTicker? = null
+}
+
+class FakeSymbolInfoAdapter : SymbolInfoAdapter {
     var tickSize: Double? = null
 
     override suspend fun getSymbolInfo(symbol: String): SymbolInfo? {
@@ -367,4 +400,23 @@ class FakeSymbolInfoRepository : SymbolInfoRepository {
             )
         }
     }
+}
+
+class FakeDomProvider(
+    private val domAdapter: DomAdapter,
+    private val bookTickerAdapter: BookTickerAdapter,
+    private val symbolInfoAdapter: SymbolInfoAdapter,
+) : Provider {
+    override val providerId = "binance-nous-0.0.1"
+    override val providerName = "binance-nous"
+    override val version = "0.0.1"
+    override val config = ProviderConfig(displayName = "Binance")
+    override val networkManager: NetworkManager get() = error("not used")
+    override val trades: TradesAdapter? = null
+    override val dom: DomAdapter? = domAdapter
+    override val bookTicker: BookTickerAdapter? = bookTickerAdapter
+    override val chart: ChartAdapter? = null
+    override val trading: TradingAdapter? = null
+    override val symbolInfo: SymbolInfoAdapter? = symbolInfoAdapter
+    override val liquidation: LiquidationAdapter? = null
 }

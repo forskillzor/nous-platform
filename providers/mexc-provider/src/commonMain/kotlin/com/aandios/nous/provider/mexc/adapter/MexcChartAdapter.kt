@@ -13,6 +13,7 @@ import com.aandios.nous.provider.mexc.MexcRestGate
 import com.aandios.nous.provider.mexc.MexcStreamHub
 import com.aandios.nous.provider.mexc.MexcSubscriptions
 import com.aandios.nous.provider.mexc.MexcTimeframes
+import com.aandios.nous.provider.mexc.toMexcSymbol
 import com.aandios.nous.provider.mexc.MexcWeights
 import com.aandios.nous.provider.mexc.model.MexcKlinePush
 import com.aandios.nous.provider.mexc.model.MexcKlineResponse
@@ -45,7 +46,7 @@ class MexcChartAdapter(
         key = "kline:$symbol:$interval:$limit",
         weight = MexcWeights.KLINE,
     ) {
-        val response = client.get("$MEXC_BASE_URL/api/v1/contract/kline/$symbol") {
+        val response = client.get("$MEXC_BASE_URL/api/v1/contract/kline/${toMexcSymbol(symbol)}") {
             parameter("interval", MexcTimeframes.toMexc(interval))
         }.body<MexcKlineResponse>()
         // Без start/end сервер отдаёт последние 2000 баров — берём нужный хвост
@@ -61,7 +62,7 @@ class MexcChartAdapter(
         key = "klineBefore:$symbol:$interval:$endTime:$limit",
         weight = MexcWeights.KLINE,
     ) {
-        val response = client.get("$MEXC_BASE_URL/api/v1/contract/kline/$symbol") {
+        val response = client.get("$MEXC_BASE_URL/api/v1/contract/kline/${toMexcSymbol(symbol)}") {
             parameter("interval", MexcTimeframes.toMexc(interval))
             parameter("end", endTime / 1000) // MEXC принимает end в секундах
         }.body<MexcKlineResponse>()
@@ -72,8 +73,9 @@ class MexcChartAdapter(
         symbol: String,
         interval: String
     ): Flow<Candle> {
+        val mexcSymbol = toMexcSymbol(symbol)
         val mexcInterval = MexcTimeframes.toMexc(interval)
-        val sub = MexcSubscriptions.kline(symbol, mexcInterval)
+        val sub = MexcSubscriptions.kline(mexcSymbol, mexcInterval)
         return streamHub.subscribe(sub).map { text ->
             json.decodeFromString<MexcKlinePush>(text).data?.toCandle()
         }.mapNotNull { it }

@@ -21,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aandios.nous.feature.dom.domain.TradingProvider
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 
 /**
@@ -30,7 +29,7 @@ import com.aandios.nous.feature.dom.domain.TradingSymbol
  */
 @Composable
 fun CompactProviderSymbol(
-    tradingProvider: TradingProvider,
+    providerDisplayName: String,
     tradingSymbol: TradingSymbol,
     modifier: Modifier = Modifier.Companion
 ) {
@@ -51,7 +50,7 @@ fun CompactProviderSymbol(
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = tradingProvider.displayName,
+                    text = providerDisplayName,
                     color = MaterialTheme.colorScheme.inverseOnSurface,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold

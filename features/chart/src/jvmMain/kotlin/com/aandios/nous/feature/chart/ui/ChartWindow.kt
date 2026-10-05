@@ -28,6 +28,7 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
 import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.feature.chart.di.initKoinForPreview
@@ -52,7 +53,6 @@ import org.koin.core.context.stopKoin
 @Composable
 fun ChartWindow() {
     val chartViewModel: ChartViewModel = koinInject()
-    val liquidationViewModel: LiquidationViewModel = koinInject()
     val previewScope = rememberCoroutineScope()
 
     val persistor = remember {
@@ -71,7 +71,6 @@ fun ChartWindow() {
 
     ChartWindowContent(
         chartViewModel = chartViewModel,
-        liquidationViewModel = liquidationViewModel,
         initialZoomLevel = initialZoom,
         onZoomChange = { zoom ->
             persistor?.let { p -> previewScope.launch { p.saveZoom(zoom) } }
@@ -94,11 +93,9 @@ fun ChartWindow(
     workspaceId: String? = null,
     panelId: String? = null,
 ) {
-    val liquidationViewModel: LiquidationViewModel = koinInject()
     ChartWindowContent(
         chartViewModel = chartViewModel,
         modifier = modifier,
-        liquidationViewModel = liquidationViewModel,
         initialZoomLevel = initialZoomLevel,
         onZoomChange = onZoomChange,
         workspaceId = workspaceId,
@@ -110,14 +107,21 @@ fun ChartWindow(
 private fun ChartWindowContent(
     chartViewModel: ChartViewModel,
     modifier: Modifier = Modifier,
-    liquidationViewModel: LiquidationViewModel,
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
     workspaceId: String? = null,
     panelId: String? = null,
 ) {
     val uiState by chartViewModel.state.collectAsState()
-    val provider: Provider = koinInject()
+    val registry: ProviderRegistry = koinInject()
+
+    // Ликвидации — от адаптера АКТИВНОГО провайдера (у MEXC его нет → null)
+    val liquidationViewModel = remember(registry) {
+        LiquidationViewModel(registry.get(uiState.currentProviderId)?.liquidation)
+    }
+    LaunchedEffect(uiState.currentProviderId) {
+        liquidationViewModel.setAdapter(registry.get(uiState.currentProviderId)?.liquidation)
+    }
 
     val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter) {
         DefaultChartConfig.copy(
@@ -170,13 +174,10 @@ private fun ChartWindowContent(
     ) {
         // Верхняя панель — всегда видна, не зависит от состояния загрузки графика:
         // символ/ТФ/режим/агрегацию можно менять даже при Loading/Error.
-        val exchanges = remember(provider) {
-            runCatching {
-                org.koin.core.context.GlobalContext.get().getAll<Provider>()
-                    .map { it.config.displayName }.distinct()
-            }.getOrNull() ?: listOf(provider.config.displayName)
-        }
-        var currentExchange by remember(provider) { mutableStateOf(provider.config.displayName) }
+        // Список бирж — только реально зарегистрированные провайдеры (ProviderRegistry).
+        val exchanges = registry.providers.map { it.config.displayName }
+        val currentExchange = registry.displayName(uiState.currentProviderId)
+            .ifEmpty { registry.first()?.config?.displayName.orEmpty() }
 
         ChartToolbar(
             currentSymbol = uiState.currentSymbol,
@@ -186,7 +187,11 @@ private fun ChartWindowContent(
             onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
             exchanges = exchanges,
             currentExchange = currentExchange,
-            onExchangeChange = { currentExchange = it },
+            onExchangeChange = { name ->
+                registry.idByDisplayName(name)?.let { id ->
+                    chartViewModel.dispatch(ChartIntent.SelectProvider(id))
+                }
+            },
             chartMode = uiState.chartMode,
             onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
             symbolsWithFootprint = uiState.symbolsWithFootprint,
@@ -218,7 +223,7 @@ private fun ChartWindowContent(
                     Spacer(Modifier.width(10.dp))
                     Column(verticalArrangement = Arrangement.Center) {
                         Text(
-                            text = provider.config.displayName,
+                            text = currentExchange,
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,

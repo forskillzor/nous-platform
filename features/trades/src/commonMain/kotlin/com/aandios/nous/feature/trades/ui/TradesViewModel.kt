@@ -5,10 +5,11 @@
 
 package com.aandios.nous.feature.trades.ui
 
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.trades.Trade
-import com.aandios.nous.core.domain.repository.SymbolInfoRepository
-import com.aandios.nous.core.domain.repository.TradesRepository
+import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
+import com.aandios.nous.core.data.repository.TradesRepositoryImpl
 import com.aandios.nous.core.Disposable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,14 +49,17 @@ sealed class TradesState {
 }
 
 class TradesViewModel(
-    private val tradesRepository: TradesRepository,
-    private val symbolInfoRepository: SymbolInfoRepository? = null,
+    private val providerRegistry: ProviderRegistry,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var subscriptionJob: Job? = null
 
     private val _state = MutableStateFlow<TradesState>(TradesState.Loading)
     val state: StateFlow<TradesState> = _state.asStateFlow()
+
+    // Текущий провайдер данных (id из ProviderRegistry)
+    private val _currentProviderId = MutableStateFlow(providerRegistry.first()?.providerId.orEmpty())
+    val currentProviderId: StateFlow<String> = _currentProviderId.asStateFlow()
 
     // Основной фид: держим как можно дольше (500 последних сделок).
     private val maxTrades = 500
@@ -187,6 +191,17 @@ class TradesViewModel(
         _customPresets.value = presets.sorted()
     }
 
+    /** Смена провайдера данных: переподписка на текущий символ + перезагрузка символов. */
+    fun selectProvider(providerId: String) {
+        if (_currentProviderId.value == providerId) return
+        _currentProviderId.value = providerId
+        _filteredBuffer.value = emptyList()
+        subscribedSymbol = ""
+        loadSymbols()
+        val symbol = _currentSymbol.value
+        if (symbol.isNotEmpty()) subscribeToTrades(symbol)
+    }
+
     fun subscribeToTrades(symbol: String) {
         if (symbol == subscribedSymbol && _state.value is TradesState.Connected) return
         subscribedSymbol = symbol
@@ -199,8 +214,17 @@ class TradesViewModel(
         // Загружаем SymbolInfo для нового символа
         fetchSymbolInfo(symbol)
 
+        val provider = providerRegistry.get(_currentProviderId.value)
+        val tradesAdapter = provider?.trades
+        if (tradesAdapter == null) {
+            println("❌ Trades: provider ${provider?.config?.displayName ?: _currentProviderId.value} has no trades adapter")
+            _state.value = TradesState.Error("Trades adapter not available")
+            return
+        }
+        val repository = TradesRepositoryImpl(tradesAdapter = tradesAdapter)
+
         subscriptionJob = viewModelScope.launch {
-            tradesRepository.getTradesStream(symbol)
+            repository.getTradesStream(symbol)
                 .catch { e ->
                     println("❌ Trades subscription error: ${e.message}")
                     _state.value = TradesState.Error("Ошибка: ${e.message}")
@@ -220,11 +244,12 @@ class TradesViewModel(
     }
 
     private fun loadSymbols() {
-        if (symbolInfoRepository == null) return
+        val symbolInfoAdapter = providerRegistry.get(_currentProviderId.value)?.symbolInfo ?: return
 
         viewModelScope.launch {
             try {
-                val allSymbols = symbolInfoRepository?.getAllSymbolsInfo() ?: emptyList()
+                val repository = SymbolInfoRepositoryImpl(symbolInfoAdapter)
+                val allSymbols = repository.getAllSymbolsInfo()
                 val tradingSymbols = allSymbols
                     .filter { it.status == "TRADING" }
                     .sortedBy { it.symbol }
@@ -238,11 +263,11 @@ class TradesViewModel(
     }
 
     private fun fetchSymbolInfo(symbol: String) {
-        if (symbolInfoRepository == null) return
+        val symbolInfoAdapter = providerRegistry.get(_currentProviderId.value)?.symbolInfo ?: return
 
         viewModelScope.launch {
             try {
-                val symbolInfo = symbolInfoRepository.getSymbolInfo(symbol)
+                val symbolInfo = SymbolInfoRepositoryImpl(symbolInfoAdapter).getSymbolInfo(symbol)
                 _currentSymbolInfo.value = symbolInfo
             } catch (e: Exception) {
                 println("❌ TradesVM: Failed to fetch symbolInfo for $symbol: ${e.message}")

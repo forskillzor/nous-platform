@@ -17,12 +17,14 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.api.market.Provider
 import com.aandios.nous.feature.dom.domain.*
 
 @Composable
 fun DomHeader(
     domOptions: DomOptions,
     onDomOptionsChanged: (DomOptions) -> Unit,
+    providers: List<Provider> = emptyList(),
     loadedSymbols: List<TradingSymbol> = emptyList(),
     isLive: Boolean = true,
     symbolTickSize: Double? = null,
@@ -31,7 +33,8 @@ fun DomHeader(
     if (domOptions.collapsed) {
         // Компактный режим: только provider и symbol
         DomHeaderCompact(
-            tradingProvider = domOptions.provider,
+            providerDisplayName = providers.firstOrNull { it.providerId == domOptions.provider }
+                ?.config?.displayName ?: domOptions.provider,
             tradingSymbol = domOptions.symbol,
             isLive = isLive,
             isExpanded = false,
@@ -43,6 +46,7 @@ fun DomHeader(
         ExpandedDomHeader(
             domOptions = domOptions,
             onDomOptionsChanged = onDomOptionsChanged,
+            providers = providers,
             loadedSymbols = loadedSymbols,
             isLive = isLive,
             symbolTickSize = symbolTickSize,
@@ -58,6 +62,7 @@ fun DomHeader(
 private fun ExpandedDomHeader(
     domOptions: DomOptions,
     onDomOptionsChanged: (DomOptions) -> Unit,
+    providers: List<Provider> = emptyList(),
     loadedSymbols: List<TradingSymbol> = emptyList(),
     isLive: Boolean = true,
     symbolTickSize: Double? = null,
@@ -80,9 +85,10 @@ private fun ExpandedDomHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Provider dropdown с label
+                // Provider dropdown с label — только реально реализованные провайдеры
                 TradingProviderDropdown(
-                    currentProvider = domOptions.provider,
+                    currentProviderId = domOptions.provider,
+                    providers = providers,
                     onProviderChanged = { newProvider ->
                         onDomOptionsChanged(domOptions.copy(provider = newProvider))
                     },
@@ -139,7 +145,6 @@ private fun ExpandedDomHeader(
                 // Symbol dropdown с label
                 DomSymbolDropdown(
                     currentSymbol = domOptions.symbol,
-                    provider = domOptions.provider,
                     availableSymbols = loadedSymbols,
                     onSymbolChanged = { newSymbol ->
                         onDomOptionsChanged(domOptions.copy(symbol = newSymbol))

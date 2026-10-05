@@ -13,6 +13,7 @@ import com.aandios.nous.api.market.model.orderbook.PriceUpdate
 import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.provider.mexc.MexcTimeframes
+import com.aandios.nous.provider.mexc.fromMexcSymbol
 import kotlinx.serialization.Serializable
 
 // ── REST: kline ─────────────────────────────────────────────────────────────
@@ -137,7 +138,7 @@ data class MexcTickerData(
     val timestamp: Long = 0,
 ) {
     fun toBookTicker(): BookTicker = BookTicker(
-        symbol = symbol,
+        symbol = fromMexcSymbol(symbol), // единый формат платформы (BTCUSDT)
         bestBid = bid1,
         bestBidQty = 0.0, // MEXC ticker не отдаёт объёмы по лучшим ценам
         bestAsk = ask1,
@@ -178,7 +179,7 @@ data class MexcContractDetail(
     val state: Int = -1,
 ) {
     fun toSymbolInfo(): SymbolInfo = SymbolInfo(
-        symbol = symbol,
+        symbol = fromMexcSymbol(symbol), // единый формат платформы (BTCUSDT)
         tickSize = priceUnit.takeIf { it > 0 } ?: 0.01,
         stepSize = volUnit.takeIf { it > 0 } ?: 0.001,
         minQty = minVol,

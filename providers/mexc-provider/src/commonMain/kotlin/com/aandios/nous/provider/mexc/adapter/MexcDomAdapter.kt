@@ -9,6 +9,7 @@ import com.aandios.nous.api.market.ProviderConfig
 import com.aandios.nous.api.market.adapters.DomAdapter
 import com.aandios.nous.api.market.model.orderbook.BookWindowLevels
 import com.aandios.nous.provider.mexc.MexcStreamHub
+import com.aandios.nous.provider.mexc.toMexcSymbol
 import com.aandios.nous.provider.mexc.MexcSubscriptions
 import com.aandios.nous.provider.mexc.model.MexcDepthPush
 import io.ktor.client.HttpClient
@@ -35,7 +36,7 @@ class MexcDomAdapter(
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     override suspend fun subscribeToBookWindow(symbol: String, depth: Int): Flow<BookWindowLevels> {
-        val sub = MexcSubscriptions.depthFull(symbol, SUBSCRIBED_LEVELS)
+        val sub = MexcSubscriptions.depthFull(toMexcSymbol(symbol), SUBSCRIBED_LEVELS)
         return streamHub.subscribe(sub).map { text ->
             val levels = json.decodeFromString<MexcDepthPush>(text)
                 .data?.toBookWindowLevels() ?: BookWindowLevels(emptyList(), emptyList())

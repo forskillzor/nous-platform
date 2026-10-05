@@ -8,18 +8,12 @@ package com.aandios.nous.feature.chart.di
 import com.aandios.nous.api.market.NetworkManager
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderConfig
-import com.aandios.nous.api.market.adapters.ChartAdapter
-import com.aandios.nous.api.market.adapters.LiquidationAdapter
-import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
-import com.aandios.nous.api.market.adapters.TradesAdapter
-import com.aandios.nous.core.data.repository.ChartRepositoryImpl
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.di.coreModule
 import com.aandios.nous.core.domain.cache.CandleCacheStore
 import com.aandios.nous.core.domain.cache.FootprintCacheStore
-import com.aandios.nous.core.domain.repository.ChartRepository
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
-import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous.provider.binance.BinanceProviderFactory
@@ -45,78 +39,34 @@ fun initKoinForPreview() {
 
 val featureChartModule = module {
 
-    // 1. Конфигурация для превью (без ключей, основная сеть)
-    single<ProviderConfig> {
-        ProviderConfig(
-            apiKey = null,
-            secretKey = null,
-            isTestnet = false,
-            customSettings = emptyMap()
-        )
-    }
-
-    // 2. Создаём Provider напрямую через фабрику
+    // 1. Провайдер Binance (превью живут на одном провайдере) + реестр
     single<Provider> {
-        val config = get<ProviderConfig>()
-        val networkManager = get<NetworkManager>()
-
         BinanceProviderFactory().createProvider(
-            config = config,
-            networkManager = networkManager
+            config = ProviderConfig(displayName = "Binance"),
+            networkManager = get<NetworkManager>(),
         )
     }
+    single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
 
-    // 3. Адаптер Chart из провайдера
-    single<ChartAdapter> {
-        get<Provider>().chart ?: error("Chart adapter not available")
-    }
-
-    // 4. Репозиторий Chart (используем готовый из platform-core)
-    single<ChartRepository> {
-        ChartRepositoryImpl(chartAdapter = get())
-    }
-
-    // 5. SymbolInfo adapter из провайдера
-    single<SymbolInfoAdapter> {
-        get<Provider>().symbolInfo ?: error("SymbolInfo adapter not available")
-    }
-
-    // 6. Footprint API client (подключается к market-data-server)
+    // 2. Footprint API client (подключается к market-data-server)
     single<FootprintApiClient> {
         FootprintApiClient(httpClient = get<NetworkManager>().httpClient)
     }
 
-    // 6.5 Trades adapter from provider (for live footprint)
-    single<TradesAdapter> {
-        get<Provider>().trades ?: error("Trades adapter not available")
-    }
-
-    // 6.6 Liquidation adapter from provider
-    single<LiquidationAdapter?> {
-        get<Provider>().liquidation
-    }
-
-    // 6.7 Локальное хранилище и кэш свечей/footprint (та же БД, что и в composeApp)
+    // 3. Локальное хранилище и кэш свечей/footprint (та же БД, что и в composeApp)
     single<LocalStorage> { LocalStorage() }
     single<StateStore> { get<LocalStorage>() }
     single<CandleCacheStore> { get<LocalStorage>() }
     single<FootprintCacheStore> { get<LocalStorage>() }
 
-    // 7. ViewModel
+    // 4. ViewModel — адаптеры резолвятся из реестра по выбранному провайдеру
     factory {
         ChartViewModel(
-            chartRepository = get(),
-            symbolInfoAdapter = get(),
+            providerRegistry = get(),
             footprintApiClient = get(),
-            tradesAdapter = get(),
             stateStore = get(),
             candleCache = get(),
             footprintCache = get(),
         )
-    }
-
-    // 8. Indicator ViewModels
-    factory {
-        LiquidationViewModel(liquidationAdapter = get())
     }
 }

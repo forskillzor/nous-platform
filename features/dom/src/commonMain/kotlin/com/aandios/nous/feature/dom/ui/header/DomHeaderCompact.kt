@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.aandios.nous.feature.dom.domain.TradingProvider
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 
 /**
@@ -24,7 +23,7 @@ import com.aandios.nous.feature.dom.domain.TradingSymbol
  */
 @Composable
 fun DomHeaderCompact(
-    tradingProvider: TradingProvider,
+    providerDisplayName: String,
     tradingSymbol: TradingSymbol,
     isLive: Boolean = true,
     isExpanded: Boolean = false,
@@ -45,7 +44,7 @@ fun DomHeaderCompact(
         ) {
             // Provider и symbol
             CompactProviderSymbol(
-                tradingProvider = tradingProvider,
+                providerDisplayName = providerDisplayName,
                 tradingSymbol = tradingSymbol,
                 modifier = Modifier.weight(1f)
             )

@@ -22,7 +22,7 @@ data class LiquidationState(
  * история за последний час + realtime WebSocket.
  */
 class LiquidationViewModel(
-    private val liquidationAdapter: LiquidationAdapter?
+    private var liquidationAdapter: LiquidationAdapter?
 ) {
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var controller: TimeSeriesController<LiquidationOrder>? = null
@@ -31,7 +31,18 @@ class LiquidationViewModel(
     private val _state = MutableStateFlow(LiquidationState())
     val state: StateFlow<LiquidationState> = _state.asStateFlow()
 
+    /** Переключение адаптера (смена провайдера): переподписываемся на текущий символ. */
+    fun setAdapter(adapter: LiquidationAdapter?) {
+        if (adapter === liquidationAdapter) return
+        val currentSymbol = lastSymbol
+        liquidationAdapter = adapter
+        if (currentSymbol != null) subscribe(currentSymbol)
+    }
+
+    private var lastSymbol: String? = null
+
     fun subscribe(symbol: String) {
+        lastSymbol = symbol
         unsubscribe()
         val adapter = liquidationAdapter
         if (adapter == null) {

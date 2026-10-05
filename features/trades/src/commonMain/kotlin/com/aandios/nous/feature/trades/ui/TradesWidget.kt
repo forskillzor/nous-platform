@@ -40,6 +40,8 @@ fun TradesWidget(
     viewModel: TradesViewModel,
     currentSymbol: String,
     onSymbolChanged: (String) -> Unit,
+    providers: List<com.aandios.nous.api.market.Provider> = emptyList(),
+    onProviderChanged: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -47,6 +49,7 @@ fun TradesWidget(
     val currentSymbolInfo by viewModel.currentSymbolInfo.collectAsState()
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
     val customPresets by viewModel.customPresets.collectAsState()
+    val currentProviderId by viewModel.currentProviderId.collectAsState()
     // Подписка на буфер отфильтрованных сделок — триггерит рекомпозицию
     // при reseed фильтра, даже если фид не менялся.
     val filteredBuffer by viewModel.filteredBuffer.collectAsState()
@@ -73,6 +76,9 @@ fun TradesWidget(
             currentSymbolInfo = currentSymbolInfo,
             selectedSizeFilter = selectedSizeFilter,
             customPresets = customPresets,
+            providers = providers,
+            currentProviderId = currentProviderId,
+            onProviderChanged = onProviderChanged,
             onSymbolChanged = onSymbolChanged,
             onFilterChanged = { viewModel.updateSizeFilter(it) },
             onPresetAdd = { viewModel.addPreset(it) },

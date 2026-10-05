@@ -12,6 +12,7 @@ import com.aandios.nous.provider.mexc.MEXC_BASE_URL
 import com.aandios.nous.provider.mexc.MexcRestGate
 import com.aandios.nous.provider.mexc.MexcStreamHub
 import com.aandios.nous.provider.mexc.MexcSubscriptions
+import com.aandios.nous.provider.mexc.toMexcSymbol
 import com.aandios.nous.provider.mexc.MexcWeights
 import com.aandios.nous.provider.mexc.model.MexcTickerPush
 import com.aandios.nous.provider.mexc.model.MexcTickerResponse
@@ -42,7 +43,7 @@ class MexcBookTickerAdapter(
     }
 
     override fun subscribeToBookTicker(symbol: String): Flow<BookTicker> {
-        val sub = MexcSubscriptions.ticker(symbol)
+        val sub = MexcSubscriptions.ticker(toMexcSymbol(symbol))
         return streamHub.subscribe(sub).map { text ->
             json.decodeFromString<MexcTickerPush>(text).data?.toBookTicker()
         }.mapNotNull { it }
@@ -52,7 +53,7 @@ class MexcBookTickerAdapter(
         return try {
             restGate.execute(key = "ticker:$symbol", weight = MexcWeights.TICKER) {
                 val response = client.get("$MEXC_BASE_URL/api/v1/contract/ticker") {
-                    parameter("symbol", symbol)
+                    parameter("symbol", toMexcSymbol(symbol))
                 }.body<MexcTickerResponse>()
 
                 response.data?.toBookTicker()

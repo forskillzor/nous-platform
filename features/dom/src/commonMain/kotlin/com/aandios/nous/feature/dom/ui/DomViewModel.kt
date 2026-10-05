@@ -7,11 +7,15 @@ package com.aandios.nous.feature.dom.ui
 
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import com.aandios.nous.api.market.Provider
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
 import com.aandios.nous.api.market.model.orderbook.DomEvent
 import com.aandios.nous.core.Disposable
+import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.repository.DomRepository
 import com.aandios.nous.core.domain.repository.SymbolInfoRepository
+import com.aandios.nous.feature.dom.data.repository.DomRepositoryImpl
 import com.aandios.nous.feature.dom.domain.DomOptions
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
@@ -30,12 +34,12 @@ import kotlin.math.roundToLong
  * книгу — [levels] (SnapshotStateMap, O(1), точечная инвалидация), а UI
  * читает отсортированный вид [sortedLevels] (derivedStateOf).
  *
- * События обрабатываются на Main-диспетчере — записи и чтения UI на одном
- * потоке, гонок нет в принципе; рекомпозиция коалесцируется по кадрам.
+ * Провайдер данных выбирается через [ProviderRegistry]: адаптеры резолвятся
+ * по [DomOptions.provider] (id зарегистрированного провайдера), переключение
+ * — обычная смена опций с переподпиской.
  */
 class DomViewModel(
-    private val domRepository: DomRepository,
-    private val symbolInfoRepository: SymbolInfoRepository? = null,
+    private val providerRegistry: ProviderRegistry,
     private val coroutineDispatcher: CoroutineDispatcher? = null,
 ) : Disposable {
     private val dispatcher = coroutineDispatcher ?: Dispatchers.Main
@@ -105,7 +109,7 @@ class DomViewModel(
     }
 
     init {
-        loadSymbols()
+        loadSymbols(_domOptions.value.provider)
         viewModelScope.launch {
             delay(500)
             fetchSymbolMetadata(_domOptions.value.symbol.symbol)
@@ -120,15 +124,19 @@ class DomViewModel(
             _domOptions.value = newOptions
             updateAggMultiplier()
 
+            val providerChanged = oldOptions.provider != newOptions.provider
             val subscriptionChanged =
-                oldOptions.provider != newOptions.provider ||
+                providerChanged ||
                 oldOptions.symbol != newOptions.symbol ||
                 oldOptions.depth != newOptions.depth
 
             if (subscriptionChanged) {
                 restartSubscription(newOptions)
             }
-            if (oldOptions.symbol != newOptions.symbol) {
+            if (providerChanged) {
+                loadSymbols(newOptions.provider)
+                fetchSymbolMetadata(newOptions.symbol.symbol)
+            } else if (oldOptions.symbol != newOptions.symbol) {
                 fetchSymbolMetadata(newOptions.symbol.symbol)
             }
             if (aggChanged && !subscriptionChanged) {
@@ -154,7 +162,19 @@ class DomViewModel(
         levels.clear()
         _bestPrices.value = BestPricesState()
 
-        domRepository.subscribeToDomEvents(
+        val provider = providerRegistry.get(options.provider) ?: run {
+            println("❌ DOM: provider ${options.provider} not registered")
+            return
+        }
+        val domAdapter = provider.dom
+        val bookTickerAdapter = provider.bookTicker
+        if (domAdapter == null || bookTickerAdapter == null) {
+            println("❌ DOM: provider ${provider.config.displayName} has no DOM/bookTicker adapters")
+            return
+        }
+        val repository: DomRepository = DomRepositoryImpl(domAdapter, bookTickerAdapter)
+
+        repository.subscribeToDomEvents(
             symbol = options.symbol.symbol,
             depth = options.depth.value
         ).catch { e ->
@@ -275,14 +295,15 @@ class DomViewModel(
 
     // ── Загрузка метаданных ──
 
-    private fun loadSymbols() {
-        if (symbolInfoRepository == null) return
+    private fun loadSymbols(providerId: String) {
+        val symbolInfoAdapter = providerRegistry.get(providerId)?.symbolInfo ?: return
+        val repository: SymbolInfoRepository = SymbolInfoRepositoryImpl(symbolInfoAdapter)
         viewModelScope.launch {
             try {
-                val allSymbols = symbolInfoRepository.getAllSymbolsInfo() ?: emptyList()
+                val allSymbols = repository.getAllSymbolsInfo()
                 val tradingSymbols = allSymbols
                     .filter { it.status == "TRADING" }
-                    .map { TradingSymbol.fromSymbolInfo(it, _domOptions.value.provider) }
+                    .map { TradingSymbol.fromSymbolInfo(it, providerId) }
                     .sortedBy { it.symbol }
                 if (tradingSymbols.isNotEmpty()) _loadedSymbols.value = tradingSymbols
             } catch (e: Exception) {
@@ -292,7 +313,9 @@ class DomViewModel(
     }
 
     private fun fetchSymbolMetadata(symbol: String) {
-        if (symbolInfoRepository == null) return
+        val symbolInfoRepository = providerRegistry.get(_domOptions.value.provider)
+            ?.symbolInfo?.let { SymbolInfoRepositoryImpl(it) }
+            ?: return
         viewModelScope.launch {
             try {
                 val info = symbolInfoRepository.getSymbolInfo(symbol) ?: return@launch

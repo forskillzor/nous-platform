@@ -16,6 +16,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.dom.di.initKoinForPreview
 import com.aandios.nous.feature.dom.ui.content.DomContent
@@ -39,6 +40,7 @@ fun DomWindow(
     domViewModel: DomViewModel,
     modifier: Modifier = Modifier,
 ) {
+    val registry: ProviderRegistry = koinInject()
     val domOptions by domViewModel.domOptions.collectAsState()
     val loadedSymbols by domViewModel.loadedSymbols.collectAsState()
     val orderQuantity by domViewModel.orderQuantity.collectAsState()
@@ -69,6 +71,7 @@ fun DomWindow(
             domOptions = domOptions,
             symbolTickSize = symbolTickSize,
             loadedSymbols = loadedSymbols,
+            providers = registry.providers,
             onDomOptionsChanged = { newOptions -> domViewModel.updateDomOptions(newOptions) }
         )
         Box(

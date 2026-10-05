@@ -12,6 +12,7 @@ import com.aandios.nous.provider.mexc.MEXC_BASE_URL
 import com.aandios.nous.provider.mexc.MexcRestGate
 import com.aandios.nous.provider.mexc.MexcWeights
 import com.aandios.nous.provider.mexc.currentTimeMillis
+import com.aandios.nous.provider.mexc.fromMexcSymbol
 import com.aandios.nous.provider.mexc.model.MexcContractDetail
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -46,7 +47,7 @@ class MexcSymbolInfoAdapter(
     private var cachedAt = 0L
 
     override suspend fun getSymbolInfo(symbol: String): SymbolInfo? {
-        return allSymbols().firstOrNull { it.symbol == symbol }
+        return allSymbols().firstOrNull { it.symbol == symbol || it.symbol == fromMexcSymbol(symbol) }
     }
 
     override suspend fun getAllSymbolsInfo(): List<SymbolInfo> = allSymbols()

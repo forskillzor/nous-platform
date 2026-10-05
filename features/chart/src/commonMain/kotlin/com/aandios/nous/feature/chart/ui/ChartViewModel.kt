@@ -5,10 +5,11 @@
 
 package com.aandios.nous.feature.chart.ui
 
-import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
-import com.aandios.nous.api.market.adapters.TradesAdapter
+import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
+import com.aandios.nous.core.data.repository.ChartRepositoryImpl
+import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.cache.CandleCacheStore
 import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.domain.repository.ChartRepository
@@ -26,10 +27,8 @@ import kotlinx.coroutines.flow.*
 import kotlin.coroutines.cancellation.CancellationException
 
 class ChartViewModel(
-    private val chartRepository: ChartRepository,
-    private val symbolInfoAdapter: SymbolInfoAdapter,
+    private val providerRegistry: ProviderRegistry,
     private val footprintApiClient: FootprintApiClient? = null,
-    private val tradesAdapter: TradesAdapter? = null,
     stateStore: StateStore? = null,
     private val candleCache: CandleCacheStore? = null,
     footprintCache: FootprintCacheStore? = null,
@@ -44,11 +43,8 @@ class ChartViewModel(
 
     private val _symbolInfoMap = MutableStateFlow<Map<String, SymbolInfo>>(emptyMap())
 
-    private val footprintController = FootprintController(
-        footprintApiClient = footprintApiClient,
-        tradesAdapter = tradesAdapter,
-        footprintCache = footprintCache,
-    )
+    private val footprintCacheStore: FootprintCacheStore? = footprintCache
+    private var footprintController: FootprintController? = null
     private val persistor = stateStore?.let { ChartStatePersistor(it) }
 
     private var candleController: TimeSeriesController<Candle>? = null
@@ -60,21 +56,11 @@ class ChartViewModel(
     private var lastSnapshotSymbol: String = ""
     private var lastSnapshotTimeframe: String = ""
 
+    /** Текущий провайдер данных (по умолчанию — первый из реестра). */
+    private var activeProviderId: String = providerRegistry.first()?.providerId.orEmpty()
+
     init {
-        viewModelScope.launch {
-            footprintController.state.collect { fp ->
-                _state.update {
-                    it.copy(
-                        footprintCandles = fp.candles,
-                        liveFootprintCandle = fp.liveCandle,
-                        footprintCurrentPrice = fp.currentPrice,
-                        footprintLoading = fp.loading,
-                        footprintError = fp.error,
-                        hasMoreFootprintHistory = fp.hasMoreHistory,
-                    )
-                }
-            }
-        }
+        _state.update { it.copy(currentProviderId = activeProviderId) }
         loadSymbols()
         loadFootprintSymbols()
     }
@@ -83,7 +69,7 @@ class ChartViewModel(
         flushCache()
         candleStateJob?.cancel()
         candleController?.dispose()
-        footprintController.dispose()
+        footprintController?.dispose()
         viewModelScope.cancel()
     }
 
@@ -91,6 +77,7 @@ class ChartViewModel(
         when (intent) {
             is ChartIntent.SelectSymbol -> selectSymbol(intent.symbol)
             is ChartIntent.SelectTimeframe -> selectTimeframe(intent.timeframe)
+            is ChartIntent.SelectProvider -> selectProvider(intent.providerId)
             is ChartIntent.ToggleChartMode -> toggleChartMode()
             is ChartIntent.SelectChartMode -> selectChartMode(intent.mode)
             is ChartIntent.SetFpAggregation -> setFpAggregation(intent.level)
@@ -99,15 +86,34 @@ class ChartViewModel(
                 timeframe = intent.timeframe ?: _state.value.currentTimeframe,
             )
             is ChartIntent.LoadMoreHistory -> candleController?.loadMore()
-            is ChartIntent.LoadMoreFootprintHistory -> footprintController.loadMore()
+            is ChartIntent.LoadMoreFootprintHistory -> footprintController?.loadMore()
             is ChartIntent.RestoreState -> restoreState()
         }
     }
 
+    // ── Провайдер ──
+
+    private fun activeProvider() = providerRegistry.get(activeProviderId)
+
+    /** Пространство имён биржи для кэша — displayName активного провайдера. */
+    private fun exchangeName(): String =
+        activeProvider()?.config?.displayName ?: activeProviderId
+
+    private fun selectProvider(providerId: String) {
+        val provider = providerRegistry.get(providerId) ?: return
+        if (activeProviderId == providerId) return
+        activeProviderId = providerId
+        _state.update { it.copy(currentProviderId = providerId, symbols = emptyList()) }
+        saveState()
+        loadSymbols()
+        loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
+    }
+
     private fun loadSymbols() {
+        val symbolInfoAdapter = activeProvider()?.symbolInfo ?: return
         viewModelScope.launch {
             try {
-                val allSymbols = symbolInfoAdapter.getAllSymbolsInfo()
+                val allSymbols = SymbolInfoRepositoryImpl(symbolInfoAdapter).getAllSymbolsInfo()
                 val trading = allSymbols.filter { it.status == "TRADING" }
                 val map = trading.associateBy { it.symbol }
                 _symbolInfoMap.value = map
@@ -162,9 +168,9 @@ class ChartViewModel(
         _state.update { it.copy(chartMode = mode) }
         saveState()
         if (mode == ChartMode.FOOTPRINT) {
-            footprintController.start(_state.value.currentSymbol, _state.value.currentTimeframe)
+            startFootprint(_state.value.currentSymbol, _state.value.currentTimeframe)
         } else {
-            footprintController.stop()
+            footprintController?.stop()
         }
     }
 
@@ -182,6 +188,7 @@ class ChartViewModel(
                 timeframe = current.currentTimeframe,
                 chartMode = current.chartMode,
                 fpAggregation = current.fpAggregation,
+                providerId = activeProviderId,
             )
         }
     }
@@ -190,14 +197,20 @@ class ChartViewModel(
         val persistor = persistor ?: return
         viewModelScope.launch {
             val saved = persistor.restore()
+            // Провайдер применяем только если он реально зарегистрирован
+            saved.providerId?.let { savedId ->
+                if (providerRegistry.get(savedId) != null) activeProviderId = savedId
+            }
             _state.update { s ->
                 s.copy(
                     currentSymbol = saved.symbol ?: s.currentSymbol,
                     currentTimeframe = saved.timeframe ?: s.currentTimeframe,
                     chartMode = saved.chartMode ?: s.chartMode,
                     fpAggregation = saved.fpAggregation ?: s.fpAggregation,
+                    currentProviderId = activeProviderId,
                 )
             }
+            loadSymbols()
         }
     }
 
@@ -225,13 +238,13 @@ class ChartViewModel(
         startCandleSeries(ticker, timeframe)
 
         if (_state.value.chartMode == ChartMode.FOOTPRINT) {
-            footprintController.start(_state.value.currentSymbol, _state.value.currentTimeframe)
+            startFootprint(ticker, timeframe)
         }
     }
 
     /**
-     * Пересоздаёт контроллер свечей для символа/таймфрейма: история, realtime
-     * и пагинация — в одном TimeSeriesController (см. platform-core).
+     * Пересоздаёт контроллер свечей для символа/таймфрейма/провайдера:
+     * история, realtime и пагинация — в одном TimeSeriesController (см. platform-core).
      */
     private fun startCandleSeries(ticker: String, timeframe: String) {
         // Сохраняем данные текущего символа перед переключением (без троттла)
@@ -242,8 +255,18 @@ class ChartViewModel(
 
         _state.update { it.copy(chartState = ChartState.Loading) }
 
+        val provider = activeProvider()
+        val chartAdapter = provider?.chart
+        if (chartAdapter == null) {
+            _state.update {
+                it.copy(chartState = ChartState.Error("Chart adapter not available for ${exchangeName()}"))
+            }
+            return
+        }
+
+        val repository: ChartRepository = ChartRepositoryImpl(chartAdapter = chartAdapter)
         val controller = TimeSeriesController(
-            source = chartRepository.candleSource(ticker, timeframe),
+            source = repository.candleSource(ticker, timeframe),
             scope = viewModelScope,
         )
         candleController = controller
@@ -272,8 +295,9 @@ class ChartViewModel(
         // с live-стрима: меньше запросов при открытии workspace с N графиками.
         viewModelScope.launch {
             val cache = candleCache
+            val exchange = exchangeName()
             val cached = if (cache != null) {
-                runCatching { cache.getCandles(EXCHANGE, ticker, timeframe, CACHE_LIMIT) }
+                runCatching { cache.getCandles(exchange, ticker, timeframe, CACHE_LIMIT) }
                     .getOrDefault(emptyList())
             } else {
                 emptyList()
@@ -300,6 +324,33 @@ class ChartViewModel(
         }
     }
 
+    /** Создаёт/перезапускает footprint-контроллер для активного провайдера. */
+    private fun startFootprint(symbol: String, timeframe: String) {
+        footprintController?.dispose()
+        val controller = FootprintController(
+            footprintApiClient = footprintApiClient,
+            tradesAdapter = activeProvider()?.trades,
+            footprintCache = footprintCacheStore,
+            exchange = exchangeName(),
+        )
+        footprintController = controller
+        viewModelScope.launch {
+            controller.state.collect { fp ->
+                _state.update {
+                    it.copy(
+                        footprintCandles = fp.candles,
+                        liveFootprintCandle = fp.liveCandle,
+                        footprintCurrentPrice = fp.currentPrice,
+                        footprintLoading = fp.loading,
+                        footprintError = fp.error,
+                        hasMoreFootprintHistory = fp.hasMoreHistory,
+                    )
+                }
+            }
+        }
+        controller.start(symbol, timeframe)
+    }
+
     /** Throttled-запись свечей в кэш (не чаще раза в 30 секунд). */
     private fun scheduleCacheWrite(symbol: String, timeframe: String, candles: List<Candle>) {
         val cache = candleCache ?: return
@@ -311,9 +362,10 @@ class ChartViewModel(
         lastSnapshot = snapshot
         lastSnapshotSymbol = symbol
         lastSnapshotTimeframe = timeframe
+        val exchange = exchangeName()
         cacheScope.launch {
             try {
-                cache.saveCandles(EXCHANGE, symbol, timeframe, snapshot)
+                cache.saveCandles(exchange, symbol, timeframe, snapshot)
             } catch (_: Exception) {
                 // кэш не критичен для работы графика
             }
@@ -327,9 +379,10 @@ class ChartViewModel(
         val snapshot = lastSnapshot
         val symbol = lastSnapshotSymbol
         val timeframe = lastSnapshotTimeframe
+        val exchange = exchangeName()
         cacheScope.launch {
             try {
-                cache.saveCandles(EXCHANGE, symbol, timeframe, snapshot)
+                cache.saveCandles(exchange, symbol, timeframe, snapshot)
             } catch (_: Exception) {
                 // кэш не критичен для работы графика
             }
@@ -337,7 +390,6 @@ class ChartViewModel(
     }
 
     companion object {
-        private const val EXCHANGE = "Binance"
         private const val CACHE_LIMIT = 5500
         private const val CACHE_WRITE_INTERVAL_MS = 30_000L
     }

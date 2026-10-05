@@ -31,6 +31,7 @@ kotlin {
             implementation(project(":platform-core"))
             implementation(project(":public-api:api-market"))
             implementation(project(":providers:binance-provider"))
+            implementation(project(":providers:mexc-provider"))
 
             // Koin
             implementation(libs.koin.core)

@@ -275,14 +275,7 @@ private fun DomPanel(
     val domState = pc.state as? PanelState.Dom
 
     LaunchedEffect(pc.symbol) {
-        val ts = TradingSymbol.findSymbol(
-            pc.symbol,
-            com.aandios.nous.feature.dom.domain.TradingProvider.BINANCE
-        ) ?: TradingSymbol(
-            pc.symbol,
-            pc.symbol,
-            com.aandios.nous.feature.dom.domain.TradingProvider.BINANCE
-        )
+        val ts = TradingSymbol.fallback(pc.symbol, vm.domOptions.value.provider)
         var opts = vm.domOptions.value.copy(symbol = ts)
         val savedAgg = domState?.aggregation
         if (savedAgg != null) {

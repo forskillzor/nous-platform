@@ -5,12 +5,20 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import com.aandios.nous.api.market.NetworkManager
+import com.aandios.nous.api.market.Provider
+import com.aandios.nous.api.market.ProviderConfig
+import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.api.market.adapters.BookTickerAdapter
+import com.aandios.nous.api.market.adapters.ChartAdapter
+import com.aandios.nous.api.market.adapters.DomAdapter
+import com.aandios.nous.api.market.adapters.LiquidationAdapter
 import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
+import com.aandios.nous.api.market.adapters.TradesAdapter
+import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.domain.cache.CandleCacheStore
-import com.aandios.nous.core.domain.repository.ChartRepository
-import com.aandios.nous.core.domain.timeseries.TimeSeriesSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -61,35 +69,49 @@ class ChartViewModelCacheTest {
         }
     }
 
-    private class FakeCandleSource(
-        private val initial: List<Candle>,
-        private val live: Flow<Candle> = emptyFlow(),
-    ) : TimeSeriesSource<Candle> {
-        override suspend fun loadInitial(): List<Candle> = initial
-        override suspend fun loadBefore(beforeTimestamp: Long, limit: Int): List<Candle> = emptyList()
-        override fun liveUpdates(): Flow<Candle> = live
-        override fun mergeItem(items: List<Candle>, update: Candle): List<Candle> = items + update
-        override fun timestampOf(item: Candle): Long = item.timestamp
-    }
-
-    private class FakeChartRepository(
+    private class FakeChartAdapter(
         private val sources: Map<String, List<Candle>>,
-    ) : ChartRepository {
-        override fun candleSource(ticker: String, timeframe: String): TimeSeriesSource<Candle> =
-            FakeCandleSource(sources["$ticker/$timeframe"] ?: emptyList())
+    ) : ChartAdapter {
+        override suspend fun getCandles(symbol: String, interval: String, limit: Int): List<Candle> =
+            sources["$symbol/$interval"] ?: emptyList()
+
+        override suspend fun getCandlesBefore(symbol: String, interval: String, endTime: Long, limit: Int): List<Candle> =
+            emptyList()
+
+        override fun subscribeToCandles(symbol: String, interval: String): Flow<Candle> = emptyFlow()
     }
 
     private class FakeSymbolInfoAdapter : SymbolInfoAdapter {
         override suspend fun getSymbolInfo(symbol: String): SymbolInfo? = null
     }
 
+    /** Фейковый провайдер: только chart + symbolInfo, displayName как у Binance. */
+    private class FakeProvider(
+        private val chartAdapter: ChartAdapter,
+        private val symbolInfoAdapter: SymbolInfoAdapter,
+    ) : Provider {
+        override val providerId = "binance-nous-0.0.1"
+        override val providerName = "binance-nous"
+        override val version = "0.0.1"
+        override val config = ProviderConfig(displayName = "Binance")
+        override val networkManager: NetworkManager get() = error("not used")
+        override val trades: TradesAdapter? = null
+        override val dom: DomAdapter? = null
+        override val bookTicker: BookTickerAdapter? = null
+        override val chart: ChartAdapter? = chartAdapter
+        override val trading: TradingAdapter? = null
+        override val symbolInfo: SymbolInfoAdapter? = symbolInfoAdapter
+        override val liquidation: LiquidationAdapter? = null
+    }
+
     private fun createViewModel(
         cache: FakeCandleCacheStore,
-        repository: ChartRepository,
+        sources: Map<String, List<Candle>>,
         testDispatcher: TestDispatcher,
     ) = ChartViewModel(
-        chartRepository = repository,
-        symbolInfoAdapter = FakeSymbolInfoAdapter(),
+        providerRegistry = ProviderRegistry(
+            listOf(FakeProvider(FakeChartAdapter(sources), FakeSymbolInfoAdapter()))
+        ),
         candleCache = cache,
         cacheDispatcher = testDispatcher,
     )
@@ -100,8 +122,7 @@ class ChartViewModelCacheTest {
         try {
             val dispatcher = StandardTestDispatcher(testScheduler)
             val cache = FakeCandleCacheStore()
-            val repository = FakeChartRepository(mapOf("BTCUSDT/1h" to (0 until 5).map { candle(it) }))
-            val vm = createViewModel(cache, repository, dispatcher)
+            val vm = createViewModel(cache, mapOf("BTCUSDT/1h" to (0 until 5).map { candle(it) }), dispatcher)
 
             vm.dispatch(ChartIntent.LoadChart("BTCUSDT", "1h"))
             advanceUntilIdle()
@@ -125,8 +146,7 @@ class ChartViewModelCacheTest {
             val cached = (0 until 3).map { candle(it) }
             val cache = FakeCandleCacheStore()
             cache.cached = mapOf("BTCUSDT/1h" to cached)
-            val repository = FakeChartRepository(emptyMap()) // сеть «пуста»
-            val vm = createViewModel(cache, repository, dispatcher)
+            val vm = createViewModel(cache, emptyMap(), dispatcher) // сеть «пуста»
 
             val states = mutableListOf<ChartUiState>()
             // Unconfined: записываем КАЖДУЮ эмиссию без conflation
@@ -158,8 +178,7 @@ class ChartViewModelCacheTest {
         try {
             val dispatcher = StandardTestDispatcher(testScheduler)
             val cache = FakeCandleCacheStore()
-            val repository = FakeChartRepository(mapOf("BTCUSDT/1h" to (0 until 5).map { candle(it) }))
-            val vm = createViewModel(cache, repository, dispatcher)
+            val vm = createViewModel(cache, mapOf("BTCUSDT/1h" to (0 until 5).map { candle(it) }), dispatcher)
 
             vm.dispatch(ChartIntent.LoadChart("BTCUSDT", "1h"))
             advanceUntilIdle()
