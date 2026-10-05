@@ -284,7 +284,7 @@ private fun OrderChip(
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
-    BoxWithConstraints(modifier = modifier) {
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val style = TextStyle(
             color = Color.White,
             fontSize = 10.sp,
@@ -302,51 +302,71 @@ private fun OrderChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(3.dp),
             modifier = Modifier
+                .fillMaxWidth()
                 .height(18.dp)
                 .background(color, RoundedCornerShape(2.dp))
                 .padding(horizontal = 3.dp),
         ) {
-            if (crossOnLeft) CancelCross(onCancel)
+            // Крестик всегда у края DOM: short — слева, long — справа
+            if (crossOnLeft) {
+                CancelCross(onCancel)
+                QtyField(qtyText, color, { qtyText = it }, ::commit)
+            }
             Text(
                 text = label,
                 style = style,
                 maxLines = 1,
                 softWrap = false,
+                textAlign = if (crossOnLeft) TextAlign.Start else TextAlign.End,
+                modifier = Modifier.weight(1f),
             )
-            BasicTextField(
-                value = qtyText,
-                onValueChange = { qtyText = it },
-                singleLine = true,
-                textStyle = TextStyle(
-                    color = Color(0xFF1A1A1A),
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                    textAlign = TextAlign.Center,
-                ),
-                cursorBrush = SolidColor(color),
-                modifier = Modifier
-                    .width(40.dp)
-                    .background(Color.White, RoundedCornerShape(2.dp))
-                    .padding(horizontal = 2.dp, vertical = 1.dp)
-                    .onKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown &&
-                            (event.key == Key.Enter || event.key == Key.NumPadEnter)
-                        ) {
-                            commit()
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    .onFocusChanged { state -> if (!state.isFocused) commit() },
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.Center) { inner() }
-                },
-            )
-            if (!crossOnLeft) CancelCross(onCancel)
+            if (!crossOnLeft) {
+                QtyField(qtyText, color, { qtyText = it }, ::commit)
+                CancelCross(onCancel)
+            }
         }
     }
+}
+
+/** Поле qty на бейдже (белое, тёмный текст по центру; commit — Enter/фокус). */
+@Composable
+private fun QtyField(
+    value: String,
+    cursorColor: Color,
+    onValueChange: (String) -> Unit,
+    onCommit: () -> Unit,
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        textStyle = TextStyle(
+            color = Color(0xFF1A1A1A),
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        ),
+        cursorBrush = SolidColor(cursorColor),
+        modifier = Modifier
+            .width(40.dp)
+            .background(Color.White, RoundedCornerShape(2.dp))
+            .padding(horizontal = 2.dp, vertical = 1.dp)
+            .onKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown &&
+                    (event.key == Key.Enter || event.key == Key.NumPadEnter)
+                ) {
+                    onCommit()
+                    true
+                } else {
+                    false
+                }
+            }
+            .onFocusChanged { state -> if (!state.isFocused) onCommit() },
+        decorationBox = { inner ->
+            Box(contentAlignment = Alignment.Center) { inner() }
+        },
+    )
 }
 
 @Composable
