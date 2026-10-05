@@ -44,6 +44,8 @@ class ChartStatePersistor(
         val marginMode: Int = 2,
         val showOrders: Boolean = false,
         val showPositions: Boolean = false,
+        /** Свёрнута ли панель chart trading (компактный вид). */
+        val panelCollapsed: Boolean = false,
     )
 
     suspend fun saveTrading(
@@ -56,6 +58,7 @@ class ChartStatePersistor(
         marginMode: Int,
         showOrders: Boolean,
         showPositions: Boolean,
+        panelCollapsed: Boolean,
     ) {
         store.putString(tKey(KEY_TRADING_ENABLED), if (enabled) "1" else "0")
         store.putString(tKey(KEY_CONFIRM_ORDERS), if (confirmOrders) "1" else "0")
@@ -66,6 +69,7 @@ class ChartStatePersistor(
         store.putString(tKey(KEY_MARGIN_MODE), marginMode.toString())
         store.putString(tKey(KEY_SHOW_ORDERS), if (showOrders) "1" else "0")
         store.putString(tKey(KEY_SHOW_POSITIONS), if (showPositions) "1" else "0")
+        store.putString(tKey(KEY_PANEL_COLLAPSED), if (panelCollapsed) "1" else "0")
     }
 
     suspend fun restoreTrading(): TradingState {
@@ -85,9 +89,10 @@ class ChartStatePersistor(
         // Изначально выключены (как trading/paper); включаются только вручную
         val showOrders = store.getString(tKey(KEY_SHOW_ORDERS)) == "1"
         val showPositions = store.getString(tKey(KEY_SHOW_POSITIONS)) == "1"
+        val panelCollapsed = store.getString(tKey(KEY_PANEL_COLLAPSED)) == "1"
         return TradingState(
             enabled, confirm, quantity, orderType, reduceOnly, leverage, marginMode,
-            showOrders, showPositions,
+            showOrders, showPositions, panelCollapsed,
         )
     }
 
@@ -165,5 +170,6 @@ class ChartStatePersistor(
         const val KEY_MARGIN_MODE = "chart_margin_mode"
         const val KEY_SHOW_ORDERS = "chart_show_orders"
         const val KEY_SHOW_POSITIONS = "chart_show_positions"
+        const val KEY_PANEL_COLLAPSED = "chart_panel_collapsed"
     }
 }

@@ -107,6 +107,10 @@ class ChartViewModel(
     private val _showPositions = MutableStateFlow(false)
     val showPositions: StateFlow<Boolean> = _showPositions.asStateFlow()
 
+    /** Свёрнута ли панель chart trading (персистится на панель). */
+    private val _panelCollapsed = MutableStateFlow(false)
+    val panelCollapsed: StateFlow<Boolean> = _panelCollapsed.asStateFlow()
+
     /**
      * Paper-режим ЭТОЙ панели графика (не глобальный): свой флаг,
      * свой персист, свой источник ордеров/позиций.
@@ -317,6 +321,13 @@ class ChartViewModel(
         saveTradingState()
     }
 
+    /** Свернуть/развернуть панель chart trading (компактный вид). */
+    fun setPanelCollapsed(collapsed: Boolean) {
+        if (_panelCollapsed.value == collapsed) return
+        _panelCollapsed.value = collapsed
+        saveTradingState()
+    }
+
     fun setChartOrderType(orderType: OrderType) {
         _chartOrderType.value = orderType
         saveTradingState()
@@ -410,6 +421,7 @@ class ChartViewModel(
         _chartMarginMode.value = trading.marginMode
         _showOrders.value = trading.showOrders
         _showPositions.value = trading.showPositions
+        _panelCollapsed.value = trading.panelCollapsed
         _paperEnabled.value = p.restorePaperEnabled()
         refreshOpenOrders()
         refreshPaperFees(_state.value.currentSymbol)
@@ -724,6 +736,7 @@ class ChartViewModel(
                 marginMode = _chartMarginMode.value,
                 showOrders = _showOrders.value,
                 showPositions = _showPositions.value,
+                panelCollapsed = _panelCollapsed.value,
             )
         }
     }

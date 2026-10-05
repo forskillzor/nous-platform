@@ -152,6 +152,8 @@ private fun ChartWindowContent(
     val showOrders by chartViewModel.showOrders.collectAsState()
     val showPositions by chartViewModel.showPositions.collectAsState()
     val tradingPositions by chartViewModel.positions.collectAsState()
+    // Свёрнутая (компактная строка) / развёрнутая панель chart trading — персист
+    val panelCollapsed by chartViewModel.panelCollapsed.collectAsState()
 
     // Paper: ориентир по марже и свободному балансу с учётом плеча
     val paperBalances by PaperTrading.adapter.balancesFlow.collectAsState()
@@ -186,9 +188,6 @@ private fun ChartWindowContent(
             "$sign${String.format(java.util.Locale.US, "%.2f", pnl)} USDT"
         text to (pnl >= 0)
     }
-    // Свёрнутая (компактная строка) / развёрнутая панель chart trading
-    var panelCollapsed by remember { mutableStateOf(false) }
-
     // Лучшие bid/ask для лимиток «по лучшей цене» (Buy Limit / Sell Limit)
     var bestBid by remember { mutableStateOf<Double?>(null) }
     var bestAsk by remember { mutableStateOf<Double?>(null) }
@@ -515,7 +514,7 @@ private fun ChartWindowContent(
                     pnlText = pnlInfo?.first,
                     pnlUp = pnlInfo?.second ?: true,
                     collapsed = panelCollapsed,
-                    onCollapsedChange = { panelCollapsed = it },
+                    onCollapsedChange = { chartViewModel.setPanelCollapsed(it) },
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
                     onOrderTypeChanged = { chartViewModel.setChartOrderType(it) },
                     onReduceOnlyChanged = { chartViewModel.setReduceOnly(it) },
