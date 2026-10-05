@@ -45,6 +45,7 @@ private val labelColor = Color(0xFF8A97A5)
  * Buy/Sell Limit (цена кликом по уровню), market Buy/Sell, Best Bid/Ask.
  * Результаты ордеров — snackbar'ами под заголовком панели.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun OrderPlacementPanel(
     symbol: String,
@@ -60,12 +61,17 @@ fun OrderPlacementPanel(
     reduceOnly: Boolean,
     limitOrderType: OrderType,
     leverage: Int?,
+    marginMode: Int,
     paperEnabled: Boolean,
     confirmOrders: Boolean,
     pendingText: String?,
+    /** PnL текущей позиции (тики/процент от изменения цены/USDT). */
+    pnlText: String?,
+    pnlUp: Boolean,
     onReduceOnlyChanged: (Boolean) -> Unit,
     onLimitOrderTypeChanged: (OrderType) -> Unit,
     onLeverageChanged: (Int?) -> Unit,
+    onMarginModeChanged: (Int) -> Unit,
     onPaperChanged: (Boolean) -> Unit,
     onConfirmChanged: (Boolean) -> Unit,
     onConfirmPending: () -> Unit,
@@ -82,10 +88,23 @@ fun OrderPlacementPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // Строка 1: Trading ON/OFF · Confirm · RO · Paper
-            Row(
+            // PnL текущей позиции — самая верхняя строка (как в chart panel)
+            pnlText?.let { text ->
+                Text(
+                    text = text,
+                    color = if (pnlUp) buyColor else sellColor,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
+
+            // Строка 1: Trading ON/OFF · Confirm · RO · Paper · Cross/Isolated
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 ToggleChip(
@@ -97,6 +116,12 @@ fun OrderPlacementPanel(
                 ToggleChip(label = "Confirm", active = confirmOrders) { onConfirmChanged(!confirmOrders) }
                 ToggleChip(label = "RO", active = reduceOnly) { onReduceOnlyChanged(!reduceOnly) }
                 ToggleChip(label = "Paper", active = paperEnabled) { onPaperChanged(!paperEnabled) }
+                // Маржа: изолированная / кросс (компактный тумблер)
+                ToggleChip(
+                    label = if (marginMode == 1) "Isolated" else "Cross",
+                    active = marginMode == 1,
+                    activeColor = accent,
+                ) { onMarginModeChanged(if (marginMode == 1) 2 else 1) }
             }
 
             // Строка 2: qty (узкий) / тип лимитки / плечо

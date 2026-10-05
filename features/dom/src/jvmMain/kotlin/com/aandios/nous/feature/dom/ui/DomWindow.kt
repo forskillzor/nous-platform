@@ -34,6 +34,7 @@ import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.feature.dom.di.initKoinForPreview
 import com.aandios.nous.feature.dom.ui.content.DomContent
+import com.aandios.nous.feature.dom.ui.content.domPositionPnlText
 import com.aandios.nous.feature.dom.ui.footer.OrderPlacementPanel
 import com.aandios.nous.feature.dom.ui.header.DomHeader
 import kotlinx.coroutines.delay
@@ -67,6 +68,7 @@ fun DomWindow(
     val reduceOnly by domViewModel.reduceOnly.collectAsState()
     val limitOrderType by domViewModel.limitOrderType.collectAsState()
     val leverage by domViewModel.leverage.collectAsState()
+    val marginMode by domViewModel.marginMode.collectAsState()
     val paperEnabled by domViewModel.paperEnabled.collectAsState()
     val confirmOrders by domViewModel.confirmOrders.collectAsState()
     val pendingIntentText by domViewModel.pendingIntentText.collectAsState()
@@ -93,6 +95,11 @@ fun DomWindow(
 
     val bestBidPrice = bestPrices.bestBid ?: 0.0
     val bestAskPrice = bestPrices.bestAsk ?: 0.0
+
+    // PnL позиции — дублируется в самую верхнюю строку панели ордеров (с USDT)
+    val pnlLine = positions.firstOrNull()?.let {
+        domPositionPnlText(it, markPrice, symbolTickSize ?: 0.01)
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
         DomHeader(
@@ -158,12 +165,16 @@ fun DomWindow(
             reduceOnly = reduceOnly,
             limitOrderType = limitOrderType,
             leverage = leverage,
+            marginMode = marginMode,
             paperEnabled = paperEnabled,
             confirmOrders = confirmOrders,
             pendingText = pendingIntentText,
+            pnlText = pnlLine?.first,
+            pnlUp = pnlLine?.second ?: true,
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
             onLeverageChanged = { domViewModel.setLeverage(it) },
+            onMarginModeChanged = { domViewModel.setMarginMode(it) },
             onPaperChanged = { domViewModel.setPaperEnabled(it) },
             onConfirmChanged = { domViewModel.setConfirmOrders(it) },
             onConfirmPending = { domViewModel.confirmPendingIntent() },

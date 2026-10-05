@@ -23,6 +23,7 @@ private suspend fun executeLimitOrder(
     quantity: Double,
     reduceOnly: Boolean,
     leverage: Int? = null,
+    marginMode: Int? = null,
     onResult: (CommandResult) -> Unit,
 ): CommandResult {
     val orderData = OrderData(
@@ -46,6 +47,7 @@ private suspend fun executeLimitOrder(
                 price = price,
                 reduceOnly = reduceOnly,
                 leverage = leverage,
+                marginMode = marginMode,
             )
         )
         if (response.success) CommandResult.Success(orderData)
@@ -62,13 +64,14 @@ class BuyLimitCommand(
     private val orderType: OrderType = OrderType.LIMIT,
     private val reduceOnly: Boolean = false,
     private val leverage: Int? = null,
+    private val marginMode: Int? = null,
     private val tradingAdapter: TradingAdapter? = null,
     private val onResult: (CommandResult) -> Unit,
 ) : TradingCommand {
 
     override suspend fun execute() {
         onResult(
-            executeLimitOrder(tradingAdapter, symbol, OrderSide.BUY, orderType, price, quantity, reduceOnly, leverage, onResult)
+            executeLimitOrder(tradingAdapter, symbol, OrderSide.BUY, orderType, price, quantity, reduceOnly, leverage, marginMode, onResult)
         )
     }
 
@@ -83,13 +86,14 @@ class SellLimitCommand(
     private val orderType: OrderType = OrderType.LIMIT,
     private val reduceOnly: Boolean = false,
     private val leverage: Int? = null,
+    private val marginMode: Int? = null,
     private val tradingAdapter: TradingAdapter? = null,
     private val onResult: (CommandResult) -> Unit,
 ) : TradingCommand {
 
     override suspend fun execute() {
         onResult(
-            executeLimitOrder(tradingAdapter, symbol, OrderSide.SELL, orderType, price, quantity, reduceOnly, leverage, onResult)
+            executeLimitOrder(tradingAdapter, symbol, OrderSide.SELL, orderType, price, quantity, reduceOnly, leverage, marginMode, onResult)
         )
     }
 

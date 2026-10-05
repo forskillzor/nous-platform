@@ -24,6 +24,7 @@ private suspend fun executeOrder(
     quantity: Double,
     reduceOnly: Boolean,
     leverage: Int? = null,
+    marginMode: Int? = null,
     onResult: (CommandResult) -> Unit,
 ): CommandResult {
     val orderData = OrderData(
@@ -47,6 +48,7 @@ private suspend fun executeOrder(
                 price = price ?: 0.0,
                 reduceOnly = reduceOnly,
                 leverage = leverage,
+                marginMode = marginMode,
             )
         )
         if (response.success) CommandResult.Success(orderData)
@@ -61,13 +63,14 @@ class BuyMarketCommand(
     private val quantity: Double,
     private val reduceOnly: Boolean = false,
     private val leverage: Int? = null,
+    private val marginMode: Int? = null,
     private val tradingAdapter: TradingAdapter? = null,
     private val onResult: (CommandResult) -> Unit,
 ) : TradingCommand {
 
     override suspend fun execute() {
         onResult(
-            executeOrder(tradingAdapter, symbol, OrderSide.BUY, OrderType.MARKET, null, quantity, reduceOnly, leverage, onResult)
+            executeOrder(tradingAdapter, symbol, OrderSide.BUY, OrderType.MARKET, null, quantity, reduceOnly, leverage, marginMode, onResult)
         )
     }
 
@@ -80,13 +83,14 @@ class SellMarketCommand(
     private val quantity: Double,
     private val reduceOnly: Boolean = false,
     private val leverage: Int? = null,
+    private val marginMode: Int? = null,
     private val tradingAdapter: TradingAdapter? = null,
     private val onResult: (CommandResult) -> Unit,
 ) : TradingCommand {
 
     override suspend fun execute() {
         onResult(
-            executeOrder(tradingAdapter, symbol, OrderSide.SELL, OrderType.MARKET, null, quantity, reduceOnly, leverage, onResult)
+            executeOrder(tradingAdapter, symbol, OrderSide.SELL, OrderType.MARKET, null, quantity, reduceOnly, leverage, marginMode, onResult)
         )
     }
 

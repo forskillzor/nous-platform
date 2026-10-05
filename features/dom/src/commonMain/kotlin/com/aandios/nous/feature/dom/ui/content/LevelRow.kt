@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -33,6 +34,8 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -51,8 +54,8 @@ import com.aandios.nous.feature.dom.ui.model.DomLevel
 import kotlin.math.round
 import kotlin.math.roundToLong
 
-private val longColor = Color(0xFF26A69A)
-private val shortColor = Color(0xFFEF5350)
+internal val longColor = Color(0xFF26A69A)
+internal val shortColor = Color(0xFFEF5350)
 
 /**
  * Строка ценовой лесенки. `level == null` — пустой уровень (только цена).
@@ -80,6 +83,8 @@ fun LevelRow(
     baseText: String? = null,
     /** Цена одной строки лесенки (tickSize * шаг агрегации) — для драга. */
     priceStepPerRow: Double = 0.0,
+    /** Общее состояние драга: чип «летит» за курсором поверх лесенки. */
+    dragState: DomOrderDragState? = null,
     onCancelOrder: (String) -> Unit = {},
     onResizeOrder: (Order, Double) -> Unit = { _, _ -> },
     onMoveOrder: (Order, Double) -> Unit = { _, _ -> },
@@ -96,9 +101,12 @@ fun LevelRow(
     val askQty = level?.askSteps?.let { it * stepSize }
 
     val positionColor = if (position?.side == TradeSide.BUY) longColor else shortColor
+    val orderColor = if (order?.side == OrderSide.BUY) longColor else shortColor
 
     val backgroundColor = when {
         position != null -> positionColor.copy(alpha = 0.22f)
+        // Весь уровень с лимитным ордером подсвечен цветом ордера
+        order != null -> orderColor.copy(alpha = 0.35f)
         isSelected -> Color.Yellow.copy(alpha = 0.3f)
         isLastPrice -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)
         isHovered -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -157,6 +165,7 @@ fun LevelRow(
                     text = "${if (position.side == TradeSide.BUY) "Long" else "Short"} ${trimQty(position.quantity)}",
                     color = positionColor,
                     fontSize = 10.sp,
+                    lineHeight = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -167,8 +176,8 @@ fun LevelRow(
                 OrderChip(
                     order = order,
                     baseText = baseText,
-                    formatter = formatter,
                     priceStepPerRow = priceStepPerRow,
+                    dragState = dragState,
                     onCancel = { onCancelOrder(order.orderId) },
                     onResize = { qty -> onResizeOrder(order, qty) },
                     onMove = { price -> onMoveOrder(order, price) },
@@ -186,7 +195,7 @@ fun LevelRow(
             style = MaterialTheme.typography.bodySmall.copy(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
-                fontWeight = if (isSelected || position != null) FontWeight.Bold else FontWeight.Normal
+                fontWeight = if (isSelected || position != null || order != null) FontWeight.Bold else FontWeight.Normal
             ),
             modifier = Modifier.weight(0.6f)
         )
@@ -224,6 +233,7 @@ fun LevelRow(
                     text = pnlText,
                     color = pnlColor,
                     fontSize = 10.sp,
+                    lineHeight = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -234,8 +244,8 @@ fun LevelRow(
                 OrderChip(
                     order = order,
                     baseText = baseText,
-                    formatter = formatter,
                     priceStepPerRow = priceStepPerRow,
+                    dragState = dragState,
                     onCancel = { onCancelOrder(order.orderId) },
                     onResize = { qty -> onResizeOrder(order, qty) },
                     onMove = { price -> onMoveOrder(order, price) },
@@ -248,18 +258,55 @@ fun LevelRow(
     }
 }
 
-/** PnL позиции: тики · % от маржи (как chart panel) · USDT. */
+/** PnL позиции: тики (шаг цены инструмента) · % от изменения цены · USDT. */
+fun domPositionPnlText(position: Position, markPrice: Double, tickSize: Double): Pair<String, Boolean> {
+    val mark = if (markPrice > 0.0) markPrice else position.markPrice
+    val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
+    val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
+    val pct = if (mark > 0.0 && position.avgPrice > 0.0) {
+        (mark - position.avgPrice) * dir / position.avgPrice * 100.0
+    } else 0.0
+    val ticks = if (tickSize > 0.0 && mark > 0.0) {
+        (mark - position.avgPrice) * dir / tickSize
+    } else 0.0
+    val sign = if (pnl >= 0) "+" else ""
+    val text = "$sign${ticks.roundToLong()}t $sign${fmt2(pct)}% $sign${fmt2(pnl)} USDT"
+    return text to (pnl >= 0)
+}
+
+/** PnL позиции в лесенке: тики (шаг цены инструмента) и % от изменения цены. */
 private fun positionPnlText(position: Position, markPrice: Double, tickSize: Double): Pair<String, Color> {
     val mark = if (markPrice > 0.0) markPrice else position.markPrice
     val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
     val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
-    val leverage = (position.leverage ?: 1).coerceAtLeast(1)
-    val margin = position.avgPrice * position.quantity / leverage
-    val pct = if (margin > 0.0) pnl / margin * 100.0 else 0.0
-    val ticks = if (tickSize > 0.0 && mark > 0.0) (mark - position.avgPrice) * dir / tickSize else 0.0
+    // % — от изменения цены, а не от маржи (как просили)
+    val pct = if (mark > 0.0 && position.avgPrice > 0.0) {
+        (mark - position.avgPrice) * dir / position.avgPrice * 100.0
+    } else 0.0
+    // Тики — в шаге цены инструмента (SOL: 0.01)
+    val ticks = if (tickSize > 0.0 && mark > 0.0) {
+        (mark - position.avgPrice) * dir / tickSize
+    } else 0.0
     val sign = if (pnl >= 0) "+" else ""
-    val text = "$sign${ticks.roundToLong()}t $sign${fmt2(pct)}% $sign${fmt2(pnl)}"
+    val text = "$sign${ticks.roundToLong()}t $sign${fmt2(pct)}%"
     return text to (if (pnl >= 0) longColor else shortColor)
+}
+
+/**
+ * Состояние драга ордера в лесенке: чип «летит» за курсором поверх списка
+ * (как перетаскивание линии ордера в chart trading).
+ */
+class DomOrderDragState {
+    var order by mutableStateOf<Order?>(null)
+    var startX by mutableStateOf(0f)
+    var startY by mutableStateOf(0f)
+    var widthPx by mutableStateOf(0f)
+    var deltaY by mutableStateOf(0f)
+
+    fun clear() {
+        order = null
+        deltaY = 0f
+    }
 }
 
 /** Бейдж ордера как в chart trading: цветной рект, текст, инпут qty, драг. */
@@ -267,8 +314,8 @@ private fun positionPnlText(position: Position, markPrice: Double, tickSize: Dou
 private fun OrderChip(
     order: Order,
     baseText: String?,
-    formatter: SymbolFormatter,
     priceStepPerRow: Double,
+    dragState: DomOrderDragState?,
     onCancel: () -> Unit,
     onResize: (Double) -> Unit,
     onMove: (Double) -> Unit,
@@ -297,16 +344,12 @@ private fun OrderChip(
         onResize(q)
     }
 
-    // Драг: вертикальное смещение → новая цена (cancel+replace на отпускании)
     val density = LocalDensity.current
     val rowHeightPx = with(density) { LadderRowHeight.toPx() }
-    var dragging by remember(order.orderId) { mutableStateOf(false) }
     var dragPx by remember(order.orderId) { mutableStateOf(0f) }
-    val targetPrice = if (dragging) {
-        order.price - (dragPx / rowHeightPx) * priceStepPerRow
-    } else {
-        order.price
-    }
+    var chipRootPos by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
+    var chipSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val beingDragged = dragState?.order?.orderId == order.orderId
 
     val measurer = rememberTextMeasurer()
 
@@ -314,19 +357,16 @@ private fun OrderChip(
         val style = TextStyle(
             color = Color.White,
             fontSize = 10.sp,
+            lineHeight = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
         )
         // Фиксированная часть: инпут qty
         val fixedPx = with(density) { 44.dp.toPx() }
         val textBudgetPx = with(density) { maxWidth.toPx() } - fixedPx
-        val label = if (dragging && priceStepPerRow > 0.0) {
-            "→ ${formatter.formatPrice(targetPrice)}"
-        } else {
-            listOf(full, short, shortest).firstOrNull { candidate ->
-                measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
-            } ?: shortest
-        }
+        val label = listOf(full, short, shortest).firstOrNull { candidate ->
+            measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
+        } ?: shortest
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -336,33 +376,45 @@ private fun OrderChip(
                 .height(18.dp)
                 .background(color, RoundedCornerShape(2.dp))
                 .padding(horizontal = 3.dp)
+                .alpha(if (beingDragged) 0.3f else 1f)
                 // Поглощаем одиночные клики, чтобы строка лесенки не реагировала
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                 ) { }
+                .onGloballyPositioned { coords ->
+                    chipRootPos = coords.positionInRoot()
+                    chipSize = coords.size
+                }
                 .pointerInput(order.orderId, priceStepPerRow) {
                     detectDragGestures(
                         onDragStart = {
                             dragPx = 0f
-                            dragging = true
+                            dragState?.let { st ->
+                                st.order = order
+                                st.startX = chipRootPos.x
+                                st.startY = chipRootPos.y
+                                st.widthPx = chipSize.width.toFloat()
+                                st.deltaY = 0f
+                            }
                         },
                         onDrag = { change, amount ->
                             change.consume()
                             dragPx += amount.y
+                            dragState?.deltaY = dragPx
                         },
                         onDragEnd = {
                             val rows = dragPx / rowHeightPx
-                            dragging = false
                             dragPx = 0f
+                            dragState?.clear()
                             if (priceStepPerRow > 0.0 && kotlin.math.abs(rows) >= 0.5f) {
                                 val newPrice = order.price - rows * priceStepPerRow
                                 if (newPrice > 0.0) onMove(newPrice)
                             }
                         },
                         onDragCancel = {
-                            dragging = false
                             dragPx = 0f
+                            dragState?.clear()
                         },
                     )
                 },

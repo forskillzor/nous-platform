@@ -9,13 +9,27 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.dom.ui.model.DomLevel
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private const val ROWS_ABOVE = 120
@@ -118,7 +132,17 @@ fun DomSection(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
+    val dragState = remember { DomOrderDragState() }
+    var boxRoot by remember { mutableStateOf(Offset.Zero) }
+    val density = LocalDensity.current
+    val rowHeightPx = with(density) { RowHeight.toPx() }
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onGloballyPositioned { boxRoot = it.positionInRoot() }
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -167,12 +191,52 @@ fun DomSection(
                         markPrice = markPrice,
                         baseText = baseText,
                         priceStepPerRow = tickSize * step.toDouble(),
+                        dragState = dragState,
                         onCancelOrder = onCancelOrder,
                         onResizeOrder = onResizeOrder,
                         onMoveOrder = onMoveOrder,
                         onPriceClick = { _, dPrice -> onPriceSelected(dPrice) }
                     )
                 }
+            }
+        }
+        }
+
+        // «Летящий» чип при драге ордера — как перетаскивание в chart trading
+        val draggingOrder = dragState.order
+        if (draggingOrder != null) {
+            val color = if (draggingOrder.side == OrderSide.BUY) longColor else shortColor
+            val rows = dragState.deltaY / rowHeightPx
+            val targetPrice = (draggingOrder.price - rows * tickSize * step).coerceAtLeast(0.0)
+            val kind = if (draggingOrder.reduceOnly) "Close" else "Open"
+            val sideName = if (draggingOrder.side == OrderSide.BUY) "Long" else "Short"
+            val label = (listOf(kind, sideName, baseText.orEmpty()).filter { it.isNotBlank() }.joinToString(" ") +
+                " → " + formatter.formatPrice(targetPrice)).trim()
+
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            (dragState.startX - boxRoot.x).roundToInt(),
+                            (dragState.startY - boxRoot.y + dragState.deltaY).roundToInt(),
+                        )
+                    }
+                    .width(with(density) { dragState.widthPx.toDp() })
+                    .zIndex(10f)
+                    .shadow(4.dp, RoundedCornerShape(2.dp))
+                    .background(color, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
+            ) {
+                Text(
+                    text = label,
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    lineHeight = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                )
             }
         }
     }
