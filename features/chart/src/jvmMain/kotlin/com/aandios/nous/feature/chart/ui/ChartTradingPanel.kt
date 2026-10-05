@@ -30,16 +30,28 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.core.ui.component.TerminalDropdown
+import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.core.ui.theme.ChartColors
+
+// Стиль как у DrawingToolPanel — единый вид вертикальных панелей графика
+private val panelBg = Color.Black.copy(alpha = 0.9f)
+private val labelColor = Color(0xFF8A97A5)
+private val fieldBg = Color(0xFF14181F)
+private val fieldBorder = Color(0xFF3A4550)
+private val accent = Color(0xFF5B9BD5)
+private val buyColor = Color(0xFF26A69A)
+private val sellColor = Color(0xFFEF5350)
+private val warnColor = Color(0xFFE0A95B)
 
 /**
- * Панель chart trading (поверх графика, слева снизу): ордер ставится по
- * активному символу/бирже графика (ex/sym берутся с chart).
+ * Вертикальная панель chart trading в стиле DrawingToolPanel: строка настроек
+ * с label (Order / Margin / Leverage / Qty), затем действия.
  *
- * Настройки: количество (minQty / своё), тип ордера, плечо, режим маржи,
- * reduce-only, TP/SL, подтверждение ордеров. Размещение: клик по графику
- * (выбранный тип по цене клика) или кнопки Buy/Sell (market по последней цене).
+ * Qty — edittext с placeholder = minQty инструмента (пусто → берётся minQty).
+ * Buy/Sell — market; Buy Limit/Sell Limit — лимитки по лучшим bid/ask.
+ * Cancel All — отмена всех ордеров, Close All — закрытие позиций symbol.
+ * Ордер ставится по активному символу/бирже графика (ex/sym берутся с chart).
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChartTradingPanel(
     caption: String,
@@ -52,9 +64,10 @@ fun ChartTradingPanel(
     takeProfit: Double?,
     stopLoss: Double?,
     confirmOrders: Boolean,
-    lastMessage: String?,
     pendingOrder: OrderRequest?,
-    paperEnabled: Boolean,
+    bestBid: Double?,
+    bestAsk: Double?,
+    formatter: SymbolFormatter = SymbolFormatter.DEFAULT,
     onQuantityChanged: (Double?) -> Unit,
     onOrderTypeChanged: (OrderType) -> Unit,
     onReduceOnlyChanged: (Boolean) -> Unit,
@@ -64,10 +77,13 @@ fun ChartTradingPanel(
     onStopLossChanged: (Double?) -> Unit,
     onBuy: () -> Unit,
     onSell: () -> Unit,
+    onBuyLimit: () -> Unit,
+    onSellLimit: () -> Unit,
+    onCancelAll: () -> Unit,
+    onCloseAll: () -> Unit,
     onConfirmPending: () -> Unit,
     onCancelPending: () -> Unit,
     onConfirmChanged: (Boolean) -> Unit,
-    onPaperChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Локальный текст поля: ввод «0.05» не затирается валидацией
@@ -77,106 +93,23 @@ fun ChartTradingPanel(
 
     Column(
         modifier = modifier
-            .background(Color.Black.copy(alpha = 0.75f), RoundedCornerShape(6.dp))
-            .padding(8.dp),
+            .border(1.dp, ChartColors.gridLine, RoundedCornerShape(8.dp))
+            .background(panelBg, RoundedCornerShape(8.dp))
+            .padding(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.Start,
     ) {
-        // Шапка: ex/sym из графика + подтверждение ордеров.
-        // FlowRow — в узких тайлах строки переносятся, а не режутся.
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = caption,
-                color = Color(0xFF6B7A88),
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = if (confirmOrders) "Confirm: ON" else "Confirm: OFF",
-                color = if (confirmOrders) Color(0xFF5B9BD5) else Color(0xFF6B7A88),
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .background(
-                        if (confirmOrders) Color(0xFF5B9BD5).copy(alpha = 0.2f) else Color.Transparent,
-                        RoundedCornerShape(3.dp)
-                    )
-                    .clickableNoIndication { onConfirmChanged(!confirmOrders) }
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-            )
-            Text(
-                text = if (paperEnabled) "Paper ✔" else "Paper",
-                color = if (paperEnabled) Color(0xFF00C853) else Color(0xFF6B7A88),
-                fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .background(
-                        if (paperEnabled) Color(0xFF00C853).copy(alpha = 0.2f) else Color.Transparent,
-                        RoundedCornerShape(3.dp)
-                    )
-                    .clickableNoIndication { onPaperChanged(!paperEnabled) }
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-            )
-        }
+        // ex/sym берутся с графика
+        Text(
+            text = caption,
+            color = labelColor,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
 
-        // Количество: minQty инструмента — быстрый выбор + своё значение
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Qty:", color = Color(0xFFAAAAAA), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-
-            minQty?.takeIf { it > 0 }?.let { mq ->
-                Text(
-                    text = "min ${trimZeros(mq)}",
-                    color = if (quantity == null) Color(0xFF00C853) else Color(0xFF6B7A88),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .background(
-                            if (quantity == null) Color(0xFF00C853).copy(alpha = 0.2f) else Color.Transparent,
-                            RoundedCornerShape(3.dp)
-                        )
-                        .clickableNoIndication {
-                            qtyText = ""
-                            onQuantityChanged(null)
-                        }
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                )
-            }
-
-            BasicTextField(
-                value = qtyText,
-                onValueChange = { text: String ->
-                    qtyText = text
-                    // В VM кладём только корректное положительное число;
-                    // незавершённый ввод ("0.") не стирает поле и не падает
-                    onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
-                },
-                singleLine = true,
-                textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
-                cursorBrush = SolidColor(Color(0xFF5B9BD5)),
-                modifier = Modifier
-                    .width(70.dp)
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
-            )
-        }
-
-        // Настройки ордера: тип / маржа / плечо / reduce-only
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
+        SettingRow("Order") {
             TerminalDropdown(
                 currentValue = orderType,
                 items = listOf(OrderType.LIMIT, OrderType.POST_ONLY, OrderType.IOC, OrderType.FOK, OrderType.MARKET),
@@ -184,6 +117,8 @@ fun ChartTradingPanel(
                 displayText = { it.name },
                 menuWidth = 110.dp,
             )
+        }
+        SettingRow("Margin") {
             TerminalDropdown(
                 currentValue = marginMode,
                 items = listOf(2, 1),
@@ -191,113 +126,229 @@ fun ChartTradingPanel(
                 displayText = { if (it == 1) "Isolated" else "Cross" },
                 menuWidth = 110.dp,
             )
+        }
+        SettingRow("Leverage") {
             TerminalDropdown(
                 currentValue = leverage ?: 0,
                 items = listOf(0, 1, 2, 3, 5, 10, 20, 50, 100, 125),
                 onValueChanged = { onLeverageChanged(it.takeIf { l -> l > 0 }) },
-                displayText = { if (it <= 0) "Lev" else "${it}x" },
+                displayText = { if (it <= 0) "—" else "${it}x" },
                 menuWidth = 90.dp,
             )
-            Text(
-                text = "RO",
-                color = if (reduceOnly) Color(0xFF5B9BD5) else Color(0xFF6B7A88),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                modifier = Modifier
-                    .background(
-                        if (reduceOnly) Color(0xFF5B9BD5).copy(alpha = 0.2f) else Color.Transparent,
-                        RoundedCornerShape(3.dp)
-                    )
-                    .clickableNoIndication { onReduceOnlyChanged(!reduceOnly) }
-                    .padding(horizontal = 5.dp, vertical = 2.dp),
+        }
+        SettingRow("Qty") {
+            QtyInput(
+                qtyText = qtyText,
+                minQty = minQty,
+                onTextChanged = { text ->
+                    qtyText = text
+                    // В VM кладём только корректное положительное число;
+                    // незавершённый ввод ("0.") не стирает поле и не падает
+                    onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
+                },
+                modifier = Modifier.weight(1f),
             )
         }
 
-        // TP/SL — необязательные цены тейка/стопа
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-            itemVerticalAlignment = Alignment.CenterVertically,
-        ) {
-            OptionalPriceField("TP:", takeProfit, onTakeProfitChanged)
-            OptionalPriceField("SL:", stopLoss, onStopLossChanged)
+        // TP/SL — необязательные цены тейка/стопа (компактно, одной строкой)
+        SettingRow("TP/SL") {
+            OptionalPriceField("TP", takeProfit, onTakeProfitChanged, Modifier.weight(1f))
+            OptionalPriceField("SL", stopLoss, onStopLossChanged, Modifier.weight(1f))
         }
 
-        // Размещение: market по кнопкам (сторона явная), либо подтверждение
-        // отложенного ордера (Confirm: ON) — без попапов, прямо в панели.
-        val pending = pendingOrder
-        if (pending != null) {
-            val sideColor = if (pending.side.name == "BUY") Color(0xFF26A69A) else Color(0xFFEF5350)
-            val px = if (pending.orderType == OrderType.MARKET) "market" else "@ ${pending.price}"
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "${pending.orderType.name} ${pending.side.name} ${trimZeros(pending.quantity)} $px",
-                    color = sideColor,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                SideButton("Confirm", sideColor, onConfirmPending)
-                SideButton("Cancel", Color(0xFF888888), onCancelPending)
-            }
-        } else {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                itemVerticalAlignment = Alignment.CenterVertically,
-            ) {
-                SideButton("Buy", Color(0xFF26A69A), onBuy)
-                SideButton("Sell", Color(0xFFEF5350), onSell)
-            }
-        }
-
-        // Подсказка: как размещать ордера (тип — из настроек выше)
-        Text(
-            text = "Click chart → ${orderType.name} order",
-            color = Color(0xFF6B7A88),
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(fieldBorder)
         )
 
-        lastMessage?.let { msg ->
+        // Флаги: reduce-only + подтверждение ордеров
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Chip("RO", active = reduceOnly) { onReduceOnlyChanged(!reduceOnly) }
+            Chip(
+                if (confirmOrders) "Confirm: ON" else "Confirm: OFF",
+                active = confirmOrders,
+                activeColor = accent,
+            ) { onConfirmChanged(!confirmOrders) }
+        }
+
+        val pending = pendingOrder
+        if (pending != null) {
+            // Подтверждение отложенного ордера (Confirm: ON) — прямо в панели
+            val sideColor = if (pending.side.name == "BUY") buyColor else sellColor
+            val px = if (pending.orderType == OrderType.MARKET) "market"
+            else "@ ${formatter.formatPrice(pending.price)}"
             Text(
-                text = msg,
-                color = Color(0xFF00C853),
+                text = "${pending.orderType.name} ${pending.side.name} ${trimZeros(pending.quantity)} $px",
+                color = sideColor,
                 fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                SideButton("Confirm", sideColor, onConfirmPending, Modifier.weight(1f))
+                SideButton("Cancel", Color(0xFF888888), onCancelPending, Modifier.weight(1f))
+            }
+        } else {
+            // Market
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                SideButton("Buy", buyColor, onBuy, Modifier.weight(1f))
+                SideButton("Sell", sellColor, onSell, Modifier.weight(1f))
+            }
+            // Лимитки по лучшим ценам (bid/ask)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                LimitButton("Buy Limit", buyColor, bestBid, onBuyLimit, Modifier.weight(1f))
+                LimitButton("Sell Limit", sellColor, bestAsk, onSellLimit, Modifier.weight(1f))
+            }
+        }
+
+        // Управление ордерами/позициями по exchange+symbol
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+            SideButton("Cancel All", warnColor, onCancelAll, Modifier.weight(1f), outlined = true)
+            SideButton("Close All", sellColor, onCloseAll, Modifier.weight(1f), outlined = true)
         }
     }
 }
 
-/** Компактная кнопка стороны ордера (Buy/Sell) без M3-паддингов. */
+/** Поле qty с placeholder = minQty инструмента (пусто → minQty). */
 @Composable
-private fun SideButton(label: String, color: Color, onClick: () -> Unit) {
-    Box(
+private fun QtyInput(
+    qtyText: String,
+    minQty: Double?,
+    onTextChanged: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    BasicTextField(
+        value = qtyText,
+        onValueChange = onTextChanged,
+        singleLine = true,
+        textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+        cursorBrush = SolidColor(accent),
+        modifier = modifier
+            .height(24.dp)
+            .background(fieldBg, RoundedCornerShape(3.dp))
+            .border(1.dp, fieldBorder, RoundedCornerShape(3.dp))
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        decorationBox = { inner ->
+            Box(contentAlignment = Alignment.CenterStart) {
+                if (qtyText.isEmpty() && minQty != null && minQty > 0) {
+                    Text(
+                        text = trimZeros(minQty),
+                        color = Color(0xFF5A6674),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                inner()
+            }
+        },
+    )
+}
+
+/** Строка настройки: label фиксированной ширины + контрол. */
+@Composable
+private fun SettingRow(label: String, content: @Composable RowScope.() -> Unit) {    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = label,
+            color = labelColor,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            modifier = Modifier.width(52.dp),
+        )
+        content()
+    }
+}
+
+/** Компактный чип-флаг (RO / Confirm). */
+@Composable
+private fun Chip(
+    label: String,
+    active: Boolean,
+    activeColor: Color = accent,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        color = if (active) activeColor else labelColor,
+        fontSize = 10.sp,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
         modifier = Modifier
-            .background(color.copy(alpha = 0.15f), RoundedCornerShape(3.dp))
-            .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+            .background(
+                if (active) activeColor.copy(alpha = 0.2f) else Color.Transparent,
+                RoundedCornerShape(3.dp),
+            )
+            .border(1.dp, if (active) activeColor.copy(alpha = 0.5f) else fieldBorder, RoundedCornerShape(3.dp))
             .clickableNoIndication(onClick)
-            .padding(horizontal = 14.dp, vertical = 4.dp),
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
+}
+
+/** Кнопка market-стороны. */
+@Composable
+private fun SideButton(
+    label: String,
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    outlined: Boolean = false,
+) {
+    Box(
+        modifier = modifier
+            .height(24.dp)
+            .background(
+                if (outlined) Color.Transparent else color.copy(alpha = 0.15f),
+                RoundedCornerShape(3.dp),
+            )
+            .border(1.dp, color.copy(alpha = if (outlined) 0.45f else 0.6f), RoundedCornerShape(3.dp))
+            .clickableNoIndication(onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = color,
-            fontSize = 11.sp,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Лимитка по лучшей цене: неактивна, пока bid/ask не пришёл. */
+@Composable
+private fun LimitButton(
+    label: String,
+    color: Color,
+    price: Double?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ready = price != null && price > 0
+    Box(
+        modifier = modifier
+            .height(24.dp)
+            .background(color.copy(alpha = if (ready) 0.15f else 0.05f), RoundedCornerShape(3.dp))
+            .border(1.dp, color.copy(alpha = if (ready) 0.6f else 0.25f), RoundedCornerShape(3.dp))
+            .clickable(enabled = ready, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = color.copy(alpha = if (ready) 1f else 0.4f),
+            fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -311,6 +362,7 @@ private fun OptionalPriceField(
     label: String,
     value: Double?,
     onChanged: (Double?) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var text by remember(value) {
         mutableStateOf(value?.let { trimZeros(it) } ?: "")
@@ -318,8 +370,9 @@ private fun OptionalPriceField(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier,
     ) {
-        Text(label, color = Color(0xFFAAAAAA), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text(label, color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
         BasicTextField(
             value = text,
             onValueChange = { t: String ->
@@ -328,16 +381,20 @@ private fun OptionalPriceField(
             },
             singleLine = true,
             textStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace),
-            cursorBrush = SolidColor(Color(0xFF5B9BD5)),
+            cursorBrush = SolidColor(accent),
             modifier = Modifier
-                .width(64.dp)
-                .background(Color(0xFF1A1A1A), RoundedCornerShape(3.dp))
-                .padding(horizontal = 4.dp, vertical = 2.dp),
+                .weight(1f)
+                .height(22.dp)
+                .background(fieldBg, RoundedCornerShape(3.dp))
+                .border(1.dp, fieldBorder, RoundedCornerShape(3.dp))
+                .padding(horizontal = 4.dp, vertical = 3.dp),
             decorationBox = { inner ->
-                if (text.isEmpty()) {
-                    Text("—", color = Color(0xFF555555), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (text.isEmpty()) {
+                        Text("—", color = Color(0xFF555555), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                    }
+                    inner()
                 }
-                inner()
             },
         )
     }

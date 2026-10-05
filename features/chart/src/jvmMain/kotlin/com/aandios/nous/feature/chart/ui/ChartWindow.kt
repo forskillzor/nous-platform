@@ -5,8 +5,16 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -16,9 +24,11 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.v2.SwingWindow
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -42,6 +52,7 @@ import com.aandios.nous.feature.chart.tools.DrawingRepository
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
@@ -122,7 +133,6 @@ private fun ChartWindowContent(
     val tradingOrders by chartViewModel.openOrders.collectAsState()
     val tradingQuantity by chartViewModel.tradingQuantity.collectAsState()
     val confirmOrders by chartViewModel.confirmOrders.collectAsState()
-    val lastTradingMessage by chartViewModel.lastTradingMessage.collectAsState()
     val chartOrderType by chartViewModel.chartOrderType.collectAsState()
     val chartReduceOnly by chartViewModel.reduceOnly.collectAsState()
     val chartLeverage by chartViewModel.chartLeverage.collectAsState()
@@ -130,10 +140,24 @@ private fun ChartWindowContent(
     val chartTakeProfit by chartViewModel.takeProfitPrice.collectAsState()
     val chartStopLoss by chartViewModel.stopLossPrice.collectAsState()
     val pendingOrder by chartViewModel.pendingOrder.collectAsState()
-    var paperEnabled by remember { mutableStateOf(PaperTrading.enabled) }
+    val paperEnabled by PaperTrading.enabledFlow.collectAsState()
 
-    LaunchedEffect(uiState.currentSymbol, tradingEnabled) {
-        if (tradingEnabled) chartViewModel.refreshOpenOrders()
+    // Лучшие bid/ask для лимиток «по лучшей цене» (Buy Limit / Sell Limit)
+    var bestBid by remember { mutableStateOf<Double?>(null) }
+    var bestAsk by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(uiState.currentProviderId, uiState.currentSymbol) {
+        bestBid = null
+        bestAsk = null
+        val ticker = registry.get(uiState.currentProviderId)?.bookTicker ?: return@LaunchedEffect
+        ticker.subscribeToBookTicker(uiState.currentSymbol).collect { tick ->
+            bestBid = tick.bestBid.takeIf { it > 0 }
+            bestAsk = tick.bestAsk.takeIf { it > 0 }
+        }
+    }
+
+    LaunchedEffect(uiState.currentSymbol, uiState.currentProviderId) {
+        // Ордера видны всегда (и при выключенном Trading — только просмотр)
+        chartViewModel.refreshOpenOrders()
     }
 
     // Ликвидации — от адаптера АКТИВНОГО провайдера (у MEXC его нет → null)
@@ -220,6 +244,8 @@ private fun ChartWindowContent(
             onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
             tradingEnabled = tradingEnabled,
             onTradingToggle = { chartViewModel.setTradingEnabled(it) },
+            paperEnabled = paperEnabled,
+            onPaperToggle = { chartViewModel.setPaperEnabled(it) },
             modifier = Modifier.padding(8.dp)
         )
 
@@ -321,9 +347,16 @@ private fun ChartWindowContent(
                                 onChartTradingClick = if (tradingEnabled) {
                                     { price -> chartViewModel.placeChartOrder(price) }
                                 } else null,
-                                onCancelTradingOrder = { chartViewModel.cancelChartOrder(it.orderId) },
-                                onMoveTradingOrder = { order, price -> chartViewModel.moveChartOrder(order, price) },
-                                onResizeTradingOrder = { order, qty -> chartViewModel.resizeChartOrder(order, qty) },
+                                // Trading off — бейджи только для просмотра
+                                onCancelTradingOrder = if (tradingEnabled) {
+                                    { chartViewModel.cancelChartOrder(it.orderId) }
+                                } else null,
+                                onMoveTradingOrder = if (tradingEnabled) {
+                                    { order, price -> chartViewModel.moveChartOrder(order, price) }
+                                } else null,
+                                onResizeTradingOrder = if (tradingEnabled) {
+                                    { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
+                                } else null,
                             )
                         }
                     }
@@ -369,9 +402,16 @@ private fun ChartWindowContent(
                             onChartTradingClick = if (tradingEnabled) {
                                 { price -> chartViewModel.placeChartOrder(price) }
                             } else null,
-                            onCancelTradingOrder = { chartViewModel.cancelChartOrder(it.orderId) },
-                            onMoveTradingOrder = { order, price -> chartViewModel.moveChartOrder(order, price) },
-                            onResizeTradingOrder = { order, qty -> chartViewModel.resizeChartOrder(order, qty) },
+                            // Trading off — бейджи только для просмотра
+                            onCancelTradingOrder = if (tradingEnabled) {
+                                { chartViewModel.cancelChartOrder(it.orderId) }
+                            } else null,
+                            onMoveTradingOrder = if (tradingEnabled) {
+                                { order, price -> chartViewModel.moveChartOrder(order, price) }
+                            } else null,
+                            onResizeTradingOrder = if (tradingEnabled) {
+                                { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
+                            } else null,
                         )
                     }
                 }
@@ -389,11 +429,13 @@ private fun ChartWindowContent(
                     .padding(8.dp)
             )
 
-            // Панель chart trading: левый нижний угол — не мешает кнопке
-            // «к последней свече» (справа снизу); ширина ограничена тайлом,
-            // ex/sym берутся с графика. В узких тайлах строки переносятся.
+            // Панель chart trading (левый нижний угол, вертикальная как
+            // DrawingToolPanel): при выключенном Trading скрыта, ордера на
+            // графике остаются видны, но только для просмотра.
             if (tradingEnabled) {
                 val panelMaxWidth = (maxWidth - 20.dp).coerceAtLeast(160.dp)
+                // Вертикальная узкая панель (в стиле DrawingToolPanel)
+                val panelWidth = minOf(192.dp, panelMaxWidth)
                 ChartTradingPanel(
                     caption = "${uiState.currentSymbol} · ${registry.displayName(uiState.currentProviderId)}",
                     minQty = uiState.currentSymbolInfo?.minQty,
@@ -405,9 +447,10 @@ private fun ChartWindowContent(
                     takeProfit = chartTakeProfit,
                     stopLoss = chartStopLoss,
                     confirmOrders = confirmOrders,
-                    lastMessage = lastTradingMessage,
                     pendingOrder = pendingOrder,
-                    paperEnabled = paperEnabled,
+                    bestBid = bestBid,
+                    bestAsk = bestAsk,
+                    formatter = uiState.currentSymbolFormatter,
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
                     onOrderTypeChanged = { chartViewModel.setChartOrderType(it) },
                     onReduceOnlyChanged = { chartViewModel.setReduceOnly(it) },
@@ -417,17 +460,17 @@ private fun ChartWindowContent(
                     onStopLossChanged = { chartViewModel.setStopLossPrice(it) },
                     onBuy = { chartViewModel.placeMarketOrder(OrderSide.BUY) },
                     onSell = { chartViewModel.placeMarketOrder(OrderSide.SELL) },
+                    onBuyLimit = { bestBid?.let { p -> chartViewModel.placeLimitAtBest(OrderSide.BUY, p) } },
+                    onSellLimit = { bestAsk?.let { p -> chartViewModel.placeLimitAtBest(OrderSide.SELL, p) } },
+                    onCancelAll = { chartViewModel.cancelAllChartOrders() },
+                    onCloseAll = { chartViewModel.closeAllChartPositions() },
                     onConfirmPending = { chartViewModel.confirmPendingOrder() },
                     onCancelPending = { chartViewModel.cancelPendingOrder() },
                     onConfirmChanged = { c -> chartViewModel.setConfirmOrders(c) },
-                    onPaperChanged = { v ->
-                        paperEnabled = v
-                        chartViewModel.setPaperEnabled(v)
-                    },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 8.dp, bottom = 28.dp)
-                        .widthIn(max = panelMaxWidth),
+                        .width(panelWidth),
                 )
             }
         }

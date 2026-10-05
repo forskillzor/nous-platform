@@ -43,6 +43,15 @@ class SymbolFormatter(
 
     fun formatPrice(price: Float): String = formatPrice(price.toDouble())
 
+    /**
+     * Округление цены до tickSize инструмента (шаг цены биржи):
+     * 120.706764211 → 120.71 при tickSize=0.01.
+     */
+    fun roundPrice(price: Double): Double {
+        if (tickSize <= 0.0) return price
+        return formatPrice(price).toDouble()
+    }
+
     fun formatVolume(volume: Double): String {
         val v = abs(volume)
         return when {
