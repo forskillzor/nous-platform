@@ -69,7 +69,6 @@ import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.text.drawText
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
-import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.TradeSide
@@ -117,7 +116,6 @@ fun CandleStickChartInteraction(
     onNeedMoreHistory: () -> Unit = {},
     hasMoreHistory: Boolean = true,
     footprintCandles: List<FootprintCandle>? = null,
-    liquidationOrders: List<LiquidationOrder> = emptyList(),
     indicatorRenderers: List<DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit> = emptyList(),
     indicatorHeightDp: Dp = 80.dp,
     drawingHistory: DrawingHistory? = null,
@@ -682,21 +680,6 @@ fun CandleStickChartInteraction(
                 scrollOffset = clampedOffset,
                 zoomLevel = timeScale.zoomLevel,
             )
-
-            // 4. Liquidation markers overlay
-            if (liquidationOrders.isNotEmpty()) {
-                val tfMs = if (candles.size >= 2) candles[1].timestamp - candles[0].timestamp else 3_600_000L
-                drawLiquidationMarkers(
-                    orders = liquidationOrders,
-                    priceRange = priceRange,
-                    chartWidth = layout.chartMainArea.width,
-                    chartHeight = layout.chartMainArea.height,
-                    scrollOffset = clampedOffset,
-                    candles = candles,
-                    timeframeMs = tfMs.coerceAtLeast(1L),
-                    zoomLevel = timeScale.zoomLevel
-                )
-            }
 
             // 5. Indicator panels (below main chart, above timescale)
             layout.indicatorAreas.forEachIndexed { idx, area ->
