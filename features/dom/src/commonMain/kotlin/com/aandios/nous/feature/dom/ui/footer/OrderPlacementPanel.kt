@@ -39,7 +39,8 @@ private val labelColor = Color(0xFF8A97A5)
 /**
  * Компактная панель ордеров DOM.
  *
- * Строка 1: Trading ON/OFF toggle · Confirm · RO · Paper.
+ * Верхняя строка: PnL позиции (без позиции — «-/- -/- -/-»).
+ * Строка 1: Trading · Confirm · RO · Cross/Isol · Paper (в одну строку).
  * Строка 2: Qty (узкий input) · тип лимитки · Lvg (плечо).
  * Далее: строка подтверждения (Confirm: ON), Close All/Cancel All,
  * Buy/Sell Limit (цена кликом по уровню), market Buy/Sell, Best Bid/Ask.
@@ -88,19 +89,17 @@ fun OrderPlacementPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // PnL текущей позиции — самая верхняя строка (как в chart panel)
-            pnlText?.let { text ->
-                Text(
-                    text = text,
-                    color = if (pnlUp) buyColor else sellColor,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                )
-            }
+            // PnL позиции — самая верхняя строка, видна всегда (без позиций: -/-)
+            Text(
+                text = pnlText ?: "-/- -/- -/-",
+                color = if (pnlText == null) labelColor else if (pnlUp) buyColor else sellColor,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
 
-            // Строка 1: Trading ON/OFF · Confirm · RO · Paper · Cross/Isolated
+            // Строка 1: Trading · Confirm · RO · маржа · Paper (всё в одну строку)
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -108,20 +107,20 @@ fun OrderPlacementPanel(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 ToggleChip(
-                    label = if (isTradingEnabled) "Trading ON" else "Trading OFF",
+                    label = "Trading",
                     active = isTradingEnabled,
                     activeColor = okColor,
                     inactiveColor = sellColor,
                 ) { onOrderIntent(OrderIntent.ToggleTrading) }
                 ToggleChip(label = "Confirm", active = confirmOrders) { onConfirmChanged(!confirmOrders) }
                 ToggleChip(label = "RO", active = reduceOnly) { onReduceOnlyChanged(!reduceOnly) }
-                ToggleChip(label = "Paper", active = paperEnabled) { onPaperChanged(!paperEnabled) }
-                // Маржа: изолированная / кросс (компактный тумблер)
+                // Маржа: Cross / Isol (компактный тумблер)
                 ToggleChip(
-                    label = if (marginMode == 1) "Isolated" else "Cross",
+                    label = if (marginMode == 1) "Isol" else "Cross",
                     active = marginMode == 1,
                     activeColor = accent,
                 ) { onMarginModeChanged(if (marginMode == 1) 2 else 1) }
+                ToggleChip(label = "Paper", active = paperEnabled) { onPaperChanged(!paperEnabled) }
             }
 
             // Строка 2: qty (узкий) / тип лимитки / плечо
