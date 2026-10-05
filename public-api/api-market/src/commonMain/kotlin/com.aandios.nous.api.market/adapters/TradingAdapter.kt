@@ -6,6 +6,7 @@
 package com.aandios.nous.api.market.adapters
 
 import com.aandios.nous.api.market.model.Balance
+import com.aandios.nous.api.market.model.trading.FeeRates
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.api.market.model.trading.OrderResponse
@@ -68,4 +69,12 @@ interface TradingAdapter : MarketAdapter {
 
     /** Живые обновления балансов. */
     fun subscribeToBalances(): Flow<Balance>? = null
+
+    /**
+     * Ставки комиссий по символу (maker/taker) из данных активной биржи.
+     * Провайдеры реализуют своим источником (MEXC — tiered_fee_rate/v2,
+     * Binance и прочие — их exchange/account API). null — недоступно
+     * (нет ключей/эндпоинта): paper-движок использует 0%.
+     */
+    suspend fun getFeeRates(symbol: String): FeeRates? = null
 }

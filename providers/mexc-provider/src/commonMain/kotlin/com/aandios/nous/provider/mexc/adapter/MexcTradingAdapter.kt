@@ -10,6 +10,7 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.Balance
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
+import com.aandios.nous.api.market.model.trading.FeeRates
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.api.market.model.trading.OrderResponse
@@ -273,6 +274,23 @@ class MexcTradingAdapter(
         return restGate.execute(key = "position:margin:$positionId", weight = 20) {
             val response = tradingClient.signedPost("api/v1/private/position/change_margin", body.toString())
             response.jsonObject["success"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() ?: false
+        }
+    }
+
+    // ── Комиссии ──
+
+    override suspend fun getFeeRates(symbol: String): FeeRates? {
+        if (!tradingClient.hasCredentials) return null
+        return restGate.execute(key = "account:fees:$symbol", weight = 20) {
+            val response = tradingClient.signedGet(
+                "api/v1/private/account/tiered_fee_rate/v2",
+                mapOf("symbol" to toMexcSymbol(symbol)),
+            )
+            val data = response.jsonObject["data"]?.jsonObject ?: return@execute null
+            fun read(name: String): Double? = data[name]?.jsonPrimitive?.content?.toDoubleOrNull()
+            val maker = read("realMakerFee") ?: read("originalMakerFee") ?: return@execute null
+            val taker = read("realTakerFee") ?: read("originalTakerFee") ?: return@execute null
+            FeeRates(maker = maker, taker = taker)
         }
     }
 

@@ -10,11 +10,15 @@ import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.api.market.model.trading.OrderStatus
+import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeSide
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -203,6 +207,237 @@ class PaperTradingAdapterTest {
         assertEquals(2, updates.size)
         assertEquals(OrderStatus.OPEN, updates[0].status)
         assertEquals(OrderStatus.FILLED, updates[1].status)
+    }
+
+    // ── Engine v2: типы ордеров, позиции, маржа, TP/SL, balance, persist ──
+
+    @Test
+    fun `post only crossing is rejected, non crossing rests`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        val crossing = adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.POST_ONLY, 1.0, price = 101.0)
+        )
+        assertFalse(crossing.success)
+        val resting = adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.POST_ONLY, 1.0, price = 99.0)
+        )
+        assertTrue(resting.success)
+        assertEquals(1, adapter.getOpenOrders().size)
+    }
+
+    @Test
+    fun `ioc and fok are all or nothing`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        // не маркетабельные — отклоняются
+        assertFalse(
+            adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.IOC, 1.0, price = 99.0)).success
+        )
+        assertFalse(
+            adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.FOK, 1.0, price = 101.0)).success
+        )
+        assertEquals(0, adapter.getOpenOrders().size)
+        // маркетабельные — taker-филл по mark
+        val ioc = adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.IOC, 1.0, price = 101.0))
+        assertTrue(ioc.success)
+        assertEquals(100.0, adapter.getPositions()[0].avgPrice)
+        val fok = adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.FOK, 1.0, price = 95.0))
+        assertTrue(fok.success)
+    }
+
+    @Test
+    fun `one way mode reverses position`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        adapter.setMarkPrice("BTCUSDT", 110.0)
+        // SELL 2 > long 1: закрывает лонг и открывает шорт на 1
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.MARKET, 2.0))
+
+        val pos = adapter.portfolio().positions
+        assertEquals(1, pos.size)
+        assertEquals(TradeSide.SELL, pos[0].side)
+        assertEquals(1.0, pos[0].quantity)
+        assertEquals(110.0, pos[0].avgPrice)
+        assertEquals(10.0, adapter.portfolio().history.last().pnl)
+        // available: 10000 - 100 (маржа лонга) + 100 + 10 (закрытие) - 110 (маржа шорта)
+        assertEquals(9900.0, usdtBalance(adapter))
+    }
+
+    @Test
+    fun `hedge mode keeps separate long and short`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        assertTrue(adapter.setPositionMode(1))
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        adapter.setMarkPrice("BTCUSDT", 110.0)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.MARKET, 1.0))
+        assertEquals(2, adapter.portfolio().positions.size)
+    }
+
+    @Test
+    fun `leverage reduces required margin`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0, leverage = 5)
+        )
+        val pos = adapter.portfolio().positions[0]
+        assertEquals(5, pos.leverage)
+        assertEquals(9980.0, usdtBalance(adapter)) // 10000 - 100/5
+    }
+
+    @Test
+    fun `reduce only caps by position and rejects without one`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        adapter.setMarkPrice("BTCUSDT", 110.0)
+        val capped = adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.MARKET, 2.0, reduceOnly = true)
+        )
+        assertTrue(capped.success)
+        assertEquals(0, adapter.portfolio().positions.size)
+        assertEquals(1.0, adapter.portfolio().history.last().quantity)
+        val noPos = adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.MARKET, 1.0, reduceOnly = true)
+        )
+        assertFalse(noPos.success)
+    }
+
+    @Test
+    fun `taker and maker fees are applied from provider rates`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.setFeeRates("BTCUSDT", com.aandios.nous.api.market.model.trading.FeeRates(maker = 0.0001, taker = 0.0004))
+
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        assertEquals(0.04, adapter.portfolio().history.last().fee, 1e-9)
+
+        val resting = adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 90.0))
+        assertTrue(resting.success)
+        adapter.cancelOrder(resting.orderId) // очистим, чтобы не мешала
+        val maker = adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.LIMIT, 1.0, price = 90.0))
+        adapter.cancelOrder(maker.orderId) // снимем SELL-рест, чтобы не исполнился на падении
+        val makerRest = adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 89.0))
+        assertTrue(makerRest.success)
+        adapter.setMarkPrice("BTCUSDT", 89.0)
+        assertEquals(0.0089, adapter.portfolio().history.last().fee, 1e-9)
+    }
+
+    @Test
+    fun `take profit closes position on trigger`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(
+            OrderRequest(
+                "BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0,
+                takeProfitPrice = 110.0,
+            )
+        )
+        adapter.setMarkPrice("BTCUSDT", 111.0)
+        assertEquals(0, adapter.portfolio().positions.size)
+        assertEquals(11.0, adapter.portfolio().history.last().pnl)
+    }
+
+    @Test
+    fun `stop loss closes position on trigger`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(
+            OrderRequest(
+                "BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0,
+                stopLossPrice = 95.0,
+            )
+        )
+        adapter.setMarkPrice("BTCUSDT", 94.0)
+        assertEquals(0, adapter.portfolio().positions.size)
+        assertEquals(-6.0, adapter.portfolio().history.last().pnl)
+    }
+
+    @Test
+    fun `set balance, reset balance keeps history, reset history clears it`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setBalance("USDT", 500.0)
+        assertEquals(500.0, usdtBalance(adapter))
+
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        assertTrue(adapter.portfolio().history.isNotEmpty())
+
+        adapter.resetBalance(7000.0)
+        assertEquals(7000.0, usdtBalance(adapter))
+        assertEquals(0, adapter.portfolio().positions.size)
+        assertTrue(adapter.portfolio().history.isNotEmpty())
+
+        adapter.resetHistory()
+        assertTrue(adapter.portfolio().history.isEmpty())
+    }
+
+    @Test
+    fun `snapshot and restore round trip`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.setLeverage("BTCUSDT", 5)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.SELL, OrderType.LIMIT, 1.0, price = 130.0))
+        val state = adapter.snapshot()
+
+        val restored = PaperTradingAdapter()
+        restored.restore(state)
+        assertEquals(state.balances, restored.getBalances())
+        assertEquals(state.positions, restored.getPositions())
+        assertEquals(state.openOrders, restored.getOpenOrders())
+        assertEquals(state.history, restored.portfolio().history)
+        assertEquals(5, restored.getLeverage("BTCUSDT"))
+        assertEquals(2, restored.getPositionMode())
+    }
+
+    @Test
+    fun `position and balance flows emit on fills`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        val positions = mutableListOf<Position>()
+        val balances = mutableListOf<com.aandios.nous.api.market.model.Balance>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            adapter.subscribeToPositions()!!.collect { positions += it }
+        }
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            adapter.subscribeToBalances()!!.collect { balances += it }
+        }
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+        testScheduler.advanceUntilIdle()
+        assertTrue(positions.any { it.quantity == 1.0 })
+        assertTrue(balances.isNotEmpty())
+
+        adapter.setMarkPrice("BTCUSDT", 105.0)
+        adapter.closePosition("BTCUSDT")
+        testScheduler.advanceUntilIdle()
+        assertTrue(positions.any { it.quantity == 0.0 })
+    }
+
+    @Test
+    fun `feedMarkPrice fills resting limit only when paper enabled`() = runBlocking {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 90.0))
+        assertEquals(1, adapter.getOpenOrders().size)
+
+        adapter.feedMarkPrice("BTCUSDT", 89.0)
+        delay(100)
+        assertEquals(1, adapter.getOpenOrders().size) // Paper OFF — фид игнорируется
+
+        PaperTrading.enabled = true
+        try {
+            adapter.feedMarkPrice("BTCUSDT", 88.0)
+            withTimeout(3000) {
+                while (adapter.getOpenOrders().isNotEmpty()) delay(10)
+            }
+        } finally {
+            PaperTrading.enabled = false
+        }
+        assertEquals(0, adapter.getOpenOrders().size)
     }
 
     private class FakeProvider : com.aandios.nous.api.market.Provider {
