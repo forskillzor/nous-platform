@@ -156,10 +156,10 @@ fun OrderPlacementPanel(
                 }
             }
 
-            // Close All / Cancel All
+            // Cancel All / Close All (порядок: cancel слева, close справа)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                SideButton("Close All", Color(0xFFE05B5B), onCloseAll, Modifier.weight(1f), outlined = true)
                 SideButton("Cancel All", warnColor, onCancelAll, Modifier.weight(1f), outlined = true)
+                SideButton("Close All", Color(0xFFE05B5B), onCloseAll, Modifier.weight(1f), outlined = true)
             }
 
             // Лимитки по выбранной цене (выбор — Confirm: ON + клик по уровню)
