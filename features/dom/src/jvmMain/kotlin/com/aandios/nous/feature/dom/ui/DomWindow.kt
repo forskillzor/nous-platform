@@ -125,6 +125,7 @@ fun DomWindow(
                 baseText = baseText,
                 onCancelOrder = { orderId -> domViewModel.cancelDomOrder(orderId) },
                 onResizeOrder = { order, qty -> domViewModel.resizeDomOrder(order, qty) },
+                onMoveOrder = { order, price -> domViewModel.moveDomOrder(order, price) },
                 modifier = Modifier.fillMaxSize()
             )
             // Snackbar-уведомления DOM — под заголовком (как в chart trading)

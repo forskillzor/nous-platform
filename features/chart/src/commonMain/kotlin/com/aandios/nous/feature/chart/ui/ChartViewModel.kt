@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.adapters.TradingAdapter
+import com.aandios.nous.api.market.adapters.replaceOrder
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.Candle
@@ -691,25 +692,22 @@ class ChartViewModel(
                 notify("Quantity must be positive")
                 return@launch
             }
-            runCatching { adapter.cancelOrder(order.orderId) }
+            // Общая логика с DOM: cancel+replace
             val formatter = _state.value.currentSymbolFormatter
-            val request = OrderRequest(
-                symbol = order.symbol.uppercase(),
-                side = order.side,
-                orderType = order.orderType,
+            val newPrice = if (order.orderType == OrderType.MARKET) 0.0 else formatter.roundPrice(price)
+            val response = adapter.replaceOrder(
+                order = order,
+                price = newPrice,
                 quantity = quantity,
-                price = if (order.orderType == OrderType.MARKET) 0.0 else formatter.roundPrice(price),
-                reduceOnly = order.reduceOnly,
                 leverage = _chartLeverage.value,
                 marginMode = _chartMarginMode.value,
             )
-            val response = runCatching { adapter.placeOrder(request) }.getOrNull()
             notify(when {
                 response == null -> "Replace failed (network)"
                 response.success -> {
-                    val px = if (request.orderType == OrderType.MARKET) "market"
-                    else "@ ${formatter.formatPrice(request.price)}"
-                    "${request.orderType.name} ${request.side.name} $quantity $px → ${response.orderId}"
+                    val px = if (order.orderType == OrderType.MARKET) "market"
+                    else "@ ${formatter.formatPrice(newPrice)}"
+                    "${order.orderType.name} ${order.side.name} $quantity $px → ${response.orderId}"
                 }
                 else -> response.message ?: "Replace failed"
             })

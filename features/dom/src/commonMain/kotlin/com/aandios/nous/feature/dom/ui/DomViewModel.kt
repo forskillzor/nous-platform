@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
+import com.aandios.nous.api.market.adapters.replaceOrder
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.orderbook.DomEvent
@@ -41,6 +42,12 @@ import kotlin.math.roundToLong
  * по [DomOptions.provider] (id зарегистрированного провайдера), переключение
  * — обычная смена опций с переподпиской.
  */
+private fun fmtQty(v: Double): String {
+    var s = v.toString()
+    if ('.' in s) s = s.trimEnd('0').trimEnd('.')
+    return s
+}
+
 /** Уведомление DOM-панели (snackbar под заголовком). */
 data class DomNotification(val id: Long, val text: String)
 
@@ -202,9 +209,11 @@ class DomViewModel(
             }
             if (providerChanged) {
                 loadSymbols(newOptions.provider)
+                qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
                 ensureNoticesSubscription()
             } else if (oldOptions.symbol != newOptions.symbol) {
+                qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
             }
             if (aggChanged && !subscriptionChanged) {
@@ -387,7 +396,11 @@ class DomViewModel(
 
     fun updateOrderQuantity(quantity: String) {
         _orderQuantity.value = quantity
+        qtyUserEdited = true
     }
+
+    /** Пользователь правил qty — не перетираем его minQty инструмента. */
+    private var qtyUserEdited = false
 
     fun setReduceOnly(reduceOnly: Boolean) {
         _reduceOnly.value = reduceOnly
@@ -574,33 +587,39 @@ class DomViewModel(
      * trading) — старый ордер снимается, новый ставится с той же ценой.
      */
     fun resizeDomOrder(order: com.aandios.nous.api.market.model.trading.Order, quantity: Double) {
+        replaceOrder(order, order.price, quantity)
+    }
+
+    /** Перемещение ордера драгом в лесенке: cancel+replace по новой цене. */
+    fun moveDomOrder(order: com.aandios.nous.api.market.model.trading.Order, newPrice: Double) {
+        replaceOrder(order, newPrice, order.quantity)
+    }
+
+    /** Общая логика с chart trading: cancel+replace через адаптер. */
+    private fun replaceOrder(
+        order: com.aandios.nous.api.market.model.trading.Order,
+        price: Double,
+        quantity: Double,
+    ) {
         if (!_isTradingEnabled.value) return
-        if (quantity <= 0.0) return
+        if (quantity <= 0.0 || price <= 0.0) return
         viewModelScope.launch {
             val adapter = tradingAdapter()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
             }
-            runCatching { adapter.cancelOrder(order.orderId) }
-            val response = runCatching {
-                adapter.placeOrder(
-                    com.aandios.nous.api.market.model.trading.OrderRequest(
-                        symbol = order.symbol,
-                        side = order.side,
-                        orderType = order.orderType,
-                        quantity = quantity,
-                        price = order.price,
-                        reduceOnly = order.reduceOnly,
-                        leverage = _leverage.value,
-                    )
-                )
-            }.getOrNull()
+            val response = adapter.replaceOrder(
+                order = order,
+                price = price,
+                quantity = quantity,
+                leverage = _leverage.value,
+            )
             notify(
                 when {
                     response == null -> "Replace failed (network)"
                     response.success ->
-                        "${order.orderType.name} ${order.side.name} $quantity @ ${order.price} → ${response.orderId}"
+                        "${order.orderType.name} ${order.side.name} $quantity @ $price → ${response.orderId}"
                     else -> response.message ?: "Replace failed"
                 }
             )
@@ -777,6 +796,12 @@ class DomViewModel(
                 stepSize = info.stepSize
                 _symbolTickSize.value = tickSize
                 _symbolStepSize.value = stepSize
+                // Минимальный qty инструмента подтягивается в поле (если
+                // пользователь ещё не правил qty вручную)
+                if (!qtyUserEdited) {
+                    val minQty = info.minQty.takeIf { it > 0.0 } ?: info.stepSize.takeIf { it > 0.0 }
+                    minQty?.let { _orderQuantity.value = fmtQty(it) }
+                }
                 // Метаданные могли прийти после первого окна — пересобираем
                 // книгу из последнего окна, чтобы стакан появился сразу
                 if (bidsByPrice.isNotEmpty() || asksByPrice.isNotEmpty()) {

@@ -7,6 +7,7 @@ package com.aandios.nous.feature.dom.ui.content
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -77,8 +78,11 @@ fun LevelRow(
     position: Position? = null,
     markPrice: Double = 0.0,
     baseText: String? = null,
+    /** Цена одной строки лесенки (tickSize * шаг агрегации) — для драга. */
+    priceStepPerRow: Double = 0.0,
     onCancelOrder: (String) -> Unit = {},
     onResizeOrder: (Order, Double) -> Unit = { _, _ -> },
+    onMoveOrder: (Order, Double) -> Unit = { _, _ -> },
     onPriceClick: (Long, Double) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -163,8 +167,11 @@ fun LevelRow(
                 OrderChip(
                     order = order,
                     baseText = baseText,
+                    formatter = formatter,
+                    priceStepPerRow = priceStepPerRow,
                     onCancel = { onCancelOrder(order.orderId) },
                     onResize = { qty -> onResizeOrder(order, qty) },
+                    onMove = { price -> onMoveOrder(order, price) },
                     // short: label слева, qty справа
                     qtyOnLeft = false,
                     modifier = Modifier.align(Alignment.CenterStart)
@@ -227,8 +234,11 @@ fun LevelRow(
                 OrderChip(
                     order = order,
                     baseText = baseText,
+                    formatter = formatter,
+                    priceStepPerRow = priceStepPerRow,
                     onCancel = { onCancelOrder(order.orderId) },
                     onResize = { qty -> onResizeOrder(order, qty) },
+                    onMove = { price -> onMoveOrder(order, price) },
                     // long: qty слева, label справа
                     qtyOnLeft = true,
                     modifier = Modifier.align(Alignment.CenterEnd)
@@ -252,13 +262,16 @@ private fun positionPnlText(position: Position, markPrice: Double, tickSize: Dou
     return text to (if (pnl >= 0) longColor else shortColor)
 }
 
-/** Бейдж ордера как в chart trading: цветной рект, текст, инпут qty. */
+/** Бейдж ордера как в chart trading: цветной рект, текст, инпут qty, драг. */
 @Composable
 private fun OrderChip(
     order: Order,
     baseText: String?,
+    formatter: SymbolFormatter,
+    priceStepPerRow: Double,
     onCancel: () -> Unit,
     onResize: (Double) -> Unit,
+    onMove: (Double) -> Unit,
     /** true — инпут слева от подписи (long), false — справа (short). */
     qtyOnLeft: Boolean,
     modifier: Modifier = Modifier,
@@ -284,8 +297,18 @@ private fun OrderChip(
         onResize(q)
     }
 
-    val measurer = rememberTextMeasurer()
+    // Драг: вертикальное смещение → новая цена (cancel+replace на отпускании)
     val density = LocalDensity.current
+    val rowHeightPx = with(density) { LadderRowHeight.toPx() }
+    var dragging by remember(order.orderId) { mutableStateOf(false) }
+    var dragPx by remember(order.orderId) { mutableStateOf(0f) }
+    val targetPrice = if (dragging) {
+        order.price - (dragPx / rowHeightPx) * priceStepPerRow
+    } else {
+        order.price
+    }
+
+    val measurer = rememberTextMeasurer()
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val style = TextStyle(
@@ -297,9 +320,13 @@ private fun OrderChip(
         // Фиксированная часть: инпут qty
         val fixedPx = with(density) { 44.dp.toPx() }
         val textBudgetPx = with(density) { maxWidth.toPx() } - fixedPx
-        val label = listOf(full, short, shortest).firstOrNull { candidate ->
-            measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
-        } ?: shortest
+        val label = if (dragging && priceStepPerRow > 0.0) {
+            "→ ${formatter.formatPrice(targetPrice)}"
+        } else {
+            listOf(full, short, shortest).firstOrNull { candidate ->
+                measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
+            } ?: shortest
+        }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -308,12 +335,42 @@ private fun OrderChip(
                 .fillMaxWidth()
                 .height(18.dp)
                 .background(color, RoundedCornerShape(2.dp))
-                .padding(horizontal = 3.dp),
+                .padding(horizontal = 3.dp)
+                // Поглощаем одиночные клики, чтобы строка лесенки не реагировала
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { }
+                .pointerInput(order.orderId, priceStepPerRow) {
+                    detectDragGestures(
+                        onDragStart = {
+                            dragPx = 0f
+                            dragging = true
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            dragPx += amount.y
+                        },
+                        onDragEnd = {
+                            val rows = dragPx / rowHeightPx
+                            dragging = false
+                            dragPx = 0f
+                            if (priceStepPerRow > 0.0 && kotlin.math.abs(rows) >= 0.5f) {
+                                val newPrice = order.price - rows * priceStepPerRow
+                                if (newPrice > 0.0) onMove(newPrice)
+                            }
+                        },
+                        onDragCancel = {
+                            dragging = false
+                            dragPx = 0f
+                        },
+                    )
+                },
         ) {
             if (qtyOnLeft) {
                 QtyField(qtyText, color, { qtyText = it }, ::commit)
             }
-            // Двойной клик по подписи — отмена ордера (крестик не влезает)
+            // Двойной клик по подписи — отмена ордера; драг — перемещение
             Text(
                 text = label,
                 style = style,
@@ -335,6 +392,8 @@ private fun OrderChip(
         }
     }
 }
+
+private val LadderRowHeight = 24.dp
 
 /** Поле qty на бейдже (белое, тёмный текст по центру; commit — Enter/фокус). */
 @Composable

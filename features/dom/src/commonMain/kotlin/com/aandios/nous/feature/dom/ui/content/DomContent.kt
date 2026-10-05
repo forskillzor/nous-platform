@@ -32,6 +32,7 @@ fun DomContent(
     baseText: String? = null,
     onCancelOrder: (String) -> Unit = {},
     onResizeOrder: (Order, Double) -> Unit = { _, _ -> },
+    onMoveOrder: (Order, Double) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -52,6 +53,7 @@ fun DomContent(
             baseText = baseText,
             onCancelOrder = onCancelOrder,
             onResizeOrder = onResizeOrder,
+            onMoveOrder = onMoveOrder,
             modifier = Modifier.weight(1f)
         )
     }
