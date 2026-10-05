@@ -7,38 +7,25 @@ package com.aandios.nous.api.market.paper
 
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.adapters.TradingAdapter
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Глобальный тумблер демо-торговли и общий экземпляр [PaperTradingAdapter].
+ * Общий экземпляр paper-движка (один демо-счёт на процесс).
  *
- * Реактивный ([enabledFlow]): все свичи (chart-тулбар, Trading panel) и
- * вью-модели синхронизируются мгновенно; при включении ВСЕ панели
- * (trading/DOM/chart) используют paper-адаптер вместо реального адаптера
- * активного провайдера — см. [effectiveTrading].
+ * Сам режим paper — НЕ глобальный: каждая панель (chart/DOM/trading panel)
+ * хранит свой флаг и выбирает адаптер через [effectiveTrading] — в одном
+ * workspace можно одновременно видеть paper и live данные.
  */
 object PaperTrading {
     val adapter: PaperTradingAdapter = PaperTradingAdapter()
 
     /** Ключ StateStore, под которым UI персистит тумблер демо-торговли. */
     const val STORE_KEY = "paper_enabled"
-
-    private val _enabled = MutableStateFlow(false)
-    val enabledFlow: StateFlow<Boolean> = _enabled.asStateFlow()
-
-    var enabled: Boolean
-        get() = _enabled.value
-        set(value) {
-            _enabled.value = value
-        }
 }
 
 /**
- * Торговый адаптер для использования в UI: при включённой демо-торговле —
+ * Торговый адаптер для конкретной панели: при включённом режиме paper —
  * общий paper-адаптер (работает с ЛЮБЫМ провайдером), иначе — реальный
  * адаптер провайдера.
  */
-fun Provider.effectiveTrading(): TradingAdapter? =
-    if (PaperTrading.enabled) PaperTrading.adapter else trading
+fun Provider.effectiveTrading(paper: Boolean): TradingAdapter? =
+    if (paper) PaperTrading.adapter else trading

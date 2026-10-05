@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -129,9 +130,9 @@ fun BottomToolPanel(
                     Spacer(Modifier.Companion.weight(1f))
                 }
 
-                // Тумблер Paper-торговли для портфолио
+                // Тумблер Paper-торговли для портфолио (режим панели, не глобальный)
                 if (type == BottomToolType.PORTFOLIO) {
-                    var paperEnabled by remember { mutableStateOf(PaperTrading.enabled) }
+                    val paperEnabled = tradingViewModel?.paperEnabled?.collectAsState()?.value ?: false
                     Text(
                         text = if (paperEnabled) "Paper ✔" else "Paper",
                         color = if (paperEnabled) MaterialTheme.colorScheme.primary
@@ -145,9 +146,7 @@ fun BottomToolPanel(
                                 MaterialTheme.shapes.small,
                             )
                             .clickable {
-                                paperEnabled = !paperEnabled
-                                PaperTrading.enabled = paperEnabled
-                                tradingViewModel?.reload()
+                                tradingViewModel?.setPaperEnabled(!paperEnabled)
                             }
                             .padding(horizontal = 6.dp, vertical = 2.dp),
                     )

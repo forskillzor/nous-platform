@@ -24,7 +24,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -82,6 +81,13 @@ class TradingViewModel(
     private val _activeTab = MutableStateFlow("POSITIONS")
     val activeTab: StateFlow<String> = _activeTab.asStateFlow()
 
+    /**
+     * Paper-режим ЭТОЙ панели (независимый): можно смотреть paper данные
+     * или live, не влияя на графики/DOM.
+     */
+    private val _paperEnabled = MutableStateFlow(false)
+    val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
+
     fun selectTab(tab: String) {
         if (tab.isNotEmpty()) _activeTab.value = tab
     }
@@ -90,17 +96,13 @@ class TradingViewModel(
         if (tab.isNotEmpty()) _activeTab.value = tab
     }
 
-    private fun tradingAdapter() = providerRegistry.get(_providerId.value)?.effectiveTrading()
+    private fun tradingAdapter() =
+        providerRegistry.get(_providerId.value)?.effectiveTrading(_paperEnabled.value)
 
     init {
         scope.launch {
-            // Paper переживает перезапуск (общий ключ с chart-панелью)
-            stateStore?.getString(PaperTrading.STORE_KEY)?.let { PaperTrading.enabled = it == "1" }
-            // Переключение paper/real из любого места (тулбар графика, панель)
-            // — перезапуск подписок и перечитывание портфеля
-            launch {
-                PaperTrading.enabledFlow.drop(1).collect { restart() }
-            }
+            // Paper-режим панели переживает перезапуск (общий ключ панели)
+            _paperEnabled.value = stateStore?.getString(PaperTrading.STORE_KEY) == "1"
             restart()
         }
     }
@@ -126,13 +128,14 @@ class TradingViewModel(
         restart()
     }
 
-    /** Глобальный тумблер Paper: персист; перезапуск сделает коллектор enabledFlow. */
+    /** Переключение paper/live этой панели: персист + перечитывание портфеля. */
     fun setPaperEnabled(enabled: Boolean) {
-        if (PaperTrading.enabled == enabled) return
-        PaperTrading.enabled = enabled
+        if (_paperEnabled.value == enabled) return
+        _paperEnabled.value = enabled
         scope.launch {
             stateStore?.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
         }
+        reload()
     }
 
     private fun restart() {

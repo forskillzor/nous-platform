@@ -132,11 +132,11 @@ class PaperTradingAdapter(
     // ── Цены (фиды от графика/DOM) и комиссии ──
 
     /**
-     * Подать mark-цену из фида (график/DOM). Не-suspend; одинаковые значения
-     * отсекаются в [setMarkPrice] под локом. Работает только при Paper ON.
+     * Подать mark-цену из фида (график/DOM) в общий paper-движок.
+     * Не-suspend; одинаковые значения отсекаются в [setMarkPrice] под локом.
      */
     fun feedMarkPrice(symbol: String, price: Double) {
-        if (!PaperTrading.enabled || price <= 0.0) return
+        if (price <= 0.0) return
         scope.launch { setMarkPrice(symbol, price) }
     }
 

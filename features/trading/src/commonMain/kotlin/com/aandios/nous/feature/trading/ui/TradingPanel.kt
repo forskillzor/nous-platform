@@ -108,7 +108,7 @@ fun TradingPanel(
     val activeTabRaw by viewModel.activeTab.collectAsState()
     val tab = TradingTab.values().firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
 
-    val paperEnabled by PaperTrading.enabledFlow.collectAsState()
+    val paperEnabled by viewModel.paperEnabled.collectAsState()
     val paperSettings: PaperSettingsController = org.koin.compose.koinInject()
     val scope = rememberCoroutineScope()
 

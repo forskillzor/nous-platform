@@ -41,7 +41,7 @@ data class ChartNotification(val id: Long, val text: String)
 class ChartViewModel(
     private val providerRegistry: ProviderRegistry,
     private val footprintApiClient: FootprintApiClient? = null,
-    stateStore: StateStore? = null,
+    private val stateStore: StateStore? = null,
     private val candleCache: CandleCacheStore? = null,
     footprintCache: FootprintCacheStore? = null,
     cacheDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -101,11 +101,18 @@ class ChartViewModel(
     val positions: StateFlow<List<Position>> = _positions.asStateFlow()
 
     /** Отображение ордеров/позиций на графике (Options dropdown). */
-    private val _showOrders = MutableStateFlow(true)
+    private val _showOrders = MutableStateFlow(false)
     val showOrders: StateFlow<Boolean> = _showOrders.asStateFlow()
 
-    private val _showPositions = MutableStateFlow(true)
+    private val _showPositions = MutableStateFlow(false)
     val showPositions: StateFlow<Boolean> = _showPositions.asStateFlow()
+
+    /**
+     * Paper-режим ЭТОЙ панели графика (не глобальный): свой флаг,
+     * свой персист, свой источник ордеров/позиций.
+     */
+    private val _paperEnabled = MutableStateFlow(false)
+    val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
 
     /** Живые обновления ордеров активного адаптера (отмена/исполнение). */
     private var ordersLiveJob: Job? = null
@@ -119,7 +126,7 @@ class ChartViewModel(
 
     private val footprintCacheStore: FootprintCacheStore? = footprintCache
     private var footprintController: FootprintController? = null
-    private val persistor = stateStore?.let { ChartStatePersistor(it) }
+    private var persistor = stateStore?.let { ChartStatePersistor(it) }
 
     private var candleController: TimeSeriesController<Candle>? = null
     private var candleStateJob: Job? = null
@@ -137,10 +144,20 @@ class ChartViewModel(
         _state.update { it.copy(currentProviderId = activeProviderId) }
         loadSymbols()
         loadFootprintSymbols()
-        // Смена paper/real — источник ордеров/позиций переключается мгновенно
-        viewModelScope.launch {
-            PaperTrading.enabledFlow.drop(1).collect { onPaperModeChanged() }
-        }
+    }
+
+    /**
+     * Привязка панели (workspace+panel): торговые настройки этой панели
+     * персистятся отдельно (chart_{workspace}_{panel}_...), затем
+     * восстанавливаются. Вызывается из ChartWindow при появлении панели.
+     */
+    fun attachPanel(workspaceId: String?, panelId: String?) {
+        val store = stateStore ?: return
+        val prefix = if (workspaceId != null && panelId != null) {
+            "chart_${workspaceId}_${panelId}_"
+        } else ""
+        persistor = ChartStatePersistor(store, prefix)
+        viewModelScope.launch { restoreTradingState() }
     }
 
     override fun dispose() {
@@ -355,17 +372,14 @@ class ChartViewModel(
     }
 
     /**
-     * Глобальный тумблер Paper (демо-торговля): персистится; переключение
-     * адаптера и перечитывание ордеров выполнит коллектор [enabledFlow].
+     * Paper-режим ЭТОЙ панели: локальный флаг + персист (panel-scoped) +
+     * переподписка на ордера/позиции другого адаптера. Глобальных флагов нет —
+     * в одном workspace можно видеть paper и live одновременно.
      */
     fun setPaperEnabled(enabled: Boolean) {
-        if (PaperTrading.enabled == enabled) return
-        PaperTrading.enabled = enabled
+        if (_paperEnabled.value == enabled) return
+        _paperEnabled.value = enabled
         viewModelScope.launch { persistor?.savePaperEnabled(enabled) }
-    }
-
-    /** Смена paper/real: переподписка на live-ордера нового адаптера. */
-    private fun onPaperModeChanged() {
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
         ordersLiveJob = null
@@ -375,22 +389,43 @@ class ChartViewModel(
         refreshPaperFees(_state.value.currentSymbol)
     }
 
+    /** Торговый адаптер этой панели: paper или реальный (по флагу панели). */
+    private fun activeTrading() = activeProvider()?.effectiveTrading(_paperEnabled.value)
+
+    /** Восстановление торговых настроек панели (после attachPanel). */
+    private suspend fun restoreTradingState() {
+        val p = persistor ?: return
+        val trading = p.restoreTrading()
+        _tradingEnabled.value = trading.enabled
+        _confirmOrders.value = trading.confirmOrders
+        _tradingQuantity.value = trading.quantity
+        _chartOrderType.value = trading.orderType
+        _reduceOnly.value = trading.reduceOnly
+        _chartLeverage.value = trading.leverage
+        _chartMarginMode.value = trading.marginMode
+        _showOrders.value = trading.showOrders
+        _showPositions.value = trading.showPositions
+        _paperEnabled.value = p.restorePaperEnabled()
+        refreshOpenOrders()
+        refreshPaperFees(_state.value.currentSymbol)
+    }
+
     /**
      * Paper: ставки комиссий символа из данных активной биржи (метод
      * провайдер-агностик — каждый адаптер отдаёт свои ставки; null → 0%).
      */
     private fun refreshPaperFees(symbol: String) {
-        if (!PaperTrading.enabled) return
+        if (!_paperEnabled.value) return
         val trading = activeProvider()?.trading ?: return
         viewModelScope.launch {
             val rates = runCatching { trading.getFeeRates(symbol) }.getOrNull()
-            if (PaperTrading.enabled) PaperTrading.adapter.setFeeRates(symbol, rates)
+            if (_paperEnabled.value) PaperTrading.adapter.setFeeRates(symbol, rates)
         }
     }
 
     /** Перечитать открытые ордера текущего символа (для линий на графике). */
     fun refreshOpenOrders() {
-        val adapter = activeProvider()?.effectiveTrading()
+        val adapter = activeTrading()
             ?: run {
                 _openOrders.value = emptyList()
                 return
@@ -483,7 +518,7 @@ class ChartViewModel(
     fun cancelAllChartOrders() {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
+            val adapter = activeTrading()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
@@ -499,7 +534,7 @@ class ChartViewModel(
     fun closeChartPosition(position: Position) {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
+            val adapter = activeTrading()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
@@ -523,7 +558,7 @@ class ChartViewModel(
     fun closeAllChartPositions() {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
+            val adapter = activeTrading()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
@@ -579,7 +614,7 @@ class ChartViewModel(
 
     private fun executeOrder(request: OrderRequest) {
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
+            val adapter = activeTrading()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
@@ -602,7 +637,7 @@ class ChartViewModel(
     fun cancelChartOrder(orderId: String) {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
+            val adapter = activeTrading()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
@@ -630,7 +665,7 @@ class ChartViewModel(
 
     private fun replaceChartOrder(order: Order, price: Double, quantity: Double) {
         viewModelScope.launch {
-            val adapter = activeProvider()?.effectiveTrading()
+            val adapter = activeTrading()
             if (adapter == null) {
                 notify("Trading adapter not available")
                 return@launch
@@ -719,21 +754,8 @@ class ChartViewModel(
                     currentProviderId = activeProviderId,
                 )
             }
-            val trading = persistor.restoreTrading()
-            _tradingEnabled.value = trading.enabled
-            _confirmOrders.value = trading.confirmOrders
-            _tradingQuantity.value = trading.quantity
-            _chartOrderType.value = trading.orderType
-            _reduceOnly.value = trading.reduceOnly
-            _chartLeverage.value = trading.leverage
-            _chartMarginMode.value = trading.marginMode
-            _showOrders.value = trading.showOrders
-            _showPositions.value = trading.showPositions
-            // Paper переживает перезапуск — иначе ордера уходят в заглушки
-            // провайдеров, которые «успешно» их принимают, но не отслеживают
-            PaperTrading.enabled = persistor.restorePaperEnabled()
-            // Ордера видны на графике и при выключенном Trading
-            refreshOpenOrders()
+            // Торговые настройки панели (включая paper/показ) — panel-scoped
+            restoreTradingState()
             loadSymbols()
         }
     }

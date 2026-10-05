@@ -13,8 +13,17 @@ import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 /**
  * Сохранение и восстановление состояния графика (символ, таймфрейм, режим, агрегация).
  * Ключи совместимы с прежним форматом ChartViewModel.
+ *
+ * [tradingPrefix] — префикс ключей торговых настроек: каждая панель графика
+ * хранит свои настройки (trading/paper/order type/show orders/positions)
+ * отдельно (chart_{workspace}_{panel}_...).
  */
-class ChartStatePersistor(private val store: StateStore) {
+class ChartStatePersistor(
+    private val store: StateStore,
+    private val tradingPrefix: String = "",
+) {
+
+    private fun tKey(key: String) = tradingPrefix + key
 
     data class SavedState(
         val symbol: String? = null,
@@ -33,8 +42,8 @@ class ChartStatePersistor(private val store: StateStore) {
         val reduceOnly: Boolean = false,
         val leverage: Int? = null,
         val marginMode: Int = 2,
-        val showOrders: Boolean = true,
-        val showPositions: Boolean = true,
+        val showOrders: Boolean = false,
+        val showPositions: Boolean = false,
     )
 
     suspend fun saveTrading(
@@ -48,33 +57,34 @@ class ChartStatePersistor(private val store: StateStore) {
         showOrders: Boolean,
         showPositions: Boolean,
     ) {
-        store.putString(KEY_TRADING_ENABLED, if (enabled) "1" else "0")
-        store.putString(KEY_CONFIRM_ORDERS, if (confirmOrders) "1" else "0")
-        store.putString(KEY_TRADING_QUANTITY, quantity?.toString() ?: "")
-        store.putString(KEY_ORDER_TYPE, orderType.name)
-        store.putString(KEY_REDUCE_ONLY, if (reduceOnly) "1" else "0")
-        store.putString(KEY_LEVERAGE, leverage?.toString() ?: "")
-        store.putString(KEY_MARGIN_MODE, marginMode.toString())
-        store.putString(KEY_SHOW_ORDERS, if (showOrders) "1" else "0")
-        store.putString(KEY_SHOW_POSITIONS, if (showPositions) "1" else "0")
+        store.putString(tKey(KEY_TRADING_ENABLED), if (enabled) "1" else "0")
+        store.putString(tKey(KEY_CONFIRM_ORDERS), if (confirmOrders) "1" else "0")
+        store.putString(tKey(KEY_TRADING_QUANTITY), quantity?.toString() ?: "")
+        store.putString(tKey(KEY_ORDER_TYPE), orderType.name)
+        store.putString(tKey(KEY_REDUCE_ONLY), if (reduceOnly) "1" else "0")
+        store.putString(tKey(KEY_LEVERAGE), leverage?.toString() ?: "")
+        store.putString(tKey(KEY_MARGIN_MODE), marginMode.toString())
+        store.putString(tKey(KEY_SHOW_ORDERS), if (showOrders) "1" else "0")
+        store.putString(tKey(KEY_SHOW_POSITIONS), if (showPositions) "1" else "0")
     }
 
     suspend fun restoreTrading(): TradingState {
-        val enabled = store.getString(KEY_TRADING_ENABLED) == "1"
-        val confirm = store.getString(KEY_CONFIRM_ORDERS) == "1"
-        val quantity = store.getString(KEY_TRADING_QUANTITY)?.toDoubleOrNull()?.takeIf { it > 0 }
-        val orderType = store.getString(KEY_ORDER_TYPE)?.let { raw ->
+        val enabled = store.getString(tKey(KEY_TRADING_ENABLED)) == "1"
+        val confirm = store.getString(tKey(KEY_CONFIRM_ORDERS)) == "1"
+        val quantity = store.getString(tKey(KEY_TRADING_QUANTITY))?.toDoubleOrNull()?.takeIf { it > 0 }
+        val orderType = store.getString(tKey(KEY_ORDER_TYPE))?.let { raw ->
             try {
                 OrderType.valueOf(raw)
             } catch (e: Exception) {
                 OrderType.LIMIT
             }
         } ?: OrderType.LIMIT
-        val reduceOnly = store.getString(KEY_REDUCE_ONLY) == "1"
-        val leverage = store.getString(KEY_LEVERAGE)?.toIntOrNull()?.takeIf { it > 0 }
-        val marginMode = store.getString(KEY_MARGIN_MODE)?.toIntOrNull()?.takeIf { it == 1 || it == 2 } ?: 2
-        val showOrders = store.getString(KEY_SHOW_ORDERS)?.let { it != "0" } ?: true
-        val showPositions = store.getString(KEY_SHOW_POSITIONS)?.let { it != "0" } ?: true
+        val reduceOnly = store.getString(tKey(KEY_REDUCE_ONLY)) == "1"
+        val leverage = store.getString(tKey(KEY_LEVERAGE))?.toIntOrNull()?.takeIf { it > 0 }
+        val marginMode = store.getString(tKey(KEY_MARGIN_MODE))?.toIntOrNull()?.takeIf { it == 1 || it == 2 } ?: 2
+        // Изначально выключены (как trading/paper); включаются только вручную
+        val showOrders = store.getString(tKey(KEY_SHOW_ORDERS)) == "1"
+        val showPositions = store.getString(tKey(KEY_SHOW_POSITIONS)) == "1"
         return TradingState(
             enabled, confirm, quantity, orderType, reduceOnly, leverage, marginMode,
             showOrders, showPositions,
@@ -83,11 +93,11 @@ class ChartStatePersistor(private val store: StateStore) {
 
     /** Персист глобального тумблера Paper (демо-торговля). */
     suspend fun savePaperEnabled(enabled: Boolean) {
-        store.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
+        store.putString(tKey(PaperTrading.STORE_KEY), if (enabled) "1" else "0")
     }
 
     suspend fun restorePaperEnabled(): Boolean =
-        store.getString(PaperTrading.STORE_KEY) == "1"
+        store.getString(tKey(PaperTrading.STORE_KEY)) == "1"
 
     suspend fun save(
         symbol: String,

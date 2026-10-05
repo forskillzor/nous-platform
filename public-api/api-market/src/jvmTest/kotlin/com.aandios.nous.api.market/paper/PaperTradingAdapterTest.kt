@@ -160,15 +160,10 @@ class PaperTradingAdapterTest {
     }
 
     @Test
-    fun `effectiveTrading uses paper when enabled`() = runTest {
+    fun `effectiveTrading uses paper per panel flag`() = runTest {
         val provider = FakeProvider()
-        PaperTrading.enabled = true
-        try {
-            assertEquals(PaperTrading.adapter, provider.effectiveTrading())
-        } finally {
-            PaperTrading.enabled = false
-        }
-        assertEquals(null, provider.effectiveTrading())
+        assertEquals(PaperTrading.adapter, provider.effectiveTrading(paper = true))
+        assertEquals(null, provider.effectiveTrading(paper = false))
     }
 
     @Test
@@ -418,24 +413,15 @@ class PaperTradingAdapterTest {
     }
 
     @Test
-    fun `feedMarkPrice fills resting limit only when paper enabled`() = runBlocking {
+    fun `feedMarkPrice fills resting limit`() = runBlocking {
         val adapter = PaperTradingAdapter()
         adapter.setMarkPrice("BTCUSDT", 100.0)
         adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 90.0))
         assertEquals(1, adapter.getOpenOrders().size)
 
         adapter.feedMarkPrice("BTCUSDT", 89.0)
-        delay(100)
-        assertEquals(1, adapter.getOpenOrders().size) // Paper OFF — фид игнорируется
-
-        PaperTrading.enabled = true
-        try {
-            adapter.feedMarkPrice("BTCUSDT", 88.0)
-            withTimeout(3000) {
-                while (adapter.getOpenOrders().isNotEmpty()) delay(10)
-            }
-        } finally {
-            PaperTrading.enabled = false
+        withTimeout(3000) {
+            while (adapter.getOpenOrders().isNotEmpty()) delay(10)
         }
         assertEquals(0, adapter.getOpenOrders().size)
     }

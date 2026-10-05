@@ -50,8 +50,10 @@ fun OrderPlacementPanel(
     reduceOnly: Boolean,
     limitOrderType: OrderType,
     lastCommandResult: CommandResult?,
+    paperEnabled: Boolean,
     onReduceOnlyChanged: (Boolean) -> Unit,
     onLimitOrderTypeChanged: (OrderType) -> Unit,
+    onPaperChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -169,7 +171,7 @@ fun OrderPlacementPanel(
                 )
             }
 
-            // Ряд 6: статус + TRADE OFF + результат
+            // Ряд 6: статус + Paper + TRADE OFF + результат
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -179,6 +181,19 @@ fun OrderPlacementPanel(
                     text = if (isTradingEnabled) "Trading: ON" else "Trading: OFF",
                     color = if (isTradingEnabled) Color.Green else Color.Red,
                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                )
+                Text(
+                    text = "Paper",
+                    color = if (paperEnabled) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .background(
+                            if (paperEnabled) Color(0xFF00C853).copy(alpha = 0.2f) else Color.Transparent,
+                            MaterialTheme.shapes.small,
+                        )
+                        .clickable { onPaperChanged(!paperEnabled) }
+                        .padding(horizontal = 5.dp, vertical = 2.dp),
                 )
                 Spacer(Modifier.weight(1f))
                 Text(

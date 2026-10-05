@@ -69,6 +69,13 @@ class DomViewModel(
     private val _limitOrderType = MutableStateFlow(OrderType.LIMIT)
     val limitOrderType: StateFlow<OrderType> = _limitOrderType.asStateFlow()
 
+    /**
+     * Paper-режим ЭТОЙ DOM-панели (независимый, как и у графиков):
+     * свои ордера уходят в общий paper-движок, чужие — в реальный адаптер.
+     */
+    private val _paperEnabled = MutableStateFlow(false)
+    val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
+
     private val _lastCommandResult = MutableStateFlow<CommandResult?>(null)
     val lastCommandResult: StateFlow<CommandResult?> = _lastCommandResult.asStateFlow()
 
@@ -183,8 +190,8 @@ class DomViewModel(
             println("❌ DOM: provider ${provider.config.displayName} has no DOM/bookTicker adapters")
             return
         }
-        // Paper engine: ставки комиссий из данных активной биржи
-        if (PaperTrading.enabled) {
+        // Paper engine: ставки комиссий из данных активной биржи (если DOM в paper)
+        if (_paperEnabled.value) {
             val rates = runCatching { provider.trading?.getFeeRates(options.symbol.symbol) }.getOrNull()
             PaperTrading.adapter.setFeeRates(options.symbol.symbol, rates)
         }
@@ -309,7 +316,12 @@ class DomViewModel(
     }
 
     private fun tradingAdapter() =
-        providerRegistry.get(_domOptions.value.provider)?.effectiveTrading()
+        providerRegistry.get(_domOptions.value.provider)?.effectiveTrading(_paperEnabled.value)
+
+    /** Переключение paper/live этой DOM-панели. */
+    fun setPaperEnabled(enabled: Boolean) {
+        _paperEnabled.value = enabled
+    }
 
     /** Закрыть все открытые позиции символа панели (market reduce-only). */
     fun closeAllPositions() {

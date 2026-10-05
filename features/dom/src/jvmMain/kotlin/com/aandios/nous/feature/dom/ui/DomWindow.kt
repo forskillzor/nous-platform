@@ -51,6 +51,7 @@ fun DomWindow(
     val reduceOnly by domViewModel.reduceOnly.collectAsState()
     val limitOrderType by domViewModel.limitOrderType.collectAsState()
     val lastCommandResult by domViewModel.lastCommandResult.collectAsState()
+    val paperEnabled by domViewModel.paperEnabled.collectAsState()
 
     // Одно состояние лучших цен
     val bestPrices by domViewModel.bestPrices.collectAsState()
@@ -111,8 +112,10 @@ fun DomWindow(
             reduceOnly = reduceOnly,
             limitOrderType = limitOrderType,
             lastCommandResult = lastCommandResult,
+            paperEnabled = paperEnabled,
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
+            onPaperChanged = { domViewModel.setPaperEnabled(it) },
             modifier = Modifier.fillMaxWidth().wrapContentHeight()
         )
     }

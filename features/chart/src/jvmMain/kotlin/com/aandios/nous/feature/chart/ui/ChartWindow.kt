@@ -108,6 +108,11 @@ fun ChartWindow(
     workspaceId: String? = null,
     panelId: String? = null,
 ) {
+    // Торговые настройки этой панели (trading/paper/show orders/positions)
+    // персистятся и восстанавливаются отдельно от других графиков
+    LaunchedEffect(workspaceId, panelId) {
+        chartViewModel.attachPanel(workspaceId, panelId)
+    }
     ChartWindowContent(
         chartViewModel = chartViewModel,
         modifier = modifier,
@@ -143,7 +148,7 @@ private fun ChartWindowContent(
     val chartTakeProfit by chartViewModel.takeProfitPrice.collectAsState()
     val chartStopLoss by chartViewModel.stopLossPrice.collectAsState()
     val pendingOrder by chartViewModel.pendingOrder.collectAsState()
-    val paperEnabled by PaperTrading.enabledFlow.collectAsState()
+    val paperEnabled by chartViewModel.paperEnabled.collectAsState()
     val showOrders by chartViewModel.showOrders.collectAsState()
     val showPositions by chartViewModel.showPositions.collectAsState()
     val tradingPositions by chartViewModel.positions.collectAsState()
