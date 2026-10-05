@@ -33,6 +33,8 @@ class ChartStatePersistor(private val store: StateStore) {
         val reduceOnly: Boolean = false,
         val leverage: Int? = null,
         val marginMode: Int = 2,
+        val showOrders: Boolean = true,
+        val showPositions: Boolean = true,
     )
 
     suspend fun saveTrading(
@@ -43,6 +45,8 @@ class ChartStatePersistor(private val store: StateStore) {
         reduceOnly: Boolean,
         leverage: Int?,
         marginMode: Int,
+        showOrders: Boolean,
+        showPositions: Boolean,
     ) {
         store.putString(KEY_TRADING_ENABLED, if (enabled) "1" else "0")
         store.putString(KEY_CONFIRM_ORDERS, if (confirmOrders) "1" else "0")
@@ -51,6 +55,8 @@ class ChartStatePersistor(private val store: StateStore) {
         store.putString(KEY_REDUCE_ONLY, if (reduceOnly) "1" else "0")
         store.putString(KEY_LEVERAGE, leverage?.toString() ?: "")
         store.putString(KEY_MARGIN_MODE, marginMode.toString())
+        store.putString(KEY_SHOW_ORDERS, if (showOrders) "1" else "0")
+        store.putString(KEY_SHOW_POSITIONS, if (showPositions) "1" else "0")
     }
 
     suspend fun restoreTrading(): TradingState {
@@ -67,7 +73,12 @@ class ChartStatePersistor(private val store: StateStore) {
         val reduceOnly = store.getString(KEY_REDUCE_ONLY) == "1"
         val leverage = store.getString(KEY_LEVERAGE)?.toIntOrNull()?.takeIf { it > 0 }
         val marginMode = store.getString(KEY_MARGIN_MODE)?.toIntOrNull()?.takeIf { it == 1 || it == 2 } ?: 2
-        return TradingState(enabled, confirm, quantity, orderType, reduceOnly, leverage, marginMode)
+        val showOrders = store.getString(KEY_SHOW_ORDERS)?.let { it != "0" } ?: true
+        val showPositions = store.getString(KEY_SHOW_POSITIONS)?.let { it != "0" } ?: true
+        return TradingState(
+            enabled, confirm, quantity, orderType, reduceOnly, leverage, marginMode,
+            showOrders, showPositions,
+        )
     }
 
     /** Персист глобального тумблера Paper (демо-торговля). */
@@ -142,5 +153,7 @@ class ChartStatePersistor(private val store: StateStore) {
         const val KEY_REDUCE_ONLY = "chart_reduce_only"
         const val KEY_LEVERAGE = "chart_leverage"
         const val KEY_MARGIN_MODE = "chart_margin_mode"
+        const val KEY_SHOW_ORDERS = "chart_show_orders"
+        const val KEY_SHOW_POSITIONS = "chart_show_positions"
     }
 }

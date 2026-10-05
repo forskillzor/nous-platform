@@ -142,6 +142,9 @@ private fun ChartWindowContent(
     val chartStopLoss by chartViewModel.stopLossPrice.collectAsState()
     val pendingOrder by chartViewModel.pendingOrder.collectAsState()
     val paperEnabled by PaperTrading.enabledFlow.collectAsState()
+    val showOrders by chartViewModel.showOrders.collectAsState()
+    val showPositions by chartViewModel.showPositions.collectAsState()
+    val tradingPositions by chartViewModel.positions.collectAsState()
     // Свёрнутая (компактная строка) / развёрнутая панель chart trading
     var panelCollapsed by remember { mutableStateOf(false) }
 
@@ -249,6 +252,10 @@ private fun ChartWindowContent(
             onTradingToggle = { chartViewModel.setTradingEnabled(it) },
             paperEnabled = paperEnabled,
             onPaperToggle = { chartViewModel.setPaperEnabled(it) },
+            showOrders = showOrders,
+            onShowOrdersToggle = { chartViewModel.setShowOrders(it) },
+            showPositions = showPositions,
+            onShowPositionsToggle = { chartViewModel.setShowPositions(it) },
             modifier = Modifier.padding(8.dp)
         )
 
@@ -346,7 +353,8 @@ private fun ChartWindowContent(
                                 modifier = Modifier.fillMaxSize(),
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
-                                tradingOrders = tradingOrders,
+                                tradingOrders = if (showOrders) tradingOrders else emptyList(),
+                                tradingPositions = if (showPositions) tradingPositions else emptyList(),
                                 onChartTradingClick = if (tradingEnabled) {
                                     { price -> chartViewModel.placeChartOrder(price) }
                                 } else null,
@@ -401,7 +409,8 @@ private fun ChartWindowContent(
                             modifier = Modifier.fillMaxSize(),
                             initialZoomLevel = initialZoomLevel,
                             onZoomChange = onZoomChange,
-                            tradingOrders = tradingOrders,
+                            tradingOrders = if (showOrders) tradingOrders else emptyList(),
+                            tradingPositions = if (showPositions) tradingPositions else emptyList(),
                             onChartTradingClick = if (tradingEnabled) {
                                 { price -> chartViewModel.placeChartOrder(price) }
                             } else null,

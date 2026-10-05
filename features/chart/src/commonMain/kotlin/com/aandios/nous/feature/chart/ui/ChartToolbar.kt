@@ -62,6 +62,10 @@ fun ChartToolbar(
     onTradingToggle: (Boolean) -> Unit = {},
     paperEnabled: Boolean = false,
     onPaperToggle: (Boolean) -> Unit = {},
+    showOrders: Boolean = true,
+    onShowOrdersToggle: (Boolean) -> Unit = {},
+    showPositions: Boolean = true,
+    onShowPositionsToggle: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -99,37 +103,96 @@ fun ChartToolbar(
         Spacer(Modifier.width(8.dp))
         TimeframeDropdown(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
 
-        // Свичи Trading / Paper — после таймфрейма
+        // Options: один dropdown со свичами trading/paper/show orders/show positions
         Spacer(Modifier.width(8.dp))
-        ToolbarSwitch(label = "Trading", checked = tradingEnabled, onCheckedChange = onTradingToggle)
-        Spacer(Modifier.width(6.dp))
-        ToolbarSwitch(label = "Paper", checked = paperEnabled, onCheckedChange = onPaperToggle)
+        ChartOptionsDropdown(
+            tradingEnabled = tradingEnabled,
+            onTradingToggle = onTradingToggle,
+            paperEnabled = paperEnabled,
+            onPaperToggle = onPaperToggle,
+            showOrders = showOrders,
+            onShowOrdersToggle = onShowOrdersToggle,
+            showPositions = showPositions,
+            onShowPositionsToggle = onShowPositionsToggle,
+        )
     }
 }
 
-/** Компактный свич тулбара: подпись + маленький TerminalSwitch. */
+/** Dropdown «Options» со свичами отображения/режимов чарта. */
 @Composable
-private fun ToolbarSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Text(
-            text = label,
-            color = if (checked) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = FontFamily.Monospace,
-        )
-        // Отключаем M3 min-touch-target (48dp), иначе тулбар раздувается
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-            TerminalSwitch(
-                checked = checked,
-                onCheckedChange = onCheckedChange,
-                modifier = Modifier.scale(0.7f),
+private fun ChartOptionsDropdown(
+    tradingEnabled: Boolean,
+    onTradingToggle: (Boolean) -> Unit,
+    paperEnabled: Boolean,
+    onPaperToggle: (Boolean) -> Unit,
+    showOrders: Boolean,
+    onShowOrdersToggle: (Boolean) -> Unit,
+    showPositions: Boolean,
+    onShowPositionsToggle: (Boolean) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            modifier = Modifier
+                .clickable { expanded = true }
+                .padding(horizontal = 4.dp, vertical = 2.dp),
+        ) {
+            Text(
+                text = "Options",
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+            Text(
+                text = "▾",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 10.sp,
             )
         }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.width(200.dp),
+        ) {
+            OptionSwitchRow("Trading", tradingEnabled) { onTradingToggle(it) }
+            OptionSwitchRow("Paper", paperEnabled) { onPaperToggle(it) }
+            OptionSwitchRow("Show orders", showOrders) { onShowOrdersToggle(it) }
+            OptionSwitchRow("Show positions", showPositions) { onShowPositionsToggle(it) }
+        }
     }
+}
+
+/** Строка Options: label + компактный свич (клик по строке тоже переключает). */
+@Composable
+private fun OptionSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    DropdownMenuItem(
+        text = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = label,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                // Отключаем M3 min-touch-target (48dp) — компактные строки меню
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                    TerminalSwitch(
+                        checked = checked,
+                        onCheckedChange = onCheckedChange,
+                        modifier = Modifier.scale(0.7f),
+                    )
+                }
+            }
+        },
+        onClick = { onCheckedChange(!checked) },
+    )
 }
 
 @Composable

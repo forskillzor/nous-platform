@@ -16,6 +16,7 @@ import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.api.market.model.trading.OrderStatus
+import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.core.data.repository.ChartRepositoryImpl
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.cache.CandleCacheStore
@@ -95,8 +96,20 @@ class ChartViewModel(
     private val _openOrders = MutableStateFlow<List<Order>>(emptyList())
     val openOrders: StateFlow<List<Order>> = _openOrders.asStateFlow()
 
+    /** Открытые позиции текущего символа (линии/бейджи на графике). */
+    private val _positions = MutableStateFlow<List<Position>>(emptyList())
+    val positions: StateFlow<List<Position>> = _positions.asStateFlow()
+
+    /** Отображение ордеров/позиций на графике (Options dropdown). */
+    private val _showOrders = MutableStateFlow(true)
+    val showOrders: StateFlow<Boolean> = _showOrders.asStateFlow()
+
+    private val _showPositions = MutableStateFlow(true)
+    val showPositions: StateFlow<Boolean> = _showPositions.asStateFlow()
+
     /** Живые обновления ордеров активного адаптера (отмена/исполнение). */
     private var ordersLiveJob: Job? = null
+    private var positionsLiveJob: Job? = null
     private var ordersLiveAdapter: TradingAdapter? = null
 
     // Уведомления chart-трейдинга: snackbar-стек поверх графика (ChartWindow)
@@ -270,6 +283,18 @@ class ChartViewModel(
         saveTradingState()
     }
 
+    /** Options: показывать ордера на графике. */
+    fun setShowOrders(show: Boolean) {
+        _showOrders.value = show
+        saveTradingState()
+    }
+
+    /** Options: показывать позиции на графике. */
+    fun setShowPositions(show: Boolean) {
+        _showPositions.value = show
+        saveTradingState()
+    }
+
     fun setChartOrderType(orderType: OrderType) {
         _chartOrderType.value = orderType
         saveTradingState()
@@ -342,7 +367,9 @@ class ChartViewModel(
     /** Смена paper/real: переподписка на live-ордера нового адаптера. */
     private fun onPaperModeChanged() {
         ordersLiveJob?.cancel()
+        positionsLiveJob?.cancel()
         ordersLiveJob = null
+        positionsLiveJob = null
         ordersLiveAdapter = null
         refreshOpenOrders()
         refreshPaperFees(_state.value.currentSymbol)
@@ -373,21 +400,41 @@ class ChartViewModel(
         viewModelScope.launch {
             val orders = runCatching { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
             _openOrders.value = orders.filter { it.symbol.uppercase() == symbol.uppercase() }
+            val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
+            _positions.value = positions.filter { it.symbol.equals(symbol, ignoreCase = true) }
         }
     }
 
     /**
-     * Живые обновления ордеров активного адаптера: отмена/исполнение ордера
-     * (в том числе из Trading panel) сразу убирает линию с графика.
+     * Живые обновления активного адаптера: ордера (отмена/исполнение) и
+     * позиции — сразу обновляют линии/бейджи на графике.
      */
     private fun ensureOrdersLive(adapter: TradingAdapter) {
         if (ordersLiveJob?.isActive == true && ordersLiveAdapter === adapter) return
         ordersLiveJob?.cancel()
+        positionsLiveJob?.cancel()
         ordersLiveAdapter = adapter
         ordersLiveJob = adapter.subscribeToOrders()?.let { flow ->
             viewModelScope.launch {
                 flow.collect { update -> onOrderUpdate(update) }
             }
+        }
+        positionsLiveJob = adapter.subscribeToPositions()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { update -> onPositionUpdate(update) }
+            }
+        }
+    }
+
+    private fun onPositionUpdate(update: Position) {
+        val symbol = _state.value.currentSymbol
+        if (!update.symbol.equals(symbol, ignoreCase = true)) return
+        _positions.value = if (update.quantity == 0.0) {
+            _positions.value.filterNot { it.positionId == update.positionId }
+        } else if (_positions.value.any { it.positionId == update.positionId }) {
+            _positions.value.map { if (it.positionId == update.positionId) update else it }
+        } else {
+            _positions.value + update
         }
     }
 
@@ -605,6 +652,8 @@ class ChartViewModel(
                 reduceOnly = _reduceOnly.value,
                 leverage = _chartLeverage.value,
                 marginMode = _chartMarginMode.value,
+                showOrders = _showOrders.value,
+                showPositions = _showPositions.value,
             )
         }
     }
@@ -648,6 +697,8 @@ class ChartViewModel(
             _reduceOnly.value = trading.reduceOnly
             _chartLeverage.value = trading.leverage
             _chartMarginMode.value = trading.marginMode
+            _showOrders.value = trading.showOrders
+            _showPositions.value = trading.showPositions
             // Paper переживает перезапуск — иначе ордера уходят в заглушки
             // провайдеров, которые «успешно» их принимают, но не отслеживают
             PaperTrading.enabled = persistor.restorePaperEnabled()

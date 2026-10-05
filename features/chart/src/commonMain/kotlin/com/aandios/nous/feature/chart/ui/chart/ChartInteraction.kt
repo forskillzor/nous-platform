@@ -72,6 +72,7 @@ import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.Order
+import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.rendering.drawCrosshair
@@ -124,6 +125,7 @@ fun CandleStickChartInteraction(
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
     tradingOrders: List<com.aandios.nous.api.market.model.trading.Order> = emptyList(),
+    tradingPositions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
     onChartTradingClick: ((Double) -> Unit)? = null,
     /** Отмена ордера с графика (✕ на бейдже). */
     onCancelTradingOrder: ((com.aandios.nous.api.market.model.trading.Order) -> Unit)? = null,
@@ -157,6 +159,8 @@ fun CandleStickChartInteraction(
     val orderBadgeSizes = remember { mutableStateMapOf<String, IntSize>() }
     // Границы поля qty внутри бейджа (эта зона не инициирует драг)
     val orderQtyRects = remember { mutableStateMapOf<String, Rect>() }
+    // Размеры бейджей позиций (тоже поглощают клики по себе)
+    val positionBadgeSizes = remember { mutableStateMapOf<String, IntSize>() }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -172,6 +176,7 @@ fun CandleStickChartInteraction(
     // Актуальные данные для обработчиков жестов (pointerInput не перезапускается)
     val currentCandles by rememberUpdatedState(candles)
     val currentTradingOrders by rememberUpdatedState(tradingOrders)
+    val currentTradingPositions by rememberUpdatedState(tradingPositions)
     // Колбэки Trading, включённого ПОСЛЕ старта pointerInput, иначе жест
     // держит старый null и клик «не размещает» до пересоздания композиции
     val currentOnChartTradingClick by rememberUpdatedState(onChartTradingClick)
@@ -379,6 +384,15 @@ fun CandleStickChartInteraction(
                             val size = orderBadgeSizes[o.orderId] ?: return@any false
                             if (o.price <= 0.0) return@any false
                             val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
+                            val left = chartWidthPx / 2f - size.width / 2f
+                            val top = y - badgeH / 2f
+                            down.position.x in left..(left + size.width.toFloat()) &&
+                                down.position.y in top..(top + badgeH)
+                        } || currentTradingPositions.any { p ->
+                            val key = positionBadgeKey(p)
+                            val size = positionBadgeSizes[key] ?: return@any false
+                            if (p.avgPrice <= 0.0) return@any false
+                            val y = priceToY(p.avgPrice.toFloat(), currentPriceRange, chartHeightPx)
                             val left = chartWidthPx / 2f - size.width / 2f
                             val top = y - badgeH / 2f
                             down.position.x in left..(left + size.width.toFloat()) &&
@@ -645,6 +659,15 @@ fun CandleStickChartInteraction(
                 )
             }
 
+            // 2c. Линии позиций (Show positions)
+            if (tradingPositions.isNotEmpty()) {
+                drawTradingPositionLines(
+                    positions = tradingPositions,
+                    priceRange = priceRange,
+                    chartArea = layout.chartMainArea,
+                )
+            }
+
             // 3. Шкала времени (по каркасным свечам — общая для обоих режимов)
             drawTimeScale(
                 candles = candles,
@@ -819,6 +842,34 @@ fun CandleStickChartInteraction(
                 }
             }
         }
+        // Бейджи позиций (read-only): сторона, qty, вход и нереализованный PnL
+        if (tradingPositions.isNotEmpty()) {
+            tradingPositions.forEach { position ->
+                if (position.avgPrice <= 0.0) return@forEach
+                val y = priceToY(position.avgPrice.toFloat(), priceRange, layout.chartMainArea.height)
+                if (y < 0f || y > layout.chartMainArea.height) return@forEach
+                val pnlText = if (position.markPrice > 0.0) {
+                    val p = position.unrealizedPnl
+                    (if (p > 0) "+" else "") + config.priceFormatter.formatPrice(p)
+                } else null
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .width(with(density) { chartWidthPx.toDp() }),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    TradingPositionBadge(
+                        position = position,
+                        priceText = config.priceFormatter.formatPrice(position.avgPrice),
+                        pnlText = pnlText,
+                        modifier = Modifier
+                            .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
+                            .height(TRADING_BADGE_HEIGHT)
+                            .onSizeChanged { positionBadgeSizes[positionBadgeKey(position)] = it },
+                    )
+                }
+            }
+        }
         // Кнопка «к последней свече» в правом нижнем углу области графика
         val controlsBottomPadding = with(density) {
             (layout.canvasHeight - layout.chartMainArea.bottom).toDp()
@@ -899,6 +950,27 @@ private fun DrawScope.drawTradingOrderLines(
             end = Offset(chartArea.right, chartArea.top + y),
             strokeWidth = 1.5f,
             pathEffect = PathEffect.dashPathEffect(floatArrayOf(dash, dash)),
+        )
+    }
+}
+
+/** Сплошные линии позиций по средней цене входа (Show positions). */
+private fun DrawScope.drawTradingPositionLines(
+    positions: List<com.aandios.nous.api.market.model.trading.Position>,
+    priceRange: PriceRange,
+    chartArea: Rect,
+) {
+    positions.forEach { position ->
+        if (position.avgPrice <= 0.0) return@forEach
+        val y = priceToY(position.avgPrice.toFloat(), priceRange, chartArea.height)
+        if (y < 0f || y > chartArea.height) return@forEach
+        val isBuy = position.side == TradeSide.BUY
+        val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+        drawLine(
+            color = color.copy(alpha = 0.95f),
+            start = Offset(chartArea.left, chartArea.top + y),
+            end = Offset(chartArea.right, chartArea.top + y),
+            strokeWidth = 1.5f,
         )
     }
 }
@@ -1035,4 +1107,53 @@ private fun trimQtyText(v: Double): String {
     var s = v.toString()
     if ('.' in s) s = s.trimEnd('0').trimEnd('.')
     return s
+}
+
+private fun positionBadgeKey(p: com.aandios.nous.api.market.model.trading.Position): String =
+    "pos:${p.positionId ?: p.avgPrice}"
+
+/**
+ * Read-only бейдж позиции (Show positions): сторона, qty, цена входа и
+ * нереализованный PnL. Действий нет — только отображение.
+ */
+@Composable
+private fun TradingPositionBadge(
+    position: com.aandios.nous.api.market.model.trading.Position,
+    priceText: String,
+    pnlText: String?,
+    modifier: Modifier = Modifier,
+) {
+    val isBuy = position.side == TradeSide.BUY
+    val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+    val title = buildString {
+        append(if (isBuy) "Long " else "Short ")
+        append(trimQtyText(position.quantity))
+        append(" @ ")
+        append(priceText)
+        if (pnlText != null) {
+            append("  ")
+            append(pnlText)
+        }
+    }
+    Row(
+        modifier = modifier
+            .background(color, RoundedCornerShape(2.dp))
+            // Поглощаем клики по бейджу, чтобы клик не размещал новый ордер
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            color = Color.White,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
+    }
 }
