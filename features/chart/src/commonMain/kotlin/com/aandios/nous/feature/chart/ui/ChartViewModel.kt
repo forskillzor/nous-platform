@@ -284,6 +284,11 @@ class ChartViewModel(
     fun setTradingEnabled(enabled: Boolean) {
         if (_tradingEnabled.value == enabled) return
         _tradingEnabled.value = enabled
+        // Trading ON автоматически включает показ ордеров и позиций
+        if (enabled) {
+            _showOrders.value = true
+            _showPositions.value = true
+        }
         saveTradingState()
         // Trading off — только запрет размещения: открытые ордера остаются
         // видны на графике (просмотр), live-подписка продолжает работать
