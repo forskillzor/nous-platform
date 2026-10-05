@@ -57,7 +57,14 @@ class TradesViewModel(
     private val _state = MutableStateFlow<TradesState>(TradesState.Loading)
     val state: StateFlow<TradesState> = _state.asStateFlow()
 
-    private val maxTrades = 100
+    // Основной фид: держим как можно дольше (500 последних сделок).
+    private val maxTrades = 500
+    // Отдельный долгоживущий буфер сделок под фильтр: редкие крупные сделки
+    // живут долго и не вытесняются потоком мелких из основного фида.
+    private val maxFilteredTrades = 2000
+
+    private val _filteredBuffer = MutableStateFlow<List<Trade>>(emptyList())
+    val filteredBuffer: StateFlow<List<Trade>> = _filteredBuffer.asStateFlow()
 
     // Символы, загруженные через symbolInfoRepository
     private val _loadedSymbols = MutableStateFlow<List<SymbolInfo>>(emptyList())
@@ -98,47 +105,62 @@ class TradesViewModel(
     }
 
     /**
-     * Фильтрует список сделок по выбранному размеру.
+     * Проверяет, проходит ли сделка текущий/заданный фильтр размера.
      */
-    private fun filterTrades(trades: List<Trade>): List<Trade> {
-        val filter = _selectedSizeFilter.value
+    private fun matchesFilter(trade: Trade, filter: SizeFilter): Boolean {
         return when (filter) {
-            is SizeFilter.All -> trades
+            is SizeFilter.All -> true
             is SizeFilter.MinQty -> {
-                val mq = minTradeSize ?: return trades
-                trades.filter { it.quantity >= mq }
+                val mq = minTradeSize ?: return true
+                trade.quantity >= mq
             }
             is SizeFilter.MinQtyx10 -> {
-                val mq = minTradeSize ?: return trades
-                trades.filter { it.quantity >= mq * 10 }
+                val mq = minTradeSize ?: return true
+                trade.quantity >= mq * 10
             }
             is SizeFilter.MinQtyx100 -> {
-                val mq = minTradeSize ?: return trades
-                trades.filter { it.quantity >= mq * 100 }
+                val mq = minTradeSize ?: return true
+                trade.quantity >= mq * 100
             }
-            is SizeFilter.Custom -> trades.filter { it.quantity >= filter.value }
+            is SizeFilter.Custom -> trade.quantity >= filter.value
         }
+    }
+
+    /**
+     * Пересобирает буфер фильтра: при All — пустой, иначе — совпадения
+     * из текущего фида (историю дольше фида не храним).
+     */
+    private fun reseedFilteredBuffer() {
+        val filter = _selectedSizeFilter.value
+        val feed = (_state.value as? TradesState.Connected)?.trades ?: emptyList()
+        _filteredBuffer.value = if (filter is SizeFilter.All) emptyList()
+        else feed.filter { matchesFilter(it, filter) }.take(maxFilteredTrades)
+    }
+
+    /**
+     * Список для отображения: с фильтром — долгоживущий буфер совпадений,
+     * без фильтра — основной фид.
+     */
+    fun visibleTrades(feed: List<Trade>): List<Trade> {
+        return if (_selectedSizeFilter.value is SizeFilter.All) feed
+        else _filteredBuffer.value
     }
 
     fun updateSizeFilter(filter: SizeFilter) {
         _selectedSizeFilter.value = filter
         _filterText.value = ""
-        // Переприменяем фильтр к текущему стейту
-        val currentState = _state.value
-        if (currentState is TradesState.Connected) {
-            // Просто обновляем состояние, чтобы триггернуть рекомпозицию
-            _state.value = TradesState.Connected(currentState.trades)
-        }
+        reseedFilteredBuffer()
     }
 
     fun setCustomFilterThreshold(value: String) {
         _filterText.value = value
         val parsed = value.trim().toDoubleOrNull()
-        if (parsed != null && parsed > 0) {
-            _selectedSizeFilter.value = SizeFilter.Custom(parsed)
+        _selectedSizeFilter.value = if (parsed != null && parsed > 0) {
+            SizeFilter.Custom(parsed)
         } else {
-            _selectedSizeFilter.value = SizeFilter.All
+            SizeFilter.All
         }
+        reseedFilteredBuffer()
     }
 
     fun addPreset(value: Double) {
@@ -172,6 +194,7 @@ class TradesViewModel(
 
         subscriptionJob?.cancel()
         _state.value = TradesState.Loading
+        _filteredBuffer.value = emptyList()
 
         // Загружаем SymbolInfo для нового символа
         fetchSymbolInfo(symbol)
@@ -183,18 +206,17 @@ class TradesViewModel(
                     _state.value = TradesState.Error("Ошибка: ${e.message}")
                 }
                 .collect { trade ->
-                    val trades = listOf(trade) + (_state.value as? TradesState.Connected)?.trades.orEmpty().take(maxTrades - 1)
-                    _state.value = TradesState.Connected(trades)
+                    val feed = listOf(trade) +
+                        (_state.value as? TradesState.Connected)?.trades.orEmpty().take(maxTrades - 1)
+                    _state.value = TradesState.Connected(feed)
+                    // Сделка под текущим фильтром — копим в долгоживущий буфер
+                    val filter = _selectedSizeFilter.value
+                    if (filter !is SizeFilter.All && matchesFilter(trade, filter)) {
+                        _filteredBuffer.value = (listOf(trade) + _filteredBuffer.value)
+                            .take(maxFilteredTrades)
+                    }
                 }
         }
-    }
-
-    /**
-     * Подписывается на сделки для переданного symbol и сразу возвращает
-     * отфильтрованный список (если active filter != All).
-     */
-    fun getFilteredTrades(allTrades: List<Trade>): List<Trade> {
-        return filterTrades(allTrades)
     }
 
     private fun loadSymbols() {

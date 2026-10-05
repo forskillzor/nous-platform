@@ -8,7 +8,7 @@ package com.aandios.nous.feature.trades.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -30,7 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.feature.trades.ui.header.TradesHeaderBar
-import kotlinx.coroutines.delay
 
 /**
  * Панель для отображения потока сделок (Trades).
@@ -48,20 +47,23 @@ fun TradesWidget(
     val currentSymbolInfo by viewModel.currentSymbolInfo.collectAsState()
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
     val customPresets by viewModel.customPresets.collectAsState()
+    // Подписка на буфер отфильтрованных сделок — триггерит рекомпозицию
+    // при reseed фильтра, даже если фид не менялся.
+    val filteredBuffer by viewModel.filteredBuffer.collectAsState()
 
     val lazyListState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
 
-    // Отслеживаем прокрутку пользователем: если он уходит от начала, отключаем автоскролл
+    // Автоскролл живёт, пока пользователь у вершины списка. Выключаем только
+    // на РУЧНОЙ прокрутке вниз (программная вставка новых сделок сверху
+    // сдвигает index без scroll — это не ручная прокрутка).
     LaunchedEffect(lazyListState) {
-        snapshotFlow { lazyListState.firstVisibleItemIndex }
-            .collect { index ->
-                if (index > 0) autoScrollEnabled = false
+        snapshotFlow { lazyListState.firstVisibleItemIndex to lazyListState.isScrollInProgress }
+            .collect { (index, inProgress) ->
+                if (index == 0 && !inProgress) autoScrollEnabled = true
+                else if (inProgress && index > 0) autoScrollEnabled = false
             }
     }
-
-    // Автоскролл к самой новой сделке (первый элемент списка) с дебаунсом 5с
-    // (логика находится внутри блока Connected, где filteredTrades доступен)
 
     Column(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
         // Header bar с dropdowns (как в feature-dom)
@@ -113,10 +115,9 @@ fun TradesWidget(
                 }
             }
             is TradesState.Connected -> {
-                val allTrades = currentState.trades
-                val filteredTrades = viewModel.getFilteredTrades(allTrades)
+                val visibleTrades = viewModel.visibleTrades(currentState.trades)
 
-                if (filteredTrades.isEmpty()) {
+                if (visibleTrades.isEmpty()) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -128,15 +129,13 @@ fun TradesWidget(
                         )
                     }
                 } else {
-                    val maxQuantity = filteredTrades.maxOfOrNull { it.quantity } ?: 1.0
+                    val maxQuantity = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
 
-                    // Автоскролл к самой новой сделке с дебаунсом 5с
-                    LaunchedEffect(filteredTrades.size) {
-                        if (autoScrollEnabled && filteredTrades.isNotEmpty()) {
-                            delay(5000)
-                            if (autoScrollEnabled) {
-                                lazyListState.animateScrollToItem(0)
-                            }
+                    // Новая сделка сверху: если автоскролл включён — сразу к ней
+                    val newestId = visibleTrades.firstOrNull()?.id
+                    LaunchedEffect(newestId) {
+                        if (autoScrollEnabled && newestId != null) {
+                            lazyListState.scrollToItem(0)
                         }
                     }
 
@@ -144,12 +143,12 @@ fun TradesWidget(
                         state = lazyListState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(filteredTrades, key = { it.id }) { trade ->
+                        itemsIndexed(visibleTrades, key = { _, trade -> trade.id }) { index, trade ->
                             TradeRow(
                                 trade = trade,
                                 viewModel = viewModel,
                                 maxQuantity = maxQuantity,
-                                index = filteredTrades.indexOf(trade)
+                                index = index
                             )
                         }
                     }
