@@ -91,27 +91,26 @@ fun ChartToolbar(
         }
 
         Spacer(Modifier.width(8.dp))
-        TradingToggle(enabled = tradingEnabled, onToggle = onTradingToggle)
-
-//        Spacer(Modifier.width(12.dp))
         TimeframeDropdown(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
+
+        // Компактный тумблер trading — после таймфрейма
+        Spacer(Modifier.width(8.dp))
+        TradingToggle(enabled = tradingEnabled, onToggle = onTradingToggle)
     }
 }
 
 @Composable
 private fun TradingToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    TerminalDropdownWithLabel(label = "") {
-        Text(
-            text = if (enabled) "Trading ON" else "Trading OFF",
-            color = if (enabled) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier
-                .clickable { onToggle(!enabled) }
-                .padding(horizontal = 6.dp, vertical = 3.dp),
-        )
-    }
+    Text(
+        text = if (enabled) "Trading" else "Trading",
+        color = if (enabled) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        fontFamily = FontFamily.Monospace,
+        modifier = Modifier
+            .clickable { onToggle(!enabled) }
+            .padding(horizontal = 4.dp, vertical = 3.dp),
+    )
 }
 
 @Composable

@@ -46,6 +46,14 @@ fun ChartTradingPanel(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.Start,
     ) {
+        // Подсказка: как размещать ордера
+        Text(
+            text = "Click on chart → limit order",
+            color = Color(0xFF6B7A88),
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+        )
+
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text("Qty:", color = Color(0xFFAAAAAA), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
 

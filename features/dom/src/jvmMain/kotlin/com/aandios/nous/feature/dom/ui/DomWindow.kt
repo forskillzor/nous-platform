@@ -105,13 +105,15 @@ fun DomWindow(
             bestAskPrice = bestAskPrice,
             onQuantityChanged = { qty -> domViewModel.updateOrderQuantity(qty) },
             onOrderIntent = { intent -> domViewModel.handleOrderIntent(intent) },
+            onCloseAll = { domViewModel.closeAllPositions() },
+            onCancelAll = { domViewModel.cancelAllOrders() },
             isTradingEnabled = isTradingEnabled,
             reduceOnly = reduceOnly,
             limitOrderType = limitOrderType,
             lastCommandResult = lastCommandResult,
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
-            modifier = Modifier.fillMaxWidth().height(220.dp)
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }

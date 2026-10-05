@@ -12,6 +12,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -19,6 +20,7 @@ fun TerminalButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
+    height: Dp = 32.dp,
     content: @Composable () -> Unit
 ) {
     val containerColor = if (isActive) {
@@ -35,7 +37,7 @@ fun TerminalButton(
 
     Button(
         onClick = onClick,
-        modifier = modifier.height(32.dp),
+        modifier = modifier.height(height),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor

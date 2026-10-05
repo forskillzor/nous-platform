@@ -300,6 +300,49 @@ class DomViewModel(
     private fun tradingAdapter() =
         providerRegistry.get(_domOptions.value.provider)?.trading
 
+    /** Закрыть все открытые позиции символа панели (market reduce-only). */
+    fun closeAllPositions() {
+        viewModelScope.launch {
+            val adapter = tradingAdapter() ?: return@launch
+            val symbol = _domOptions.value.symbol.symbol
+            val positions = runCatching { adapter.getPositions() }
+                .getOrDefault(emptyList())
+                .filter { it.symbol.uppercase() == symbol.uppercase() }
+            if (positions.isEmpty()) {
+                _lastCommandResult.value = CommandResult.Error("No open positions for $symbol")
+                return@launch
+            }
+            var closed = 0
+            positions.forEach { p ->
+                val r = runCatching { adapter.closePosition(p.symbol, p.positionId, p.quantity) }.getOrNull()
+                if (r != null && r.success) closed++
+            }
+            _lastCommandResult.value = if (closed > 0) {
+                CommandResult.Success(
+                    OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = closed.toDouble())
+                )
+            } else {
+                CommandResult.Error("Failed to close positions")
+            }
+        }
+    }
+
+    /** Отменить все ордера символа панели. */
+    fun cancelAllOrders() {
+        viewModelScope.launch {
+            val adapter = tradingAdapter() ?: return@launch
+            val symbol = _domOptions.value.symbol.symbol
+            val ok = runCatching { adapter.cancelAllOrders(symbol) }.getOrDefault(false)
+            _lastCommandResult.value = if (ok) {
+                CommandResult.Success(
+                    OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = 0.0)
+                )
+            } else {
+                CommandResult.Error("Failed to cancel orders")
+            }
+        }
+    }
+
     fun handleOrderIntent(intent: OrderIntent) {
         val adapter = tradingAdapter()
         val reduceOnly = _reduceOnly.value

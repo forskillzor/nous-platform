@@ -371,7 +371,8 @@ private fun ChartWindowContent(
                     .padding(8.dp)
             )
 
-            // Панель настроек chart trading (видна при включённом Trading)
+            // Панель настроек chart trading: свободный угол снизу-справа —
+            // под price scale и правее timescale
             if (tradingEnabled) {
                 ChartTradingPanel(
                     minQty = uiState.currentSymbolInfo?.minQty,
@@ -381,8 +382,8 @@ private fun ChartWindowContent(
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
                     onConfirmChanged = { c -> chartViewModel.setConfirmOrders(c) },
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 8.dp, end = 8.dp),
+                        .align(Alignment.BottomEnd)
+                        .padding(end = chartConfig.priceScaleWidth + 10.dp, bottom = 28.dp),
                 )
             }
         }
