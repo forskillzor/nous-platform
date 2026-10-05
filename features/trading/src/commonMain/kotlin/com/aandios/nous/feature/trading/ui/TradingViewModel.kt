@@ -154,6 +154,8 @@ class TradingViewModel(
         runCatching { adapter.getPositions() }.onSuccess { _positions.value = it }
         runCatching { adapter.getOpenOrders() }.onSuccess { _openOrders.value = it }
         runCatching { adapter.getBalances() }.onSuccess { _balances.value = it }
+        // История — сразу, чтобы счётчик на табе был точным
+        runCatching { adapter.getTradeHistory(limit = 100) }.onSuccess { _tradeHistory.value = it }
         runCatching { adapter.getPositionMode() }.onSuccess { if (it != null) _positionMode.value = it }
     }
 

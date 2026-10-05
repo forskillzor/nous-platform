@@ -40,4 +40,7 @@ val featureTradingModule = module {
     single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
 
     factory { TradingViewModel(providerRegistry = get(), stateStore = getOrNull()) }
+
+    // Paper: контроллер окна настроек (оверлей рендерится на корне приложения)
+    single { com.aandios.nous.feature.trading.ui.PaperSettingsController() }
 }

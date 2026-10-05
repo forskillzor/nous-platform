@@ -109,7 +109,15 @@ fun TradingPanel(
     val tab = TradingTab.values().firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
 
     val paperEnabled by PaperTrading.enabledFlow.collectAsState()
+    val paperSettings: PaperSettingsController = org.koin.compose.koinInject()
     val scope = rememberCoroutineScope()
+
+    val tabCounts = mapOf(
+        TradingTab.POSITIONS to positions.size,
+        TradingTab.ORDERS to orders.size,
+        TradingTab.BALANCES to balances.size,
+        TradingTab.HISTORY to history.size,
+    )
 
     val exchangeName = registry.get(providerId)?.config?.displayName ?: providerId
     val formatter = remember { SymbolFormatter.DEFAULT }
@@ -142,6 +150,18 @@ fun TradingPanel(
                 enabled = paperEnabled,
                 onToggle = { viewModel.setPaperEnabled(it) },
             )
+            if (paperEnabled) {
+                // Настройки paper trading (баланс/сбросы) — отдельное окно
+                Text(
+                    text = "⚙",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clickableNoIndication { paperSettings.open() }
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                )
+            }
         }
 
         // ── Настройки: маржа / плечо / режим позиций | Cancel all ──
@@ -181,7 +201,7 @@ fun TradingPanel(
         ) {
             TradingTab.values().forEach { t ->
                 Text(
-                    text = t.label,
+                    text = "${t.label} (${tabCounts[t] ?: 0})",
                     color = if (t == tab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp,
                     fontWeight = if (t == tab) FontWeight.Bold else FontWeight.Normal,

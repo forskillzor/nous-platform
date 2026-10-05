@@ -5,6 +5,7 @@
 
 package com.aandios.nous_platform
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.v2.SwingWindow
@@ -21,6 +22,7 @@ import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
 import com.aandios.nous_platform.di.initKoin
 import com.aandios.nous_platform.ui.main.TerminalWindowContent
+import com.aandios.nous_platform.ui.terminalLayout.PaperSettingsOverlay
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import org.koin.compose.koinInject
 
@@ -72,17 +74,21 @@ fun main() {
                         darkTheme = true,
                         nightMode = false
                     ) {
-                        TerminalWindowContent(
-                            session = session,
-                            windowState = wsState,
-                            tabManager = tabManager,
-                            workspaceRepo = workspaceRepo,
-                            templateRepo = templateRepo,
-                            workspaceBus = workspaceBus,
-                            windowManager = windowManager,
-                            dragBus = dragBus,
-                            terminalStateViewModel = terminalStateViewModel,
-                        )
+                        Box {
+                            TerminalWindowContent(
+                                session = session,
+                                windowState = wsState,
+                                tabManager = tabManager,
+                                workspaceRepo = workspaceRepo,
+                                templateRepo = templateRepo,
+                                workspaceBus = workspaceBus,
+                                windowManager = windowManager,
+                                dragBus = dragBus,
+                                terminalStateViewModel = terminalStateViewModel,
+                            )
+                            // Окно настроек paper trading поверх всего окна
+                            PaperSettingsOverlay()
+                        }
                     }
                 }
             }

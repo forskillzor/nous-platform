@@ -97,8 +97,15 @@ val appModule = module {
     }
 
     factory {
-        TradingViewModel(providerRegistry = get())
+        TradingViewModel(providerRegistry = get(), stateStore = get())
     }
+
+    // Paper: окно настроек + персист состояния между запусками
+    single(createdAtStart = true) {
+        com.aandios.nous.feature.trading.paper.PaperPersistenceService(get())
+            .also { it.start() }
+    }
+    single { com.aandios.nous.feature.trading.ui.PaperSettingsController() }
 
     factory {
         TerminalStateViewModel()
