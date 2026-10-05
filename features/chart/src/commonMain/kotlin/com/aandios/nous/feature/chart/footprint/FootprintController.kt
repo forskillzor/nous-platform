@@ -250,7 +250,11 @@ class FootprintController(
 
     /**
      * Обновляет формирующуюся свечу текущего display-бакета для 15m+.
-     * Результат кладётся в liveCandle и очищается, когда бакет закрывается.
+     * Свеча собирается из МЕНЬШЕГО таймфрейма: сервер отдаёт только закрытые
+     * агрегаты, поэтому текущий бакет мержим из 1m-свечей (для гигантских
+     * бакетов — из source-свечей). Результат кладётся в liveCandle; при
+     * закрытии бакета полная свеча уходит в историю, а нативный агрегат
+     * заменит её позже по polling.
      */
     private suspend fun updateFormingCandle(sourceTf: String, aggCount: Int, sourceMs: Long) {
         val api = footprintApiClient ?: return
@@ -258,23 +262,39 @@ class FootprintController(
         val bucketStart = FootprintAggregator.bucketStart(now, sourceMs, aggCount)
         val bucketMs = sourceMs * aggCount
 
-        // Бакет уже закрылся (или история уже содержит его) — убираем живую свечу
+        // Бакет уже закрылся (или история уже содержит его) — финализируем живую свечу
         val closed = now - bucketStart >= bucketMs ||
             (_state.value.candles.isNotEmpty() && _state.value.candles.last().startTime >= bucketStart)
         if (closed) {
-            if (_state.value.liveCandle?.startTime == bucketStart) {
-                _state.update { it.copy(liveCandle = null) }
+            val lc = _state.value.liveCandle
+            if (lc?.startTime == bucketStart) {
+                // Формирующаяся свеча полная (собрана из закрытых 1m) —
+                // кладём её в историю, чтобы не было дыры до прихода
+                // нативного агрегата по polling.
+                _state.update { s ->
+                    val list = s.candles.toMutableList()
+                    if (list.none { it.startTime == lc.startTime }) list.add(lc)
+                    s.copy(candles = list.sortedBy { it.startTime }, liveCandle = null)
+                }
+                saveToCache(listOf(lc))
             }
             return
         }
 
         try {
+            // Источник для формирующейся свечи: до 1d — 1m; крупнее — source-ТФ
+            val (formTf, formMs, formCount) = if (bucketMs <= 86_400_000L) {
+                Triple("1m", 60_000L, (bucketMs / 60_000L).toInt())
+            } else {
+                Triple(sourceTf, sourceMs, aggCount)
+            }
+
             val raw = api.getFootprint(
                 symbol = symbol,
-                timeframe = sourceTf,
-                from = bucketStart - sourceMs, // margin для выравнивания
+                timeframe = formTf,
+                from = bucketStart - formMs, // margin для выравнивания
                 to = now,
-                limit = aggCount + 2,
+                limit = formCount + 2,
             ).reversed()
 
             val bucketCandles = raw.filter {
@@ -282,7 +302,7 @@ class FootprintController(
             }
             if (bucketCandles.isEmpty()) return
 
-            val agg = FootprintAggregator.aggregateFootprintCandles(bucketCandles, aggCount, sourceMs).firstOrNull()
+            val agg = FootprintAggregator.aggregateFootprintCandles(bucketCandles, formCount, formMs).firstOrNull()
                 ?: return
             _state.update {
                 it.copy(
