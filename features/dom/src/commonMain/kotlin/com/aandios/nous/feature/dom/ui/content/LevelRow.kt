@@ -11,20 +11,32 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.orderbook.OrderSide
@@ -64,6 +76,7 @@ fun LevelRow(
     markPrice: Double = 0.0,
     baseText: String? = null,
     onCancelOrder: (String) -> Unit = {},
+    onResizeOrder: (Order, Double) -> Unit = { _, _ -> },
     onPriceClick: (Long, Double) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -149,8 +162,10 @@ fun LevelRow(
                     order = order,
                     baseText = baseText,
                     onCancel = { onCancelOrder(order.orderId) },
-                    crossOnLeft = false,
-                    modifier = Modifier.align(Alignment.CenterEnd)
+                    onResize = { qty -> onResizeOrder(order, qty) },
+                    // short: крестик к левому краю DOM
+                    crossOnLeft = true,
+                    modifier = Modifier.align(Alignment.CenterStart)
                 )
             }
         }
@@ -211,8 +226,10 @@ fun LevelRow(
                     order = order,
                     baseText = baseText,
                     onCancel = { onCancelOrder(order.orderId) },
-                    crossOnLeft = true,
-                    modifier = Modifier.align(Alignment.CenterStart)
+                    onResize = { qty -> onResizeOrder(order, qty) },
+                    // long: крестик к правому краю DOM
+                    crossOnLeft = false,
+                    modifier = Modifier.align(Alignment.CenterEnd)
                 )
             }
         }
@@ -233,12 +250,13 @@ private fun positionPnlText(position: Position, markPrice: Double, tickSize: Dou
     return text to (if (pnl >= 0) longColor else shortColor)
 }
 
-/** Бейдж ордера в лесенке с сокращением подписи по доступной ширине. */
+/** Бейдж ордера как в chart trading: цветной рект, текст, инпут qty, крестик. */
 @Composable
 private fun OrderChip(
     order: Order,
     baseText: String?,
     onCancel: () -> Unit,
+    onResize: (Double) -> Unit,
     crossOnLeft: Boolean,
     modifier: Modifier = Modifier,
 ) {
@@ -246,47 +264,96 @@ private fun OrderChip(
     val color = if (isBuy) longColor else shortColor
     val kind = if (order.reduceOnly) "Close" else "Open"
     val sideName = if (isBuy) "Long" else "Short"
-    val qty = trimQty(order.quantity)
     val base = baseText.orEmpty()
 
-    val full = listOf(kind, sideName, qty, base).filter { it.isNotBlank() }.joinToString(" ")
-    val short = listOf(kind.first().toString() + sideName, qty, base).filter { it.isNotBlank() }.joinToString(" ")
-    val shortest = kind.first().toString() + sideName + " " + qty
+    val full = listOf(kind, sideName, base).filter { it.isNotBlank() }.joinToString(" ")
+    val short = (kind.first().toString() + sideName + " " + base).trim()
+    val shortest = kind.first().toString() + sideName
+
+    var qtyText by remember(order.orderId) { mutableStateOf(trimQty(order.quantity)) }
+    var committed by remember(order.orderId) { mutableStateOf(false) }
+
+    fun commit() {
+        if (committed) return
+        val q = qtyText.toDoubleOrNull()?.takeIf { it > 0 } ?: return
+        if (q == order.quantity) return
+        committed = true
+        onResize(q)
+    }
 
     val measurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
     BoxWithConstraints(modifier = modifier) {
         val style = TextStyle(
-            color = color,
+            color = Color.White,
             fontSize = 10.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
         )
-        val crossPx = with(density) { 14.dp.toPx() }
-        val budget = with(density) { maxWidth.toPx() } - crossPx
+        // Фиксированная часть: инпут qty + крестик
+        val fixedPx = with(density) { (44.dp + 12.dp).toPx() }
+        val textBudgetPx = with(density) { maxWidth.toPx() } - fixedPx
         val label = listOf(full, short, shortest).firstOrNull { candidate ->
-            measurer.measure(AnnotatedString(candidate), style).size.width <= budget
+            measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
         } ?: shortest
 
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (crossOnLeft) CancelCross(color, onCancel)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier
+                .height(18.dp)
+                .background(color, RoundedCornerShape(2.dp))
+                .padding(horizontal = 3.dp),
+        ) {
+            if (crossOnLeft) CancelCross(onCancel)
             Text(
                 text = label,
                 style = style,
                 maxLines = 1,
                 softWrap = false,
             )
-            if (!crossOnLeft) CancelCross(color, onCancel)
+            BasicTextField(
+                value = qtyText,
+                onValueChange = { qtyText = it },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = Color(0xFF1A1A1A),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                ),
+                cursorBrush = SolidColor(color),
+                modifier = Modifier
+                    .width(40.dp)
+                    .background(Color.White, RoundedCornerShape(2.dp))
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown &&
+                            (event.key == Key.Enter || event.key == Key.NumPadEnter)
+                        ) {
+                            commit()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    .onFocusChanged { state -> if (!state.isFocused) commit() },
+                decorationBox = { inner ->
+                    Box(contentAlignment = Alignment.Center) { inner() }
+                },
+            )
+            if (!crossOnLeft) CancelCross(onCancel)
         }
     }
 }
 
 @Composable
-private fun CancelCross(color: Color, onCancel: () -> Unit) {
+private fun CancelCross(onCancel: () -> Unit) {
     Text(
         text = "✕",
-        color = color.copy(alpha = 0.85f),
+        color = Color.White,
         fontSize = 10.sp,
         fontFamily = FontFamily.Monospace,
         maxLines = 1,

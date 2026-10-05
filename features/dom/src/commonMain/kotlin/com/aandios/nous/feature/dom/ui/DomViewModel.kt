@@ -569,6 +569,45 @@ class DomViewModel(
         }
     }
 
+    /**
+     * Правка qty на бейдже ордера в лесенке: cancel+replace (как в chart
+     * trading) — старый ордер снимается, новый ставится с той же ценой.
+     */
+    fun resizeDomOrder(order: com.aandios.nous.api.market.model.trading.Order, quantity: Double) {
+        if (!_isTradingEnabled.value) return
+        if (quantity <= 0.0) return
+        viewModelScope.launch {
+            val adapter = tradingAdapter()
+            if (adapter == null) {
+                notify("Trading adapter not available")
+                return@launch
+            }
+            runCatching { adapter.cancelOrder(order.orderId) }
+            val response = runCatching {
+                adapter.placeOrder(
+                    com.aandios.nous.api.market.model.trading.OrderRequest(
+                        symbol = order.symbol,
+                        side = order.side,
+                        orderType = order.orderType,
+                        quantity = quantity,
+                        price = order.price,
+                        reduceOnly = order.reduceOnly,
+                        leverage = _leverage.value,
+                    )
+                )
+            }.getOrNull()
+            notify(
+                when {
+                    response == null -> "Replace failed (network)"
+                    response.success ->
+                        "${order.orderType.name} ${order.side.name} $quantity @ ${order.price} → ${response.orderId}"
+                    else -> response.message ?: "Replace failed"
+                }
+            )
+            refreshTradingState()
+        }
+    }
+
     /** Закрыть все открытые позиции символа панели (market reduce-only). */
     fun closeAllPositions() {
         viewModelScope.launch {

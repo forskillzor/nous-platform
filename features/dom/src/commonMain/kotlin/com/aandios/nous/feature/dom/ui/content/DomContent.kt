@@ -31,6 +31,7 @@ fun DomContent(
     markPrice: Double = 0.0,
     baseText: String? = null,
     onCancelOrder: (String) -> Unit = {},
+    onResizeOrder: (Order, Double) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -50,6 +51,7 @@ fun DomContent(
             markPrice = markPrice,
             baseText = baseText,
             onCancelOrder = onCancelOrder,
+            onResizeOrder = onResizeOrder,
             modifier = Modifier.weight(1f)
         )
     }

@@ -52,6 +52,7 @@ fun DomSection(
     markPrice: Double = 0.0,
     baseText: String? = null,
     onCancelOrder: (String) -> Unit = {},
+    onResizeOrder: (com.aandios.nous.api.market.model.trading.Order, Double) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val lazyListState = rememberLazyListState()
@@ -165,6 +166,7 @@ fun DomSection(
                         markPrice = markPrice,
                         baseText = baseText,
                         onCancelOrder = onCancelOrder,
+                        onResizeOrder = onResizeOrder,
                         onPriceClick = { _, dPrice -> onPriceSelected(dPrice) }
                     )
                 }
