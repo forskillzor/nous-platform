@@ -163,18 +163,18 @@ private fun ChartWindowContent(
         } else base
     } else null
 
-    // PnL текущей позиции: %, тики, USDT — для панели на графике
+    // PnL текущей позиции: %, тики, USDT — считается от живой цены графика
     val pnlPosition = tradingPositions.firstOrNull()
     val pnlInfo: Pair<String, Boolean>? = pnlPosition?.let { p ->
-        if (p.markPrice <= 0.0 || p.avgPrice <= 0.0) return@let null
+        val mark = chartViewModel.chartLastPrice() ?: p.markPrice
+        if (mark <= 0.0 || p.avgPrice <= 0.0) return@let null
         val lev = (p.leverage ?: 1).coerceAtLeast(1)
         val margin = p.avgPrice * p.quantity / lev
-        val pnl = p.unrealizedPnl
+        val dir = if (p.side == TradeSide.BUY) 1.0 else -1.0
+        val pnl = (mark - p.avgPrice) * p.quantity * dir
         val pct = if (margin > 0) pnl / margin * 100 else 0.0
         val tick = uiState.currentSymbolFormatter.tickSize
-        val ticks = if (tick > 0) {
-            (p.markPrice - p.avgPrice) * (if (p.side == TradeSide.BUY) 1 else -1) / tick
-        } else 0.0
+        val ticks = if (tick > 0) (mark - p.avgPrice) * dir / tick else 0.0
         val sign = if (pnl >= 0) "+" else ""
         val text = "PnL $sign${String.format(java.util.Locale.US, "%.2f", pct)}%  " +
             "$sign${ticks.roundToLong()}t  " +
