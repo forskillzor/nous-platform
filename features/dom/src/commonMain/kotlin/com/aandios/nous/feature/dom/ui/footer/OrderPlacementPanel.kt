@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.orderbook.OrderType
@@ -66,8 +67,10 @@ fun OrderPlacementPanel(
     paperEnabled: Boolean,
     confirmOrders: Boolean,
     pendingText: String?,
-    /** PnL текущей позиции (тики/процент от изменения цены/USDT). */
-    pnlText: String?,
+    /** PnL текущей позиции: изменение цены · % · USDT (null — нет позиции). */
+    pnlPrice: String?,
+    pnlPercent: String?,
+    pnlUsdt: String?,
     pnlUp: Boolean,
     onReduceOnlyChanged: (Boolean) -> Unit,
     onLimitOrderTypeChanged: (OrderType) -> Unit,
@@ -89,15 +92,33 @@ fun OrderPlacementPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // PnL позиции — самая верхняя строка, видна всегда (без позиций: -/-)
-            Text(
-                text = pnlText ?: "-/- -/- -/-",
-                color = if (pnlText == null) labelColor else if (pnlUp) buyColor else sellColor,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-            )
+            // PnL позиции — самая верхняя строка, видна всегда (без позиций: -/-),
+            // три значения равномерно по ширине панели
+            val pnlColor = when {
+                pnlPrice == null -> labelColor
+                pnlUp -> buyColor
+                else -> sellColor
+            }
+            Row(modifier = Modifier.fillMaxWidth()) {
+                PnlCell(
+                    text = pnlPrice ?: "-/-",
+                    color = pnlColor,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier.weight(1f),
+                )
+                PnlCell(
+                    text = pnlPercent ?: "-/-",
+                    color = pnlColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.weight(1f),
+                )
+                PnlCell(
+                    text = pnlUsdt ?: "-/-",
+                    color = pnlColor,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f),
+                )
+            }
 
             // Строка 1: Trading · Confirm · RO · маржа · Paper (всё в одну строку)
             FlowRow(
@@ -139,9 +160,17 @@ fun OrderPlacementPanel(
                         .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(3.dp))
                         .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))
                         .padding(horizontal = 6.dp, vertical = 3.dp),
-                    textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+                    textStyle = TextStyle(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.Center,
+                    ),
                     singleLine = true,
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    decorationBox = { inner ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { inner() }
+                    },
                 )
                 TerminalDropdown(
                     currentValue = limitOrderType,
@@ -246,6 +275,27 @@ fun OrderPlacementPanel(
 }
 
 /** Компактный чип-тумблер (стиль Chip из chart trading panel). */
+/** Ячейка строки PnL: моно-шрифт, цвет по знаку, выравнивание в своей трети. */
+@Composable
+private fun PnlCell(
+    text: String,
+    color: Color,
+    textAlign: TextAlign,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 11.sp,
+        fontFamily = FontFamily.Monospace,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        softWrap = false,
+        textAlign = textAlign,
+        modifier = modifier,
+    )
+}
+
 @Composable
 private fun ToggleChip(
     label: String,

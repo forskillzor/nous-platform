@@ -62,7 +62,8 @@ internal val shortColor = Color(0xFFEF5350)
  *
  * Поверх объёмов:
  *  * позиция (Long/Short) — весь уровень выделен цветом позиции, объёмы
- *    скрыты; слева от цены «Long 10», справа PnL (тики, % от маржи, USDT);
+ *    скрыты; слева от цены «Long 10», справа PnL (изменение цены в базовых
+ *    значениях, % от изменения цены);
  *  * ордер — покупка (Open Long) в пустой ask-колонке (крестик слева),
  *    продажа (Open Short) в пустой bid-колонке (крестик справа); подпись
  *    сокращается по месту: «Open Long 10 SOL» → «OLong 10 SOL» → «OLong 10».
@@ -258,37 +259,47 @@ fun LevelRow(
     }
 }
 
-/** PnL позиции: тики (шаг цены инструмента) · % от изменения цены · USDT. */
-fun domPositionPnlText(position: Position, markPrice: Double, tickSize: Double): Pair<String, Boolean> {
+/** Составляющие PnL позиции для верхней строки панели ордеров. */
+data class DomPnlLines(
+    val price: String,
+    val percent: String,
+    val usdt: String,
+    val up: Boolean,
+)
+
+/**
+ * PnL позиции в базовых значениях цены (SOL: 0.35, без «тиков») ·
+ * % от изменения цены · USDT.
+ */
+fun domPositionPnl(position: Position, markPrice: Double, tickSize: Double): DomPnlLines {
     val mark = if (markPrice > 0.0) markPrice else position.markPrice
     val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
     val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
+    val delta = if (mark > 0.0) (mark - position.avgPrice) * dir else 0.0
     val pct = if (mark > 0.0 && position.avgPrice > 0.0) {
-        (mark - position.avgPrice) * dir / position.avgPrice * 100.0
+        delta / position.avgPrice * 100.0
     } else 0.0
-    val ticks = if (tickSize > 0.0 && mark > 0.0) {
-        (mark - position.avgPrice) * dir / tickSize
-    } else 0.0
-    val sign = if (pnl >= 0) "+" else ""
-    val text = "$sign${ticks.roundToLong()}t $sign${fmt2(pct)}% $sign${fmt2(pnl)} USDT"
-    return text to (pnl >= 0)
+    val sign = if (pnl > 0.0) "+" else ""
+    return DomPnlLines(
+        price = "$sign${fmtByTick(delta, tickSize)}",
+        percent = "$sign${fmt2(pct)}%",
+        usdt = "$sign${fmt2(pnl)} USDT",
+        up = pnl >= 0,
+    )
 }
 
-/** PnL позиции в лесенке: тики (шаг цены инструмента) и % от изменения цены. */
+/** PnL позиции в лесенке: изменение цены в базовых значениях и % от изменения. */
 private fun positionPnlText(position: Position, markPrice: Double, tickSize: Double): Pair<String, Color> {
     val mark = if (markPrice > 0.0) markPrice else position.markPrice
     val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
     val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
+    val delta = if (mark > 0.0) (mark - position.avgPrice) * dir else 0.0
     // % — от изменения цены, а не от маржи (как просили)
     val pct = if (mark > 0.0 && position.avgPrice > 0.0) {
-        (mark - position.avgPrice) * dir / position.avgPrice * 100.0
+        delta / position.avgPrice * 100.0
     } else 0.0
-    // Тики — в шаге цены инструмента (SOL: 0.01)
-    val ticks = if (tickSize > 0.0 && mark > 0.0) {
-        (mark - position.avgPrice) * dir / tickSize
-    } else 0.0
-    val sign = if (pnl >= 0) "+" else ""
-    val text = "$sign${ticks.roundToLong()}t $sign${fmt2(pct)}%"
+    val sign = if (pnl > 0.0) "+" else ""
+    val text = "$sign${fmtByTick(delta, tickSize)} $sign${fmt2(pct)}%"
     return text to (if (pnl >= 0) longColor else shortColor)
 }
 
@@ -495,13 +506,32 @@ private fun trimQty(v: Double): String {
 }
 
 /** Число с двумя знаками без String.format (commonMain). */
-private fun fmt2(v: Double): String {
-    val rounded = round(v * 100.0) / 100.0
+private fun fmt2(v: Double): String = fmtDecimals(v, 2)
+
+/** Значение в базовых единицах цены с числом знаков шага (SOL 0.01 → 2 знака). */
+private fun fmtByTick(v: Double, tickSize: Double): String {
+    var decimals = 0
+    var t = tickSize
+    while (decimals < 8 && t > 0.0 && kotlin.math.abs(t - t.roundToLong()) > 1e-9) {
+        t *= 10.0
+        decimals++
+    }
+    return fmtDecimals(v, decimals)
+}
+
+/** Фиксированное число знаков без String.format (commonMain). */
+private fun fmtDecimals(v: Double, decimals: Int): String {
+    var factor = 1.0
+    repeat(decimals) { factor *= 10.0 }
+    val rounded = round(v * factor) / factor
     val s = rounded.toString()
     val neg = s.startsWith("-")
     val body = if (neg) s.substring(1) else s
     val parts = body.split(".")
     val intPart = parts[0]
-    val decPart = if (parts.size > 1) parts[1].padEnd(2, '0').take(2) else "00"
-    return (if (neg) "-" else "") + intPart + "." + decPart
+    val decPart = if (decimals <= 0) "" else {
+        val raw = if (parts.size > 1) parts[1] else ""
+        "." + raw.padEnd(decimals, '0').take(decimals)
+    }
+    return (if (neg) "-" else "") + intPart + decPart
 }
