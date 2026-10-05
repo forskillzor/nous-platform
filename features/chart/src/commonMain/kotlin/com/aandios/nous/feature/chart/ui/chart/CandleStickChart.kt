@@ -54,6 +54,7 @@ fun CandleStickChart(
     onCancelTradingOrder: ((Order) -> Unit)? = null,
     onMoveTradingOrder: ((Order, Double) -> Unit)? = null,
     onResizeTradingOrder: ((Order, Double) -> Unit)? = null,
+    onCloseTradingPosition: ((com.aandios.nous.api.market.model.trading.Position) -> Unit)? = null,
 ) {
     CandleStickChartInteraction(
         candles = candles,
@@ -77,5 +78,6 @@ fun CandleStickChart(
         onCancelTradingOrder = onCancelTradingOrder,
         onMoveTradingOrder = onMoveTradingOrder,
         onResizeTradingOrder = onResizeTradingOrder,
+        onCloseTradingPosition = onCloseTradingPosition,
     )
 }

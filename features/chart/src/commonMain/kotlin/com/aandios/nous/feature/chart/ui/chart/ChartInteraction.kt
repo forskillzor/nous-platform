@@ -133,6 +133,8 @@ fun CandleStickChartInteraction(
     onMoveTradingOrder: ((com.aandios.nous.api.market.model.trading.Order, Double) -> Unit)? = null,
     /** Изменение qty ордера: cancel+replace (правка прямо на бейдже). */
     onResizeTradingOrder: ((com.aandios.nous.api.market.model.trading.Order, Double) -> Unit)? = null,
+    /** Закрытие позиции по рынку (✕ на бейдже позиции). */
+    onCloseTradingPosition: ((com.aandios.nous.api.market.model.trading.Position) -> Unit)? = null,
 ) {
     if (candles.isEmpty()) return
 
@@ -862,6 +864,7 @@ fun CandleStickChartInteraction(
                         position = position,
                         priceText = config.priceFormatter.formatPrice(position.avgPrice),
                         pnlText = pnlText,
+                        onClose = onCloseTradingPosition?.let { cb -> { cb(position) } },
                         modifier = Modifier
                             .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
                             .height(TRADING_BADGE_HEIGHT)
@@ -1116,14 +1119,15 @@ private fun positionBadgeKey(p: com.aandios.nous.api.market.model.trading.Positi
     "pos:${p.positionId ?: p.avgPrice}"
 
 /**
- * Read-only бейдж позиции (Show positions): сторона, qty, цена входа и
- * нереализованный PnL. Действий нет — только отображение.
+ * Бейдж позиции (Show positions): сторона, qty, цена входа и нереализованный
+ * PnL + ✕ для закрытия по рынку (когда trading включён).
  */
 @Composable
 private fun TradingPositionBadge(
     position: com.aandios.nous.api.market.model.trading.Position,
     priceText: String,
     pnlText: String?,
+    onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val isBuy = position.side == TradeSide.BUY
@@ -1156,7 +1160,23 @@ private fun TradingPositionBadge(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 6.dp),
+            modifier = Modifier.padding(start = 6.dp, end = if (onClose != null) 3.dp else 6.dp),
         )
+        onClose?.let { close ->
+            Text(
+                text = "✕",
+                color = Color.White,
+                fontSize = 11.sp,
+                lineHeight = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) { close() }
+                    .padding(horizontal = 4.dp),
+            )
+        }
     }
 }

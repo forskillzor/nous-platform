@@ -495,6 +495,30 @@ class ChartViewModel(
         }
     }
 
+    /** Закрыть одну позицию по рынку (✕ на бейдже позиции). */
+    fun closeChartPosition(position: Position) {
+        if (!_tradingEnabled.value) return
+        viewModelScope.launch {
+            val adapter = activeProvider()?.effectiveTrading()
+            if (adapter == null) {
+                notify("Trading adapter not available")
+                return@launch
+            }
+            val result = runCatching {
+                adapter.closePosition(position.symbol, position.positionId, position.quantity)
+            }.getOrNull()
+            val qty = _state.value.currentSymbolFormatter.formatVolume(position.quantity)
+            notify(
+                when {
+                    result == null -> "Failed to close ${position.symbol}"
+                    result.success -> "Closed ${position.symbol} $qty → ${result.orderId}"
+                    else -> "Close failed: ${result.message}"
+                }
+            )
+            refreshOpenOrders()
+        }
+    }
+
     /** Закрыть все позиции по символу графика (exchange+symbol). */
     fun closeAllChartPositions() {
         if (!_tradingEnabled.value) return

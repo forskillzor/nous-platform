@@ -404,6 +404,9 @@ private fun ChartWindowContent(
                                 onResizeTradingOrder = if (tradingEnabled) {
                                     { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
                                 } else null,
+                                onCloseTradingPosition = if (tradingEnabled) {
+                                    { position -> chartViewModel.closeChartPosition(position) }
+                                } else null,
                             )
                         }
                     }
@@ -459,6 +462,9 @@ private fun ChartWindowContent(
                             } else null,
                             onResizeTradingOrder = if (tradingEnabled) {
                                 { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
+                            } else null,
+                            onCloseTradingPosition = if (tradingEnabled) {
+                                { position -> chartViewModel.closeChartPosition(position) }
                             } else null,
                         )
                     }
