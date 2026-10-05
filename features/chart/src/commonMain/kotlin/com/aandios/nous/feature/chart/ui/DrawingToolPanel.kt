@@ -37,7 +37,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
-private val panelBg = Color.Black.copy(alpha = 0.35f)
+private val panelBg = Color.Black.copy(alpha = 0.9f)
 private val accentColor = Color(0xFF5B9BD5)
 private val iconColor = Color(0xFF8A97A5)
 

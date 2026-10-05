@@ -113,7 +113,7 @@ fun DomWindow(
             lastCommandResult = lastCommandResult,
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth().wrapContentHeight()
         )
     }
 }

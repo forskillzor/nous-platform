@@ -217,7 +217,7 @@ private fun OrderButton(
             color = color,
             style = MaterialTheme.typography.labelSmall,
             textAlign = TextAlign.Center,
-            maxLines = 1,
+            maxLines = 2,
             modifier = Modifier.fillMaxWidth(),
         )
     }
