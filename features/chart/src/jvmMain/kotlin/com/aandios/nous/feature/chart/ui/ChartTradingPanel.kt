@@ -68,6 +68,8 @@ fun ChartTradingPanel(
     bestBid: Double?,
     bestAsk: Double?,
     formatter: SymbolFormatter = SymbolFormatter.DEFAULT,
+    collapsed: Boolean = false,
+    onCollapsedChange: (Boolean) -> Unit,
     onQuantityChanged: (Double?) -> Unit,
     onOrderTypeChanged: (OrderType) -> Unit,
     onReduceOnlyChanged: (Boolean) -> Unit,
@@ -99,15 +101,51 @@ fun ChartTradingPanel(
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.Start,
     ) {
-        // ex/sym берутся с графика
-        Text(
-            text = caption,
-            color = labelColor,
-            fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        if (collapsed) {
+            // Компактный вариант: те же контролы в строку, без symbol и кнопок
+            CompactHeader(
+                orderType = orderType,
+                marginMode = marginMode,
+                leverage = leverage,
+                qtyText = qtyText,
+                minQty = minQty,
+                onOrderTypeChanged = onOrderTypeChanged,
+                onMarginModeChanged = onMarginModeChanged,
+                onLeverageChanged = onLeverageChanged,
+                onQtyTextChanged = { text ->
+                    qtyText = text
+                    onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
+                },
+                onExpand = { onCollapsedChange(false) },
+            )
+            return@Column
+        }
+
+        // ex/sym берутся с графика; стрелка сворачивает панель в компактную строку
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = caption,
+                color = labelColor,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "▼",
+                color = labelColor,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickableNoIndication { onCollapsedChange(true) }
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
+            )
+        }
 
         SettingRow("Order") {
             TerminalDropdown(
@@ -213,6 +251,83 @@ fun ChartTradingPanel(
             SideButton("Cancel All", warnColor, onCancelAll, Modifier.weight(1f), outlined = true)
             SideButton("Close All", sellColor, onCloseAll, Modifier.weight(1f), outlined = true)
         }
+    }
+}
+
+/**
+ * Компактный (свёрнутый) вид: те же контролы, что в большой панели —
+ * дропдауны Order/Margin/Leverage и поле Qty, в одну строку (FlowRow
+ * переносит в узких тайлах), без symbol и без лейблов, кроме Lvg и Qty.
+ * Стрелка ▲ разворачивает панель обратно.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CompactHeader(
+    orderType: OrderType,
+    marginMode: Int,
+    leverage: Int?,
+    qtyText: String,
+    minQty: Double?,
+    onOrderTypeChanged: (OrderType) -> Unit,
+    onMarginModeChanged: (Int) -> Unit,
+    onLeverageChanged: (Int?) -> Unit,
+    onQtyTextChanged: (String) -> Unit,
+    onExpand: () -> Unit,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        itemVerticalAlignment = Alignment.CenterVertically,
+    ) {
+        TerminalDropdown(
+            currentValue = orderType,
+            items = listOf(OrderType.LIMIT, OrderType.POST_ONLY, OrderType.IOC, OrderType.FOK, OrderType.MARKET),
+            onValueChanged = onOrderTypeChanged,
+            displayText = { it.name },
+            menuWidth = 110.dp,
+        )
+        TerminalDropdown(
+            currentValue = marginMode,
+            items = listOf(2, 1),
+            onValueChanged = onMarginModeChanged,
+            displayText = { if (it == 1) "Isolated" else "Cross" },
+            menuWidth = 110.dp,
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Lvg", color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            TerminalDropdown(
+                currentValue = leverage ?: 0,
+                items = listOf(0, 1, 2, 3, 5, 10, 20, 50, 100, 125),
+                onValueChanged = { onLeverageChanged(it.takeIf { l -> l > 0 }) },
+                displayText = { if (it <= 0) "—" else "${it}x" },
+                menuWidth = 90.dp,
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Qty", color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            QtyInput(
+                qtyText = qtyText,
+                minQty = minQty,
+                onTextChanged = onQtyTextChanged,
+                modifier = Modifier.width(66.dp),
+            )
+        }
+        Text(
+            text = "▲",
+            color = accent,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            maxLines = 1,
+            modifier = Modifier
+                .clickableNoIndication(onExpand)
+                .padding(horizontal = 2.dp, vertical = 1.dp),
+        )
     }
 }
 

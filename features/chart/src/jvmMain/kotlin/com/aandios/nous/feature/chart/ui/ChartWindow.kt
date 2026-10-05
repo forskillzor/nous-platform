@@ -142,6 +142,8 @@ private fun ChartWindowContent(
     val chartStopLoss by chartViewModel.stopLossPrice.collectAsState()
     val pendingOrder by chartViewModel.pendingOrder.collectAsState()
     val paperEnabled by PaperTrading.enabledFlow.collectAsState()
+    // Свёрнутая (компактная строка) / развёрнутая панель chart trading
+    var panelCollapsed by remember { mutableStateOf(false) }
 
     // Лучшие bid/ask для лимиток «по лучшей цене» (Buy Limit / Sell Limit)
     var bestBid by remember { mutableStateOf<Double?>(null) }
@@ -435,7 +437,8 @@ private fun ChartWindowContent(
             // графике остаются видны, но только для просмотра.
             if (tradingEnabled) {
                 val panelMaxWidth = (maxWidth - 20.dp).coerceAtLeast(160.dp)
-                // Вертикальная узкая панель (в стиле DrawingToolPanel)
+                // Развёрнутая — вертикальная узкая панель (стиль DrawingToolPanel);
+                // свёрнутая — компактная строка по контенту (нижний край там же)
                 val panelWidth = minOf(192.dp, panelMaxWidth)
                 ChartTradingPanel(
                     caption = "${uiState.currentSymbol} · ${registry.displayName(uiState.currentProviderId)}",
@@ -452,6 +455,8 @@ private fun ChartWindowContent(
                     bestBid = bestBid,
                     bestAsk = bestAsk,
                     formatter = uiState.currentSymbolFormatter,
+                    collapsed = panelCollapsed,
+                    onCollapsedChange = { panelCollapsed = it },
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
                     onOrderTypeChanged = { chartViewModel.setChartOrderType(it) },
                     onReduceOnlyChanged = { chartViewModel.setReduceOnly(it) },
@@ -471,7 +476,7 @@ private fun ChartWindowContent(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 8.dp, bottom = 28.dp)
-                        .width(panelWidth),
+                        .widthIn(max = if (panelCollapsed) panelMaxWidth else panelWidth),
                 )
             }
 
