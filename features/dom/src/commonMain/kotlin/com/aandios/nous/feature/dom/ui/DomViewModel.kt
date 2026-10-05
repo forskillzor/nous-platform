@@ -83,6 +83,22 @@ class DomViewModel(
     /** id DOM-панели для panel-scoped персиста (paper). */
     private var panelKey: String? = null
 
+    // ── Ордера/позиции символа панели (для отображения в лесенке) ──
+
+    private val _orders = MutableStateFlow<List<com.aandios.nous.api.market.model.trading.Order>>(emptyList())
+    val orders: StateFlow<List<com.aandios.nous.api.market.model.trading.Order>> = _orders.asStateFlow()
+
+    private val _positions = MutableStateFlow<List<com.aandios.nous.api.market.model.trading.Position>>(emptyList())
+    val positions: StateFlow<List<com.aandios.nous.api.market.model.trading.Position>> = _positions.asStateFlow()
+
+    /** Живая mark-цена символа (для PnL позиции в лесенке). */
+    private val _markPrice = MutableStateFlow(0.0)
+    val markPrice: StateFlow<Double> = _markPrice.asStateFlow()
+
+    private var ordersLiveJob: Job? = null
+    private var positionsLiveJob: Job? = null
+    private var liveAdapter: com.aandios.nous.api.market.adapters.TradingAdapter? = null
+
     /** Плечо для ордеров DOM (null — дефолт биржи/1x в paper). */
     private val _leverage = MutableStateFlow<Int?>(null)
     val leverage: StateFlow<Int?> = _leverage.asStateFlow()
@@ -165,6 +181,7 @@ class DomViewModel(
         }
         restartSubscription(_domOptions.value)
         ensureNoticesSubscription()
+        refreshTradingState()
     }
 
     fun updateDomOptions(newOptions: DomOptions) {
@@ -193,6 +210,8 @@ class DomViewModel(
             if (aggChanged && !subscriptionChanged) {
                 rebuildLevelsFromWindow()
             }
+            // Символ/провайдер могли смениться — перечитать ордера/позиции
+            refreshTradingState()
         }
     }
 
@@ -273,6 +292,7 @@ class DomViewModel(
             else -> 0.0
         }
         if (mark > 0.0) {
+            _markPrice.value = mark
             PaperTrading.adapter.feedMarkPrice(_domOptions.value.symbol.symbol, mark)
         }
         val bidTicks = toPriceTicksOrNull(event.bestBid)
@@ -441,7 +461,14 @@ class DomViewModel(
                 store.putString(paperStoreKey(), if (enabled) "1" else "0")
             }
         }
+        // Адаптер сменился — переподписка и перечитка ордеров/позиций
+        ordersLiveJob?.cancel()
+        positionsLiveJob?.cancel()
+        ordersLiveJob = null
+        positionsLiveJob = null
+        liveAdapter = null
         ensureNoticesSubscription()
+        refreshTradingState()
     }
 
     /**
@@ -456,6 +483,7 @@ class DomViewModel(
             if (enabled != _paperEnabled.value) {
                 _paperEnabled.value = enabled
                 ensureNoticesSubscription()
+                refreshTradingState()
             }
         }
     }
@@ -469,6 +497,75 @@ class DomViewModel(
             viewModelScope.launch {
                 flow.collect { text -> notify(text) }
             }
+        }
+    }
+
+    /**
+     * Ордера и позиции символа панели (для отображения в лесенке) + живые
+     * подписки адаптера: отмена/исполнение и позиции обновляют DOM сразу.
+     */
+    fun refreshTradingState() {
+        val adapter = tradingAdapter()
+        if (adapter == null) {
+            _orders.value = emptyList()
+            _positions.value = emptyList()
+            return
+        }
+        ensureTradingLive(adapter)
+        val symbol = _domOptions.value.symbol.symbol
+        viewModelScope.launch {
+            val orders = runCatching { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
+            _orders.value = orders.filter { it.symbol.equals(symbol, ignoreCase = true) }
+            val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
+            _positions.value = positions.filter { it.symbol.equals(symbol, ignoreCase = true) }
+        }
+    }
+
+    private fun ensureTradingLive(adapter: com.aandios.nous.api.market.adapters.TradingAdapter) {
+        if (ordersLiveJob?.isActive == true && liveAdapter === adapter) return
+        ordersLiveJob?.cancel()
+        positionsLiveJob?.cancel()
+        liveAdapter = adapter
+        ordersLiveJob = adapter.subscribeToOrders()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { update ->
+                    val symbol = _domOptions.value.symbol.symbol
+                    if (!update.symbol.equals(symbol, ignoreCase = true)) return@collect
+                    _orders.value = when {
+                        update.status != com.aandios.nous.api.market.model.trading.OrderStatus.OPEN ->
+                            _orders.value.filterNot { it.orderId == update.orderId }
+                        _orders.value.any { it.orderId == update.orderId } ->
+                            _orders.value.map { if (it.orderId == update.orderId) update else it }
+                        else -> _orders.value + update
+                    }
+                }
+            }
+        }
+        positionsLiveJob = adapter.subscribeToPositions()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { update ->
+                    val symbol = _domOptions.value.symbol.symbol
+                    if (!update.symbol.equals(symbol, ignoreCase = true)) return@collect
+                    _positions.value = when {
+                        update.quantity == 0.0 ->
+                            _positions.value.filterNot { it.positionId == update.positionId }
+                        _positions.value.any { it.positionId == update.positionId } ->
+                            _positions.value.map { if (it.positionId == update.positionId) update else it }
+                        else -> _positions.value + update
+                    }
+                }
+            }
+        }
+    }
+
+    /** Отмена ордера из лесенки (крестик на бейдже ордера). */
+    fun cancelDomOrder(orderId: String) {
+        if (!_isTradingEnabled.value) return
+        viewModelScope.launch {
+            val adapter = tradingAdapter() ?: return@launch
+            val ok = runCatching { adapter.cancelOrder(orderId) }.getOrDefault(false)
+            notify(if (ok) "Order canceled" else "Failed to cancel order")
+            refreshTradingState()
         }
     }
 

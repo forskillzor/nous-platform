@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.aandios.nous.api.market.model.trading.Order
+import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.dom.ui.model.DomLevel
 
@@ -24,6 +26,11 @@ fun DomContent(
     stepSize: Double,
     formatter: SymbolFormatter,
     onPriceSelected: (Double) -> Unit,
+    orders: List<Order> = emptyList(),
+    positions: List<Position> = emptyList(),
+    markPrice: Double = 0.0,
+    baseText: String? = null,
+    onCancelOrder: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxSize()) {
@@ -38,6 +45,11 @@ fun DomContent(
             stepSize = stepSize,
             formatter = formatter,
             onPriceSelected = onPriceSelected,
+            orders = orders,
+            positions = positions,
+            markPrice = markPrice,
+            baseText = baseText,
+            onCancelOrder = onCancelOrder,
             modifier = Modifier.weight(1f)
         )
     }

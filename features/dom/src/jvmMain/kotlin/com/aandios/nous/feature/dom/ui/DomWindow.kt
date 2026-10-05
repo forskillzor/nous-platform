@@ -71,6 +71,11 @@ fun DomWindow(
     val confirmOrders by domViewModel.confirmOrders.collectAsState()
     val pendingIntentText by domViewModel.pendingIntentText.collectAsState()
     val notifications by domViewModel.notifications.collectAsState()
+    val orders by domViewModel.orders.collectAsState()
+    val positions by domViewModel.positions.collectAsState()
+    val markPrice by domViewModel.markPrice.collectAsState()
+    val baseText = domOptions.symbol.symbolInfo?.baseAsset
+        ?: domOptions.symbol.displayName.substringBefore("/").takeIf { it.isNotBlank() }
 
     // Одно состояние лучших цен
     val bestPrices by domViewModel.bestPrices.collectAsState()
@@ -114,6 +119,11 @@ fun DomWindow(
                 stepSize = symbolStepSize ?: 0.001,
                 formatter = formatter,
                 onPriceSelected = { price -> domViewModel.selectPrice(price) },
+                orders = orders,
+                positions = positions,
+                markPrice = markPrice,
+                baseText = baseText,
+                onCancelOrder = { orderId -> domViewModel.cancelDomOrder(orderId) },
                 modifier = Modifier.fillMaxSize()
             )
             // Snackbar-уведомления DOM — под заголовком (как в chart trading)

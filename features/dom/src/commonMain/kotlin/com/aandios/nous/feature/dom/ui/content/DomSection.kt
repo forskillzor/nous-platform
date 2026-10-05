@@ -47,9 +47,24 @@ fun DomSection(
     stepSize: Double,
     formatter: SymbolFormatter,
     onPriceSelected: (Double) -> Unit,
+    orders: List<com.aandios.nous.api.market.model.trading.Order> = emptyList(),
+    positions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
+    markPrice: Double = 0.0,
+    baseText: String? = null,
+    onCancelOrder: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val lazyListState = rememberLazyListState()
+
+    // Ордер/позиция по ценовым строкам (в тиках лесенки)
+    val orderByTicks = remember(orders, tickSize) {
+        if (tickSize <= 0.0) emptyMap()
+        else orders.filter { it.price > 0.0 }.associateBy { (it.price / tickSize).roundToLong() }
+    }
+    val positionByTicks = remember(positions, tickSize) {
+        if (tickSize <= 0.0) emptyMap()
+        else positions.filter { it.avgPrice > 0.0 }.associateBy { (it.avgPrice / tickSize).roundToLong() }
+    }
 
     val maxSteps by derivedStateOf {
         levelsMap.values.maxOfOrNull { maxOf(it.bidSteps ?: 0L, it.askSteps ?: 0L) } ?: 0L
@@ -145,6 +160,11 @@ fun DomSection(
                         tickSize = tickSize,
                         stepSize = stepSize,
                         formatter = formatter,
+                        order = orderByTicks[key],
+                        position = positionByTicks[key],
+                        markPrice = markPrice,
+                        baseText = baseText,
+                        onCancelOrder = onCancelOrder,
                         onPriceClick = { _, dPrice -> onPriceSelected(dPrice) }
                     )
                 }
