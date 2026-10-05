@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.Balance
@@ -58,6 +59,9 @@ fun TradingPanel(
     val lastMessage by viewModel.lastMessage.collectAsState()
     val activeTabRaw by viewModel.activeTab.collectAsState()
     val tab = TradingTab.values().firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
+
+    var paperEnabled by remember { mutableStateOf(com.aandios.nous.api.market.paper.PaperTrading.enabled) }
+    val scope = rememberCoroutineScope()
 
     val provider: Provider? = registry.get(providerId)
     val exchangeName = provider?.config?.displayName ?: providerId
@@ -107,6 +111,19 @@ fun TradingPanel(
             )
             Spacer(Modifier.weight(1f))
             Text(
+                text = if (paperEnabled) "Paper: ON" else "Paper: OFF",
+                color = if (paperEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .clickableNoIndication {
+                        paperEnabled = !paperEnabled
+                        com.aandios.nous.api.market.paper.PaperTrading.enabled = paperEnabled
+                        viewModel.reload()
+                    }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
+            )
+            Text(
                 text = "Cancel all",
                 color = MaterialTheme.colorScheme.error,
                 fontSize = 11.sp,
@@ -144,7 +161,44 @@ fun TradingPanel(
         when (tab) {
             TradingTab.POSITIONS -> PositionsList(positions, formatter, onClose = { viewModel.closePosition(it) })
             TradingTab.ORDERS -> OrdersList(orders, formatter, onCancel = { viewModel.cancelOrder(it) })
-            TradingTab.BALANCES -> BalanceList(balances)
+            TradingTab.BALANCES -> {
+                if (paperEnabled) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = "Top up USDT +1000",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clickableNoIndication {
+                                    scope.launch {
+                                        com.aandios.nous.api.market.paper.PaperTrading.adapter.topUp("USDT", 1000.0)
+                                        viewModel.reload()
+                                    }
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                        Text(
+                            text = "Top up BTC +0.1",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier
+                                .clickableNoIndication {
+                                    scope.launch {
+                                        com.aandios.nous.api.market.paper.PaperTrading.adapter.topUp("BTC", 0.1)
+                                        viewModel.reload()
+                                    }
+                                }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                        )
+                    }
+                }
+                BalanceList(balances)
+            }
             TradingTab.HISTORY -> {
                 LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
                 HistoryList(history, formatter)

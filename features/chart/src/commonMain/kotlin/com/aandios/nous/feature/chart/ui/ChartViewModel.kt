@@ -6,6 +6,7 @@
 package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.orderbook.OrderSide
@@ -229,7 +230,7 @@ class ChartViewModel(
     fun refreshOpenOrders() {
         val symbol = _state.value.currentSymbol
         viewModelScope.launch {
-            val adapter = activeProvider()?.trading
+            val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
                 _openOrders.value = emptyList()
                 return@launch
@@ -245,7 +246,7 @@ class ChartViewModel(
      */
     fun placeChartOrder(price: Double) {
         viewModelScope.launch {
-            val adapter = activeProvider()?.trading
+            val adapter = activeProvider()?.effectiveTrading()
             if (adapter == null) {
                 _lastTradingMessage.value = "Trading adapter not available"
                 return@launch

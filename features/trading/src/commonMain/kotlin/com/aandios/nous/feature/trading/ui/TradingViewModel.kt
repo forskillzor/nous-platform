@@ -10,6 +10,7 @@ import com.aandios.nous.api.market.model.Balance
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeFill
+import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.core.Disposable
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -84,7 +85,7 @@ class TradingViewModel(
         if (tab.isNotEmpty()) _activeTab.value = tab
     }
 
-    private fun tradingAdapter() = providerRegistry.get(_providerId.value)?.trading
+    private fun tradingAdapter() = providerRegistry.get(_providerId.value)?.effectiveTrading()
 
     init {
         restart()
@@ -103,6 +104,11 @@ class TradingViewModel(
         _openOrders.value = emptyList()
         _balances.value = emptyList()
         _tradeHistory.value = emptyList()
+        restart()
+    }
+
+    /** Перезапуск подписок/рефреша (после смены paper/real режима). */
+    fun reload() {
         restart()
     }
 

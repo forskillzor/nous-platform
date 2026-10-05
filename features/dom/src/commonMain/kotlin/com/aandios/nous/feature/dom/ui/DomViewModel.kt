@@ -10,6 +10,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
+import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.orderbook.DomEvent
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.core.Disposable
@@ -298,7 +299,7 @@ class DomViewModel(
     }
 
     private fun tradingAdapter() =
-        providerRegistry.get(_domOptions.value.provider)?.trading
+        providerRegistry.get(_domOptions.value.provider)?.effectiveTrading()
 
     /** Закрыть все открытые позиции символа панели (market reduce-only). */
     fun closeAllPositions() {
