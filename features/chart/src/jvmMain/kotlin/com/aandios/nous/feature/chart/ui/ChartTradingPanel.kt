@@ -110,6 +110,7 @@ fun ChartTradingPanel(
                 orderType = orderType,
                 marginMode = marginMode,
                 leverage = leverage,
+                reduceOnly = reduceOnly,
                 qtyText = qtyText,
                 minQty = minQty,
                 pnlText = pnlText,
@@ -117,6 +118,7 @@ fun ChartTradingPanel(
                 onOrderTypeChanged = onOrderTypeChanged,
                 onMarginModeChanged = onMarginModeChanged,
                 onLeverageChanged = onLeverageChanged,
+                onReduceOnlyChanged = onReduceOnlyChanged,
                 onQtyTextChanged = { text ->
                     qtyText = text
                     onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
@@ -296,6 +298,7 @@ private fun CompactHeader(
     orderType: OrderType,
     marginMode: Int,
     leverage: Int?,
+    reduceOnly: Boolean,
     qtyText: String,
     minQty: Double?,
     pnlText: String?,
@@ -303,6 +306,7 @@ private fun CompactHeader(
     onOrderTypeChanged: (OrderType) -> Unit,
     onMarginModeChanged: (Int) -> Unit,
     onLeverageChanged: (Int?) -> Unit,
+    onReduceOnlyChanged: (Boolean) -> Unit,
     onQtyTextChanged: (String) -> Unit,
     onExpand: () -> Unit,
 ) {
@@ -338,6 +342,27 @@ private fun CompactHeader(
                 menuWidth = 90.dp,
             )
         }
+        // Reduce-only
+        Text(
+            text = "RO",
+            color = if (reduceOnly) accent else labelColor,
+            fontSize = 10.sp,
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            modifier = Modifier
+                .background(
+                    if (reduceOnly) accent.copy(alpha = 0.2f) else Color.Transparent,
+                    RoundedCornerShape(3.dp),
+                )
+                .border(
+                    1.dp,
+                    if (reduceOnly) accent.copy(alpha = 0.5f) else fieldBorder,
+                    RoundedCornerShape(3.dp),
+                )
+                .clickableNoIndication { onReduceOnlyChanged(!reduceOnly) }
+                .padding(horizontal = 5.dp, vertical = 2.dp),
+        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
