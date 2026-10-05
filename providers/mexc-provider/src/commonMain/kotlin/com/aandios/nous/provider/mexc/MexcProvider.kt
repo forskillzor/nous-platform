@@ -39,16 +39,25 @@ class MexcProvider(
     // Отдельный HttpClient провайдера: единые таймауты/ContentNegotiation для MEXC
     private val mexcHttpClient: HttpClient = MexcHttpClientFactory.create()
 
+    // Ключи для приватных endpoints: ProviderConfig → env (MEXC_API_KEY/MEXC_SECRET_KEY)
+    private val privateApiKey: String get() = config.apiKey ?: getEnv("MEXC_API_KEY").orEmpty()
+    private val privateSecretKey: String get() = config.secretKey ?: getEnv("MEXC_SECRET_KEY").orEmpty()
+
     // Общие гейты: один на провайдер — все адаптеры ходят через них,
     // чтобы не пробивать rate limit MEXC при открытии workspace с N панелями.
     private val restGate: MexcRestGate = MexcRestGate()
-    private val streamHub: MexcStreamHub = MexcStreamHub(mexcHttpClient, config)
+    private val streamHub: MexcStreamHub = MexcStreamHub(
+        client = mexcHttpClient,
+        config = config,
+        privateApiKey = privateApiKey,
+        privateSecretKey = privateSecretKey,
+    )
 
     override val trades: TradesAdapter by lazy { MexcTradesAdapter(mexcHttpClient, config, restGate, streamHub) }
     override val dom: DomAdapter by lazy { MexcDomAdapter(mexcHttpClient, config, streamHub) }
     override val bookTicker: BookTickerAdapter by lazy { MexcBookTickerAdapter(mexcHttpClient, config, restGate, streamHub) }
     override val chart: ChartAdapter by lazy { MexcChartAdapter(mexcHttpClient, config, restGate, streamHub) }
-    override val trading: TradingAdapter by lazy { MexcTradingAdapter(mexcHttpClient, config) }
+    override val trading: TradingAdapter by lazy { MexcTradingAdapter(mexcHttpClient, config, restGate, streamHub) }
     override val symbolInfo: SymbolInfoAdapter by lazy { MexcSymbolInfoAdapter(mexcHttpClient, config, restGate) }
 
     // У MEXC нет публичного потока/эндпоинта ликвидаций

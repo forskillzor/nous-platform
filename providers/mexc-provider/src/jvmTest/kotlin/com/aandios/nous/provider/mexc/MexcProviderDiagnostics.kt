@@ -10,6 +10,7 @@ import com.aandios.nous.provider.mexc.adapter.MexcBookTickerAdapter
 import com.aandios.nous.provider.mexc.adapter.MexcChartAdapter
 import com.aandios.nous.provider.mexc.adapter.MexcDomAdapter
 import com.aandios.nous.provider.mexc.adapter.MexcSymbolInfoAdapter
+import com.aandios.nous.provider.mexc.adapter.MexcTradingAdapter
 import com.aandios.nous.provider.mexc.adapter.MexcTradesAdapter
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -89,6 +90,35 @@ class MexcProviderDiagnostics {
             withTimeoutOrNull(20_000) { flow.take(1).toList().firstOrNull() }
         }.onSuccess { println(if (it != null) "OK bids=${it.bids.size} asks=${it.asks.size}" else "NO DATA") }
             .onFailure { println("ERR ${it.message}") }
+
+        println("=== TRADING (read-only, нужны MEXC_API_KEY/MEXC_SECRET_KEY) ===")
+        val tradingConfig = config.copy(
+            apiKey = getEnv("MEXC_API_KEY"),
+            secretKey = getEnv("MEXC_SECRET_KEY"),
+        )
+        if (tradingConfig.apiKey.isNullOrEmpty()) {
+            println("SKIP: ключи не заданы")
+        } else {
+            val tradingAdapter = MexcTradingAdapter(client, tradingConfig, gate, hub)
+            runCatching { tradingAdapter.getBalances() }
+                .onSuccess { println("OK balances=${it.size} first=${it.firstOrNull()}") }
+                .onFailure { println("ERR ${it.message}") }
+            runCatching { tradingAdapter.getPositions() }
+                .onSuccess { println("OK positions=${it.size} first=${it.firstOrNull()}") }
+                .onFailure { println("ERR ${it.message}") }
+            runCatching { tradingAdapter.getOpenOrders() }
+                .onSuccess { println("OK openOrders=${it.size}") }
+                .onFailure { println("ERR ${it.message}") }
+            runCatching { tradingAdapter.getTradeHistory(limit = 5) }
+                .onSuccess { println("OK history=${it.size} first=${it.firstOrNull()}") }
+                .onFailure { println("ERR ${it.message}") }
+            runCatching { tradingAdapter.getPositionMode() }
+                .onSuccess { println("OK positionMode=$it") }
+                .onFailure { println("ERR ${it.message}") }
+            runCatching { tradingAdapter.getLeverage("BTC_USDT") }
+                .onSuccess { println("OK leverage=$it") }
+                .onFailure { println("ERR ${it.message}") }
+        }
 
         println("=== connections=${hub.connectionCount} streams=${hub.streamCount}")
         client.close()

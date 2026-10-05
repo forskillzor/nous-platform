@@ -46,6 +46,9 @@ import kotlin.concurrent.Volatile
 class MexcStreamHub(
     private val client: HttpClient,
     @Suppress("unused") private val config: com.aandios.nous.api.market.ProviderConfig,
+    /** API-ключ для приватных каналов (пусто — только публичные). */
+    private val privateApiKey: String = "",
+    private val privateSecretKey: String = "",
 ) {
     companion object {
         private const val ENDPOINT = "wss://contract.mexc.com/edge"
@@ -125,6 +128,45 @@ class MexcStreamHub(
         }
     }
 
+    /**
+     * Подписка на ПРИВАТНЫЙ push-канал (order/position/asset).
+     * Подписочных sub-сообщений нет — после connect хаб логинится сам
+     * (личные данные пушутся по умолчанию после успешного login).
+     */
+    fun subscribePersonal(key: String): Flow<String> = flow {
+        val shared = mutex.withLock {
+            val f = streams.getOrPut(key) {
+                MutableSharedFlow(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+            }
+            subscriberCounts[key] = (subscriberCounts[key] ?: 0) + 1
+            if (subscriberCounts[key] == 1) {
+                subscriptions[key] = MexcSub(key, "", "")
+                ensureConnection()
+            }
+            activeStreamCount = streams.size
+            f
+        }
+        try {
+            shared.collect { emit(it) }
+        } finally {
+            val remaining = mutex.withLock {
+                val count = (subscriberCounts[key] ?: 1) - 1
+                if (count <= 0) {
+                    subscriberCounts.remove(key)
+                    streams.remove(key)
+                    0
+                } else {
+                    subscriberCounts[key] = count
+                    count
+                }
+            }
+            mutex.withLock {
+                if (remaining == 0) subscriptions.remove(key)
+                activeStreamCount = streams.size
+            }
+        }
+    }
+
     // ── Соединение ──────────────────────────────────────────────────────────
 
     private fun ensureConnection() {
@@ -147,9 +189,20 @@ class MexcStreamHub(
                     attempt = 0
                     activeConnectionCount = 1
 
+                    // Логин для приватных каналов (если есть ключи)
+                    if (privateApiKey.isNotEmpty() && privateSecretKey.isNotEmpty()) {
+                        val reqTime = currentTimeMillis().toString()
+                        val signature = MexcSigner.signWs(privateApiKey, privateSecretKey, reqTime)
+                        outbox.trySend(
+                            """{"method":"login","param":{"apiKey":"$privateApiKey","reqTime":"$reqTime","signature":"$signature"}}"""
+                        )
+                    }
+
                     // Переподписка всех активных каналов после (пере)подключения
                     mutex.withLock {
-                        subscriptions.values.forEach { outbox.trySend(it.subscribeJson) }
+                        subscriptions.values.forEach {
+                            if (it.subscribeJson.isNotEmpty()) outbox.trySend(it.subscribeJson)
+                        }
                     }
 
                     val pingJob = launch {
@@ -211,6 +264,10 @@ class MexcStreamHub(
             "push.deal" -> listOf("deal:$symbol")
             "push.depth", "push.depth.full" -> listOf("depth:$symbol")
             "push.ticker" -> listOf("ticker:$symbol")
+            "push.personal.order" -> listOf("personal:order")
+            "push.personal.position" -> listOf("personal:position")
+            "push.personal.asset" -> listOf("personal:asset")
+            "push.personal.position.mode" -> listOf("personal:position.mode")
             else -> emptyList()
         }
         if (keys.isEmpty()) return

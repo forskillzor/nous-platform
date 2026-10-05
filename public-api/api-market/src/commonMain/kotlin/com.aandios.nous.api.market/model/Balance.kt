@@ -5,4 +5,19 @@
 
 package com.aandios.nous.api.market.model
 
-data class Balance(val amount: String, val currency: String)
+/**
+ * Баланс актива (фьючерсный счёт).
+ */
+data class Balance(
+    val currency: String,
+    /** Доступный баланс. */
+    val amount: String,
+    /** Заморожено (в ордерах). */
+    val frozen: String = "0",
+    /** Маржа под позициями. */
+    val margin: String = "0",
+    /** Equity счёта. */
+    val equity: String = "0",
+    /** Нереализованный PnL. */
+    val unrealizedPnl: String = "0",
+)

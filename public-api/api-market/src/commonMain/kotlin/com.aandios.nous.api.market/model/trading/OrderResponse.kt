@@ -5,4 +5,13 @@
 
 package com.aandios.nous.api.market.model.trading
 
-data class OrderResponse(val orderId: String, val price: Double)
+/**
+ * Результат размещения ордера.
+ */
+data class OrderResponse(
+    val orderId: String,
+    val price: Double = 0.0,
+    val success: Boolean = true,
+    /** Сообщение об ошибке/предупреждении (пусто при успехе). */
+    val message: String? = null,
+)

@@ -6,5 +6,12 @@
 package com.aandios.nous.api.market.model.orderbook
 
 enum class OrderType {
-    LIMIT, MARKET
+    LIMIT,
+    MARKET,
+    /** Post-Only maker (снимается, если сразу матчится). */
+    POST_ONLY,
+    /** Immediate-or-Cancel. */
+    IOC,
+    /** Fill-or-Kill. */
+    FOK,
 }
