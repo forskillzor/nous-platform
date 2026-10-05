@@ -52,16 +52,20 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isAltPressed
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.text.drawText
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
@@ -93,9 +97,8 @@ import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max
 
-/** Высота бейджа ордера (перетаскивание/правка qty) и ширина грипа. */
+/** Высота бейджа ордера (перетаскивание/правка qty). */
 private val TRADING_BADGE_HEIGHT = 18.dp
-private val TRADING_GRIP_WIDTH = 16.dp
 
 /**
  * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
@@ -152,6 +155,8 @@ fun CandleStickChartInteraction(
     var draggingOrderPrice by remember { mutableStateOf<Double?>(null) }
     // Измеренные размеры бейджей ордеров (для исключения кликов по ним)
     val orderBadgeSizes = remember { mutableStateMapOf<String, IntSize>() }
+    // Границы поля qty внутри бейджа (эта зона не инициирует драг)
+    val orderQtyRects = remember { mutableStateMapOf<String, Rect>() }
 
     // Шкалы и серия — единая модель для свечей и footprint
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
@@ -283,16 +288,25 @@ fun CandleStickChartInteraction(
                     // Активный инструмент рисования — жесты обрабатывает DrawingOverlay
                     if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
 
-                    // 1b. Перетаскивание торгового ордера за грип бейджа
+                    // 1b. Перетаскивание торгового ордера: вся поверхность
+                    // бейджа (центр чарта), кроме поля qty
                     if (currentOnMoveTradingOrder != null && currentTradingOrders.isNotEmpty()) {
                         val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
-                        val gripW = with(density) { TRADING_GRIP_WIDTH.toPx() }
                         val hitOrder = currentTradingOrders.firstOrNull { o ->
                             if (o.price <= 0.0) return@firstOrNull false
+                            val size = orderBadgeSizes[o.orderId] ?: return@firstOrNull false
                             val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
                             if (y < 0f || y > chartHeightPx) return@firstOrNull false
+                            val left = chartWidthPx / 2f - size.width / 2f
                             val top = y - badgeH / 2f
-                            down.position.x in 0f..gripW && down.position.y in top..(top + badgeH)
+                            val inside = down.position.x in left..(left + size.width.toFloat()) &&
+                                down.position.y in top..(top + badgeH)
+                            if (!inside) return@firstOrNull false
+                            val q = orderQtyRects[o.orderId]
+                            val overQty = q != null &&
+                                down.position.x in (left + q.left)..(left + q.right) &&
+                                down.position.y in (top + q.top)..(top + q.bottom)
+                            !overQty
                         }
                         if (hitOrder != null) {
                             var moved = false
@@ -365,8 +379,9 @@ fun CandleStickChartInteraction(
                             val size = orderBadgeSizes[o.orderId] ?: return@any false
                             if (o.price <= 0.0) return@any false
                             val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
+                            val left = chartWidthPx / 2f - size.width / 2f
                             val top = y - badgeH / 2f
-                            down.position.x in 0f..size.width.toFloat() &&
+                            down.position.x in left..(left + size.width.toFloat()) &&
                                 down.position.y in top..(top + badgeH)
                         }
                         // chartMainArea — Rect(0, 0, chartWidthPx, chartHeightPx)
@@ -771,7 +786,7 @@ fun CandleStickChartInteraction(
             }
         }
         // Бейджи открытых ордеров поверх графика (TradingView-style):
-        // грип — перетаскивание, поле qty — правка, ✕ — отмена.
+        // по центру чарта на линии цены; драг — вся поверхность, кроме qty.
         if (tradingOrders.isNotEmpty()) {
             tradingOrders.forEach { order ->
                 val displayPrice = if (draggingOrderId == order.orderId) {
@@ -782,16 +797,26 @@ fun CandleStickChartInteraction(
                 if (displayPrice <= 0.0) return@forEach
                 val y = priceToY(displayPrice.toFloat(), priceRange, layout.chartMainArea.height)
                 if (y < 0f || y > layout.chartMainArea.height) return@forEach
-                TradingOrderBadge(
-                    order = order,
-                    priceText = config.priceFormatter.formatPrice(displayPrice),
-                    onCancel = { onCancelTradingOrder?.invoke(order) },
-                    onResize = { qty -> onResizeTradingOrder?.invoke(order, qty) },
+                // Контейнер шириной с plot-область (без шкалы цен) — центр
+                // бейджа ровно посередине чарта
+                Box(
                     modifier = Modifier
-                        .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
-                        .height(TRADING_BADGE_HEIGHT)
-                        .onSizeChanged { orderBadgeSizes[order.orderId] = it },
-                )
+                        .align(Alignment.TopStart)
+                        .width(with(density) { chartWidthPx.toDp() }),
+                    contentAlignment = Alignment.TopCenter,
+                ) {
+                    TradingOrderBadge(
+                        order = order,
+                        priceText = config.priceFormatter.formatPrice(displayPrice),
+                        onCancel = { onCancelTradingOrder?.invoke(order) },
+                        onResize = { qty -> onResizeTradingOrder?.invoke(order, qty) },
+                        onQtyBounds = { rect -> orderQtyRects[order.orderId] = rect },
+                        modifier = Modifier
+                            .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
+                            .height(TRADING_BADGE_HEIGHT)
+                            .onSizeChanged { orderBadgeSizes[order.orderId] = it },
+                    )
+                }
             }
         }
         // Кнопка «к последней свече» в правом нижнем углу области графика
@@ -888,6 +913,7 @@ private fun TradingOrderBadge(
     priceText: String,
     onCancel: () -> Unit,
     onResize: (Double) -> Unit,
+    onQtyBounds: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isBuy = order.side == OrderSide.BUY
@@ -925,6 +951,7 @@ private fun TradingOrderBadge(
             text = title,
             color = Color.White,
             fontSize = 10.sp,
+            lineHeight = 11.sp,
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
@@ -937,6 +964,8 @@ private fun TradingOrderBadge(
             textStyle = TextStyle(
                 color = Color(0xFF1A1A1A),
                 fontSize = 10.sp,
+                lineHeight = 11.sp,
+                textAlign = TextAlign.Center,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Medium,
             ),
@@ -945,6 +974,15 @@ private fun TradingOrderBadge(
                 .width(44.dp)
                 .background(Color.White, RoundedCornerShape(2.dp))
                 .padding(horizontal = 3.dp, vertical = 1.dp)
+                .onGloballyPositioned { coords ->
+                    // Границы поля qty внутри бейджа — исключены из зоны драга
+                    onQtyBounds(
+                        Rect(
+                            offset = coords.positionInParent(),
+                            size = coords.size.toSize(),
+                        )
+                    )
+                }
                 .onKeyEvent { event ->
                     if (event.type == KeyEventType.KeyDown &&
                         (event.key == Key.Enter || event.key == Key.NumPadEnter)
@@ -956,11 +994,15 @@ private fun TradingOrderBadge(
                     }
                 }
                 .onFocusChanged { state -> if (!state.isFocused) commit() },
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.Center) { inner() }
+            },
         )
         Text(
             text = "✕",
             color = Color.White,
             fontSize = 11.sp,
+            lineHeight = 12.sp,
             fontFamily = FontFamily.Monospace,
             maxLines = 1,
             modifier = Modifier
