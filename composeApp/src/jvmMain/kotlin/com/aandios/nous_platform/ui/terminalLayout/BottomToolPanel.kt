@@ -30,12 +30,16 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.feature.trading.ui.TradingViewModel
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
@@ -74,6 +78,10 @@ fun BottomToolPanel(
     onPortfolioTabChange: (PortfolioTab) -> Unit = {},
     modifier: Modifier = Modifier.Companion
 ) {
+    // VM портфолио нужен и заголовку (тумблер Paper), и контенту
+    val tradingViewModel: TradingViewModel? =
+        if (type == BottomToolType.PORTFOLIO) koinInject() else null
+
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surface
@@ -121,6 +129,31 @@ fun BottomToolPanel(
                     Spacer(Modifier.Companion.weight(1f))
                 }
 
+                // Тумблер Paper-торговли для портфолио
+                if (type == BottomToolType.PORTFOLIO) {
+                    var paperEnabled by remember { mutableStateOf(PaperTrading.enabled) }
+                    Text(
+                        text = if (paperEnabled) "Paper ✔" else "Paper",
+                        color = if (paperEnabled) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.Companion
+                            .background(
+                                if (paperEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                else Color.Transparent,
+                                MaterialTheme.shapes.small,
+                            )
+                            .clickable {
+                                paperEnabled = !paperEnabled
+                                PaperTrading.enabled = paperEnabled
+                                tradingViewModel?.reload()
+                            }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                    Spacer(Modifier.Companion.width(6.dp))
+                }
+
                 Box(
                     modifier = Modifier.Companion
                         .size(20.dp)
@@ -146,12 +179,13 @@ fun BottomToolPanel(
             // Контент
             when (type) {
                 BottomToolType.PORTFOLIO -> {
-                    val tradingViewModel: TradingViewModel = koinInject()
-                    PortfolioPanel(
-                        tradingViewModel = tradingViewModel,
-                        selectedTab = portfolioTab,
-                        modifier = Modifier.Companion.weight(1f)
-                    )
+                    tradingViewModel?.let { vm ->
+                        PortfolioPanel(
+                            tradingViewModel = vm,
+                            selectedTab = portfolioTab,
+                            modifier = Modifier.Companion.weight(1f)
+                        )
+                    } ?: Spacer(Modifier.Companion.weight(1f))
                 }
                 BottomToolType.CONSOLE -> ConsolePanel(modifier = Modifier.Companion.weight(1f))
                 BottomToolType.EDITOR -> CodeEditorPanel(modifier = Modifier.Companion.weight(1f))
