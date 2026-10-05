@@ -69,6 +69,8 @@ fun ChartTradingPanel(
     bestAsk: Double?,
     formatter: SymbolFormatter = SymbolFormatter.DEFAULT,
     marginInfo: String? = null,
+    pnlText: String? = null,
+    pnlUp: Boolean = true,
     collapsed: Boolean = false,
     onCollapsedChange: (Boolean) -> Unit,
     onQuantityChanged: (Double?) -> Unit,
@@ -110,6 +112,8 @@ fun ChartTradingPanel(
                 leverage = leverage,
                 qtyText = qtyText,
                 minQty = minQty,
+                pnlText = pnlText,
+                pnlUp = pnlUp,
                 onOrderTypeChanged = onOrderTypeChanged,
                 onMarginModeChanged = onMarginModeChanged,
                 onLeverageChanged = onLeverageChanged,
@@ -120,6 +124,19 @@ fun ChartTradingPanel(
                 onExpand = { onCollapsedChange(false) },
             )
             return@Column
+        }
+
+        // PnL позиции (в самом верху панели): %, тики, USDT
+        pnlText?.let { text ->
+            Text(
+                text = text,
+                color = if (pnlUp) buyColor else sellColor,
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
 
         // ex/sym берутся с графика; стрелка сворачивает панель в компактную строку
@@ -281,6 +298,8 @@ private fun CompactHeader(
     leverage: Int?,
     qtyText: String,
     minQty: Double?,
+    pnlText: String?,
+    pnlUp: Boolean,
     onOrderTypeChanged: (OrderType) -> Unit,
     onMarginModeChanged: (Int) -> Unit,
     onLeverageChanged: (Int?) -> Unit,
@@ -331,6 +350,17 @@ private fun CompactHeader(
                 modifier = Modifier.width(66.dp),
             )
         }
+        // PnL позиции — в конце компактной строки
+        pnlText?.let { text ->
+            Text(
+                text = text,
+                color = if (pnlUp) buyColor else sellColor,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+            )
+        }
         Text(
             text = "▲",
             color = accent,
@@ -343,7 +373,6 @@ private fun CompactHeader(
         )
     }
 }
-
 /** Поле qty с placeholder = minQty инструмента (пусто → minQty). */
 @Composable
 private fun QtyInput(

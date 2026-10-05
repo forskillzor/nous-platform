@@ -37,6 +37,7 @@ import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
+import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
@@ -54,6 +55,7 @@ import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToLong
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.context.stopKoin
@@ -146,18 +148,39 @@ private fun ChartWindowContent(
     val showPositions by chartViewModel.showPositions.collectAsState()
     val tradingPositions by chartViewModel.positions.collectAsState()
 
-    // Paper: ориентир по марже (required vs available) для панели ордера
+    // Paper: ориентир по марже и свободному балансу с учётом плеча
     val paperBalances by PaperTrading.adapter.balancesFlow.collectAsState()
     val paperAvailable = paperBalances.firstOrNull { it.currency == "USDT" }?.amount?.toDoubleOrNull()
+    val leverageForInfo = (chartLeverage ?: 1).coerceAtLeast(1)
     val marginInfo = if (paperEnabled && paperAvailable != null) {
+        val maxNotional = paperAvailable * leverageForInfo
+        val base = "Free ${uiState.currentSymbolFormatter.formatVolumeFull(paperAvailable)} · " +
+            "Max ${uiState.currentSymbolFormatter.formatVolumeFull(maxNotional)} USDT (${leverageForInfo}x)"
         val price = chartViewModel.chartLastPrice()
         val qty = tradingQuantity ?: uiState.currentSymbolInfo?.minQty
-        val lev = (chartLeverage ?: 1).coerceAtLeast(1)
         if (price != null && qty != null && price > 0 && qty > 0) {
-            val required = price * qty / lev
-            "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(required)} · Available ${uiState.currentSymbolFormatter.formatVolumeFull(paperAvailable)} USDT"
-        } else null
+            "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(price * qty / leverageForInfo)} · $base"
+        } else base
     } else null
+
+    // PnL текущей позиции: %, тики, USDT — для панели на графике
+    val pnlPosition = tradingPositions.firstOrNull()
+    val pnlInfo: Pair<String, Boolean>? = pnlPosition?.let { p ->
+        if (p.markPrice <= 0.0 || p.avgPrice <= 0.0) return@let null
+        val lev = (p.leverage ?: 1).coerceAtLeast(1)
+        val margin = p.avgPrice * p.quantity / lev
+        val pnl = p.unrealizedPnl
+        val pct = if (margin > 0) pnl / margin * 100 else 0.0
+        val tick = uiState.currentSymbolFormatter.tickSize
+        val ticks = if (tick > 0) {
+            (p.markPrice - p.avgPrice) * (if (p.side == TradeSide.BUY) 1 else -1) / tick
+        } else 0.0
+        val sign = if (pnl >= 0) "+" else ""
+        val text = "PnL $sign${String.format(java.util.Locale.US, "%.2f", pct)}%  " +
+            "$sign${ticks.roundToLong()}t  " +
+            "$sign${String.format(java.util.Locale.US, "%.2f", pnl)} USDT"
+        text to (pnl >= 0)
+    }
     // Свёрнутая (компактная строка) / развёрнутая панель chart trading
     var panelCollapsed by remember { mutableStateOf(false) }
 
@@ -478,6 +501,8 @@ private fun ChartWindowContent(
                     bestAsk = bestAsk,
                     formatter = uiState.currentSymbolFormatter,
                     marginInfo = marginInfo,
+                    pnlText = pnlInfo?.first,
+                    pnlUp = pnlInfo?.second ?: true,
                     collapsed = panelCollapsed,
                     onCollapsedChange = { panelCollapsed = it },
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
