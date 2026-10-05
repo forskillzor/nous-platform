@@ -424,6 +424,12 @@ class ChartViewModel(
                 flow.collect { update -> onPositionUpdate(update) }
             }
         }
+        // Уведомления движка (причины отказов ордеров) — в snackbar
+        adapter.notices()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { text -> notify(text) }
+            }
+        }
     }
 
     private fun onPositionUpdate(update: Position) {

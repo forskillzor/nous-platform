@@ -106,6 +106,9 @@ class PaperTradingAdapter(
     private val _positionUpdates = MutableSharedFlow<Position>(extraBufferCapacity = 64)
     private val _balanceUpdates = MutableSharedFlow<Balance>(extraBufferCapacity = 64)
 
+    /** Пользовательские уведомления движка (причины отказов). */
+    private val _notices = MutableSharedFlow<String>(extraBufferCapacity = 32)
+
     val balancesFlow: StateFlow<List<Balance>> = _balances.asStateFlow()
     val positionsFlow: StateFlow<List<Position>> = _positions.asStateFlow()
     val openOrdersFlow: StateFlow<List<Order>> = _openOrders.asStateFlow()
@@ -114,6 +117,8 @@ class PaperTradingAdapter(
     private val markPrices = mutableMapOf<String, Double>()
     private val leverageMap = mutableMapOf<String, Int>()
     private val feeRates = mutableMapOf<String, FeeRates>()
+    /** Плечо, с которым рестовый ордер был поставлен (в Order его нет). */
+    private val restingLeverage = mutableMapOf<String, Int>()
     private var plans = mutableListOf<PaperPlanOrder>()
     private var positionModeValue = 2 // 2 = one-way
     private var seq = 0L
@@ -207,6 +212,7 @@ class PaperTradingAdapter(
     suspend fun resetBalance(usdtAmount: Double = 10_000.0) = mutex.withLock {
         _openOrders.value.forEach { _orderUpdates.tryEmit(it.copy(status = OrderStatus.CANCELED)) }
         _openOrders.value = emptyList()
+        restingLeverage.clear()
         _positions.value.forEach { p ->
             _positionUpdates.tryEmit(p.copy(quantity = 0.0))
         }
@@ -231,6 +237,7 @@ class PaperTradingAdapter(
         plans.clear()
         markPrices.clear()
         leverageMap.clear()
+        restingLeverage.clear()
         _balances.value = listOf(Balance("USDT", fmt(usdtAmount), equity = fmt(usdtAmount)))
         emitBalance("USDT")
         positionModeValue = 2
@@ -270,6 +277,7 @@ class PaperTradingAdapter(
         plans = state.plans.toMutableList()
         leverageMap.clear()
         leverageMap.putAll(state.leverageMap)
+        restingLeverage.clear()
         positionModeValue = state.positionMode
         seq = state.seq
         _balances.value.forEach { _balanceUpdates.tryEmit(it) }
@@ -327,6 +335,7 @@ class PaperTradingAdapter(
     override suspend fun cancelOrder(orderId: String): Boolean = mutex.withLock {
         val order = _openOrders.value.firstOrNull { it.orderId == orderId } ?: return@withLock false
         _openOrders.value = _openOrders.value.filterNot { it.orderId == orderId }
+        restingLeverage.remove(orderId)
         _orderUpdates.tryEmit(order.copy(status = OrderStatus.CANCELED))
         true
     }
@@ -342,7 +351,10 @@ class PaperTradingAdapter(
             _openOrders.value = emptyList()
             gone
         }
-        removed.forEach { _orderUpdates.tryEmit(it.copy(status = OrderStatus.CANCELED)) }
+        removed.forEach {
+            restingLeverage.remove(it.orderId)
+            _orderUpdates.tryEmit(it.copy(status = OrderStatus.CANCELED))
+        }
         true
     }
 
@@ -423,10 +435,31 @@ class PaperTradingAdapter(
     override fun subscribeToPositions(): Flow<Position>? = _positionUpdates.asSharedFlow()
     override fun subscribeToOrders(): Flow<Order>? = _orderUpdates.asSharedFlow()
     override fun subscribeToBalances(): Flow<Balance>? = _balanceUpdates.asSharedFlow()
+    override fun notices(): Flow<String>? = _notices.asSharedFlow()
 
     // ── Внутреннее: постановка/филл/репрайс ──
 
     private fun restOrderLocked(symbol: String, request: OrderRequest): OrderResponse {
+        // Маржа под рестовый ордер проверяется сразу (как резерв на бирже):
+        // иначе ордер висел бы на графике и молча отклонялся при пересечении
+        if (!request.reduceOnly) {
+            val openSide = if (request.side == OrderSide.BUY) TradeSide.BUY else TradeSide.SELL
+            val sameLeverage = _positions.value
+                .firstOrNull { it.symbol == symbol && it.side == openSide }
+                ?.leverage
+            val leverage = (sameLeverage ?: request.leverage ?: leverageMap[symbol] ?: 1).coerceAtLeast(1)
+            val notional = request.price * request.quantity
+            val required = notional / leverage + notional * feeRateLocked(symbol, taker = false)
+            val available = _balances.value.firstOrNull { it.currency == "USDT" }
+                ?.amount?.toDoubleOrNull() ?: 0.0
+            if (available < required) {
+                return OrderResponse(
+                    "",
+                    success = false,
+                    message = "Insufficient margin: need ~${fmt(required)}, available ${fmt(available)}",
+                )
+            }
+        }
         val order = Order(
             orderId = newId(),
             symbol = symbol,
@@ -440,6 +473,7 @@ class PaperTradingAdapter(
             timestamp = now(),
         )
         _openOrders.value = _openOrders.value + order
+        (request.leverage ?: leverageMap[symbol])?.let { restingLeverage[order.orderId] = it }
         _orderUpdates.tryEmit(order)
         return OrderResponse(order.orderId, request.price, success = true)
     }
@@ -635,7 +669,7 @@ class PaperTradingAdapter(
 
         // Рестовые лимитки: пересечение → maker-филл по цене ордера
         val toFill = mutableListOf<Order>()
-        val toCancel = mutableListOf<Order>()
+        val toReject = mutableListOf<Pair<Order, OrderResponse>>()
         _openOrders.value = _openOrders.value.filterNot { order ->
             if (order.symbol != symbol) return@filterNot false
             val crossed = when (order.side) {
@@ -652,13 +686,19 @@ class PaperTradingAdapter(
                 price = order.price,
                 reduceOnly = order.reduceOnly,
                 clientOrderId = order.clientOrderId,
+                leverage = restingLeverage[order.orderId],
             )
             val response = fillOrderLocked(symbol, request, order.price, price, taker = false, emit = false)
-            if (response.success) toFill += order else toCancel += order
+            restingLeverage.remove(order.orderId)
+            if (response.success) toFill += order else toReject += order to response
             true
         }
         toFill.forEach { _orderUpdates.tryEmit(it.copy(status = OrderStatus.FILLED, filledQuantity = it.quantity)) }
-        toCancel.forEach { _orderUpdates.tryEmit(it.copy(status = OrderStatus.CANCELED)) }
+        // Провал филла (обычно маржа ушла после постановки): REJECTED + причина
+        toReject.forEach { (order, response) ->
+            _orderUpdates.tryEmit(order.copy(status = OrderStatus.REJECTED))
+            _notices.tryEmit("${order.symbol} order rejected: ${response.message ?: "unknown reason"}")
+        }
 
         // TP/SL план-ордера: триггер → закрытие позиции по mark (taker)
         val triggered = plans.filter { plan ->

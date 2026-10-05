@@ -188,6 +188,12 @@ class TradingViewModel(
                 }
             }
         }
+        // Уведомления движка (причины отказов) — в сообщение панели
+        adapter.notices()?.let { flow ->
+            liveJobs += scope.launch {
+                flow.collect { text -> _lastMessage.value = text }
+            }
+        }
     }
 
     private fun upsertPosition(list: List<Position>, update: Position): List<Position> {

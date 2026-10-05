@@ -68,6 +68,7 @@ fun ChartTradingPanel(
     bestBid: Double?,
     bestAsk: Double?,
     formatter: SymbolFormatter = SymbolFormatter.DEFAULT,
+    marginInfo: String? = null,
     collapsed: Boolean = false,
     onCollapsedChange: (Boolean) -> Unit,
     onQuantityChanged: (Double?) -> Unit,
@@ -185,6 +186,18 @@ fun ChartTradingPanel(
                     onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
                 },
                 modifier = Modifier.weight(1f),
+            )
+        }
+
+        // Paper: ориентир по марже — видно до клика, что qty/плечо не влезают
+        marginInfo?.let { info ->
+            Text(
+                text = info,
+                color = labelColor,
+                fontSize = 10.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
 

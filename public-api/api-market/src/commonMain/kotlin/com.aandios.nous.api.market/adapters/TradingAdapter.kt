@@ -71,6 +71,12 @@ interface TradingAdapter : MarketAdapter {
     fun subscribeToBalances(): Flow<Balance>? = null
 
     /**
+     * Пользовательские уведомления адаптера (отказ ордера, ошибки движка),
+     * если провайдер умеет их публиковать. UI показывает их в snackbar.
+     */
+    fun notices(): Flow<String>? = null
+
+    /**
      * Ставки комиссий по символу (maker/taker) из данных активной биржи.
      * Провайдеры реализуют своим источником (MEXC — tiered_fee_rate/v2,
      * Binance и прочие — их exchange/account API). null — недоступно

@@ -440,6 +440,61 @@ class PaperTradingAdapterTest {
         assertEquals(0, adapter.getOpenOrders().size)
     }
 
+    @Test
+    fun `resting limit with insufficient margin is rejected at placement`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.setBalance("USDT", 100.0)
+        // 10 x 100 = 1000 маржи (1x) > 100 доступных
+        val response = adapter.placeOrder(
+            OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 10.0, price = 95.0)
+        )
+        assertFalse(response.success)
+        assertTrue(response.message?.contains("Insufficient margin") == true)
+        assertEquals(0, adapter.getOpenOrders().size)
+    }
+
+    @Test
+    fun `resting limit rejected when margin disappears before fill`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        val updates = mutableListOf<Order>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            adapter.subscribeToOrders()!!.collect { updates += it }
+        }
+        // маржи хватает при постановке
+        assertTrue(
+            adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 95.0)).success
+        )
+        // но до пересечения доступный баланс исчез
+        adapter.setBalance("USDT", 1.0)
+        adapter.setMarkPrice("BTCUSDT", 94.0)
+        testScheduler.advanceUntilIdle()
+
+        assertEquals(0, adapter.getOpenOrders().size)
+        assertEquals(0, adapter.portfolio().positions.size)
+        assertTrue(updates.any { it.status == OrderStatus.REJECTED })
+    }
+
+    @Test
+    fun `resting limit with sufficient margin fills and opens position`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("SOLUSDT", 120.0)
+        // 10 x 119 / 10x = 119 маржи при 10000 доступных — ок
+        val response = adapter.placeOrder(
+            OrderRequest("SOLUSDT", OrderSide.BUY, OrderType.LIMIT, 10.0, price = 119.0, leverage = 10)
+        )
+        assertTrue(response.success)
+        assertEquals(1, adapter.getOpenOrders().size)
+
+        adapter.setMarkPrice("SOLUSDT", 118.0)
+        val pos = adapter.portfolio().positions.single()
+        assertEquals(10.0, pos.quantity)
+        assertEquals(119.0, pos.avgPrice)
+        assertEquals(10, pos.leverage)
+        assertTrue(adapter.portfolio().history.isNotEmpty())
+    }
+
     private class FakeProvider : com.aandios.nous.api.market.Provider {
         override val providerId = "fake"
         override val providerName = "fake"

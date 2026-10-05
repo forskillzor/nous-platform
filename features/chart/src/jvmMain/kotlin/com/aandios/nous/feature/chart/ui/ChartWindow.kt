@@ -145,6 +145,19 @@ private fun ChartWindowContent(
     val showOrders by chartViewModel.showOrders.collectAsState()
     val showPositions by chartViewModel.showPositions.collectAsState()
     val tradingPositions by chartViewModel.positions.collectAsState()
+
+    // Paper: ориентир по марже (required vs available) для панели ордера
+    val paperBalances by PaperTrading.adapter.balancesFlow.collectAsState()
+    val paperAvailable = paperBalances.firstOrNull { it.currency == "USDT" }?.amount?.toDoubleOrNull()
+    val marginInfo = if (paperEnabled && paperAvailable != null) {
+        val price = chartViewModel.chartLastPrice()
+        val qty = tradingQuantity ?: uiState.currentSymbolInfo?.minQty
+        val lev = (chartLeverage ?: 1).coerceAtLeast(1)
+        if (price != null && qty != null && price > 0 && qty > 0) {
+            val required = price * qty / lev
+            "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(required)} · Available ${uiState.currentSymbolFormatter.formatVolumeFull(paperAvailable)} USDT"
+        } else null
+    } else null
     // Свёрнутая (компактная строка) / развёрнутая панель chart trading
     var panelCollapsed by remember { mutableStateOf(false) }
 
@@ -464,6 +477,7 @@ private fun ChartWindowContent(
                     bestBid = bestBid,
                     bestAsk = bestAsk,
                     formatter = uiState.currentSymbolFormatter,
+                    marginInfo = marginInfo,
                     collapsed = panelCollapsed,
                     onCollapsedChange = { panelCollapsed = it },
                     onQuantityChanged = { q -> chartViewModel.setTradingQuantity(q) },
