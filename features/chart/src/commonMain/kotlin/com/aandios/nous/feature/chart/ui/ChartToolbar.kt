@@ -11,18 +11,22 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.ui.component.SymbolSearchDropdown
 import com.aandios.nous.core.ui.component.TerminalDropdownWithLabel
+import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
 private val timeframes = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w")
@@ -56,6 +60,8 @@ fun ChartToolbar(
     onFpAggregationChange: (AggregationLevel) -> Unit = {},
     tradingEnabled: Boolean = false,
     onTradingToggle: (Boolean) -> Unit = {},
+    paperEnabled: Boolean = false,
+    onPaperToggle: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -93,24 +99,37 @@ fun ChartToolbar(
         Spacer(Modifier.width(8.dp))
         TimeframeDropdown(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
 
-        // Компактный тумблер trading — после таймфрейма
+        // Свичи Trading / Paper — после таймфрейма
         Spacer(Modifier.width(8.dp))
-        TradingToggle(enabled = tradingEnabled, onToggle = onTradingToggle)
+        ToolbarSwitch(label = "Trading", checked = tradingEnabled, onCheckedChange = onTradingToggle)
+        Spacer(Modifier.width(6.dp))
+        ToolbarSwitch(label = "Paper", checked = paperEnabled, onCheckedChange = onPaperToggle)
     }
 }
 
+/** Компактный свич тулбара: подпись + маленький TerminalSwitch. */
 @Composable
-private fun TradingToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    Text(
-        text = if (enabled) "Trading" else "Trading",
-        color = if (enabled) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
-        fontFamily = FontFamily.Monospace,
-        modifier = Modifier
-            .clickable { onToggle(!enabled) }
-            .padding(horizontal = 4.dp, vertical = 3.dp),
-    )
+private fun ToolbarSwitch(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = label,
+            color = if (checked) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            fontFamily = FontFamily.Monospace,
+        )
+        // Отключаем M3 min-touch-target (48dp), иначе тулбар раздувается
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+            TerminalSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.scale(0.7f),
+            )
+        }
+    }
 }
 
 @Composable

@@ -11,14 +11,17 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.ProviderRegistry
@@ -32,6 +35,7 @@ import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.ui.component.TerminalDropdown
+import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import kotlinx.coroutines.launch
 
@@ -104,7 +108,7 @@ fun TradingPanel(
     val activeTabRaw by viewModel.activeTab.collectAsState()
     val tab = TradingTab.values().firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
 
-    var paperEnabled by remember { mutableStateOf(PaperTrading.enabled) }
+    val paperEnabled by PaperTrading.enabledFlow.collectAsState()
     val scope = rememberCoroutineScope()
 
     val exchangeName = registry.get(providerId)?.config?.displayName ?: providerId
@@ -136,10 +140,7 @@ fun TradingPanel(
             )
             PaperToggle(
                 enabled = paperEnabled,
-                onToggle = {
-                    paperEnabled = it
-                    viewModel.setPaperEnabled(it)
-                },
+                onToggle = { viewModel.setPaperEnabled(it) },
             )
         }
 
@@ -246,19 +247,25 @@ fun TradingPanel(
 
 @Composable
 private fun PaperToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
-    Text(
-        text = if (enabled) "Paper ✔" else "Paper",
-        color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier
-            .background(
-                if (enabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent,
-                MaterialTheme.shapes.small,
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "Paper",
+            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        // Отключаем M3 min-touch-target (48dp) — компактная строка заголовка
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+            TerminalSwitch(
+                checked = enabled,
+                onCheckedChange = onToggle,
+                modifier = Modifier.scale(0.7f),
             )
-            .clickableNoIndication { onToggle(!enabled) }
-            .padding(horizontal = 5.dp, vertical = 2.dp),
-    )
+        }
+    }
 }
 
 @Composable

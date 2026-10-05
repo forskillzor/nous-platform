@@ -24,6 +24,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -95,6 +96,11 @@ class TradingViewModel(
         scope.launch {
             // Paper переживает перезапуск (общий ключ с chart-панелью)
             stateStore?.getString(PaperTrading.STORE_KEY)?.let { PaperTrading.enabled = it == "1" }
+            // Переключение paper/real из любого места (тулбар графика, панель)
+            // — перезапуск подписок и перечитывание портфеля
+            launch {
+                PaperTrading.enabledFlow.drop(1).collect { restart() }
+            }
             restart()
         }
     }
@@ -120,14 +126,13 @@ class TradingViewModel(
         restart()
     }
 
-    /** Глобальный тумблер Paper: персист + перезапуск на новом адаптере. */
+    /** Глобальный тумблер Paper: персист; перезапуск сделает коллектор enabledFlow. */
     fun setPaperEnabled(enabled: Boolean) {
         if (PaperTrading.enabled == enabled) return
         PaperTrading.enabled = enabled
         scope.launch {
             stateStore?.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
         }
-        reload()
     }
 
     private fun restart() {
