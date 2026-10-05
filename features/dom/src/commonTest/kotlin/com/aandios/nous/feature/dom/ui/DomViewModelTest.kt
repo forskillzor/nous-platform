@@ -109,11 +109,22 @@ class DomViewModelTest {
     }
 
     @Test
-    fun `selectPrice updates selectedPrice`() = testScope.runTest {
+    fun `selectPrice works only with confirm on and toggles`() = testScope.runTest {
+        // Без Confirm клик по уровню не выделяет цену
+        viewModel.selectPrice(50000.0)
+        assertNull(viewModel.selectedPrice.first())
+
+        // С Confirm: первый клик выделяет, повторный — снимает
+        viewModel.setConfirmOrders(true)
         viewModel.selectPrice(50000.0)
         assertEquals(50000.0, viewModel.selectedPrice.first())
+        viewModel.selectPrice(50000.0)
+        assertNull(viewModel.selectedPrice.first())
 
-        viewModel.selectPrice(null)
+        // Выключение Confirm сбрасывает выделение
+        viewModel.selectPrice(50000.0)
+        assertEquals(50000.0, viewModel.selectedPrice.first())
+        viewModel.setConfirmOrders(false)
         assertNull(viewModel.selectedPrice.first())
     }
 

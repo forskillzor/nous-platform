@@ -41,6 +41,9 @@ import kotlin.math.roundToLong
  * по [DomOptions.provider] (id зарегистрированного провайдера), переключение
  * — обычная смена опций с переподпиской.
  */
+/** Уведомление DOM-панели (snackbar под заголовком). */
+data class DomNotification(val id: Long, val text: String)
+
 class DomViewModel(
     private val providerRegistry: ProviderRegistry,
     private val coroutineDispatcher: CoroutineDispatcher? = null,
@@ -75,6 +78,26 @@ class DomViewModel(
      */
     private val _paperEnabled = MutableStateFlow(false)
     val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
+
+    /**
+     * Confirm: включён — клик по уровню выбирает цену (подсветка) и ордера
+     * требуют подтверждения.
+     */
+    private val _confirmOrders = MutableStateFlow(false)
+    val confirmOrders: StateFlow<Boolean> = _confirmOrders.asStateFlow()
+
+    /** Отложенный интент (Confirm: ON) + его текст для строки подтверждения. */
+    private val _pendingIntent = MutableStateFlow<OrderIntent?>(null)
+    val pendingIntent: StateFlow<OrderIntent?> = _pendingIntent.asStateFlow()
+
+    private val _pendingIntentText = MutableStateFlow<String?>(null)
+    val pendingIntentText: StateFlow<String?> = _pendingIntentText.asStateFlow()
+
+    /** Snackbar-уведомления DOM (как в chart trading) — под заголовком. */
+    private val _notifications = MutableStateFlow<List<DomNotification>>(emptyList())
+    val notifications: StateFlow<List<DomNotification>> = _notifications.asStateFlow()
+    private var notificationSeq = 0L
+    private var noticesJob: Job? = null
 
     private val _lastCommandResult = MutableStateFlow<CommandResult?>(null)
     val lastCommandResult: StateFlow<CommandResult?> = _lastCommandResult.asStateFlow()
@@ -133,6 +156,7 @@ class DomViewModel(
             fetchSymbolMetadata(_domOptions.value.symbol.symbol)
         }
         restartSubscription(_domOptions.value)
+        ensureNoticesSubscription()
     }
 
     fun updateDomOptions(newOptions: DomOptions) {
@@ -154,6 +178,7 @@ class DomViewModel(
             if (providerChanged) {
                 loadSymbols(newOptions.provider)
                 fetchSymbolMetadata(newOptions.symbol.symbol)
+                ensureNoticesSubscription()
             } else if (oldOptions.symbol != newOptions.symbol) {
                 fetchSymbolMetadata(newOptions.symbol.symbol)
             }
@@ -300,7 +325,14 @@ class DomViewModel(
     }
 
     fun selectPrice(price: Double?) {
-        if (_selectedPrice.value != price) _selectedPrice.value = price
+        if (price == null) {
+            _selectedPrice.value = null
+            return
+        }
+        // Подсветка выбранной цены нужна только при Confirm: ON (лимитный
+        // ордер) — чтобы видеть цену до подтверждения. Повторный клик снимает.
+        if (!_confirmOrders.value) return
+        _selectedPrice.value = if (_selectedPrice.value == price) null else price
     }
 
     fun updateOrderQuantity(quantity: String) {
@@ -315,12 +347,72 @@ class DomViewModel(
         _limitOrderType.value = orderType
     }
 
+    /** Confirm: ON — выбор цены кликом и подтверждение ордеров. */
+    fun setConfirmOrders(confirm: Boolean) {
+        _confirmOrders.value = confirm
+        if (!confirm) {
+            _selectedPrice.value = null
+            cancelPendingIntent()
+        }
+    }
+
+    fun confirmPendingIntent() {
+        val intent = _pendingIntent.value ?: return
+        _pendingIntent.value = null
+        _pendingIntentText.value = null
+        executeIntent(intent)
+    }
+
+    fun cancelPendingIntent() {
+        _pendingIntent.value = null
+        _pendingIntentText.value = null
+    }
+
+    /** Закрыть snackbar-уведомление (крестик/таймаут). */
+    fun dismissNotification(id: Long) {
+        _notifications.value = _notifications.value.filterNot { it.id == id }
+    }
+
+    private fun notify(text: String) {
+        val id = ++notificationSeq
+        _notifications.value = (_notifications.value + DomNotification(id, text)).takeLast(5)
+    }
+
+    private fun resultCallback(): (CommandResult) -> Unit = { result ->
+        _lastCommandResult.value = result
+        notify(resultText(result))
+    }
+
+    private fun resultText(result: CommandResult): String = when (result) {
+        is CommandResult.Success -> {
+            val d = result.orderData
+            when {
+                d.symbol == "SYSTEM" && d.quantity > 0 -> "Closed ${d.quantity.toInt()} positions"
+                d.symbol == "SYSTEM" -> "OK"
+                else -> "${d.type} ${d.side} ${d.quantity}"
+            }
+        }
+        is CommandResult.Error -> result.message
+        CommandResult.TradingDisabled -> "Trading disabled"
+    }
+
     private fun tradingAdapter() =
         providerRegistry.get(_domOptions.value.provider)?.effectiveTrading(_paperEnabled.value)
 
     /** Переключение paper/live этой DOM-панели. */
     fun setPaperEnabled(enabled: Boolean) {
         _paperEnabled.value = enabled
+        ensureNoticesSubscription()
+    }
+
+    /** Подписка на уведомления активного адаптера (отказы движка). */
+    private fun ensureNoticesSubscription() {
+        noticesJob?.cancel()
+        noticesJob = tradingAdapter()?.notices()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { text -> notify(text) }
+            }
+        }
     }
 
     /** Закрыть все открытые позиции символа панели (market reduce-only). */
@@ -332,7 +424,9 @@ class DomViewModel(
                 .getOrDefault(emptyList())
                 .filter { it.symbol.uppercase() == symbol.uppercase() }
             if (positions.isEmpty()) {
-                _lastCommandResult.value = CommandResult.Error("No open positions for $symbol")
+                val result = CommandResult.Error("No open positions for $symbol")
+                _lastCommandResult.value = result
+                notify(resultText(result))
                 return@launch
             }
             var closed = 0
@@ -340,13 +434,15 @@ class DomViewModel(
                 val r = runCatching { adapter.closePosition(p.symbol, p.positionId, p.quantity) }.getOrNull()
                 if (r != null && r.success) closed++
             }
-            _lastCommandResult.value = if (closed > 0) {
+            val result = if (closed > 0) {
                 CommandResult.Success(
                     OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = closed.toDouble())
                 )
             } else {
                 CommandResult.Error("Failed to close positions")
             }
+            _lastCommandResult.value = result
+            notify(resultText(result))
         }
     }
 
@@ -356,41 +452,76 @@ class DomViewModel(
             val adapter = tradingAdapter() ?: return@launch
             val symbol = _domOptions.value.symbol.symbol
             val ok = runCatching { adapter.cancelAllOrders(symbol) }.getOrDefault(false)
-            _lastCommandResult.value = if (ok) {
+            val result = if (ok) {
                 CommandResult.Success(
                     OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = 0.0)
                 )
             } else {
                 CommandResult.Error("Failed to cancel orders")
             }
+            _lastCommandResult.value = result
+            notify(resultText(result))
         }
     }
 
     fun handleOrderIntent(intent: OrderIntent) {
-        val adapter = tradingAdapter()
-        val reduceOnly = _reduceOnly.value
-        val command = when (intent) {
-            is OrderIntent.MarketBuy -> BuyMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
-            is OrderIntent.MarketSell -> SellMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
-            is OrderIntent.LimitBuy -> BuyLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter) { _lastCommandResult.value = it }
-            is OrderIntent.LimitSell -> SellLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter) { _lastCommandResult.value = it }
-            is OrderIntent.BestBidBuy -> BuyBestBidCommand(intent.symbol, intent.bestBidPrice, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
-            is OrderIntent.BestAskSell -> SellBestAskCommand(intent.symbol, intent.bestAskPrice, intent.quantity, reduceOnly, adapter) { _lastCommandResult.value = it }
-            OrderIntent.ToggleTrading -> null // обрабатываем ниже
-        }
         if (intent == OrderIntent.ToggleTrading) {
             val newValue = !_isTradingEnabled.value
             _isTradingEnabled.value = newValue
-            _lastCommandResult.value = if (newValue) {
+            val result = if (newValue) {
                 CommandResult.Success(
                     OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = 0.0)
                 )
             } else {
                 CommandResult.TradingDisabled
             }
-        } else {
-            executeCommand(command)
+            _lastCommandResult.value = result
+            notify(if (newValue) "Trading ON" else "Trading OFF")
+            return
         }
+        // Confirm: ON — сначала строка подтверждения, затем исполнение
+        if (_confirmOrders.value) {
+            _pendingIntent.value = intent
+            _pendingIntentText.value = intentDescription(intent)
+            return
+        }
+        executeIntent(intent)
+    }
+
+    /** Построить и выполнить команду по интенту. */
+    private fun executeIntent(intent: OrderIntent) {
+        val adapter = tradingAdapter()
+        val reduceOnly = _reduceOnly.value
+        val callback = resultCallback()
+        val command = when (intent) {
+            is OrderIntent.MarketBuy -> BuyMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter, callback)
+            is OrderIntent.MarketSell -> SellMarketCommand(intent.symbol, intent.quantity, reduceOnly, adapter, callback)
+            is OrderIntent.LimitBuy -> BuyLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter, callback)
+            is OrderIntent.LimitSell -> SellLimitCommand(intent.symbol, intent.price, intent.quantity, _limitOrderType.value, reduceOnly, adapter, callback)
+            is OrderIntent.BestBidBuy -> BuyBestBidCommand(intent.symbol, intent.bestBidPrice, intent.quantity, reduceOnly, adapter, callback)
+            is OrderIntent.BestAskSell -> SellBestAskCommand(intent.symbol, intent.bestAskPrice, intent.quantity, reduceOnly, adapter, callback)
+            OrderIntent.ToggleTrading -> null
+        }
+        executeCommand(command)
+    }
+
+    /** Текст подтверждения: MARKET BUY 0.01 · LIMIT SELL 0.01 @ 120.15. */
+    private fun intentDescription(intent: OrderIntent): String = when (intent) {
+        is OrderIntent.MarketBuy -> "MARKET BUY ${intent.quantity}"
+        is OrderIntent.MarketSell -> "MARKET SELL ${intent.quantity}"
+        is OrderIntent.LimitBuy -> "${_limitOrderType.value.name} BUY ${intent.quantity} @ ${
+            com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(intent.price)
+        }"
+        is OrderIntent.LimitSell -> "${_limitOrderType.value.name} SELL ${intent.quantity} @ ${
+            com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(intent.price)
+        }"
+        is OrderIntent.BestBidBuy -> "BEST BID BUY ${intent.quantity} @ ${
+            com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(intent.bestBidPrice)
+        }"
+        is OrderIntent.BestAskSell -> "BEST ASK SELL ${intent.quantity} @ ${
+            com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(intent.bestAskPrice)
+        }"
+        OrderIntent.ToggleTrading -> ""
     }
 
     // ── Загрузка метаданных ──

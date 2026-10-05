@@ -24,15 +24,21 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aandios.nous.api.market.commands.CommandResult
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 
+private val buyColor = Color(0xFF26A69A)
+private val sellColor = Color(0xFFEF5350)
+private val okColor = Color(0xFF00C853)
+
 /**
- * Компактная панель ордеров DOM: все кнопки помещаются по высоте.
- * Ряды: Market Buy/Sell, Limit Buy/Sell, Best Bid/Ask, Close All/Cancel All,
- * TRADE OFF + строка qty/тип/reduce-only/статус/результат.
+ * Компактная панель ордеров DOM.
+ *
+ * Строки: Trading ON/OFF toggle + Paper + Confirm · Qty/тип/RO ·
+ * строка подтверждения (Confirm: ON) · Close All/Cancel All ·
+ * Buy/Sell Limit (цена кликом) · market Buy/Sell · Best Bid/Ask.
+ * Результаты ордеров показываются snackbar'ами под заголовком панели.
  */
 @Composable
 fun OrderPlacementPanel(
@@ -48,11 +54,15 @@ fun OrderPlacementPanel(
     isTradingEnabled: Boolean,
     reduceOnly: Boolean,
     limitOrderType: OrderType,
-    lastCommandResult: CommandResult?,
     paperEnabled: Boolean,
+    confirmOrders: Boolean,
+    pendingText: String?,
     onReduceOnlyChanged: (Boolean) -> Unit,
     onLimitOrderTypeChanged: (OrderType) -> Unit,
     onPaperChanged: (Boolean) -> Unit,
+    onConfirmChanged: (Boolean) -> Unit,
+    onConfirmPending: () -> Unit,
+    onCancelPending: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -65,70 +75,23 @@ fun OrderPlacementPanel(
                 .padding(horizontal = 8.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            // Ряд 1: Market
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                OrderButton("Market Buy", MaterialTheme.colorScheme.primary, Modifier.weight(1f)) {
-                    onOrderIntent(OrderIntent.MarketBuy(symbol, orderQuantity.toDoubleOrNull() ?: 0.0))
-                }
-                OrderButton("Market Sell", MaterialTheme.colorScheme.secondary, Modifier.weight(1f)) {
-                    onOrderIntent(OrderIntent.MarketSell(symbol, orderQuantity.toDoubleOrNull() ?: 0.0))
-                }
+            // Ряд 1: Trading ON/OFF toggle + Paper + Confirm
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                ToggleChip(
+                    label = if (isTradingEnabled) "Trading ON" else "Trading OFF",
+                    active = isTradingEnabled,
+                    activeColor = okColor,
+                    inactiveColor = sellColor,
+                ) { onOrderIntent(OrderIntent.ToggleTrading) }
+                ToggleChip(label = "Paper", active = paperEnabled) { onPaperChanged(!paperEnabled) }
+                ToggleChip(label = "Confirm", active = confirmOrders) { onConfirmChanged(!confirmOrders) }
             }
 
-            // Ряд 2: Limit
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                val priceReady = selectedPrice != null
-                OrderButton(
-                    text = if (priceReady) "Limit Buy" else "Limit Buy (click price)",
-                    color = if (priceReady) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    selectedPrice?.let {
-                        onOrderIntent(OrderIntent.LimitBuy(symbol, it, orderQuantity.toDoubleOrNull() ?: 0.0))
-                    }
-                }
-                OrderButton(
-                    text = if (priceReady) "Limit Sell" else "Limit Sell (click price)",
-                    color = if (priceReady) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    selectedPrice?.let {
-                        onOrderIntent(OrderIntent.LimitSell(symbol, it, orderQuantity.toDoubleOrNull() ?: 0.0))
-                    }
-                }
-            }
-
-            // Ряд 3: Best Bid / Best Ask
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                val bidReady = bestBidPrice != null && bestBidPrice > 0
-                val askReady = bestAskPrice != null && bestAskPrice > 0
-                OrderButton(
-                    text = if (bidReady) "Best Bid" else "Best Bid ...",
-                    color = if (bidReady) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    if (bidReady) onOrderIntent(OrderIntent.BestBidBuy(symbol, bestBidPrice, orderQuantity.toDoubleOrNull() ?: 0.0))
-                }
-                OrderButton(
-                    text = if (askReady) "Best Ask" else "Best Ask ...",
-                    color = if (askReady) MaterialTheme.colorScheme.secondary
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.weight(1f),
-                ) {
-                    if (askReady) onOrderIntent(OrderIntent.BestAskSell(symbol, bestAskPrice, orderQuantity.toDoubleOrNull() ?: 0.0))
-                }
-            }
-
-            // Ряд 4: Close All / Cancel All
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
-                OrderButton("Close All", Color(0xFFE05B5B), Modifier.weight(1f)) { onCloseAll() }
-                OrderButton("Cancel All", Color(0xFFE0A95B), Modifier.weight(1f)) { onCancelAll() }
-            }
-
-            // Ряд 5: настройки (qty / тип лимитки / reduce-only)
+            // Ряд 2: qty / тип лимитки / reduce-only
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -155,70 +118,121 @@ fun OrderPlacementPanel(
                     displayText = { it.name },
                     menuWidth = 100.dp,
                 )
-                Text(
-                    text = if (reduceOnly) "RO" else "RO",
-                    color = if (reduceOnly) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .background(
-                            if (reduceOnly) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent,
-                            MaterialTheme.shapes.small
-                        )
-                        .clickable { onReduceOnlyChanged(!reduceOnly) }
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                )
+                ToggleChip(label = "RO", active = reduceOnly) { onReduceOnlyChanged(!reduceOnly) }
             }
 
-            // Ряд 6: статус + Paper + TRADE OFF + результат
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = if (isTradingEnabled) "Trading: ON" else "Trading: OFF",
-                    color = if (isTradingEnabled) Color.Green else Color.Red,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                )
-                Text(
-                    text = "Paper",
-                    color = if (paperEnabled) Color(0xFF00C853) else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .background(
-                            if (paperEnabled) Color(0xFF00C853).copy(alpha = 0.2f) else Color.Transparent,
-                            MaterialTheme.shapes.small,
-                        )
-                        .clickable { onPaperChanged(!paperEnabled) }
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = statusText(lastCommandResult),
-                    color = statusColor(lastCommandResult),
-                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = FontFamily.Monospace),
-                    maxLines = 1,
-                )
-                Spacer(Modifier.weight(1f))
-                // Компактная кнопка TRADE OFF/ON без M3-паддингов (не режет текст)
-                Text(
-                    text = if (isTradingEnabled) "OFF" else "ON",
-                    color = if (isTradingEnabled) Color.Red else Color.Green,
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
-                    maxLines = 1,
-                    modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
-                        .clickable { onOrderIntent(OrderIntent.ToggleTrading) }
-                        .padding(horizontal = 8.dp, vertical = 3.dp),
-                )
+            // Строка подтверждения (Confirm: ON) — вместо немедленного исполнения
+            pendingText?.let { text ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Confirm $text",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f),
+                    )
+                    OrderButton("OK", buyColor, Modifier.width(52.dp)) { onConfirmPending() }
+                    OrderButton("X", sellColor, Modifier.width(36.dp)) { onCancelPending() }
+                }
+            }
+
+            // Close All / Cancel All
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                OrderButton("Close All", Color(0xFFE05B5B), Modifier.weight(1f)) { onCloseAll() }
+                OrderButton("Cancel All", Color(0xFFE0A95B), Modifier.weight(1f)) { onCancelAll() }
+            }
+
+            // Лимитки по выбранной цене (выбор — Confirm: ON + клик по уровню)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                val priceReady = selectedPrice != null
+                OrderButton(
+                    text = if (priceReady) "Buy Limit" else "Buy Limit (click price)",
+                    color = if (priceReady) buyColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    selectedPrice?.let {
+                        onOrderIntent(OrderIntent.LimitBuy(symbol, it, orderQuantity.toDoubleOrNull() ?: 0.0))
+                    }
+                }
+                OrderButton(
+                    text = if (priceReady) "Sell Limit" else "Sell Limit (click price)",
+                    color = if (priceReady) sellColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    selectedPrice?.let {
+                        onOrderIntent(OrderIntent.LimitSell(symbol, it, orderQuantity.toDoubleOrNull() ?: 0.0))
+                    }
+                }
+            }
+
+            // Market
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                OrderButton("Buy", buyColor, Modifier.weight(1f)) {
+                    onOrderIntent(OrderIntent.MarketBuy(symbol, orderQuantity.toDoubleOrNull() ?: 0.0))
+                }
+                OrderButton("Sell", sellColor, Modifier.weight(1f)) {
+                    onOrderIntent(OrderIntent.MarketSell(symbol, orderQuantity.toDoubleOrNull() ?: 0.0))
+                }
+            }
+
+            // Best Bid / Best Ask
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+                val bidReady = bestBidPrice != null && bestBidPrice > 0
+                val askReady = bestAskPrice != null && bestAskPrice > 0
+                OrderButton(
+                    text = if (bidReady) "Best Bid" else "Best Bid ...",
+                    color = if (bidReady) buyColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (bidReady) onOrderIntent(OrderIntent.BestBidBuy(symbol, bestBidPrice, orderQuantity.toDoubleOrNull() ?: 0.0))
+                }
+                OrderButton(
+                    text = if (askReady) "Best Ask" else "Best Ask ...",
+                    color = if (askReady) sellColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    if (askReady) onOrderIntent(OrderIntent.BestAskSell(symbol, bestAskPrice, orderQuantity.toDoubleOrNull() ?: 0.0))
+                }
             }
         }
     }
 }
 
+/** Компактный чип-тумблер (стиль RO/Paper): активен — подсвечен. */
+@Composable
+private fun ToggleChip(
+    label: String,
+    active: Boolean,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+    inactiveColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        color = if (active) activeColor else inactiveColor,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        maxLines = 1,
+        modifier = Modifier
+            .background(
+                if (active) activeColor.copy(alpha = 0.18f) else Color.Transparent,
+                MaterialTheme.shapes.small,
+            )
+            .border(
+                1.dp,
+                if (active) activeColor.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant,
+                MaterialTheme.shapes.small,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 3.dp),
+    )
+}
+
+/** Кнопка без M3-паддингов: фиксированная высота не режет текст. */
 @Composable
 private fun OrderButton(
     text: String,
@@ -226,12 +240,10 @@ private fun OrderButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    // Своя кнопка вместо M3 Button: фиксированная высота M3 с внутренними
-    // паддингами обрезала текст по вертикали (видны только верхушки букв)
     Box(
         modifier = modifier
             .height(26.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)
+            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
             .border(1.dp, MaterialTheme.colorScheme.outlineVariant, MaterialTheme.shapes.small)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
@@ -246,27 +258,3 @@ private fun OrderButton(
         )
     }
 }
-
-private fun statusText(result: CommandResult?): String = when (result) {
-    null -> ""
-    is CommandResult.Success -> {
-        val d = result.orderData
-        when {
-            d.symbol == "SYSTEM" && d.quantity > 0 -> "Closed ${d.quantity.toInt()} positions"
-            d.symbol == "SYSTEM" -> "OK"
-            d.type == OrderType.MARKET -> "Market ${d.side} ${d.quantity}"
-            else -> "${d.type} ${d.side} ${d.quantity}"
-        }
-    }
-    is CommandResult.Error -> result.message
-    CommandResult.TradingDisabled -> "Trading disabled"
-}
-
-private fun statusColor(result: CommandResult?): Color = when (result) {
-    is CommandResult.Success -> Color.Green
-    is CommandResult.Error -> Color.Red
-    CommandResult.TradingDisabled -> Color.Red
-    null -> Color.Transparent
-}
-
-private fun formatPrice(price: Double): String = com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT.formatPrice(price)

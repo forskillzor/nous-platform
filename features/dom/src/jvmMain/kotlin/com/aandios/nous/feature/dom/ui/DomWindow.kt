@@ -5,13 +5,27 @@
 
 package com.aandios.nous.feature.dom.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -22,6 +36,8 @@ import com.aandios.nous.feature.dom.di.initKoinForPreview
 import com.aandios.nous.feature.dom.ui.content.DomContent
 import com.aandios.nous.feature.dom.ui.footer.OrderPlacementPanel
 import com.aandios.nous.feature.dom.ui.header.DomHeader
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.context.stopKoin
@@ -50,8 +66,10 @@ fun DomWindow(
     val selectedPrice by domViewModel.selectedPrice.collectAsState()
     val reduceOnly by domViewModel.reduceOnly.collectAsState()
     val limitOrderType by domViewModel.limitOrderType.collectAsState()
-    val lastCommandResult by domViewModel.lastCommandResult.collectAsState()
     val paperEnabled by domViewModel.paperEnabled.collectAsState()
+    val confirmOrders by domViewModel.confirmOrders.collectAsState()
+    val pendingIntentText by domViewModel.pendingIntentText.collectAsState()
+    val notifications by domViewModel.notifications.collectAsState()
 
     // Одно состояние лучших цен
     val bestPrices by domViewModel.bestPrices.collectAsState()
@@ -97,6 +115,21 @@ fun DomWindow(
                 onPriceSelected = { price -> domViewModel.selectPrice(price) },
                 modifier = Modifier.fillMaxSize()
             )
+            // Snackbar-уведомления DOM — под заголовком (как в chart trading)
+            if (notifications.isNotEmpty()) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 4.dp)
+                        .widthIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    notifications.forEach { n ->
+                        DomNotificationItem(n) { domViewModel.dismissNotification(it) }
+                    }
+                }
+            }
         }
         OrderPlacementPanel(
             symbol = domOptions.symbol.symbol,
@@ -111,13 +144,73 @@ fun DomWindow(
             isTradingEnabled = isTradingEnabled,
             reduceOnly = reduceOnly,
             limitOrderType = limitOrderType,
-            lastCommandResult = lastCommandResult,
             paperEnabled = paperEnabled,
+            confirmOrders = confirmOrders,
+            pendingText = pendingIntentText,
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },
             onLimitOrderTypeChanged = { domViewModel.setLimitOrderType(it) },
             onPaperChanged = { domViewModel.setPaperEnabled(it) },
+            onConfirmChanged = { domViewModel.setConfirmOrders(it) },
+            onConfirmPending = { domViewModel.confirmPendingIntent() },
+            onCancelPending = { domViewModel.cancelPendingIntent() },
             modifier = Modifier.fillMaxWidth().wrapContentHeight()
         )
+    }
+}
+
+/** Snackbar DOM: слайд сверху, авто-скрытие ~4.5с, крестик. */
+@Composable
+private fun DomNotificationItem(
+    notification: DomNotification,
+    onDismiss: (Long) -> Unit,
+) {
+    var visible by remember(notification.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(notification.id) {
+        visible = true
+        delay(4500)
+        visible = false
+        delay(200)
+        onDismiss(notification.id)
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .background(Color(0xFF14181F).copy(alpha = 0.95f), RoundedCornerShape(4.dp))
+                .border(1.dp, Color(0xFF3A4550), RoundedCornerShape(4.dp))
+                .padding(start = 8.dp, end = 2.dp, top = 3.dp, bottom = 3.dp),
+        ) {
+            Text(
+                text = notification.text,
+                color = Color(0xFFD5DBE1),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(
+                text = "✕",
+                color = Color(0xFF8A97A5),
+                fontSize = 11.sp,
+                fontFamily = FontFamily.Monospace,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickable {
+                        visible = false
+                        scope.launch {
+                            delay(200)
+                            onDismiss(notification.id)
+                        }
+                    }
+                    .padding(horizontal = 6.dp),
+            )
+        }
     }
 }
 
