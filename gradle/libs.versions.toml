@@ -3,7 +3,6 @@
 kotlin = "2.3.0"
 compose-multiplatform = "1.12.1"
 compose-compiler = "2.1.20"
-compose-hot-reload = "1.0.0"
 compose-material = "1.8.2"
 compose-material-icons = "1.7.3"
 
@@ -107,7 +106,6 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 # Compose
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "compose-multiplatform" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-compose-hot-reload = { id = "org.jetbrains.compose.hot-reload", version.ref = "compose-hot-reload" }
 
 # Kotlin Serialization
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
