@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (C) 2026 Sergey Orlov
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
@@ -39,6 +39,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -79,6 +80,7 @@ class DomViewModelTest {
         paper.reset()
         paper.setMarkPrice("BTCUSDT", 100.0)
         viewModel.setPaperEnabled(true)
+        viewModel.setTradingEnabled(true)
 
         viewModel.handleOrderIntent(OrderIntent.MarketBuy("BTCUSDT", 1.0))
         advanceUntilIdle()
@@ -95,6 +97,7 @@ class DomViewModelTest {
         paper.reset()
         paper.setMarkPrice("BTCUSDT", 100.0)
         viewModel.setPaperEnabled(true)
+        viewModel.setTradingEnabled(true)
 
         viewModel.handleOrderIntent(OrderIntent.LimitBuy("BTCUSDT", 95.0, 1.0))
         advanceUntilIdle()
@@ -111,7 +114,7 @@ class DomViewModelTest {
         val paper = com.aandios.nous.api.market.paper.PaperTrading.adapter
         paper.reset()
         advanceUntilIdle()
-        // Рынок ~100: bid 99.9 / ask 100.1 для определения стороны клика
+        // ����� ~100: bid 99.9 / ask 100.1 ��� ����������� ������� �����
         fakeBookTickerAdapter.tickerFlow.emit(
             BookTicker(
                 symbol = "BTCUSDT",
@@ -125,10 +128,11 @@ class DomViewModelTest {
         )
         advanceUntilIdle()
         viewModel.setPaperEnabled(true)
+        viewModel.setTradingEnabled(true)
         viewModel.updateOrderQuantity("1.0")
         advanceUntilIdle()
 
-        // клик ниже рынка — BUY-лимитка по цене уровня
+        // ���� ���� ����� � BUY-������� �� ���� ������
         viewModel.selectPrice(95.0)
         advanceUntilIdle()
         val orders = paper.getOpenOrders()
@@ -136,7 +140,7 @@ class DomViewModelTest {
         assertEquals(com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, orders[0].side)
         assertEquals(95.0, orders[0].price)
 
-        // клик выше рынка — SELL-лимитка
+        // ���� ���� ����� � SELL-�������
         viewModel.selectPrice(105.0)
         advanceUntilIdle()
         assertEquals(2, paper.getOpenOrders().size)
@@ -159,7 +163,7 @@ class DomViewModelTest {
         assertEquals("0.01", quantity)
 
         val tradingEnabled = viewModel.isTradingEnabled.first()
-        assertTrue(tradingEnabled)
+        assertFalse(tradingEnabled) // по умолчанию выключено: live не включается сам
 
         val tickSize = viewModel.symbolTickSize.first()
         assertNull(tickSize) // Not fetched yet due to delay
@@ -184,18 +188,18 @@ class DomViewModelTest {
 
     @Test
     fun `selectPrice works only with confirm on and toggles`() = testScope.runTest {
-        // Без Confirm клик по уровню не выделяет цену
+        // ��� Confirm ���� �� ������ �� �������� ����
         viewModel.selectPrice(50000.0)
         assertNull(viewModel.selectedPrice.first())
 
-        // С Confirm: первый клик выделяет, повторный — снимает
+        // � Confirm: ������ ���� ��������, ��������� � �������
         viewModel.setConfirmOrders(true)
         viewModel.selectPrice(50000.0)
         assertEquals(50000.0, viewModel.selectedPrice.first())
         viewModel.selectPrice(50000.0)
         assertNull(viewModel.selectedPrice.first())
 
-        // Выключение Confirm сбрасывает выделение
+        // ���������� Confirm ���������� ���������
         viewModel.selectPrice(50000.0)
         assertEquals(50000.0, viewModel.selectedPrice.first())
         viewModel.setConfirmOrders(false)
@@ -210,10 +214,11 @@ class DomViewModelTest {
 
     @Test
     fun `handleOrderIntent MarketBuy creates command`() = testScope.runTest {
+        viewModel.setTradingEnabled(true)
         val intent = OrderIntent.MarketBuy("BTCUSDT", 0.5)
         viewModel.handleOrderIntent(intent)
         advanceUntilIdle()
-        // Команды исполняются асинхронно через фейк — просто убеждаемся, что не падает
+        // ������� ����������� ���������� ����� ���� � ������ ����������, ��� �� ������
     }
 
     @Test
@@ -221,12 +226,36 @@ class DomViewModelTest {
         val intent = OrderIntent.ToggleTrading
         viewModel.handleOrderIntent(intent)
         advanceUntilIdle()
-        // TradeOffCommand переключает через callback — просто убеждаемся, что не падает
+        assertTrue(viewModel.isTradingEnabled.first())
+
+        viewModel.handleOrderIntent(intent)
+        advanceUntilIdle()
+        assertFalse(viewModel.isTradingEnabled.first())
+    }
+
+    @Test
+    fun `paper toggle turns trading off`() = testScope.runTest {
+        viewModel.setTradingEnabled(true)
+        viewModel.setPaperEnabled(true)
+        assertFalse(viewModel.isTradingEnabled.first())
+
+        viewModel.setTradingEnabled(true)
+        viewModel.setPaperEnabled(false)
+        assertFalse(viewModel.isTradingEnabled.first())
+    }
+
+    @Test
+    fun `provider change turns trading off`() = testScope.runTest {
+        viewModel.setTradingEnabled(true)
+        val newOptions = DomOptions.default().copy(provider = "mexc-nous-0.0.1")
+        viewModel.updateDomOptions(newOptions)
+        advanceUntilIdle()
+        assertFalse(viewModel.isTradingEnabled.first())
     }
 
     @Test
     fun `book window stores window data`() = testScope.runTest {
-        runCurrent() // даём подписке (callbackFlow + адаптеры) подняться
+        runCurrent() // ��� �������� (callbackFlow + ��������) ���������
         fakeDomAdapter.windowFlow.emit(
             BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5), PriceUpdate(49900.0, 2.0)),
@@ -261,7 +290,7 @@ class DomViewModelTest {
         advanceUntilIdle()
         assertEquals(2, viewModel.sortedLevels.size)
 
-        // Новое окно без уровня 49900 — уровень исчезает из книги
+        // ����� ���� ��� ������ 49900 � ������� �������� �� �����
         fakeDomAdapter.windowFlow.emit(
             BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5)),
@@ -298,7 +327,7 @@ class DomViewModelTest {
         assertEquals(50100.0, best.bestAsk)
         assertEquals(1.5, best.bestBidQuantity)
         assertEquals(0.8, best.bestAskQuantity)
-        // Последняя сделка — в корзине агрегации (BaseTick: 1 тик = 1.0)
+        // ��������� ������ � � ������� ��������� (BaseTick: 1 ��� = 1.0)
         assertEquals(50050L, best.lastPriceDisplayTicks)
     }
 
@@ -319,13 +348,13 @@ class DomViewModelTest {
         val levels = viewModel.sortedLevels
         assertEquals(3, levels.size)
         assertEquals(listOf(50100L, 50000L, 49900L), levels.map { it.priceTicks })
-        // ask-уровень на 50100: только askSteps
+        // ask-������� �� 50100: ������ askSteps
         assertNull(levels[0].bidSteps)
         assertEquals(300L, levels[0].askSteps)
-        // bid-уровень на 50000: только bidSteps
+        // bid-������� �� 50000: ������ bidSteps
         assertEquals(100L, levels[1].bidSteps)
         assertNull(levels[1].askSteps)
-        // bid-уровень на 49900
+        // bid-������� �� 49900
         assertEquals(200L, levels[2].bidSteps)
         assertNull(levels[2].askSteps)
     }
@@ -361,7 +390,7 @@ class DomViewModelTest {
         )
         advanceUntilIdle()
 
-        // 50001, 50005, 50009 → одна корзина 50000; 50010 → 50010
+        // 50001, 50005, 50009 > ���� ������� 50000; 50010 > 50010
         fakeDomAdapter.windowFlow.emit(
             BookWindowLevels(
                 bids = listOf(
@@ -388,7 +417,7 @@ class DomViewModelTest {
         advanceTimeBy(600)
         advanceUntilIdle()
 
-        // 30 bid-уровней — окно сохраняется целиком (без обрезки: лесенка скроллится по цене)
+        // 30 bid-������� � ���� ����������� ������� (��� �������: ������� ���������� �� ����)
         val bids = (0 until 30).map { i -> PriceUpdate((50000.0 - i), 1.0) }
         fakeDomAdapter.windowFlow.emit(BookWindowLevels(bids = bids, asks = emptyList()))
         advanceUntilIdle()
@@ -400,10 +429,10 @@ class DomViewModelTest {
 
     @Test
     fun `window before metadata - book is drawn after metadata arrives`() = testScope.runTest {
-        // Окно приходит ДО метаданных (fetch задержан на 500мс) — уровней ещё нет.
-        // runCurrent обрабатывает задачи только в текущем виртуальном времени (t=0),
-        // не пересекая delay(500) — окно успевает прийти первым
-        runCurrent() // даём подписке (callbackFlow + адаптеры) подняться без продвижения времени
+        // ���� �������� �� ���������� (fetch �������� �� 500��) � ������� ��� ���.
+        // runCurrent ������������ ������ ������ � ������� ����������� ������� (t=0),
+        // �� ��������� delay(500) � ���� �������� ������ ������
+        runCurrent() // ��� �������� (callbackFlow + ��������) ��������� ��� ����������� �������
         fakeDomAdapter.windowFlow.emit(
             BookWindowLevels(
                 bids = listOf(PriceUpdate(50000.0, 1.5)),
@@ -415,7 +444,7 @@ class DomViewModelTest {
         assertEquals(1, viewModel.windowBids.size)
         assertEquals(1, viewModel.windowAsks.size)
 
-        // Приходят метаданные (tickSize=1.0, stepSize=0.01) — книга строится из последнего окна
+        // �������� ���������� (tickSize=1.0, stepSize=0.01) � ����� �������� �� ���������� ����
         fakeSymbolInfoAdapter.tickSize = 1.0
         advanceTimeBy(600)
         advanceUntilIdle()

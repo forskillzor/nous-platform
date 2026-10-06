@@ -69,7 +69,7 @@ class DomViewModel(
     private val _orderQuantity = MutableStateFlow("0.01")
     val orderQuantity: StateFlow<String> = _orderQuantity.asStateFlow()
 
-    private val _isTradingEnabled = MutableStateFlow(true)
+    private val _isTradingEnabled = MutableStateFlow(false)
     val isTradingEnabled: StateFlow<Boolean> = _isTradingEnabled.asStateFlow()
 
     /** Reduce-only для следующих ордеров (закрытие позиций). */
@@ -216,6 +216,8 @@ class DomViewModel(
                 qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
                 ensureNoticesSubscription()
+                // Смена провайдера = смена цели торговли — Trading выключаем
+                setTradingEnabled(false)
             } else if (oldOptions.symbol != newOptions.symbol) {
                 qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
@@ -476,12 +478,15 @@ class DomViewModel(
 
     /** Переключение paper/live этой DOM-панели. */
     fun setPaperEnabled(enabled: Boolean) {
+        val changed = enabled != _paperEnabled.value
         _paperEnabled.value = enabled
         stateStore?.let { store ->
             viewModelScope.launch {
                 store.putString(paperStoreKey(), if (enabled) "1" else "0")
             }
         }
+        // Смена paper/live — Trading выключаем: включение только осознанно
+        if (changed) setTradingEnabled(false)
         // Адаптер сменился — переподписка и перечитка ордеров/позиций
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
@@ -490,6 +495,26 @@ class DomViewModel(
         liveAdapter = null
         ensureNoticesSubscription()
         refreshTradingState()
+    }
+
+    /**
+     * Trading ON/OFF DOM-панели: персистится на панель (как у графиков).
+     * После рестарта live-Trading сам не включается — только вместе с paper.
+     */
+    fun setTradingEnabled(enabled: Boolean) {
+        if (_isTradingEnabled.value == enabled) return
+        _isTradingEnabled.value = enabled
+        stateStore?.let { store ->
+            viewModelScope.launch {
+                store.putString(tradingStoreKey(), if (enabled) "1" else "0")
+            }
+        }
+        if (enabled) {
+            refreshTradingState()
+        } else {
+            // Отложенный Confirm-интент не должен пережить выключение
+            cancelPendingIntent()
+        }
     }
 
     /**
@@ -506,10 +531,18 @@ class DomViewModel(
                 ensureNoticesSubscription()
                 refreshTradingState()
             }
+            // Live-Trading не восстанавливаем: только в paper-режиме
+            val tradingEnabled = enabled && store.getString(tradingStoreKey()) == "1"
+            if (tradingEnabled != _isTradingEnabled.value) {
+                _isTradingEnabled.value = tradingEnabled
+                if (tradingEnabled) refreshTradingState()
+            }
         }
     }
 
     private fun paperStoreKey(): String = "dom_paper_${panelKey ?: "default"}"
+
+    private fun tradingStoreKey(): String = "dom_trading_${panelKey ?: "default"}"
 
     /** Подписка на уведомления активного адаптера (отказы движка). */
     private fun ensureNoticesSubscription() {
@@ -688,7 +721,7 @@ class DomViewModel(
     fun handleOrderIntent(intent: OrderIntent) {
         if (intent == OrderIntent.ToggleTrading) {
             val newValue = !_isTradingEnabled.value
-            _isTradingEnabled.value = newValue
+            setTradingEnabled(newValue)
             val result = if (newValue) {
                 CommandResult.Success(
                     OrderData("SYSTEM", com.aandios.nous.api.market.model.orderbook.OrderSide.BUY, OrderType.MARKET, quantity = 0.0)
