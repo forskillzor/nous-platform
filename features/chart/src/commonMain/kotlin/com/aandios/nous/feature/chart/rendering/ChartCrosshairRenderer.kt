@@ -40,6 +40,10 @@ fun DrawScope.drawCrosshair(
     textMeasurer: TextMeasurer,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
+    /** Trading ON: горизонтальная линия красится цветом будущей стороны. */
+    tradingEnabled: Boolean = false,
+    /** Опорная цена (last) для определения long/short под курсором. */
+    currentPrice: Float? = null,
 ) {
     val mainArea = chartLayout.chartMainArea
 
@@ -51,6 +55,13 @@ fun DrawScope.drawCrosshair(
         return // Курсор вне области графика
     }
 
+    // Цена под курсором (нужна и для бейджа, и для цвета линии в трейдинге)
+    val priceAtCursor = priceFromY(
+        y = mousePosition.y,
+        priceRange = priceRange,
+        chartHeight = mainArea.height
+    )
+
     // Вертикальная линия через весь график
     drawLine(
         color = Color.White.copy(alpha = 0.3f),
@@ -59,19 +70,24 @@ fun DrawScope.drawCrosshair(
         strokeWidth = 1f
     )
 
-    // Горизонтальная линия через весь график
+    // Горизонтальная линия через весь график.
+    // Во время трейдинга она сплошная и цветом стороны, которая будет
+    // размещена по клику: ниже last — Long (зелёный), выше — Short (красный).
+    val horizontalColor = if (tradingEnabled) {
+        val reference = currentPrice?.takeIf { it > 0f }
+        when {
+            reference == null -> Color.White.copy(alpha = 0.9f)
+            priceAtCursor <= reference -> Color(0xFF26A69A)
+            else -> Color(0xFFEF5350)
+        }
+    } else {
+        Color.White.copy(alpha = 0.3f)
+    }
     drawLine(
-        color = Color.White.copy(alpha = 0.3f),
+        color = horizontalColor,
         start = Offset(mainArea.left, mousePosition.y),
         end = Offset(mainArea.right, mousePosition.y),
-        strokeWidth = 1f
-    )
-
-    // Проекция на шкалу цен: текущее значение под курсором
-    val priceAtCursor = priceFromY(
-        y = mousePosition.y,
-        priceRange = priceRange,
-        chartHeight = mainArea.height
+        strokeWidth = if (tradingEnabled) 1.5f else 1f
     )
 
     drawPriceBadgeOnScale(

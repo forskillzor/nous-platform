@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -42,6 +43,18 @@ private val accent = Color(0xFF5B9BD5)
 private val buyColor = Color(0xFF26A69A)
 private val sellColor = Color(0xFFEF5350)
 private val warnColor = Color(0xFFE0A95B)
+
+/**
+ * Поглощает pointer-события: клики/драги по панели (в т.ч. по пустым местам
+ * между кнопками) не проваливаются в чарт и не размещают ордер.
+ */
+internal fun Modifier.blockChartPointerInput(): Modifier = pointerInput(Unit) {
+    awaitPointerEventScope {
+        while (true) {
+            awaitPointerEvent()
+        }
+    }
+}
 
 /**
  * Вертикальная панель chart trading в стиле DrawingToolPanel: строка настроек
@@ -89,6 +102,8 @@ fun ChartTradingPanel(
     onConfirmPending: () -> Unit,
     onCancelPending: () -> Unit,
     onConfirmChanged: (Boolean) -> Unit,
+    /** Быстрый lock трейдинга (замок в панели): Trading выключается. */
+    onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Локальный текст поля: ввод «0.05» не затирается валидацией
@@ -98,6 +113,8 @@ fun ChartTradingPanel(
 
     Column(
         modifier = modifier
+            // Клики по панели (в т.ч. мимо кнопок) не проваливаются в чарт
+            .blockChartPointerInput()
             .border(1.dp, ChartColors.gridLine, RoundedCornerShape(8.dp))
             .background(panelBg, RoundedCornerShape(8.dp))
             .padding(6.dp),
@@ -124,6 +141,7 @@ fun ChartTradingPanel(
                     onQuantityChanged(text.toDoubleOrNull()?.takeIf { it > 0 })
                 },
                 onExpand = { onCollapsedChange(false) },
+                onLock = onLock,
             )
             return@Column
         }
@@ -154,6 +172,15 @@ fun ChartTradingPanel(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
+            )
+            // Быстрый lock: выключает Trading (замок закрыт — торговля включена)
+            Text(
+                text = "🔒",
+                fontSize = 10.sp,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickableNoIndication { onLock() }
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
             )
             Text(
                 text = "▼",
@@ -309,6 +336,7 @@ private fun CompactHeader(
     onReduceOnlyChanged: (Boolean) -> Unit,
     onQtyTextChanged: (String) -> Unit,
     onExpand: () -> Unit,
+    onLock: () -> Unit,
 ) {
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -386,6 +414,15 @@ private fun CompactHeader(
                 maxLines = 1,
             )
         }
+        // Быстрый lock трейдинга (компактный вид)
+        Text(
+            text = "🔒",
+            fontSize = 10.sp,
+            maxLines = 1,
+            modifier = Modifier
+                .clickableNoIndication { onLock() }
+                .padding(horizontal = 4.dp, vertical = 1.dp),
+        )
         Text(
             text = "▲",
             color = accent,

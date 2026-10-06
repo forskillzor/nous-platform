@@ -786,7 +786,8 @@ fun CandleStickChartInteraction(
                     candleSpacing = candleMetrics.spacing,
                 )
             }
-            // 9. Crosshair: всегда включён (hover), единый для свечей и footprint
+            // 9. Crosshair: всегда включён (hover), единый для свечей и footprint.
+            // Во время трейдинга горизонтальная линия — цветом будущей стороны.
             if (isCrosshairVisible && mousePosition != null) {
                 drawCrosshair(
                     mousePosition = mousePosition!!,
@@ -797,6 +798,8 @@ fun CandleStickChartInteraction(
                     textMeasurer = textMeasurer,
                     scrollOffset = clampedOffset,
                     zoomLevel = timeScale.zoomLevel,
+                    tradingEnabled = onChartTradingClick != null,
+                    currentPrice = currentPrice ?: candles.lastOrNull()?.close,
                 )
             }
         }

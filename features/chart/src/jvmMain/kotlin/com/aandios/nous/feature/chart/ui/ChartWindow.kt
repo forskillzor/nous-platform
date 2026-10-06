@@ -40,6 +40,7 @@ import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.format.plainDecimalString
+import com.aandios.nous.core.ui.theme.ChartColors
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
@@ -533,6 +534,8 @@ private fun ChartWindowContent(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .padding(8.dp)
+                    // Клики по панели инструментов (мимо кнопок) не проваливаются в чарт
+                    .blockChartPointerInput()
             )
 
             // Панель chart trading (левый нижний угол, вертикальная как
@@ -579,10 +582,29 @@ private fun ChartWindowContent(
                     onConfirmPending = { chartViewModel.confirmPendingOrder() },
                     onCancelPending = { chartViewModel.cancelPendingOrder() },
                     onConfirmChanged = { c -> chartViewModel.setConfirmOrders(c) },
+                    // Быстрый lock: выключает Trading на графике
+                    onLock = { chartViewModel.setTradingEnabled(false) },
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(start = 8.dp, bottom = 28.dp)
                         .widthIn(max = if (panelCollapsed) panelMaxWidth else panelWidth),
+                )
+            }
+
+            // Быстрый unlock: Trading выключен — маленький замок возвращает его
+            if (!tradingEnabled) {
+                Text(
+                    text = "🔓",
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 8.dp, bottom = 28.dp)
+                        .blockChartPointerInput()
+                        .clickable { chartViewModel.setTradingEnabled(true) }
+                        .background(Color(0xFF14181F).copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+                        .border(1.dp, ChartColors.gridLine, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 6.dp, vertical = 3.dp),
                 )
             }
 
@@ -593,7 +615,9 @@ private fun ChartWindowContent(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .padding(top = 4.dp)
-                        .widthIn(max = maxWidth - 24.dp),
+                        .widthIn(max = maxWidth - 24.dp)
+                        // Клики по пустым местам snackbar'ов не размещают ордер
+                        .blockChartPointerInput(),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
