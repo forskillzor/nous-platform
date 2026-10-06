@@ -42,11 +42,9 @@ import kotlin.math.roundToLong
  * по [DomOptions.provider] (id зарегистрированного провайдера), переключение
  * — обычная смена опций с переподпиской.
  */
-private fun fmtQty(v: Double): String {
-    var s = v.toString()
-    if ('.' in s) s = s.trimEnd('0').trimEnd('.')
-    return s
-}
+/** qty строкой без экспоненты: 0.0001, не 1.0E-4 (контрактные рынки MEXC). */
+private fun fmtQty(v: Double): String =
+    com.aandios.nous.core.ui.format.plainDecimalString(v)
 
 /** Уведомление DOM-панели (snackbar под заголовком). */
 data class DomNotification(val id: Long, val text: String)

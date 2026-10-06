@@ -519,11 +519,8 @@ private fun QtyField(
     )
 }
 
-private fun trimQty(v: Double): String {
-    var s = v.toString()
-    if ('.' in s) s = s.trimEnd('0').trimEnd('.')
-    return s
-}
+private fun trimQty(v: Double): String =
+    com.aandios.nous.core.ui.format.plainDecimalString(v)
 
 /** Число с двумя знаками без String.format (commonMain). */
 private fun fmt2(v: Double): String = fmtDecimals(v, 2)

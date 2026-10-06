@@ -582,13 +582,8 @@ private fun OptionalPriceField(
     }
 }
 
-private fun trimZeros(v: Double): String {
-    var s = v.toString()
-    if ('.' in s) {
-        s = s.trimEnd('0').trimEnd('.')
-    }
-    return s
-}
+private fun trimZeros(v: Double): String =
+    com.aandios.nous.core.ui.format.plainDecimalString(v)
 
 @Composable
 private fun Modifier.clickableNoIndication(onClick: () -> Unit): Modifier {

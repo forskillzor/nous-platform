@@ -72,6 +72,7 @@ import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.rendering.drawCrosshair
@@ -1107,11 +1108,7 @@ private fun GripDots(modifier: Modifier = Modifier) {
     }
 }
 
-private fun trimQtyText(v: Double): String {
-    var s = v.toString()
-    if ('.' in s) s = s.trimEnd('0').trimEnd('.')
-    return s
-}
+private fun trimQtyText(v: Double): String = plainDecimalString(v)
 
 private fun positionBadgeKey(p: com.aandios.nous.api.market.model.trading.Position): String =
     "pos:${p.positionId ?: p.avgPrice}"

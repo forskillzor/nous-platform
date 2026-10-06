@@ -30,11 +30,15 @@ class SymbolFormatter(
     private fun formatNumber(value: Double, decimals: Int): String {
         val factor = 10.0.pow(decimals)
         val rounded = kotlin.math.round(value * factor) / factor
-        val parts = rounded.toString().split(".")
+        // Без экспоненты: 1.0E-4 → 0.0001 (контрактные рынки, MEXC BTC)
+        val plain = plainDecimalString(rounded, trimZeros = false)
+        val neg = plain.startsWith("-")
+        val body = if (neg) plain.substring(1) else plain
+        val parts = body.split(".")
         val intPart = parts[0]
         val decPart = if (parts.size > 1) parts[1] else ""
         val paddedDec = decPart.padEnd(decimals, '0').take(decimals)
-        return if (decimals > 0) "$intPart.$paddedDec" else intPart
+        return (if (neg) "-" else "") + if (decimals > 0) "$intPart.$paddedDec" else intPart
     }
 
     fun formatPrice(price: Double): String {
