@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -21,6 +22,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
+import com.aandios.nous.core.ui.workspace.ResizablePanelSpec
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
 import com.aandios.nous.feature.chart.ui.ChartIntent
@@ -57,6 +59,8 @@ fun WorkspaceView(
 
     var panelConfigs by remember(ws.config.id) { mutableStateOf(ws.config.panels.associateBy { it.id }) }
     var layoutState by remember(ws.config.id) { mutableStateOf(ws.config.layout) }
+    // Измеренная минимальная ширина Trades-панелей (для левой ручки ресайза)
+    val tradesMinWidths = remember { mutableStateMapOf<String, androidx.compose.ui.unit.Dp>() }
 
     // Undo/redo сплитов (Ctrl+Z / Ctrl+Shift+Z) — история на workspace
     val history = remember(ws.config.id) { LayoutHistory() }
@@ -138,10 +142,19 @@ fun WorkspaceView(
             fixedPanelWidths = panelConfigs.mapNotNull { (id, pc) ->
                 when (pc.type) {
                     PanelType.DOM -> id to DomRecommendedWidth
-                    PanelType.TRADES -> id to TradesRecommendedWidth
+                    PanelType.TRADES -> null // ресайзабельная, см. resizablePanelWidths
                     PanelType.CHART -> null
                     PanelType.TRADING -> null // гибкая ширина — как у chart
                 }
+            }.toMap(),
+            // Trades тянется левой ручкой: [измеренный минимум, текущая ширина]
+            resizablePanelWidths = panelConfigs.mapNotNull { (id, pc) ->
+                if (pc.type == PanelType.TRADES) {
+                    id to ResizablePanelSpec(
+                        minWidth = tradesMinWidths[id] ?: 120.dp,
+                        maxWidth = TradesRecommendedWidth,
+                    )
+                } else null
             }.toMap(),
             onRatioChange = { persistConfig() },
             onRatioChangeStart = { history.push(snapshot()) },
@@ -191,7 +204,7 @@ fun WorkspaceView(
                 when (pc.type) {
                     PanelType.CHART -> ChartPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                     PanelType.DOM -> DomPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
-                    PanelType.TRADES -> TradesPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
+                    PanelType.TRADES -> TradesPanel(ws, pc, tradesMinWidths, onPanelConfigChange = ::updatePanelConfig)
                     PanelType.TRADING -> TradingPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                 }
             }
@@ -335,6 +348,7 @@ private fun DomPanel(
 private fun TradesPanel(
     ws: WorkspaceViewModel,
     pc: PanelConfig,
+    tradesMinWidths: MutableMap<String, androidx.compose.ui.unit.Dp>,
     onPanelConfigChange: (PanelConfig) -> Unit,
 ) {
     val vmKey = "${pc.id}_trades"
@@ -409,7 +423,8 @@ private fun TradesPanel(
     TradesWindow(
         vm,
         currentSymbol = pc.symbol,
-        onSymbolChanged = { s -> vm.subscribeToTrades(s) }
+        onSymbolChanged = { s -> vm.subscribeToTrades(s) },
+        onMinContentWidth = { min -> tradesMinWidths[pc.id] = min },
     )
 }
 

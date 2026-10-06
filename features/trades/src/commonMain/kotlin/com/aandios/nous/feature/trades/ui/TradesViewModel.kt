@@ -6,6 +6,7 @@
 package com.aandios.nous.feature.trades.ui
 
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
@@ -76,6 +77,13 @@ class TradesViewModel(
     private val _loadedSymbols = MutableStateFlow<List<SymbolInfo>>(emptyList())
     val loadedSymbols: StateFlow<List<SymbolInfo>> = _loadedSymbols.asStateFlow()
 
+    /** Все символы провайдера (без фильтра по типу контракта). */
+    private var allSymbols: List<SymbolInfo> = emptyList()
+
+    /** Тип контрактов панели: USDT-M / COIN-M — фильтр списка символов. */
+    private val _contractType = MutableStateFlow(ContractType.USDT_M)
+    val contractType: StateFlow<ContractType> = _contractType.asStateFlow()
+
     // Информация о текущем символе (minQty, tickSize и т.д.)
     private val _currentSymbol = MutableStateFlow("")
     val currentSymbol: StateFlow<String> = _currentSymbol.asStateFlow()
@@ -111,8 +119,21 @@ class TradesViewModel(
             stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
                 if (providerRegistry.get(saved) != null) _currentProviderId.value = saved
             }
+            // Тип контрактов панели (USDT-M / COIN-M) — до загрузки списка
+            stateStore?.getString(CONTRACT_TYPE_STORE_KEY)?.let { raw ->
+                runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
+            }
             loadSymbols()
         }
+    }
+
+    /** Смена типа контрактов: фильтр списка символов + fallback текущего. */
+    fun setContractType(type: ContractType) {
+        if (_contractType.value == type) return
+        _contractType.value = type
+        viewModelScope.launch { stateStore?.putString(CONTRACT_TYPE_STORE_KEY, type.name) }
+        applyContractTypeFilter()
+        ensureSymbolMatchesContractType()
     }
 
     /**
@@ -257,17 +278,32 @@ class TradesViewModel(
         viewModelScope.launch {
             try {
                 val repository = SymbolInfoRepositoryImpl(symbolInfoAdapter)
-                val allSymbols = repository.getAllSymbolsInfo()
-                val tradingSymbols = allSymbols
+                allSymbols = repository.getAllSymbolsInfo()
                     .filter { it.status == "TRADING" }
                     .sortedBy { it.symbol }
-                if (tradingSymbols.isNotEmpty()) {
-                    _loadedSymbols.value = tradingSymbols
+                if (allSymbols.isNotEmpty()) {
+                    applyContractTypeFilter()
+                    ensureSymbolMatchesContractType()
                 }
             } catch (e: Exception) {
                 println("⚠️ TradesVM: Failed to load symbols: ${e.message}")
             }
         }
+    }
+
+    /** Показать только символы выбранного типа контрактов (USDT-M / COIN-M). */
+    private fun applyContractTypeFilter() {
+        val type = _contractType.value
+        val filtered = allSymbols.filter { type.matches(it) }
+        if (filtered.isNotEmpty()) _loadedSymbols.value = filtered
+    }
+
+    /** Если текущий символ не того типа — переключиться на первый подходящий. */
+    private fun ensureSymbolMatchesContractType() {
+        val info = _currentSymbolInfo.value ?: return
+        if (_contractType.value.matches(info)) return
+        val fallback = _loadedSymbols.value.firstOrNull() ?: return
+        subscribeToTrades(fallback.symbol)
     }
 
     private fun fetchSymbolInfo(symbol: String) {
@@ -305,5 +341,8 @@ class TradesViewModel(
 
         /** Ключ StateStore: выбранная биржа trades-панели. */
         const val PROVIDER_STORE_KEY = "trades_provider"
+
+        /** Ключ StateStore: тип контрактов панели (USDT_M / COIN_M). */
+        const val CONTRACT_TYPE_STORE_KEY = "trades_contract_type"
     }
 }

@@ -29,6 +29,9 @@ fun TradesSymbolDropdown(
         symbols = symbolList,
         currentSymbol = currentSymbol,
         onSymbolSelected = onSymbolChanged,
+        // Компактный триггер «Sym SOLUSDT ▾» в стиле DOM-хедера
+        showLabel = false,
+        labelPrefix = "Sym",
         modifier = modifier,
     )
 }

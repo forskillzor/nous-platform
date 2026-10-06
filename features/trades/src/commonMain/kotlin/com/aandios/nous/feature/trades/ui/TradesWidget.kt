@@ -42,6 +42,8 @@ fun TradesWidget(
     onSymbolChanged: (String) -> Unit,
     providers: List<com.aandios.nous.api.market.Provider> = emptyList(),
     onProviderChanged: (String) -> Unit = {},
+    /** Сообщает измеренную минимальную ширину (строка сделки + отступы). */
+    onMinContentWidth: ((androidx.compose.ui.unit.Dp) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -50,12 +52,16 @@ fun TradesWidget(
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
     val customPresets by viewModel.customPresets.collectAsState()
     val currentProviderId by viewModel.currentProviderId.collectAsState()
+    val contractType by viewModel.contractType.collectAsState()
     // Подписка на буфер отфильтрованных сделок — триггерит рекомпозицию
     // при reseed фильтра, даже если фид не менялся.
     val filteredBuffer by viewModel.filteredBuffer.collectAsState()
 
     val lazyListState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
+    // Мин. ширина для ручки ресайза: измеряем текст строки сделки
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val density = androidx.compose.ui.platform.LocalDensity.current
 
     // Автоскролл живёт, пока пользователь у вершины списка. Выключаем только
     // на РУЧНОЙ прокрутке вниз (программная вставка новых сделок сверху
@@ -78,7 +84,9 @@ fun TradesWidget(
             customPresets = customPresets,
             providers = providers,
             currentProviderId = currentProviderId,
+            contractType = contractType,
             onProviderChanged = onProviderChanged,
+            onContractTypeChanged = { viewModel.setContractType(it) },
             onSymbolChanged = onSymbolChanged,
             onFilterChanged = { viewModel.updateSizeFilter(it) },
             onPresetAdd = { viewModel.addPreset(it) },
@@ -122,6 +130,31 @@ fun TradesWidget(
             }
             is TradesState.Connected -> {
                 val visibleTrades = viewModel.visibleTrades(currentState.trades)
+
+                // Мин. ширина панели по text measure: время + цена + кол-во
+                // + 4dp между колонками + внешние отступы 8dp с каждой стороны
+                if (onMinContentWidth != null && visibleTrades.isNotEmpty()) {
+                    val maxQty = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
+                    val maxPrice = visibleTrades.maxOfOrNull { it.price } ?: 0.0
+                    val sampleStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
+                    val wTime = measurer.measure(
+                        androidx.compose.ui.text.AnnotatedString(
+                            viewModel.formatTime(visibleTrades.first().timestamp)
+                        ),
+                        sampleStyle,
+                    ).size.width
+                    val wPrice = measurer.measure(
+                        androidx.compose.ui.text.AnnotatedString(viewModel.formatPrice(maxPrice)),
+                        sampleStyle,
+                    ).size.width
+                    val wQty = measurer.measure(
+                        androidx.compose.ui.text.AnnotatedString(viewModel.formatQuantity(maxQty)),
+                        sampleStyle,
+                    ).size.width
+                    val gapsPx = with(density) { 4.dp.toPx() * 2 + 8.dp.toPx() * 2 }
+                    val minWidth = with(density) { (wTime + wPrice + wQty).toFloat().plus(gapsPx).toDp() }
+                    LaunchedEffect(minWidth) { onMinContentWidth(minWidth) }
+                }
 
                 if (visibleTrades.isEmpty()) {
                     Box(

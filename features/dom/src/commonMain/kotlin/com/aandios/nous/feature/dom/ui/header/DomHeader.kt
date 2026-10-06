@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
+import com.aandios.nous.core.ui.component.TerminalInlineSelect
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.feature.dom.domain.*
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
@@ -94,7 +95,7 @@ private fun ExpandedDomHeader(
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                HeaderSelect(
+                TerminalInlineSelect(
                     label = "Ex",
                     current = domOptions.provider,
                     items = providers.map { it.providerId },
@@ -104,7 +105,7 @@ private fun ExpandedDomHeader(
                     onSelect = { onDomOptionsChanged(domOptions.copy(provider = it)) },
                     menuWidth = 150.dp,
                 )
-                HeaderSelect(
+                TerminalInlineSelect(
                     label = "Type",
                     current = domOptions.contractType,
                     items = ContractType.entries.toList(),
@@ -144,7 +145,7 @@ private fun ExpandedDomHeader(
                         },
                     )
                 }
-                HeaderSelect(
+                TerminalInlineSelect(
                     label = "Depth",
                     current = domOptions.depth,
                     items = DepthLimit.standardValues.map { DepthLimit.create(it) },
@@ -153,7 +154,7 @@ private fun ExpandedDomHeader(
                     menuWidth = 90.dp,
                 )
                 if (!narrow) {
-                    AggHeaderSelect(
+                    AggTerminalInlineSelect(
                         current = domOptions.aggregation,
                         symbolTickSize = symbolTickSize,
                         onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
@@ -166,7 +167,7 @@ private fun ExpandedDomHeader(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AggHeaderSelect(
+                    AggTerminalInlineSelect(
                         current = domOptions.aggregation,
                         symbolTickSize = symbolTickSize,
                         onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
@@ -184,12 +185,12 @@ private fun ExpandedDomHeader(
  * и так ясно, что минимальный шаг это базовый; остальные — «10× (0.1)».
  */
 @Composable
-private fun AggHeaderSelect(
+private fun AggTerminalInlineSelect(
     current: AggregationLevel,
     symbolTickSize: Double?,
     onSelect: (AggregationLevel) -> Unit,
 ) {
-    HeaderSelect(
+    TerminalInlineSelect(
         label = "Agg",
         current = current,
         items = AggregationLevel.all(),
@@ -211,80 +212,3 @@ private fun aggregationLabel(level: AggregationLevel, baseTickSize: Double?): St
     }
 }
 
-/**
- * Компактный селект заголовка: `label value ▾` одной строкой, mono-шрифт,
- * без внешней рамки и без вложенных Surface — высота ~18dp.
- */
-@Composable
-private fun <T> HeaderSelect(
-    label: String,
-    current: T,
-    items: List<T>,
-    display: (T) -> String,
-    onSelect: (T) -> Unit,
-    menuWidth: Dp = 140.dp,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    Box(modifier = modifier) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .clickable { expanded = true }
-                .padding(horizontal = 4.dp, vertical = 2.dp),
-        ) {
-            Text(
-                text = label,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = display(current),
-                color = MaterialTheme.colorScheme.inverseOnSurface,
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(2.dp))
-            Text(
-                text = "▾",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
-            )
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.width(menuWidth),
-        ) {
-            items.forEach { item ->
-                val selected = item == current
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = display(item),
-                            color = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            maxLines = 1,
-                        )
-                    },
-                    onClick = {
-                        onSelect(item)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
-}
