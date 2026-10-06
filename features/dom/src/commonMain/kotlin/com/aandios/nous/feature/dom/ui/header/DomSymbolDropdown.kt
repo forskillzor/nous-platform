@@ -7,6 +7,7 @@ package com.aandios.nous.feature.dom.ui.header
 
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.ui.component.SymbolSearchDropdown
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 
@@ -34,6 +35,8 @@ fun DomSymbolDropdown(
         // Компактный триггер «Sym SOLUSDT ▾» вместо тяжёлой обёртки с label
         showLabel = false,
         labelPrefix = "Sym",
+        // Тикер чуть крупнее остальных контролов хедера
+        valueFontSize = 12.sp,
         modifier = modifier,
     )
 }

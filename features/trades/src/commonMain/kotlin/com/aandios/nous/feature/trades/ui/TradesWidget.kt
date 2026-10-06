@@ -29,6 +29,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.trades.Trade
+import com.aandios.nous.core.ui.component.PanelSymbolWatermark
 import com.aandios.nous.feature.trades.ui.header.TradesHeaderBar
 
 /**
@@ -109,8 +110,20 @@ fun TradesWidget(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
         )
 
-        // Контент
-        when (val currentState = state) {
+        // Контент (водяной знак — нижним слоем)
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            PanelSymbolWatermark(
+                symbolInfo = currentSymbolInfo,
+                currentSymbol = currentSymbol,
+                exchange = providers.firstOrNull { it.providerId == currentProviderId }
+                    ?.config?.displayName,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 8.dp, top = 4.dp),
+                symbolFontSize = 40.sp,
+                infoFontSize = 14.sp,
+            )
+            when (val currentState = state) {
             is TradesState.Loading -> {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -200,6 +213,7 @@ fun TradesWidget(
                     }
                 }
             }
+        }
         }
     }
 }

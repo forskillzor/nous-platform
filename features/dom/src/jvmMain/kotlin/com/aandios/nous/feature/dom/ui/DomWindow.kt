@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.aandios.nous.core.ui.component.PanelSymbolWatermark
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.trading.TradeSide
@@ -158,6 +159,17 @@ fun DomWindow(
                 .background(MaterialTheme.colorScheme.surface)
                 .fillMaxWidth()
         ) {
+            // Водяной знак (нижний слой): тикер · биржа · тип контракта — в столбик
+            PanelSymbolWatermark(
+                symbolInfo = symbolInfo,
+                currentSymbol = domOptions.symbol.symbol,
+                exchange = registry.get(domOptions.provider)?.config?.displayName,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(start = 8.dp, top = 4.dp),
+                symbolFontSize = 40.sp,
+                infoFontSize = 14.sp,
+            )
             DomContent(
                 levelsMap = levelsMap,
                 ladderStepTicks = ladderStepTicks,

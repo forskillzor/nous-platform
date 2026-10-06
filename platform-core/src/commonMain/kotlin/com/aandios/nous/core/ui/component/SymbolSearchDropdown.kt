@@ -54,6 +54,8 @@ fun SymbolSearchDropdown(
     showLabel: Boolean = true,
     /** Короткий префикс перед тикером в триггере ("Sym") — компактные хедеры. */
     labelPrefix: String = "",
+    /** Размер тикера в триггере (компактные хедеры могут сделать крупнее). */
+    valueFontSize: androidx.compose.ui.unit.TextUnit = MaterialTheme.typography.labelSmall.fontSize,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -94,7 +96,7 @@ fun SymbolSearchDropdown(
                 Text(
                     text = currentSymbol,
                     color = MaterialTheme.colorScheme.inverseOnSurface,
-                    fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                    fontSize = valueFontSize,
                     fontWeight = FontWeight.Medium,
                     fontFamily = FontFamily.Monospace,
                     letterSpacing = 0.2.sp,

@@ -280,6 +280,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
 - Compact selects use `TerminalDropdown`; panel headers (DOM/Trades) use
   `TerminalInlineSelect` — a single-layer mono `label value ▾` row (~18dp).
+- Panel watermarks: `PanelSymbolWatermark` (platform-core) draws the big ticker
+  with the exchange and `X-M Perp` contract label stacked in a column at
+  7% alpha (chart keeps its own inline version); used by DOM and Trades.
 - Trades panel width is a setting, not a drag: the header gear
   (`TradesSettingsGear`) opens a width slider (min = measured trade-row text
   width from `TradesWidget` + 4dp column gaps + 8dp outer padding, max =
