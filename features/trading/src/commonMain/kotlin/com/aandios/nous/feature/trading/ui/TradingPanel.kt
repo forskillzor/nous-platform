@@ -38,6 +38,7 @@ import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.core.ui.component.PanelTextWatermark
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
@@ -271,19 +272,28 @@ fun TradingPanel(
         }
 
         // ── Контент (списки отфильтрованы по типу контрактов) ──
-        when (tab) {
-            TradingTab.POSITIONS -> PositionsTable(
-                visiblePositions, formatter, onClose = { viewModel.closePosition(it) },
-                modifier = Modifier.weight(1f),
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Водяной знак (нижний слой, центр-центр): биржа + тип контрактов
+            PanelTextWatermark(
+                bigText = registry.providers.firstOrNull { it.providerId == providerId }
+                    ?.config?.displayName ?: providerId,
+                subTexts = listOf(contractType.label),
+                modifier = Modifier.align(Alignment.Center),
             )
-            TradingTab.ORDERS -> OrdersTable(
-                visibleOrders, formatter, onCancel = { viewModel.cancelOrder(it) },
-                modifier = Modifier.weight(1f),
-            )
-            TradingTab.BALANCES -> BalancesTable(visibleBalances, modifier = Modifier.weight(1f))
-            TradingTab.HISTORY -> {
-                LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
-                HistoryTable(visibleHistory, formatter, modifier = Modifier.weight(1f))
+            when (tab) {
+                TradingTab.POSITIONS -> PositionsTable(
+                    visiblePositions, formatter, onClose = { viewModel.closePosition(it) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                TradingTab.ORDERS -> OrdersTable(
+                    visibleOrders, formatter, onCancel = { viewModel.cancelOrder(it) },
+                    modifier = Modifier.fillMaxSize(),
+                )
+                TradingTab.BALANCES -> BalancesTable(visibleBalances, modifier = Modifier.fillMaxSize())
+                TradingTab.HISTORY -> {
+                    LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
+                    HistoryTable(visibleHistory, formatter, modifier = Modifier.fillMaxSize())
+                }
             }
         }
     }

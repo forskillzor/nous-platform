@@ -32,37 +32,49 @@ fun PanelSymbolWatermark(
     symbolFontSize: TextUnit = 72.sp,
     infoFontSize: TextUnit = 26.sp,
 ) {
+    val contractLabel = symbolInfo
+        ?.takeIf { it.contractType == "PERPETUAL" }
+        ?.let { "${it.marginAsset ?: it.quoteAsset}-M Perp" }
+    PanelTextWatermark(
+        bigText = symbolInfo?.baseAsset ?: currentSymbol,
+        subTexts = listOfNotNull(exchange?.takeIf { it.isNotBlank() }, contractLabel),
+        modifier = modifier,
+        bigFontSize = symbolFontSize,
+        subFontSize = infoFontSize,
+    )
+}
+
+/**
+ * Водяной знак из строк: крупное имя + подписи под ним (столбиком),
+ * альфа 7%, нижний слой. Вызывающий центрует блок (align(Alignment.Center)).
+ * Для Trading panel: «MEXC» + «USDT-M».
+ */
+@Composable
+fun PanelTextWatermark(
+    bigText: String,
+    subTexts: List<String>,
+    modifier: Modifier = Modifier,
+    bigFontSize: TextUnit = 72.sp,
+    subFontSize: TextUnit = 26.sp,
+) {
     val color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f)
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = symbolInfo?.baseAsset ?: currentSymbol,
+            text = bigText,
             color = color,
-            fontSize = symbolFontSize,
+            fontSize = bigFontSize,
             fontWeight = FontWeight.Light,
             fontFamily = FontFamily.Monospace,
             maxLines = 1,
         )
-        if (!exchange.isNullOrBlank()) {
+        subTexts.forEach { line ->
             Text(
-                text = exchange,
+                text = line,
                 color = color,
-                fontSize = infoFontSize,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                maxLines = 1,
-            )
-        }
-        val contractLabel = symbolInfo
-            ?.takeIf { it.contractType == "PERPETUAL" }
-            ?.let { "${it.marginAsset ?: it.quoteAsset}-M Perp" }
-        if (contractLabel != null) {
-            Text(
-                text = contractLabel,
-                color = color,
-                fontSize = infoFontSize,
+                fontSize = subFontSize,
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 maxLines = 1,

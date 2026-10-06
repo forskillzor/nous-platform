@@ -283,6 +283,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - Panel watermarks: `PanelSymbolWatermark` (platform-core) draws the big ticker
   with the exchange and `X-M Perp` contract label stacked in a column at
   7% alpha (chart keeps its own inline version); used by DOM and Trades.
+  `PanelTextWatermark` is the generic form (big text + sub lines) and backs the
+  docked trading panel watermark (exchange name + USDT-M/COIN-M, center of the
+  content area).
 - Trades panel width is a setting, not a drag: the header gear
   (`TradesSettingsGear`) opens a width slider (min = measured trade-row text
   width from `TradesWidget` + 4dp column gaps + 8dp outer padding, max =
