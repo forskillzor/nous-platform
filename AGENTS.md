@@ -57,10 +57,13 @@ Mind this when writing paths.
   saved globally (no prefix); in the workspace the symbol/timeframe come from
   `PanelConfig`, so `ChartWindow` only restores the provider via
   `ChartViewModel.restoreProvider()`.
-- DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`.
-- Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`) and
-  `trading_provider` (global keys).
+- DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`,
+  `dom_contract_{panelId}` (USDT_M / COIN_M).
+- Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`),
+  `trading_provider`, `trading_contract_type` (global keys).
 - Trades panel: `trades_provider` (global key).
+- Chart: provider/contract-type state is global (`chart_provider_id`,
+  `chart_contract_type`).
 
 ### Safety invariants (learned the hard way — keep them)
 - Trading is **OFF by default** on both chart and DOM panels.
