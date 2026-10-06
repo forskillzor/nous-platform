@@ -22,7 +22,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
-import com.aandios.nous.core.ui.workspace.ResizablePanelSpec
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
 import com.aandios.nous.feature.chart.ui.ChartIntent
@@ -59,8 +58,8 @@ fun WorkspaceView(
 
     var panelConfigs by remember(ws.config.id) { mutableStateOf(ws.config.panels.associateBy { it.id }) }
     var layoutState by remember(ws.config.id) { mutableStateOf(ws.config.layout) }
-    // Измеренная минимальная ширина Trades-панелей (для левой ручки ресайза)
-    val tradesMinWidths = remember { mutableStateMapOf<String, androidx.compose.ui.unit.Dp>() }
+    // Ширина Trades-панелей (настройка шестерёнкой, персистится в VM)
+    val tradesWidths = remember { mutableStateMapOf<String, androidx.compose.ui.unit.Dp>() }
 
     // Undo/redo сплитов (Ctrl+Z / Ctrl+Shift+Z) — история на workspace
     val history = remember(ws.config.id) { LayoutHistory() }
@@ -142,19 +141,10 @@ fun WorkspaceView(
             fixedPanelWidths = panelConfigs.mapNotNull { (id, pc) ->
                 when (pc.type) {
                     PanelType.DOM -> id to DomRecommendedWidth
-                    PanelType.TRADES -> null // ресайзабельная, см. resizablePanelWidths
+                    PanelType.TRADES -> id to (tradesWidths[id] ?: TradesRecommendedWidth)
                     PanelType.CHART -> null
                     PanelType.TRADING -> null // гибкая ширина — как у chart
                 }
-            }.toMap(),
-            // Trades тянется левой ручкой: [измеренный минимум, текущая ширина]
-            resizablePanelWidths = panelConfigs.mapNotNull { (id, pc) ->
-                if (pc.type == PanelType.TRADES) {
-                    id to ResizablePanelSpec(
-                        minWidth = tradesMinWidths[id] ?: 120.dp,
-                        maxWidth = TradesRecommendedWidth,
-                    )
-                } else null
             }.toMap(),
             onRatioChange = { persistConfig() },
             onRatioChangeStart = { history.push(snapshot()) },
@@ -204,7 +194,7 @@ fun WorkspaceView(
                 when (pc.type) {
                     PanelType.CHART -> ChartPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                     PanelType.DOM -> DomPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
-                    PanelType.TRADES -> TradesPanel(ws, pc, tradesMinWidths, onPanelConfigChange = ::updatePanelConfig)
+                    PanelType.TRADES -> TradesPanel(ws, pc, tradesWidths, onPanelConfigChange = ::updatePanelConfig)
                     PanelType.TRADING -> TradingPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
                 }
             }
@@ -348,7 +338,7 @@ private fun DomPanel(
 private fun TradesPanel(
     ws: WorkspaceViewModel,
     pc: PanelConfig,
-    tradesMinWidths: MutableMap<String, androidx.compose.ui.unit.Dp>,
+    tradesWidths: MutableMap<String, androidx.compose.ui.unit.Dp>,
     onPanelConfigChange: (PanelConfig) -> Unit,
 ) {
     val vmKey = "${pc.id}_trades"
@@ -357,6 +347,14 @@ private fun TradesPanel(
 
     val needReload = vm.currentSymbol.value != pc.symbol
     LaunchedEffect(pc.symbol) { if (needReload) vm.subscribeToTrades(pc.symbol) }
+
+    // Персист ширины панели (шестерёнка): ширина для LayoutRenderer
+    LaunchedEffect(pc.id) { vm.attachPanel(pc.id) }
+    LaunchedEffect(Unit) {
+        vm.panelWidthDp.collect { widthDp ->
+            if (widthDp != null) tradesWidths[pc.id] = widthDp.dp
+        }
+    }
 
     val tradesPc by rememberUpdatedState(pc)
     LaunchedEffect(Unit) {
@@ -424,7 +422,6 @@ private fun TradesPanel(
         vm,
         currentSymbol = pc.symbol,
         onSymbolChanged = { s -> vm.subscribeToTrades(s) },
-        onMinContentWidth = { min -> tradesMinWidths[pc.id] = min },
     )
 }
 

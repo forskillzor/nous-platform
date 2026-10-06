@@ -59,16 +59,6 @@ import com.aandios.nous.core.workspace.PanelType
 private val ChartMinWidthDp = 200.dp
 
 /**
- * Ресайзабельная «фиксированная» панель (например Trades): ширина живёт
- * в диапазоне [minWidth, maxWidth] и меняется левой ручкой в пикселях;
- * соседние flex-панели (charts) автоматически забирают остаток.
- */
-data class ResizablePanelSpec(
-    val minWidth: Dp,
-    val maxWidth: Dp,
-)
-
-/**
  * Состояние перетаскивания панели внутри workspace (IntelliJ-стиль).
  * Передаётся вниз по рекурсии рендера — единый источник для всех панелей.
  */
@@ -125,8 +115,6 @@ fun LayoutRenderer(
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)? = null,
     onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
     fixedPanelWidths: Map<String, Dp> = emptyMap(),
-    /** Панели, которые можно тянуть ручкой (Trades): min/max в Dp. */
-    resizablePanelWidths: Map<String, ResizablePanelSpec> = emptyMap(),
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     // Drag-состояние привязано к дереву: при любом split/close/move/undo или
@@ -150,15 +138,6 @@ fun LayoutRenderer(
     val fixedPanelWidthsPx = remember(node, panels, fixedPanelWidths, density) {
         fixedPanelWidths.mapValues { (_, width) -> with(density) { width.toPx() } }
     }
-
-    // Ресайзабельные панели: min/max в px + текущая ширина (живёт в композиции,
-    // меняется левой ручкой; при нехватке места визуально масштабируется как fixed).
-    val resizableSpecsPx = remember(resizablePanelWidths, density) {
-        resizablePanelWidths.mapValues { (_, spec) ->
-            with(density) { spec.minWidth.toPx() } to with(density) { spec.maxWidth.toPx() }
-        }
-    }
-    val resizableWidthsPx = remember { mutableStateMapOf<String, Float>() }
 
     // Анимация перелёта панелей при изменении дерева (split/close/move/undo).
     val flyProgress = remember { Animatable(1f) }
@@ -216,8 +195,6 @@ fun LayoutRenderer(
             dragState = dragState,
             fly = fly,
             fixedPanelWidthsPx = fixedPanelWidthsPx,
-            resizableSpecsPx = resizableSpecsPx,
-            resizableWidthsPx = resizableWidthsPx,
             panelContent = panelContent,
         )
 
@@ -259,8 +236,6 @@ private fun RenderNode(
     dragState: PanelDragState,
     fly: PanelFlyContext,
     fixedPanelWidthsPx: Map<String, Float> = emptyMap(),
-    resizableSpecsPx: Map<String, Pair<Float, Float>> = emptyMap(),
-    resizableWidthsPx: MutableMap<String, Float> = mutableMapOf(),
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
     when (node) {
@@ -348,18 +323,8 @@ private fun RenderNode(
             // (иначе с equals-true remember эффект продолжал писать в старый узел).
             LaunchedEffect(ratio, node) { node.ratio = ratio }
 
-                    /** Текущая ширина ресайзабельной панели (Trades), px. */
-                    fun resizableWidthOf(child: LayoutNode): Float? {
-                        val id = (child as? LayoutNode.Leaf)?.panelId ?: return null
-                        val (minPx, maxPx) = resizableSpecsPx[id] ?: return null
-                        val current = resizableWidthsPx[id] ?: maxPx
-                        return current.coerceIn(minPx, maxPx)
-                    }
-
-                    fun fixedWidthOf(child: LayoutNode): Float? =
-                        (child as? LayoutNode.Leaf)?.let {
-                            fixedPanelWidthsPx[it.panelId] ?: resizableWidthOf(child)
-                        }
+            fun fixedWidthOf(child: LayoutNode): Float? =
+                (child as? LayoutNode.Leaf)?.let { fixedPanelWidthsPx[it.panelId] }
 
             when (node.direction) {
                 LayoutNode.Direction.HORIZONTAL -> {
@@ -448,46 +413,22 @@ private fun RenderNode(
                                 }
                             }
                             key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, resizableSpecsPx = resizableSpecsPx, resizableWidthsPx = resizableWidthsPx, panelContent = panelContent)
+                                RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
-                            // Ручки: между двумя FLEX-поддеревьями (ratio) и у ЛЕВОГО
-                            // края ресайзабельной «фиксированной» панели (Trades) —
-                            // тянем только её ширину, остаток забирает flex выше
-                            // по дереву (chart), соседи слева смещаются.
-                            val resRightId = (node.children.getOrNull(index + 1) as? LayoutNode.Leaf)?.panelId
-                            val resRightSpec = resRightId?.let { resizableSpecsPx[it] }
-
-                            when {
-                                resRightSpec != null && resRightId != null -> {
-                                    SplitHandle(
-                                        direction = LayoutNode.Direction.HORIZONTAL,
-                                        parentSize = spanPx,
-                                        resizeInPixels = true,
-                                        onResizeStart = onRatioChangeStart,
-                                        onResize = { dragPx ->
-                                            val (minPx, maxPx) = resRightSpec
-                                            val current = resizableWidthsPx[resRightId] ?: maxPx
-                                            val newWidth = (current - dragPx).coerceIn(minPx, maxPx)
-                                            if (newWidth != current) {
-                                                resizableWidthsPx[resRightId] = newWidth
-                                                onRatioChange?.invoke()
-                                            }
+                            // Ручка только между двумя FLEX-поддеревьями:
+                            // dom/trades не ресайзятся никогда.
+                            if (index < node.children.lastIndex && isFlex[index] && isFlex[index + 1]) {
+                                SplitHandle(
+                                    direction = LayoutNode.Direction.HORIZONTAL,
+                                    parentSize = spanPx,
+                                    onResizeStart = onRatioChangeStart,
+                                    onResize = { delta ->
+                                        val newRatio = (ratio + delta).coerceIn(clampMin, clampMax)
+                                        if (newRatio != ratio) {
+                                            ratio = newRatio; onRatioChange?.invoke()
                                         }
-                                    )
-                                }
-                                index < node.children.lastIndex && isFlex[index] && isFlex[index + 1] -> {
-                                    SplitHandle(
-                                        direction = LayoutNode.Direction.HORIZONTAL,
-                                        parentSize = spanPx,
-                                        onResizeStart = onRatioChangeStart,
-                                        onResize = { delta ->
-                                            val newRatio = (ratio + delta).coerceIn(clampMin, clampMax)
-                                            if (newRatio != ratio) {
-                                                ratio = newRatio; onRatioChange?.invoke()
-                                            }
-                                        }
-                                    )
-                                }
+                                    }
+                                )
                             }
                         }
                     }
@@ -503,7 +444,7 @@ private fun RenderNode(
                                 // слота — иначе фикс-цепочка (без chart) оборачивается
                                 // по контенту и сжимает панели через дефолтный
                                 // parentSizePx, хотя места достаточно.
-                                RenderNode(node = child, modifier = Modifier.weight(weight).fillMaxWidth(), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, resizableSpecsPx = resizableSpecsPx, resizableWidthsPx = resizableWidthsPx, panelContent = panelContent)
+                                RenderNode(node = child, modifier = Modifier.weight(weight).fillMaxWidth(), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
                             }
                             if (index < node.children.lastIndex) {
                                 SplitHandle(
@@ -679,8 +620,6 @@ private fun SplitHandle(
     direction: LayoutNode.Direction,
     parentSize: Float,
     onResizeStart: (() -> Unit)? = null,
-    /** true — onResize получает пиксели, иначе долю от parentSize. */
-    resizeInPixels: Boolean = false,
     onResize: (Float) -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -711,14 +650,14 @@ private fun SplitHandle(
                     detectHorizontalDragGestures(
                         onDragStart = { currentOnResizeStart?.invoke() },
                         onHorizontalDrag = { _, dragAmount ->
-                            currentOnResize(if (resizeInPixels) dragAmount else dragAmount / size)
+                            currentOnResize(dragAmount / size)
                         }
                     )
                 } else {
                     detectVerticalDragGestures(
                         onDragStart = { currentOnResizeStart?.invoke() },
                         onVerticalDrag = { _, dragAmount ->
-                            currentOnResize(if (resizeInPixels) dragAmount else dragAmount / size)
+                            currentOnResize(dragAmount / size)
                         }
                     )
                 }

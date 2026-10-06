@@ -84,6 +84,12 @@ class TradesViewModel(
     private val _contractType = MutableStateFlow(ContractType.USDT_M)
     val contractType: StateFlow<ContractType> = _contractType.asStateFlow()
 
+    /** Ширина панели в dp (настройка ползунком); null — дефолт виджета. */
+    private val _panelWidthDp = MutableStateFlow<Float?>(null)
+    val panelWidthDp: StateFlow<Float?> = _panelWidthDp.asStateFlow()
+
+    private var panelKey: String? = null
+
     // Информация о текущем символе (minQty, tickSize и т.д.)
     private val _currentSymbol = MutableStateFlow("")
     val currentSymbol: StateFlow<String> = _currentSymbol.asStateFlow()
@@ -135,6 +141,31 @@ class TradesViewModel(
         applyContractTypeFilter()
         ensureSymbolMatchesContractType()
     }
+
+    /** Привязка панели: персист ширины (шестерёнка настроек). */
+    fun attachPanel(panelId: String?) {
+        panelKey = panelId
+        val store = stateStore ?: return
+        viewModelScope.launch {
+            store.getString(widthStoreKey())?.toFloatOrNull()?.takeIf { it > 0f }?.let {
+                _panelWidthDp.value = it
+            }
+        }
+    }
+
+    /** Установить ширину панели (dp) — превью в UI без записи в стор. */
+    fun setPanelWidth(widthDp: Float) {
+        if (widthDp <= 0f) return
+        _panelWidthDp.value = widthDp
+    }
+
+    /** Сохранить текущую ширину панели (по окончании жеста ползунка). */
+    fun persistPanelWidth() {
+        val width = _panelWidthDp.value ?: return
+        viewModelScope.launch { stateStore?.putString(widthStoreKey(), width.toString()) }
+    }
+
+    private fun widthStoreKey(): String = "trades_width_${panelKey ?: "default"}"
 
     /**
      * Проверяет, проходит ли сделка текущий/заданный фильтр размера.

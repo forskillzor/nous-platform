@@ -280,12 +280,12 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
 - Compact selects use `TerminalDropdown`; panel headers (DOM/Trades) use
   `TerminalInlineSelect` — a single-layer mono `label value ▾` row (~18dp).
-- Layout resizing: `LayoutRenderer.resizablePanelWidths` marks a "fixed" panel
-  as draggable between `minWidth`/`maxWidth` (Trades: measured row minimum to
-  `TradesRecommendedWidth`); its flex neighbor takes the remainder. DOM stays
-  rigid `fixedPanelWidths`. Trades min width is measured from the trade row
-  text (`TradesWidget.onMinContentWidth`) plus 4dp column gaps and 8dp outer
-  padding.
+- Trades panel width is a setting, not a drag: the header gear
+  (`TradesSettingsGear`) opens a width slider (min = measured trade-row text
+  width from `TradesWidget` + 4dp column gaps + 8dp outer padding, max =
+  `TradesRecommendedWidth`); `TradesViewModel.attachPanel` persists it under
+  `trades_width_{panelId}` and `WorkspaceView` feeds it into
+  `LayoutRenderer.fixedPanelWidths`. DOM stays rigid `fixedPanelWidths`.
 - Trading badges (chart and DOM share the look): colored rounded rect
   (long/short color), white mono text ~10sp with `lineHeight = 11.sp`, inline
   qty field (white background, dark centered text) that commits via

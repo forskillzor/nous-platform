@@ -42,8 +42,8 @@ fun TradesWidget(
     onSymbolChanged: (String) -> Unit,
     providers: List<com.aandios.nous.api.market.Provider> = emptyList(),
     onProviderChanged: (String) -> Unit = {},
-    /** Сообщает измеренную минимальную ширину (строка сделки + отступы). */
-    onMinContentWidth: ((androidx.compose.ui.unit.Dp) -> Unit)? = null,
+    /** Максимальная ширина панели (шестерёнка настроек). */
+    maxPanelWidth: androidx.compose.ui.unit.Dp = 240.dp,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -59,9 +59,11 @@ fun TradesWidget(
 
     val lazyListState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
-    // Мин. ширина для ручки ресайза: измеряем текст строки сделки
+    // Мин. ширина для слайдера настроек: измеряем текст строки сделки
     val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val density = androidx.compose.ui.platform.LocalDensity.current
+    var measuredMinWidth by remember { mutableStateOf(120.dp) }
+    val panelWidthDp by viewModel.panelWidthDp.collectAsState()
 
     // Автоскролл живёт, пока пользователь у вершины списка. Выключаем только
     // на РУЧНОЙ прокрутке вниз (программная вставка новых сделок сверху
@@ -85,6 +87,11 @@ fun TradesWidget(
             providers = providers,
             currentProviderId = currentProviderId,
             contractType = contractType,
+            panelWidthDp = panelWidthDp ?: maxPanelWidth.value,
+            minPanelWidthDp = measuredMinWidth.value,
+            maxPanelWidthDp = maxPanelWidth.value,
+            onPanelWidthDpChanged = { viewModel.setPanelWidth(it) },
+            onPanelWidthDpChangeFinished = { viewModel.persistPanelWidth() },
             onProviderChanged = onProviderChanged,
             onContractTypeChanged = { viewModel.setContractType(it) },
             onSymbolChanged = onSymbolChanged,
@@ -131,9 +138,9 @@ fun TradesWidget(
             is TradesState.Connected -> {
                 val visibleTrades = viewModel.visibleTrades(currentState.trades)
 
-                // Мин. ширина панели по text measure: время + цена + кол-во
+                // Минимум для слайдера ширины: время + цена + кол-во
                 // + 4dp между колонками + внешние отступы 8dp с каждой стороны
-                if (onMinContentWidth != null && visibleTrades.isNotEmpty()) {
+                if (visibleTrades.isNotEmpty()) {
                     val maxQty = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
                     val maxPrice = visibleTrades.maxOfOrNull { it.price } ?: 0.0
                     val sampleStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
@@ -153,7 +160,7 @@ fun TradesWidget(
                     ).size.width
                     val gapsPx = with(density) { 4.dp.toPx() * 2 + 8.dp.toPx() * 2 }
                     val minWidth = with(density) { (wTime + wPrice + wQty).toFloat().plus(gapsPx).toDp() }
-                    LaunchedEffect(minWidth) { onMinContentWidth(minWidth) }
+                    LaunchedEffect(minWidth) { measuredMinWidth = minWidth }
                 }
 
                 if (visibleTrades.isEmpty()) {
