@@ -72,6 +72,8 @@ fun OrderPlacementPanel(
     pnlPercent: String?,
     pnlUsdt: String?,
     pnlUp: Boolean,
+    /** Маржа под ордер: «Margin ≈ X · Free Y · Max Z (Nx)» (null — нет данных). */
+    marginText: String? = null,
     /** Есть открытая позиция Long/Short — для лейблов reduce-only лимиток. */
     hasLongPosition: Boolean = false,
     hasShortPosition: Boolean = false,
@@ -277,6 +279,19 @@ fun OrderPlacementPanel(
                 ) {
                     if (askReady) onOrderIntent(OrderIntent.BestAskSell(symbol, bestAskPrice, orderQuantity.toDoubleOrNull() ?: 0.0))
                 }
+            }
+
+            // Маржа под ордер: занятая (выбранная qty/плечо) и свободная
+            marginText?.let { text ->
+                Text(
+                    text = text,
+                    color = labelColor,
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
         }
     }

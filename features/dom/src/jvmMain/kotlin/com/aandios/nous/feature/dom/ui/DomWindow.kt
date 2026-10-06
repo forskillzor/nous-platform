@@ -110,6 +110,39 @@ fun DomWindow(
         domPositionPnl(it, markPrice, symbolTickSize ?: 0.01, contractSize, isInverse)
     }
 
+    // Маржа под ордер: занятая (qty/плечо) + свободная + максимум по балансу
+    val domBalances by domViewModel.balances.collectAsState()
+    val marginCurrency = if (isInverse) {
+        symbolInfo?.baseAsset?.uppercase() ?: "USDT"
+    } else {
+        "USDT"
+    }
+    val availableMargin = domBalances
+        .firstOrNull { it.currency.equals(marginCurrency, true) }
+        ?.amount?.toDoubleOrNull()
+    val marginText = availableMargin?.let { available ->
+        val lev = (leverage ?: 1).coerceAtLeast(1)
+        val qty = orderQuantity.toDoubleOrNull()?.takeIf { it > 0.0 } ?: symbolInfo?.minQty
+        val price = selectedPrice ?: markPrice.takeIf { it > 0.0 }
+        val freeText = "${formatter.formatVolumeFull(available)} $marginCurrency"
+        if (price != null && qty != null && qty > 0.0) {
+            if (isInverse) {
+                // COIN-M: qty в контрактах, маржа = qty * contractSize / leverage (USD)
+                val marginUsd = qty * contractSize / lev
+                val maxContracts = available * lev * price / contractSize
+                "Margin ≈ ${formatter.formatVolumeFull(marginUsd)} USDT · Free $freeText · " +
+                    "Max ${kotlin.math.floor(maxContracts)} cont (${lev}x)"
+            } else {
+                val margin = price * qty / lev
+                val maxNotional = available * lev
+                "Margin ≈ ${formatter.formatVolumeFull(margin)} USDT · Free $freeText · " +
+                    "Max ${formatter.formatVolumeFull(maxNotional)} USDT (${lev}x)"
+            }
+        } else {
+            "Free $freeText (${lev}x)"
+        }
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         DomHeader(
             domOptions = domOptions,
@@ -184,6 +217,7 @@ fun DomWindow(
             pnlPercent = pnl?.percent,
             pnlUsdt = pnl?.usdt,
             pnlUp = pnl?.up ?: true,
+            marginText = marginText,
             hasLongPosition = positions.any { it.side == TradeSide.BUY },
             hasShortPosition = positions.any { it.side == TradeSide.SELL },
             onReduceOnlyChanged = { domViewModel.setReduceOnly(it) },

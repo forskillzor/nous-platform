@@ -10,6 +10,7 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.adapters.replaceOrder
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
+import com.aandios.nous.api.market.model.Balance
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
@@ -123,6 +124,11 @@ class ChartViewModel(
     /** Живые обновления ордеров активного адаптера (отмена/исполнение). */
     private var ordersLiveJob: Job? = null
     private var positionsLiveJob: Job? = null
+    private var balancesLiveJob: Job? = null
+
+    /** Балансы активного адаптера (paper или live) — маржа/свободно. */
+    private val _balances = MutableStateFlow<List<Balance>>(emptyList())
+    val balances: StateFlow<List<Balance>> = _balances.asStateFlow()
     private var ordersLiveAdapter: TradingAdapter? = null
 
     // Уведомления chart-трейдинга: snackbar-стек поверх графика (ChartWindow)
@@ -449,8 +455,10 @@ class ChartViewModel(
         setTradingEnabled(false)
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
+        balancesLiveJob?.cancel()
         ordersLiveJob = null
         positionsLiveJob = null
+        balancesLiveJob = null
         ordersLiveAdapter = null
         refreshOpenOrders()
         refreshPaperFees(_state.value.currentSymbol)
@@ -508,6 +516,8 @@ class ChartViewModel(
             _openOrders.value = orders.filter { it.symbol.uppercase() == symbol.uppercase() }
             val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
             _positions.value = positions.filter { it.symbol.equals(symbol, ignoreCase = true) }
+            // Балансы активного адаптера — для строки маржи под панелью
+            runCatching { adapter.getBalances() }.onSuccess { _balances.value = it }
         }
     }
 
@@ -519,6 +529,7 @@ class ChartViewModel(
         if (ordersLiveJob?.isActive == true && ordersLiveAdapter === adapter) return
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
+        balancesLiveJob?.cancel()
         ordersLiveAdapter = adapter
         ordersLiveJob = adapter.subscribeToOrders()?.let { flow ->
             viewModelScope.launch {
@@ -530,11 +541,24 @@ class ChartViewModel(
                 flow.collect { update -> onPositionUpdate(update) }
             }
         }
+        balancesLiveJob = adapter.subscribeToBalances()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { update -> onBalanceUpdate(update) }
+            }
+        }
         // Уведомления движка (причины отказов ордеров) — в snackbar
         adapter.notices()?.let { flow ->
             viewModelScope.launch {
                 flow.collect { text -> notify(text) }
             }
+        }
+    }
+
+    private fun onBalanceUpdate(update: Balance) {
+        _balances.value = if (_balances.value.any { it.currency.equals(update.currency, true) }) {
+            _balances.value.map { if (it.currency.equals(update.currency, true)) update else it }
+        } else {
+            _balances.value + update
         }
     }
 

@@ -38,7 +38,6 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
-import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
@@ -158,20 +157,42 @@ private fun ChartWindowContent(
     // Свёрнутая (компактная строка) / развёрнутая панель chart trading — персист
     val panelCollapsed by chartViewModel.panelCollapsed.collectAsState()
 
-    // Paper: ориентир по марже и свободному балансу с учётом плеча
-    val paperBalances by PaperTrading.adapter.balancesFlow.collectAsState()
-    val paperAvailable = paperBalances.firstOrNull { it.currency == "USDT" }?.amount?.toDoubleOrNull()
+    // Маржа под ордер и свободные средства — балансы активного адаптера
+    // (paper или live): для USDT-M — USDT, для COIN-M — монета маржи.
+    val chartBalances by chartViewModel.balances.collectAsState()
+    val marginSymbolInfo = uiState.currentSymbolInfo
+    val inverseMargin = marginSymbolInfo?.isInverse == true
+    val contractSizeMargin = marginSymbolInfo?.contractSize ?: 1.0
     val leverageForInfo = (chartLeverage ?: 1).coerceAtLeast(1)
-    val marginInfo = if (paperEnabled && paperAvailable != null) {
-        val maxNotional = paperAvailable * leverageForInfo
-        val base = "Free ${uiState.currentSymbolFormatter.formatVolumeFull(paperAvailable)} · " +
-            "Max ${uiState.currentSymbolFormatter.formatVolumeFull(maxNotional)} USDT (${leverageForInfo}x)"
+    val marginCurrency = if (inverseMargin) {
+        marginSymbolInfo?.baseAsset?.uppercase() ?: "USDT"
+    } else {
+        "USDT"
+    }
+    val availableMargin = chartBalances
+        .firstOrNull { it.currency.equals(marginCurrency, true) }
+        ?.amount?.toDoubleOrNull()
+    val marginInfo = availableMargin?.let { available ->
+        val freeText = "${uiState.currentSymbolFormatter.formatVolumeFull(available)} $marginCurrency"
         val price = chartViewModel.chartLastPrice()
         val qty = tradingQuantity ?: uiState.currentSymbolInfo?.minQty
-        if (price != null && qty != null && price > 0 && qty > 0) {
-            "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(price * qty / leverageForInfo)} · $base"
-        } else base
-    } else null
+        if (price != null && price > 0.0 && qty != null && qty > 0.0) {
+            if (inverseMargin) {
+                // COIN-M: qty в контрактах, маржа = qty * contractSize / leverage (USD)
+                val marginUsd = qty * contractSizeMargin / leverageForInfo
+                val maxContracts = available * leverageForInfo * price / contractSizeMargin
+                "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(marginUsd)} USDT · " +
+                    "Free $freeText · Max ${kotlin.math.floor(maxContracts)} cont (${leverageForInfo}x)"
+            } else {
+                val margin = price * qty / leverageForInfo
+                val maxNotional = available * leverageForInfo
+                "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(margin)} USDT · " +
+                    "Free $freeText · Max ${uiState.currentSymbolFormatter.formatVolumeFull(maxNotional)} USDT (${leverageForInfo}x)"
+            }
+        } else {
+            "Free $freeText (${leverageForInfo}x)"
+        }
+    }
 
     // PnL текущей позиции: % от изменения цены, изменение цены, USDT (живая цена)
     val pnlPosition = tradingPositions.firstOrNull()

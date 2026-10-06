@@ -11,6 +11,7 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
 import com.aandios.nous.api.market.adapters.replaceOrder
+import com.aandios.nous.api.market.model.Balance
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
@@ -97,12 +98,17 @@ class DomViewModel(
     private val _positions = MutableStateFlow<List<com.aandios.nous.api.market.model.trading.Position>>(emptyList())
     val positions: StateFlow<List<com.aandios.nous.api.market.model.trading.Position>> = _positions.asStateFlow()
 
+    /** Балансы активного адаптера — для строки маржи под панелью ордеров. */
+    private val _balances = MutableStateFlow<List<Balance>>(emptyList())
+    val balances: StateFlow<List<Balance>> = _balances.asStateFlow()
+
     /** Живая mark-цена символа (для PnL позиции в лесенке). */
     private val _markPrice = MutableStateFlow(0.0)
     val markPrice: StateFlow<Double> = _markPrice.asStateFlow()
 
     private var ordersLiveJob: Job? = null
     private var positionsLiveJob: Job? = null
+    private var balancesLiveJob: Job? = null
     private var liveAdapter: com.aandios.nous.api.market.adapters.TradingAdapter? = null
 
     /** Плечо для ордеров DOM (null — дефолт биржи/1x в paper). */
@@ -513,8 +519,10 @@ class DomViewModel(
         // Адаптер сменился — переподписка и перечитка ордеров/позиций
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
+        balancesLiveJob?.cancel()
         ordersLiveJob = null
         positionsLiveJob = null
+        balancesLiveJob = null
         liveAdapter = null
         ensureNoticesSubscription()
         refreshTradingState()
@@ -615,6 +623,8 @@ class DomViewModel(
             _orders.value = orders.filter { it.symbol.equals(symbol, ignoreCase = true) }
             val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
             _positions.value = positions.filter { it.symbol.equals(symbol, ignoreCase = true) }
+            // Балансы — строка маржи под панелью ордеров
+            runCatching { adapter.getBalances() }.onSuccess { _balances.value = it }
         }
     }
 
@@ -622,6 +632,7 @@ class DomViewModel(
         if (ordersLiveJob?.isActive == true && liveAdapter === adapter) return
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
+        balancesLiveJob?.cancel()
         liveAdapter = adapter
         ordersLiveJob = adapter.subscribeToOrders()?.let { flow ->
             viewModelScope.launch {
@@ -652,6 +663,20 @@ class DomViewModel(
                     }
                 }
             }
+        }
+        // Балансы — для строки маржи под панелью ордеров
+        balancesLiveJob = adapter.subscribeToBalances()?.let { flow ->
+            viewModelScope.launch {
+                flow.collect { update -> onBalanceUpdate(update) }
+            }
+        }
+    }
+
+    private fun onBalanceUpdate(update: Balance) {
+        _balances.value = if (_balances.value.any { it.currency.equals(update.currency, true) }) {
+            _balances.value.map { if (it.currency.equals(update.currency, true)) update else it }
+        } else {
+            _balances.value + update
         }
     }
 
