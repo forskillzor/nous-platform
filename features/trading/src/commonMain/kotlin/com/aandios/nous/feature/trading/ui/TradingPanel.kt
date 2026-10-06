@@ -185,7 +185,7 @@ fun TradingPanel(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            TradingTab.values().forEach { t ->
+            TradingTab.entries.forEach { t ->
                 Text(
                     text = "${t.label} (${tabCounts[t] ?: 0})",
                     color = if (t == tab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
