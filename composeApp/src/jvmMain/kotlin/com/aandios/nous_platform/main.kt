@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.awt.v2.SwingWindow
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.res.loadImageBitmap
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -16,6 +18,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
+import com.aandios.nous.core.ui.window.applyWindowIcon
 import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.TabManager
@@ -39,6 +42,17 @@ fun main() {
         val dragBus: TabDragBus = koinInject()
         val terminalStateViewModel: TerminalStateViewModel = koinInject()
 
+        val appIcon = remember {
+            try {
+                object {}.javaClass.classLoader
+                    .getResourceAsStream("nous-logo.png")
+                    ?.use { stream -> BitmapPainter(loadImageBitmap(stream)) }
+            } catch (e: Throwable) {
+                println("⚠️ Не удалось загрузить иконку окна: ${e.message}")
+                null
+            }
+        }
+
         // Восстановление окон и вкладок
         LaunchedEffect(Unit) { windowManager.restoreSessions() }
 
@@ -61,12 +75,16 @@ fun main() {
                         // Закрытие последнего окна завершает приложение
                         if (!windowManager.closeSession(session.id)) exitApplication()
                     },
-                    title = "Nous Platform • v 0.1",
+                    title = "Nous Platform pre-alpha-0.1.0",
                     state = wsState,
                     // Выполняется ДО показа окна: AWT-фрейм получает тёмный фон
                     // до создания нативного peer — при ресайзе заливка тёмная,
                     // без белых вспышек.
-                    init = { w -> applyWindowDarkBackground(w) },
+                    init = { w ->
+                        applyWindowDarkBackground(w)
+                        applyWindowIcon(w, "nous-logo.png")
+                    },
+                    icon = appIcon
                 ) {
                     // Тёмный заголовок окна (Windows, DWM); no-op на других ОС.
                     LaunchedEffect(Unit) { applyWindowsDarkTitleBar(window) }

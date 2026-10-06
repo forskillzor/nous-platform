@@ -88,8 +88,8 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.aandios.nous-platform"
-            packageVersion = version.toString()
+            packageName = "Nous Platform"
+            packageVersion = "0.1.0"
 
             buildTypes.release.proguard {
                 isEnabled = false
@@ -156,10 +156,12 @@ compose.desktop {
             windows {
                 menu = true
                 includeAllModules = true
+                shortcut = true
+                iconFile.set(project.file("src/jvmMain/resources/icon.ico"))
 //                console = true
             }
             macOS {
-                dmgPackageVersion = "1.0.0"
+//                dmgPackageVersion = "1.0.0"
             }
             linux {
                 shortcut = true

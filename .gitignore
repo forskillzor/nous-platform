@@ -26,3 +26,4 @@ node_modules/
 /share-files/order_placement.jpg.jpeg
 /share-files/
 /.env
+/collect.js

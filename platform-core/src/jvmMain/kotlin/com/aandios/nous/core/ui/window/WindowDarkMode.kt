@@ -11,6 +11,8 @@ import com.sun.jna.Native
 import com.sun.jna.Pointer
 import com.sun.jna.ptr.IntByReference
 import java.awt.Color
+import java.awt.image.BufferedImage
+import javax.imageio.ImageIO
 
 private val isWindows: Boolean
     get() = System.getProperty("os.name").lowercase().contains("win")
@@ -35,6 +37,20 @@ fun applyWindowDarkBackground(window: ComposeWindow, darkRgb: Int = 0x0A0A0A) {
     window.background = awtColor
     window.rootPane.background = awtColor
     window.contentPane.background = awtColor
+}
+
+fun applyWindowIcon(window: ComposeWindow, resourcePath: String) {
+    try {
+        val stream = object {}.javaClass.classLoader.getResourceAsStream(resourcePath)
+            ?: Thread.currentThread().contextClassLoader.getResourceAsStream(resourcePath)
+            ?: return
+        stream.use { input ->
+            val image: BufferedImage = ImageIO.read(input) ?: return
+            window.iconImage = image
+        }
+    } catch (e: Throwable) {
+        println("⚠️ Не удалось установить иконку окна: ${e.message}")
+    }
 }
 
 /**
