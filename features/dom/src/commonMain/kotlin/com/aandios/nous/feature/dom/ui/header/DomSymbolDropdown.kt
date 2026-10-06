@@ -31,6 +31,9 @@ fun DomSymbolDropdown(
         onSymbolSelected = { sym ->
             symbolMap[sym]?.let { onSymbolChanged(it) }
         },
+        // Компактный триггер «Sym SOLUSDT ▾» вместо тяжёлой обёртки с label
+        showLabel = false,
+        labelPrefix = "Sym",
         modifier = modifier,
     )
 }

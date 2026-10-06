@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
+import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.feature.dom.domain.*
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.domain.model.DepthLimit
@@ -78,6 +79,9 @@ private fun ExpandedDomHeader(
         tonalElevation = 1.dp,
         modifier = modifier.fillMaxWidth()
     ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        // Узкие панели: агрегация переезжает в третью тонкую строку
+        val narrow = maxWidth < 360.dp
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -148,16 +152,62 @@ private fun ExpandedDomHeader(
                     onSelect = { onDomOptionsChanged(domOptions.copy(depth = it)) },
                     menuWidth = 90.dp,
                 )
-                HeaderSelect(
-                    label = "Agg",
-                    current = domOptions.aggregation,
-                    items = AggregationLevel.all(),
-                    display = { it.displayName(symbolTickSize) },
-                    onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
-                    menuWidth = 140.dp,
-                )
+                if (!narrow) {
+                    AggHeaderSelect(
+                        current = domOptions.aggregation,
+                        symbolTickSize = symbolTickSize,
+                        onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
+                    )
+                }
+            }
+            if (narrow) {
+                // Узкая панель: агрегация в третьей строке
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AggHeaderSelect(
+                        current = domOptions.aggregation,
+                        symbolTickSize = symbolTickSize,
+                        onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
+                    )
+                    Spacer(Modifier.weight(1f))
+                }
             }
         }
+        }
+    }
+}
+
+/**
+ * Селект агрегации: базовый уровень показываем просто тиком («0.01») —
+ * и так ясно, что минимальный шаг это базовый; остальные — «10× (0.1)».
+ */
+@Composable
+private fun AggHeaderSelect(
+    current: AggregationLevel,
+    symbolTickSize: Double?,
+    onSelect: (AggregationLevel) -> Unit,
+) {
+    HeaderSelect(
+        label = "Agg",
+        current = current,
+        items = AggregationLevel.all(),
+        display = { aggregationLabel(it, symbolTickSize) },
+        onSelect = onSelect,
+        menuWidth = 140.dp,
+    )
+}
+
+private fun aggregationLabel(level: AggregationLevel, baseTickSize: Double?): String {
+    val tick = baseTickSize
+        ?.let { level.effectiveTickSize(it) }
+        ?.takeIf { it > 0.0 }
+        ?.let { plainDecimalString(it) }
+    return when (level) {
+        AggregationLevel.BaseTick -> tick ?: "1x"
+        AggregationLevel.TenTick -> "10×" + (tick?.let { " ($it)" } ?: "")
+        AggregationLevel.HundredTick -> "100×" + (tick?.let { " ($it)" } ?: "")
     }
 }
 

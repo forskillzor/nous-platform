@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,6 +52,8 @@ fun SymbolSearchDropdown(
     symbolsWithFootprint: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
     showLabel: Boolean = true,
+    /** Короткий префикс перед тикером в триггере ("Sym") — компактные хедеры. */
+    labelPrefix: String = "",
 ) {
     var expanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -78,13 +81,25 @@ fun SymbolSearchDropdown(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.clickable { expanded = true }
             ) {
+                if (labelPrefix.isNotEmpty()) {
+                    Text(
+                        text = labelPrefix,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                    Spacer(Modifier.width(4.dp))
+                }
                 Text(
                     text = currentSymbol,
                     color = MaterialTheme.colorScheme.inverseOnSurface,
                     fontSize = MaterialTheme.typography.labelSmall.fontSize,
                     fontWeight = FontWeight.Medium,
+                    fontFamily = FontFamily.Monospace,
                     letterSpacing = 0.2.sp,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(4.dp))
                 Icon(
