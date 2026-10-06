@@ -450,16 +450,15 @@ private fun RenderNode(
                             key(layoutSignature(child)) {
                                 RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, resizableSpecsPx = resizableSpecsPx, resizableWidthsPx = resizableWidthsPx, panelContent = panelContent)
                             }
-                            // Ручки: между двумя FLEX-поддеревьями (ratio) и слева
-                            // от ресайзабельной «фиксированной» панели (Trades) —
-                            // тянем только её ширину, flex-сосед забирает остаток.
+                            // Ручки: между двумя FLEX-поддеревьями (ratio) и у ЛЕВОГО
+                            // края ресайзабельной «фиксированной» панели (Trades) —
+                            // тянем только её ширину, остаток забирает flex выше
+                            // по дереву (chart), соседи слева смещаются.
                             val resRightId = (node.children.getOrNull(index + 1) as? LayoutNode.Leaf)?.panelId
                             val resRightSpec = resRightId?.let { resizableSpecsPx[it] }
-                            val resLeftId = (child as? LayoutNode.Leaf)?.panelId
-                            val resLeftSpec = resLeftId?.let { resizableSpecsPx[it] }
 
                             when {
-                                resRightSpec != null && resRightId != null && isFlex[index] -> {
+                                resRightSpec != null && resRightId != null -> {
                                     SplitHandle(
                                         direction = LayoutNode.Direction.HORIZONTAL,
                                         parentSize = spanPx,
@@ -471,24 +470,6 @@ private fun RenderNode(
                                             val newWidth = (current - dragPx).coerceIn(minPx, maxPx)
                                             if (newWidth != current) {
                                                 resizableWidthsPx[resRightId] = newWidth
-                                                onRatioChange?.invoke()
-                                            }
-                                        }
-                                    )
-                                }
-                                resLeftSpec != null && resLeftId != null &&
-                                    index < node.children.lastIndex && isFlex[index + 1] -> {
-                                    SplitHandle(
-                                        direction = LayoutNode.Direction.HORIZONTAL,
-                                        parentSize = spanPx,
-                                        resizeInPixels = true,
-                                        onResizeStart = onRatioChangeStart,
-                                        onResize = { dragPx ->
-                                            val (minPx, maxPx) = resLeftSpec
-                                            val current = resizableWidthsPx[resLeftId] ?: maxPx
-                                            val newWidth = (current + dragPx).coerceIn(minPx, maxPx)
-                                            if (newWidth != current) {
-                                                resizableWidthsPx[resLeftId] = newWidth
                                                 onRatioChange?.invoke()
                                             }
                                         }
