@@ -215,6 +215,7 @@ class DomViewModel(
         if (oldOptions != newOptions) {
             val aggChanged = oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
             val contractTypeChanged = oldOptions.contractType != newOptions.contractType
+            val collapsedChanged = oldOptions.collapsed != newOptions.collapsed
             _domOptions.value = newOptions
             updateAggMultiplier()
 
@@ -252,6 +253,13 @@ class DomViewModel(
             }
             if (aggChanged && !subscriptionChanged) {
                 rebuildLevelsFromWindow()
+            }
+            if (collapsedChanged) {
+                stateStore?.let { store ->
+                    viewModelScope.launch {
+                        store.putString(collapsedStoreKey(), if (newOptions.collapsed) "1" else "0")
+                    }
+                }
             }
             // Символ/провайдер могли смениться — перечитать ордера/позиции
             refreshTradingState()
@@ -431,6 +439,7 @@ class DomViewModel(
     fun updateOrderQuantity(quantity: String) {
         _orderQuantity.value = quantity
         qtyUserEdited = true
+        persistPanelSettings()
     }
 
     /** Пользователь правил qty — не перетираем его minQty инструмента. */
@@ -438,18 +447,24 @@ class DomViewModel(
 
     fun setReduceOnly(reduceOnly: Boolean) {
         _reduceOnly.value = reduceOnly
+        persistPanelSettings()
     }
 
     fun setLimitOrderType(orderType: OrderType) {
         _limitOrderType.value = orderType
+        persistPanelSettings()
     }
 
     fun setLeverage(leverage: Int?) {
         _leverage.value = leverage?.takeIf { it > 0 }
+        persistPanelSettings()
     }
 
     fun setMarginMode(mode: Int) {
-        if (mode == 1 || mode == 2) _marginMode.value = mode
+        if (mode == 1 || mode == 2) {
+            _marginMode.value = mode
+            persistPanelSettings()
+        }
     }
 
     /** Confirm: ON — выбор цены кликом и подтверждение ордеров. */
@@ -459,6 +474,7 @@ class DomViewModel(
             _selectedPrice.value = null
             cancelPendingIntent()
         }
+        persistPanelSettings()
     }
 
     fun confirmPendingIntent() {
@@ -588,6 +604,24 @@ class DomViewModel(
                 _isTradingEnabled.value = tradingEnabled
                 if (tradingEnabled) refreshTradingState()
             }
+            // Настройки OrderPlacementPanel этой панели (как у chart)
+            store.getString(confirmStoreKey())?.let { _confirmOrders.value = it == "1" }
+            store.getString(reduceOnlyStoreKey())?.let { _reduceOnly.value = it == "1" }
+            store.getString(orderTypeStoreKey())
+                ?.let { raw -> runCatching { OrderType.valueOf(raw) }.getOrNull() }
+                ?.let { _limitOrderType.value = it }
+            store.getString(leverageStoreKey())?.toIntOrNull()?.takeIf { it > 0 }
+                ?.let { _leverage.value = it }
+            store.getString(marginStoreKey())?.toIntOrNull()?.takeIf { it == 1 || it == 2 }
+                ?.let { _marginMode.value = it }
+            store.getString(qtyStoreKey())?.takeIf { it.isNotBlank() }?.let {
+                _orderQuantity.value = it
+                // Восстановленный qty — выбор пользователя: minQty его не перетирает
+                qtyUserEdited = true
+            }
+            if (store.getString(collapsedStoreKey()) == "1" && !_domOptions.value.collapsed) {
+                _domOptions.value = _domOptions.value.copy(collapsed = true)
+            }
         }
     }
 
@@ -598,6 +632,39 @@ class DomViewModel(
     private fun providerStoreKey(): String = "dom_provider_${panelKey ?: "default"}"
 
     private fun contractTypeStoreKey(): String = "dom_contract_${panelKey ?: "default"}"
+
+    private fun confirmStoreKey(): String = "dom_confirm_${panelKey ?: "default"}"
+
+    private fun reduceOnlyStoreKey(): String = "dom_reduce_${panelKey ?: "default"}"
+
+    private fun orderTypeStoreKey(): String = "dom_order_type_${panelKey ?: "default"}"
+
+    private fun leverageStoreKey(): String = "dom_leverage_${panelKey ?: "default"}"
+
+    private fun marginStoreKey(): String = "dom_margin_${panelKey ?: "default"}"
+
+    private fun qtyStoreKey(): String = "dom_qty_${panelKey ?: "default"}"
+
+    private fun collapsedStoreKey(): String = "dom_collapsed_${panelKey ?: "default"}"
+
+    /** Сохранить настройки OrderPlacementPanel этой DOM-панели. */
+    private fun persistPanelSettings() {
+        val store = stateStore ?: return
+        val confirm = _confirmOrders.value
+        val reduceOnly = _reduceOnly.value
+        val orderType = _limitOrderType.value
+        val leverage = _leverage.value
+        val marginMode = _marginMode.value
+        val qty = _orderQuantity.value
+        viewModelScope.launch {
+            store.putString(confirmStoreKey(), if (confirm) "1" else "0")
+            store.putString(reduceOnlyStoreKey(), if (reduceOnly) "1" else "0")
+            store.putString(orderTypeStoreKey(), orderType.name)
+            store.putString(leverageStoreKey(), leverage?.toString() ?: "")
+            store.putString(marginStoreKey(), marginMode.toString())
+            store.putString(qtyStoreKey(), qty)
+        }
+    }
 
     /** Подписка на уведомления активного адаптера (отказы движка). */
     private fun ensureNoticesSubscription() {

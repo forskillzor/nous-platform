@@ -58,7 +58,9 @@ Mind this when writing paths.
   `PanelConfig`, so `ChartWindow` only restores the provider via
   `ChartViewModel.restoreProvider()`.
 - DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`,
-  `dom_contract_{panelId}` (USDT_M / COIN_M).
+  `dom_contract_{panelId}` (USDT_M / COIN_M) and the order panel settings
+  persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
+  `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId).
 - Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`),
   `trading_provider`, `trading_contract_type` (global keys).
 - Trades panel: `trades_provider` (global key).

@@ -19,7 +19,9 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.BookTicker
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.orderbook.BookWindowLevels
+import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.orderbook.PriceUpdate
+import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.domain.DomOptions
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
@@ -52,19 +54,20 @@ class DomViewModelTest {
     private lateinit var fakeDomAdapter: FakeDomAdapter
     private lateinit var fakeBookTickerAdapter: FakeBookTickerAdapter
     private lateinit var fakeSymbolInfoAdapter: FakeSymbolInfoAdapter
+    private lateinit var fakeProvider: FakeDomProvider
 
     @BeforeTest
     fun setUp() {
         fakeDomAdapter = FakeDomAdapter()
         fakeBookTickerAdapter = FakeBookTickerAdapter()
         fakeSymbolInfoAdapter = FakeSymbolInfoAdapter()
-        val provider = FakeDomProvider(
+        fakeProvider = FakeDomProvider(
             domAdapter = fakeDomAdapter,
             bookTickerAdapter = fakeBookTickerAdapter,
             symbolInfoAdapter = fakeSymbolInfoAdapter,
         )
         viewModel = DomViewModel(
-            providerRegistry = ProviderRegistry(listOf(provider)),
+            providerRegistry = ProviderRegistry(listOf(fakeProvider)),
             coroutineDispatcher = testDispatcher,
         )
     }
@@ -495,6 +498,53 @@ class DomViewModelTest {
         // Устаревший ответ AAA не должен перетереть qty/placeholder нового символа
         assertEquals("0.5", viewModel.orderQuantity.first())
         assertEquals("0.5", viewModel.symbolMinQty.first())
+    }
+
+    @Test
+    fun `order panel settings persist per panel and restore`() = testScope.runTest {
+        val store = FakeStateStore()
+        val vm = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(fakeProvider)),
+            coroutineDispatcher = testDispatcher,
+            stateStore = store,
+        )
+        vm.attachPanel("panel-1")
+        advanceUntilIdle()
+
+        vm.setConfirmOrders(true)
+        vm.setReduceOnly(true)
+        vm.setLimitOrderType(OrderType.IOC)
+        vm.setLeverage(10)
+        vm.setMarginMode(1)
+        vm.updateOrderQuantity("2.5")
+        vm.updateDomOptions(vm.domOptions.value.copy(collapsed = true))
+        advanceUntilIdle()
+
+        // Новый экземпляр панели (рестарт) читает сохранённые настройки
+        val restored = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(fakeProvider)),
+            coroutineDispatcher = testDispatcher,
+            stateStore = store,
+        )
+        restored.attachPanel("panel-1")
+        advanceUntilIdle()
+
+        assertTrue(restored.confirmOrders.first())
+        assertTrue(restored.reduceOnly.first())
+        assertEquals(OrderType.IOC, restored.limitOrderType.first())
+        assertEquals(10, restored.leverage.first())
+        assertEquals(1, restored.marginMode.first())
+        assertEquals("2.5", restored.orderQuantity.first())
+        assertTrue(restored.domOptions.value.collapsed)
+    }
+}
+
+/** Простейший StateStore в памяти для тестов персиста. */
+class FakeStateStore : StateStore {
+    val data = mutableMapOf<String, String>()
+    override suspend fun getString(key: String): String? = data[key]
+    override suspend fun putString(key: String, value: String) {
+        data[key] = value
     }
 }
 
