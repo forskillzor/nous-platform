@@ -25,3 +25,4 @@ node_modules/
 /src.txt
 /share-files/order_placement.jpg.jpeg
 /share-files/
+/.env
