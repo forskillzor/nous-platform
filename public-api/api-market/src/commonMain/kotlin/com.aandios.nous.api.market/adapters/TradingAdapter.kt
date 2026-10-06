@@ -83,4 +83,10 @@ interface TradingAdapter : MarketAdapter {
      * (нет ключей/эндпоинта): paper-движок использует 0%.
      */
     suspend fun getFeeRates(symbol: String): FeeRates? = null
+
+    /**
+     * Реализованный PnL за текущий торговый день (для инфо-строки панели).
+     * null — недоступно: UI показывает «-».
+     */
+    suspend fun getDailyRealizedPnl(): Double? = null
 }

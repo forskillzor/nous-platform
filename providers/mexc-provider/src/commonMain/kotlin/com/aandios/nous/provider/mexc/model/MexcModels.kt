@@ -185,12 +185,21 @@ data class MexcContractDetail(
 ) {
     fun toSymbolInfo(): SymbolInfo {
         val cs = contractSize.takeIf { it > 0.0 } ?: 1.0
+        // Inverse (COIN-M, напр. BTC_USD): settleCoin — монета, qty в контрактах,
+        // contractSize — USD-номинал. Linear (USDT-M/USDC-M) — qty в базовом активе.
+        val inverse = settleCoin.isNotBlank() && settleCoin.uppercase() !in STABLE_MARGIN_ASSETS
+        // Linear: шаг/минимум в базовом активе (volUnit * contractSize).
+        // Inverse: как у MEXC — в контрактах.
+        val step = if (inverse) {
+            volUnit.takeIf { it > 0 } ?: 1.0
+        } else {
+            (volUnit.takeIf { it > 0 } ?: 0.001) * cs
+        }
         return SymbolInfo(
             symbol = fromMexcSymbol(symbol), // единый формат платформы (BTCUSDT)
             tickSize = priceUnit.takeIf { it > 0 } ?: 0.01,
-            // Шаг и минимум — в базовом активе (шаг контракта * размер контракта)
-            stepSize = (volUnit.takeIf { it > 0 } ?: 0.001) * cs,
-            minQty = minVol * cs,
+            stepSize = step,
+            minQty = if (inverse) minVol else minVol * cs,
             minNotional = 0.0, // у MEXC нет фильтра минимального notionла
             status = if (state == 0) "TRADING" else "HALT",
             baseAsset = baseCoin,
@@ -208,6 +217,9 @@ data class MexcDetailResponse(
     val code: Int = 0,
     val data: List<MexcContractDetail> = emptyList(),
 )
+
+/** Стейбл-маржа: всё остальное (BTC/ETH/…) — inverse (COIN-M). */
+private val STABLE_MARGIN_ASSETS = setOf("USDT", "USDC", "USD1", "DAI", "USD")
 
 // ── WS: push-конверты ───────────────────────────────────────────────────────
 

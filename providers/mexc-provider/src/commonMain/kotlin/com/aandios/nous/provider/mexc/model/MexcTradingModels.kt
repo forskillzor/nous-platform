@@ -44,6 +44,8 @@ data class MexcAsset(
     val frozenBalance: Double = 0.0,
     val availableBalance: Double = 0.0,
     val cashBalance: Double = 0.0,
+    val equity: Double = 0.0,
+    val unrealized: Double = 0.0,
     val bonus: Double = 0.0,
 ) {
     fun toBalance(): Balance = Balance(
@@ -51,8 +53,8 @@ data class MexcAsset(
         amount = availableBalance.toString(),
         frozen = frozenBalance.toString(),
         margin = positionMargin.toString(),
-        equity = cashBalance.toString(),
-        unrealizedPnl = "0",
+        equity = equity.toString(),
+        unrealizedPnl = unrealized.toString(),
     )
 }
 
@@ -153,6 +155,47 @@ data class MexcOrderDeal(
         feeCurrency = feeCurrency,
         pnl = profit,
         timestamp = timestamp,
+    )
+}
+
+// ── История ордеров (history_orders; symbol необязателен) ───────────────────
+
+/**
+ * Ордер из `GET api/v1/private/order/list/history_orders`: используется для
+ * History-таба (когда symbol не задан) и для дневного реализованного PnL.
+ */
+@Serializable
+data class MexcHistoryOrder(
+    val orderId: Long = 0,
+    val symbol: String = "",
+    val price: Double = 0.0,
+    val vol: Double = 0.0,
+    val dealAvgPrice: Double = 0.0,
+    val dealVol: Double = 0.0,
+    val side: Int = 0, // 1 open long, 2 close short, 3 open short, 4 close long
+    val orderType: Int = 0,
+    val state: Int = 0,
+    val takerFee: Double = 0.0,
+    val makerFee: Double = 0.0,
+    val profit: Double = 0.0,
+    val feeCurrency: String = "",
+    val externalOid: String? = null,
+    val createTime: Long = 0,
+) {
+    /** Реализованный PnL ордера за вычетом комиссий (для дневного итога). */
+    val netProfit: Double get() = profit - takerFee - makerFee
+
+    fun toTradeFill(): TradeFill = TradeFill(
+        id = orderId.toString(),
+        orderId = orderId.toString(),
+        symbol = fromMexcSymbol(symbol),
+        side = if (side == 1 || side == 3) OrderSide.BUY else OrderSide.SELL,
+        price = if (dealAvgPrice > 0.0) dealAvgPrice else price,
+        quantity = if (dealVol > 0.0) dealVol else vol,
+        fee = takerFee + makerFee,
+        feeCurrency = feeCurrency,
+        pnl = profit,
+        timestamp = createTime,
     )
 }
 

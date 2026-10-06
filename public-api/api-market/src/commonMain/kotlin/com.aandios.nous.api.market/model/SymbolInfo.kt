@@ -36,6 +36,22 @@ data class SymbolInfo(
     /**
      * Размер одного контракта в базовом активе (MEXC futures: BTC_USDT =
      * 0.0001). Для рынков, где qty сразу в базовом активе, — 1.0.
+     * Для inverse-контрактов (COIN-M) — размер контракта в USD-номинале.
      */
     val contractSize: Double = 1.0,
-)
+) {
+    /**
+     * Inverse-контракт (COIN-M, напр. MEXC BTC_USD): маржа в монете,
+     * qty в контрактах, номинал контракта — [contractSize] USD.
+     * Для USDT-M/USDC-M (settleCoin — стейбл) — false.
+     */
+    val isInverse: Boolean
+        get() {
+            val margin = marginAsset?.takeIf { it.isNotBlank() } ?: return false
+            return margin.uppercase() !in STABLE_MARGIN_ASSETS
+        }
+
+    companion object {
+        private val STABLE_MARGIN_ASSETS = setOf("USDT", "USDC", "USD1", "DAI", "USD")
+    }
+}

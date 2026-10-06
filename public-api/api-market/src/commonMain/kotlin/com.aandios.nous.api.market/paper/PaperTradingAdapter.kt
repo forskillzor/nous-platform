@@ -393,7 +393,18 @@ class PaperTradingAdapter(
     override suspend fun getTradeHistory(symbol: String?, limit: Int): List<TradeFill> = mutex.withLock {
         val filtered = if (symbol == null) _history.value
         else _history.value.filter { it.symbol == symbol.uppercase() }
-        filtered.takeLast(limit.coerceAtLeast(1))
+        filtered.takeLast(limit)
+    }
+
+    /**
+     * Реализованный PnL за текущий торговый день (граница — UTC+8, как у MEXC):
+     * сумма pnl исполненных закрытий/сделок.
+     */
+    override suspend fun getDailyRealizedPnl(): Double? = mutex.withLock {
+        val shiftMs = 8L * 60 * 60 * 1000
+        val dayMs = 24L * 60 * 60 * 1000
+        val start = ((now() + shiftMs) / dayMs) * dayMs - shiftMs
+        _history.value.filter { it.timestamp >= start }.sumOf { it.pnl }
     }
 
     override suspend fun setLeverage(symbol: String, leverage: Int, positionId: Long?): Boolean = mutex.withLock {

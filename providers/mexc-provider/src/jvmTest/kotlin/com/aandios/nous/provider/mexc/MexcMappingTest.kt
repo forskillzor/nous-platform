@@ -14,6 +14,7 @@ import com.aandios.nous.provider.mexc.model.MexcKlineResponse
 import com.aandios.nous.provider.mexc.model.MexcTickerData
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class MexcMappingTest {
@@ -147,6 +148,17 @@ class MexcMappingTest {
         ).toSymbolInfo()
         assertEquals(0.1, sol.stepSize)
         assertEquals(0.1, sol.minQty)
+
+        // Inverse (COIN-M): BTC_USD — settle BTC, contractSize 100 USD, qty в контрактах
+        val coinM = detail.copy(
+            symbol = "BTC_USD", quoteCoin = "USD", settleCoin = "BTC",
+            contractSize = 100.0, volUnit = 1.0, minVol = 1.0,
+        ).toSymbolInfo()
+        assertTrue(coinM.isInverse)
+        assertEquals(100.0, coinM.contractSize)
+        assertEquals(1.0, coinM.stepSize) // контракты, без умножения на cs
+        assertEquals(1.0, coinM.minQty)
+        assertFalse(detail.toSymbolInfo().isInverse) // USDT-маржа — linear
     }
 
     @Test

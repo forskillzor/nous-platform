@@ -34,6 +34,7 @@ class MexcOrderMappingTest {
     private class CapturedRequest(
         val method: String,
         val path: String,
+        val query: String,
         val headers: Map<String, String>,
         val body: String,
     )
@@ -50,6 +51,7 @@ class MexcOrderMappingTest {
             val captured = CapturedRequest(
                 method = request.method.value,
                 path = request.url.encodedPath,
+                query = request.url.encodedQuery,
                 headers = headers,
                 body = body,
             )
@@ -79,9 +81,9 @@ class MexcOrderMappingTest {
     }
 
     private companion object {
-        /** contractSize = 1 — qty платформы совпадает с контрактами. */
+        /** contractSize = 1, USDT-маржа — qty платформы совпадает с контрактами. */
         const val DEFAULT_DETAIL_JSON =
-            """{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","contractSize":1.0,"priceUnit":0.1,"volUnit":1.0,"minVol":1.0,"state":0}]}"""
+            """{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","quoteCoin":"USDT","settleCoin":"USDT","contractSize":1.0,"priceUnit":0.1,"volUnit":1.0,"minVol":1.0,"state":0}]}"""
     }
 
     @Test
@@ -236,5 +238,77 @@ class MexcOrderMappingTest {
         }
         assertTrue(submits[0].contains("\"vol\":\"3\""), submits[0])
         assertTrue(submits[1].contains("\"vol\":\"10\""), submits[1])
+    }
+
+    @Test
+    fun `inverse coin-m quantity stays in contracts`() {
+        val submits = mutableListOf<String>()
+        runAdapter(
+            config = ProviderConfig(apiKey = "k", secretKey = "s", displayName = "MEXC"),
+            detailJson = """{"success":true,"code":0,"data":[{"symbol":"BTC_USD","quoteCoin":"USD","settleCoin":"BTC","contractSize":100.0,"priceUnit":0.5,"volUnit":1.0,"minVol":1.0,"state":0}]}""",
+            handler = { req ->
+                when {
+                    req.path.endsWith("/submit") -> {
+                        submits += req.body
+                        """{"success":true,"code":0,"data":7}"""
+                    }
+                    req.path.contains("open_orders") ->
+                        """{"success":true,"code":0,"data":[{"orderId":1,"symbol":"BTC_USD","vol":3,"dealVol":2,"price":50000.0,"side":1,"orderType":1,"state":1}]}"""
+                    else -> """{"success":true,"code":0,"data":null}"""
+                }
+            },
+        ) { adapter ->
+            // qty платформы для inverse — уже контракты: vol = 3, без деления на 100
+            assertTrue(
+                adapter.placeOrder(
+                    OrderRequest("BTCUSD", OrderSide.BUY, OrderType.LIMIT, 3.0, price = 50000.0)
+                ).success
+            )
+            val orders = adapter.getOpenOrders("BTCUSD")
+            assertEquals(1, orders.size)
+            assertEquals(3.0, orders[0].quantity) // без масштабирования
+            assertEquals(2.0, orders[0].filledQuantity)
+        }
+        assertTrue(submits[0].contains("\"vol\":\"3\""), submits[0])
+    }
+
+    @Test
+    fun `daily pnl sums net profit of history orders`() {
+        var query = ""
+        runAdapter(
+            config = ProviderConfig(apiKey = "k", secretKey = "s", displayName = "MEXC"),
+            handler = { req ->
+                query = req.query
+                """{"success":true,"code":0,"data":[
+                    {"orderId":1,"symbol":"BTC_USDT","profit":10.0,"takerFee":0.5,"makerFee":0.0,"dealVol":1,"createTime":1},
+                    {"orderId":2,"symbol":"BTC_USDT","profit":-3.0,"takerFee":0.2,"makerFee":0.1,"dealVol":1,"createTime":2}
+                ]}"""
+            },
+        ) { adapter ->
+            val pnl = adapter.getDailyRealizedPnl()
+            assertEquals(6.2, pnl!!, 1e-9)
+        }
+        assertTrue(query.contains("start_time="), query)
+        assertTrue(query.contains("end_time="), query)
+    }
+
+    @Test
+    fun `history without symbol uses history orders`() {
+        var path = ""
+        runAdapter(
+            config = ProviderConfig(apiKey = "k", secretKey = "s", displayName = "MEXC"),
+            handler = { req ->
+                path = req.path
+                """{"success":true,"code":0,"data":[{"orderId":9,"symbol":"BTC_USDT","dealVol":2,"dealAvgPrice":100.0,"side":1,"takerFee":0.1,"makerFee":0.0,"profit":1.5,"createTime":123,"state":3}]}"""
+            },
+        ) { adapter ->
+            val fills = adapter.getTradeHistory(symbol = null, limit = 10)
+            assertEquals(1, fills.size)
+            assertEquals("BTCUSDT", fills[0].symbol)
+            assertEquals(100.0, fills[0].price)
+            assertEquals(2.0, fills[0].quantity) // dealVol 2 * contractSize 1
+            assertEquals(1.5, fills[0].pnl)
+        }
+        assertTrue(path.contains("history_orders"), path)
     }
 }

@@ -19,10 +19,12 @@ import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.provider.mexc.MexcRestGate
 import com.aandios.nous.provider.mexc.MexcStreamHub
 import com.aandios.nous.provider.mexc.MexcTradingClient
+import com.aandios.nous.provider.mexc.currentTimeMillis
 import com.aandios.nous.provider.mexc.formatDecimal
 import com.aandios.nous.provider.mexc.toMexcSymbol
 import com.aandios.nous.provider.mexc.model.MexcAsset
 import com.aandios.nous.provider.mexc.model.MexcCancelResult
+import com.aandios.nous.provider.mexc.model.MexcHistoryOrder
 import com.aandios.nous.provider.mexc.model.MexcOrderDeal
 import com.aandios.nous.provider.mexc.model.MexcPosition
 import io.ktor.client.HttpClient
@@ -72,39 +74,59 @@ class MexcTradingAdapter(
 
     // ── Единицы: базовый актив (платформа) ↔ контракты (MEXC) ──
 
-    private data class ContractSpec(val contractSize: Double, val volUnit: Double)
+    private data class ContractSpec(
+        val contractSize: Double,
+        /** Inverse (COIN-M): qty платформы — уже контракты, ответы не масштабируем. */
+        val inverse: Boolean,
+        /** Шаг объёма в контрактах. */
+        val volUnit: Double,
+    )
 
     private val specCache = mutableMapOf<String, ContractSpec>()
 
-    /** contractSize и шаг объёма (в контрактах) символа — с кэшем. */
+    /** Параметры единиц символа (contractSize/шаг/инверсия) — с кэшем. */
     private suspend fun contractSpec(symbol: String): ContractSpec {
         specCache[symbol]?.let { return it }
         val info = runCatching { symbolInfoAdapter.getSymbolInfo(symbol) }.getOrNull()
         val cs = info?.contractSize?.takeIf { it > 0.0 } ?: 1.0
-        // stepSize в SymbolInfo — уже в базовом активе (volUnit * cs)
-        val volUnit = info?.stepSize?.takeIf { it > 0.0 }?.div(cs)?.takeIf { it > 0.0 } ?: 1.0
-        val spec = ContractSpec(cs, volUnit)
+        val inverse = info?.isInverse == true
+        val volUnit = if (inverse) {
+            // stepSize в SymbolInfo — контракты
+            info?.stepSize?.takeIf { it > 0.0 } ?: 1.0
+        } else {
+            // stepSize в SymbolInfo — базовый актив (volUnit * cs)
+            info?.stepSize?.takeIf { it > 0.0 }?.div(cs)?.takeIf { it > 0.0 } ?: 1.0
+        }
+        val spec = ContractSpec(cs, inverse, volUnit)
         specCache[symbol] = spec
         return spec
     }
 
-    /** Базовая величина → контракты (округление к шагу контракта, half-up). */
+    /**
+     * qty платформы → контракты (half-up к шагу контракта):
+     * linear — qty в базовом активе, делим на contractSize; inverse — уже контракты.
+     */
     private fun toContracts(quantity: Double, spec: ContractSpec): Double {
-        val raw = quantity / spec.contractSize / spec.volUnit
+        val raw = if (spec.inverse) {
+            quantity / spec.volUnit
+        } else {
+            quantity / spec.contractSize / spec.volUnit
+        }
         val units = kotlin.math.floor(raw + 0.5)
         return units * spec.volUnit
     }
 
-    private fun Order.scaled(contractSize: Double): Order = copy(
-        quantity = quantity * contractSize,
-        filledQuantity = filledQuantity * contractSize,
-    )
+    private fun Order.scaled(spec: ContractSpec): Order =
+        if (spec.inverse) this else copy(
+            quantity = quantity * spec.contractSize,
+            filledQuantity = filledQuantity * spec.contractSize,
+        )
 
-    private fun Position.scaled(contractSize: Double): Position =
-        copy(quantity = quantity * contractSize)
+    private fun Position.scaled(spec: ContractSpec): Position =
+        if (spec.inverse) this else copy(quantity = quantity * spec.contractSize)
 
-    private fun TradeFill.scaled(contractSize: Double): TradeFill =
-        copy(quantity = quantity * contractSize)
+    private fun TradeFill.scaled(spec: ContractSpec): TradeFill =
+        if (spec.inverse) this else copy(quantity = quantity * spec.contractSize)
 
     // ── Ордера ──
 
@@ -230,8 +252,8 @@ class MexcTradingAdapter(
             json.decodeFromJsonElement<List<MexcPosition>>(response.jsonObject["data"] ?: JsonArray(emptyList()))
                 .filter { it.state == 1 } // только удерживаемые
                 .map { position ->
-                    val cs = contractSpec(position.symbol).contractSize
-                    position.toPosition().scaled(cs)
+                    val spec = contractSpec(position.symbol)
+                    position.toPosition().scaled(spec)
                 }
         }
     }
@@ -248,16 +270,35 @@ class MexcTradingAdapter(
             json.decodeFromJsonElement<List<com.aandios.nous.provider.mexc.model.MexcOrder>>(
                 response.jsonObject["data"] ?: JsonArray(emptyList())
             ).map { order ->
-                val cs = contractSpec(order.symbol).contractSize
-                order.toOrder().scaled(cs)
+                val spec = contractSpec(order.symbol)
+                order.toOrder().scaled(spec)
             }
         }
     }
 
     override suspend fun getTradeHistory(symbol: String?, limit: Int): List<TradeFill> {
         if (!tradingClient.hasCredentials) return emptyList()
+        // order_deals требует symbol; без него берём history_orders (symbol необязателен)
+        if (symbol == null) {
+            return restGate.execute(key = "orders:history", weight = 20) {
+                val response = tradingClient.signedGet(
+                    "api/v1/private/order/list/history_orders",
+                    mapOf(
+                        "page_num" to "1",
+                        "page_size" to limit.coerceIn(1, 100).toString(),
+                    ),
+                )
+                json.decodeFromJsonElement<List<MexcHistoryOrder>>(
+                    response.jsonObject["data"] ?: JsonArray(emptyList())
+                ).filter { it.dealVol > 0.0 } // только исполненные (полностью/частично)
+                    .map { order ->
+                        val spec = contractSpec(order.symbol)
+                        order.toTradeFill().scaled(spec)
+                    }
+            }
+        }
         val params = buildMap {
-            symbol?.let { put("symbol", toMexcSymbol(it)) }
+            put("symbol", toMexcSymbol(symbol))
             put("page_num", "1")
             put("page_size", limit.coerceIn(1, 100).toString())
         }
@@ -265,10 +306,50 @@ class MexcTradingAdapter(
             val response = tradingClient.signedGet("api/v1/private/order/list/order_deals", params)
             json.decodeFromJsonElement<List<MexcOrderDeal>>(response.jsonObject["data"] ?: JsonArray(emptyList()))
                 .map { deal ->
-                    val cs = contractSpec(deal.symbol).contractSize
-                    deal.toTradeFill().scaled(cs)
+                    val spec = contractSpec(deal.symbol)
+                    deal.toTradeFill().scaled(spec)
                 }
         }
+    }
+
+    /**
+     * Реализованный PnL за текущий торговый день MEXC (UTC+8):
+     * Σ(profit − takerFee − makerFee) по history_orders, постранично.
+     */
+    override suspend fun getDailyRealizedPnl(): Double? {
+        if (!tradingClient.hasCredentials) return null
+        val startOfDay = startOfMexcTradingDay()
+        val endTime = currentTimeMillis()
+        return restGate.execute(key = "orders:dailyPnl", weight = 20) {
+            var total = 0.0
+            var page = 1
+            while (page <= 10) {
+                val response = tradingClient.signedGet(
+                    "api/v1/private/order/list/history_orders",
+                    mapOf(
+                        "start_time" to startOfDay.toString(),
+                        "end_time" to endTime.toString(),
+                        "page_num" to page.toString(),
+                        "page_size" to "100",
+                    ),
+                )
+                val orders = json.decodeFromJsonElement<List<MexcHistoryOrder>>(
+                    response.jsonObject["data"] ?: JsonArray(emptyList())
+                )
+                orders.forEach { total += it.netProfit }
+                if (orders.size < 100) break
+                page++
+            }
+            total
+        }
+    }
+
+    /** Начало торгового дня MEXC (UTC+8) в epoch-ms. */
+    private fun startOfMexcTradingDay(): Long {
+        val shiftMs = 8L * 60 * 60 * 1000
+        val dayMs = 24L * 60 * 60 * 1000
+        val shifted = currentTimeMillis() + shiftMs
+        return (shifted / dayMs) * dayMs - shiftMs
     }
 
     // ── Плечо / режимы / маржа ──
@@ -363,7 +444,7 @@ class MexcTradingAdapter(
         return streamHub.subscribePersonal("personal:position").mapNotNull { text ->
             val data = (json.parseToJsonElement(text) as? JsonObject)?.get("data") as? JsonObject ?: return@mapNotNull null
             val position = json.decodeFromJsonElement<MexcPosition>(data).toPosition()
-            position.scaled(contractSpec(position.symbol).contractSize)
+            position.scaled(contractSpec(position.symbol))
         }
     }
 
@@ -372,7 +453,7 @@ class MexcTradingAdapter(
         return streamHub.subscribePersonal("personal:order").mapNotNull { text ->
             val data = (json.parseToJsonElement(text) as? JsonObject)?.get("data") as? JsonObject ?: return@mapNotNull null
             val order = json.decodeFromJsonElement<com.aandios.nous.provider.mexc.model.MexcOrder>(data).toOrder()
-            order.scaled(contractSpec(order.symbol).contractSize)
+            order.scaled(contractSpec(order.symbol))
         }
     }
 
