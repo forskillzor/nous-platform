@@ -61,9 +61,10 @@ internal val shortColor = Color(0xFFEF5350)
  * Строка ценовой лесенки. `level == null` — пустой уровень (только цена).
  *
  * Поверх объёмов:
- *  * позиция (Long/Short) — весь уровень выделен цветом позиции, объёмы
- *    скрыты; слева от цены «Long 10», справа PnL (изменение цены в базовых
- *    значениях, % от изменения цены);
+ *  * позиция (Long/Short) — весь уровень сплошной плашкой цвета позиции
+ *    (как бейдж позиции в chart trading), объёмы скрыты; слева «Long 10 SOL»
+ *    белым, цена по центру, справа PnL на тёмной мини-плашке (изменение
+ *    цены в базовых значениях, % от изменения цены);
  *  * ордер — покупка (Open Long) в пустой ask-колонке (крестик слева),
  *    продажа (Open Short) в пустой bid-колонке (крестик справа); подпись
  *    сокращается по месту: «Open Long 10 SOL» → «OLong 10 SOL» → «OLong 10».
@@ -105,7 +106,8 @@ fun LevelRow(
     val orderColor = if (order?.side == OrderSide.BUY) longColor else shortColor
 
     val backgroundColor = when {
-        position != null -> positionColor.copy(alpha = 0.22f)
+        // Позиция — весь row сплошной плашкой как бейдж позиции в chart trading
+        position != null -> positionColor
         // Весь уровень с лимитным ордером подсвечен цветом ордера
         order != null -> orderColor.copy(alpha = 0.35f)
         isSelected -> Color.Yellow.copy(alpha = 0.3f)
@@ -167,8 +169,15 @@ fun LevelRow(
                 }
             } else {
                 Text(
-                    text = "${if (position.side == TradeSide.BUY) "Long" else "Short"} ${trimQty(position.quantity)}",
-                    color = positionColor,
+                    text = buildString {
+                        append(if (position.side == TradeSide.BUY) "Long " else "Short ")
+                        append(trimQty(position.quantity))
+                        if (!baseText.isNullOrBlank()) {
+                            append(" ")
+                            append(baseText)
+                        }
+                    },
+                    color = Color.White,
                     fontSize = 10.sp,
                     lineHeight = 11.sp,
                     fontFamily = FontFamily.Monospace,
@@ -234,16 +243,23 @@ fun LevelRow(
                 }
             } else {
                 val (pnlText, pnlColor) = positionPnlText(position, markPrice, tickSize)
-                Text(
-                    text = pnlText,
-                    color = pnlColor,
-                    fontSize = 10.sp,
-                    lineHeight = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    modifier = Modifier.align(Alignment.CenterEnd)
-                )
+                // Тёмная мини-плашка под PnL — как у бейджа позиции в chart trading
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .background(Color(0xFF1B222B), RoundedCornerShape(2.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        text = pnlText,
+                        color = pnlColor,
+                        fontSize = 10.sp,
+                        lineHeight = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                    )
+                }
             }
             if (order != null && order.side == OrderSide.BUY && position == null) {
                 OrderChip(
