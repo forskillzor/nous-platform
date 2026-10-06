@@ -47,6 +47,11 @@ import kotlinx.serialization.json.put
  *
  * Семантика сторон MEXC: 1 open long, 2 close short, 3 open short, 4 close long.
  * Типы: 1 limit, 2 post-only, 3 IOC, 4 FOK, 5 market.
+ *
+ * Единицы: платформа работает в базовом активе (SOL), MEXC — в контрактах.
+ * Адаптер конвертирует qty в/из контрактов через contractSize символа
+ * (справочник `/api/v1/contract/detail`, кэш) — ордера, позиции и сделки
+ * наружу отдаются в базовом активе.
  */
 class MexcTradingAdapter(
     private val client: HttpClient,
@@ -57,6 +62,7 @@ class MexcTradingAdapter(
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
     private val tradingClient = MexcTradingClient(client, config)
+    private val symbolInfoAdapter = MexcSymbolInfoAdapter(client, config, restGate)
 
     private fun noKeys(): OrderResponse = OrderResponse(
         orderId = "",
@@ -64,10 +70,57 @@ class MexcTradingAdapter(
         message = "MEXC API keys not set (MEXC_API_KEY / MEXC_SECRET_KEY)",
     )
 
+    // ── Единицы: базовый актив (платформа) ↔ контракты (MEXC) ──
+
+    private data class ContractSpec(val contractSize: Double, val volUnit: Double)
+
+    private val specCache = mutableMapOf<String, ContractSpec>()
+
+    /** contractSize и шаг объёма (в контрактах) символа — с кэшем. */
+    private suspend fun contractSpec(symbol: String): ContractSpec {
+        specCache[symbol]?.let { return it }
+        val info = runCatching { symbolInfoAdapter.getSymbolInfo(symbol) }.getOrNull()
+        val cs = info?.contractSize?.takeIf { it > 0.0 } ?: 1.0
+        // stepSize в SymbolInfo — уже в базовом активе (volUnit * cs)
+        val volUnit = info?.stepSize?.takeIf { it > 0.0 }?.div(cs)?.takeIf { it > 0.0 } ?: 1.0
+        val spec = ContractSpec(cs, volUnit)
+        specCache[symbol] = spec
+        return spec
+    }
+
+    /** Базовая величина → контракты (округление к шагу контракта, half-up). */
+    private fun toContracts(quantity: Double, spec: ContractSpec): Double {
+        val raw = quantity / spec.contractSize / spec.volUnit
+        val units = kotlin.math.floor(raw + 0.5)
+        return units * spec.volUnit
+    }
+
+    private fun Order.scaled(contractSize: Double): Order = copy(
+        quantity = quantity * contractSize,
+        filledQuantity = filledQuantity * contractSize,
+    )
+
+    private fun Position.scaled(contractSize: Double): Position =
+        copy(quantity = quantity * contractSize)
+
+    private fun TradeFill.scaled(contractSize: Double): TradeFill =
+        copy(quantity = quantity * contractSize)
+
     // ── Ордера ──
 
     override suspend fun placeOrder(request: OrderRequest): OrderResponse {
         if (!tradingClient.hasCredentials) return noKeys()
+
+        // qty платформы (базовый актив) → контракты MEXC
+        val spec = contractSpec(request.symbol)
+        val vol = toContracts(request.quantity, spec)
+        if (vol <= 0.0) {
+            return OrderResponse(
+                orderId = "",
+                success = false,
+                message = "Quantity is below the contract minimum for ${request.symbol}",
+            )
+        }
 
         val side = when {
             request.reduceOnly && request.side == OrderSide.BUY -> 2   // close short
@@ -85,7 +138,7 @@ class MexcTradingAdapter(
         val body = buildJsonObject {
             put("symbol", toMexcSymbol(request.symbol))
             if (type != 5) put("price", formatDecimal(request.price))
-            put("vol", formatDecimal(request.quantity))
+            put("vol", formatDecimal(vol))
             put("side", side)
             put("type", type)
             put("openType", request.marginMode ?: 2) // cross по умолчанию
@@ -176,7 +229,10 @@ class MexcTradingAdapter(
             val response = tradingClient.signedGet("api/v1/private/position/open_positions")
             json.decodeFromJsonElement<List<MexcPosition>>(response.jsonObject["data"] ?: JsonArray(emptyList()))
                 .filter { it.state == 1 } // только удерживаемые
-                .map { it.toPosition() }
+                .map { position ->
+                    val cs = contractSpec(position.symbol).contractSize
+                    position.toPosition().scaled(cs)
+                }
         }
     }
 
@@ -191,7 +247,10 @@ class MexcTradingAdapter(
             val response = tradingClient.signedGet(path, mapOf("page_size" to "100"))
             json.decodeFromJsonElement<List<com.aandios.nous.provider.mexc.model.MexcOrder>>(
                 response.jsonObject["data"] ?: JsonArray(emptyList())
-            ).map { it.toOrder() }
+            ).map { order ->
+                val cs = contractSpec(order.symbol).contractSize
+                order.toOrder().scaled(cs)
+            }
         }
     }
 
@@ -205,7 +264,10 @@ class MexcTradingAdapter(
         return restGate.execute(key = "orders:deals:${symbol.orEmpty()}", weight = 20) {
             val response = tradingClient.signedGet("api/v1/private/order/list/order_deals", params)
             json.decodeFromJsonElement<List<MexcOrderDeal>>(response.jsonObject["data"] ?: JsonArray(emptyList()))
-                .map { it.toTradeFill() }
+                .map { deal ->
+                    val cs = contractSpec(deal.symbol).contractSize
+                    deal.toTradeFill().scaled(cs)
+                }
         }
     }
 
@@ -300,7 +362,8 @@ class MexcTradingAdapter(
         if (!tradingClient.hasCredentials) return null
         return streamHub.subscribePersonal("personal:position").mapNotNull { text ->
             val data = (json.parseToJsonElement(text) as? JsonObject)?.get("data") as? JsonObject ?: return@mapNotNull null
-            json.decodeFromJsonElement<MexcPosition>(data).toPosition()
+            val position = json.decodeFromJsonElement<MexcPosition>(data).toPosition()
+            position.scaled(contractSpec(position.symbol).contractSize)
         }
     }
 
@@ -308,7 +371,8 @@ class MexcTradingAdapter(
         if (!tradingClient.hasCredentials) return null
         return streamHub.subscribePersonal("personal:order").mapNotNull { text ->
             val data = (json.parseToJsonElement(text) as? JsonObject)?.get("data") as? JsonObject ?: return@mapNotNull null
-            json.decodeFromJsonElement<com.aandios.nous.provider.mexc.model.MexcOrder>(data).toOrder()
+            val order = json.decodeFromJsonElement<com.aandios.nous.provider.mexc.model.MexcOrder>(data).toOrder()
+            order.scaled(contractSpec(order.symbol).contractSize)
         }
     }
 

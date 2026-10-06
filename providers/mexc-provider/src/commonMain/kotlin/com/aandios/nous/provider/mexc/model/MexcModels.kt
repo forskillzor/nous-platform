@@ -159,7 +159,12 @@ data class MexcTickerResponse(
 
 /**
  * Контракт MEXC Futures (`/api/v1/contract/detail`).
- * tickSize = priceUnit, stepSize = volUnit, minQty = minVol.
+ *
+ * MEXC торгует в контрактах: qty/vol у биржи — контракты, шаг и минимум —
+ * в контрактах. Платформа работает в базовом активе, поэтому stepSize и
+ * minQty переводятся через contractSize (шаг = volUnit * contractSize),
+ * сам contractSize прокидывается в SymbolInfo — адаптер конвертирует
+ * qty ордеров/позиций в контракты и обратно.
  */
 @Serializable
 data class MexcContractDetail(
@@ -178,18 +183,23 @@ data class MexcContractDetail(
     val maxVol: Double = 0.0,
     val state: Int = -1,
 ) {
-    fun toSymbolInfo(): SymbolInfo = SymbolInfo(
-        symbol = fromMexcSymbol(symbol), // единый формат платформы (BTCUSDT)
-        tickSize = priceUnit.takeIf { it > 0 } ?: 0.01,
-        stepSize = volUnit.takeIf { it > 0 } ?: 0.001,
-        minQty = minVol,
-        minNotional = 0.0, // у MEXC нет фильтра минимального notionла
-        status = if (state == 0) "TRADING" else "HALT",
-        baseAsset = baseCoin,
-        quoteAsset = quoteCoin,
-        contractType = "PERPETUAL",
-        marginAsset = settleCoin,
-    )
+    fun toSymbolInfo(): SymbolInfo {
+        val cs = contractSize.takeIf { it > 0.0 } ?: 1.0
+        return SymbolInfo(
+            symbol = fromMexcSymbol(symbol), // единый формат платформы (BTCUSDT)
+            tickSize = priceUnit.takeIf { it > 0 } ?: 0.01,
+            // Шаг и минимум — в базовом активе (шаг контракта * размер контракта)
+            stepSize = (volUnit.takeIf { it > 0 } ?: 0.001) * cs,
+            minQty = minVol * cs,
+            minNotional = 0.0, // у MEXC нет фильтра минимального notionла
+            status = if (state == 0) "TRADING" else "HALT",
+            baseAsset = baseCoin,
+            quoteAsset = quoteCoin,
+            contractType = "PERPETUAL",
+            marginAsset = settleCoin,
+            contractSize = cs,
+        )
+    }
 }
 
 @Serializable

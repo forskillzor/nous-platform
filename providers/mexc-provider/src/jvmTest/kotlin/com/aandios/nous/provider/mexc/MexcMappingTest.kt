@@ -129,11 +129,24 @@ class MexcMappingTest {
         assertEquals(0.1, info.tickSize)
         assertEquals(1.0, info.stepSize)
         assertEquals(1.0, info.minQty)
+        assertEquals(1.0, info.contractSize) // не задан → 1.0
         assertEquals("TRADING", info.status)
         assertEquals("PERPETUAL", info.contractType)
 
         val halted = detail.copy(state = 2).toSymbolInfo()
         assertEquals("HALT", halted.status)
+
+        // Контрактные единицы: шаг/минимум переводятся в базовый актив
+        val btc = detail.copy(contractSize = 0.0001).toSymbolInfo()
+        assertEquals(0.0001, btc.contractSize)
+        assertEquals(0.0001, btc.stepSize) // volUnit 1 * contractSize
+        assertEquals(0.0001, btc.minQty)   // minVol 1 * contractSize
+
+        val sol = detail.copy(
+            symbol = "SOL_USDT", contractSize = 0.1, volUnit = 1.0, minVol = 1.0,
+        ).toSymbolInfo()
+        assertEquals(0.1, sol.stepSize)
+        assertEquals(0.1, sol.minQty)
     }
 
     @Test

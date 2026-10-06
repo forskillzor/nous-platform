@@ -33,4 +33,9 @@ data class SymbolInfo(
     val contractType: String? = null,
     /** Маржинальный актив (например, "USDT" для USD-M) */
     val marginAsset: String? = null,
+    /**
+     * Размер одного контракта в базовом активе (MEXC futures: BTC_USDT =
+     * 0.0001). Для рынков, где qty сразу в базовом активе, — 1.0.
+     */
+    val contractSize: Double = 1.0,
 )

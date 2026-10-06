@@ -40,6 +40,7 @@ class MexcOrderMappingTest {
 
     private fun runAdapter(
         config: ProviderConfig,
+        detailJson: String = DEFAULT_DETAIL_JSON,
         handler: suspend (CapturedRequest) -> String,
         block: suspend (MexcTradingAdapter) -> Unit,
     ) {
@@ -52,7 +53,12 @@ class MexcOrderMappingTest {
                 headers = headers,
                 body = body,
             )
-            val responseBody = handler(captured)
+            // Справочник контрактов адаптер запрашивает сам (contractSize/шаг)
+            val responseBody = if (captured.path.endsWith("contract/detail")) {
+                detailJson
+            } else {
+                handler(captured)
+            }
             respond(
                 content = responseBody,
                 status = HttpStatusCode.OK,
@@ -70,6 +76,12 @@ class MexcOrderMappingTest {
         )
         runBlocking { block(adapter) }
         client.close()
+    }
+
+    private companion object {
+        /** contractSize = 1 — qty платформы совпадает с контрактами. */
+        const val DEFAULT_DETAIL_JSON =
+            """{"success":true,"code":0,"data":[{"symbol":"BTC_USDT","contractSize":1.0,"priceUnit":0.1,"volUnit":1.0,"minVol":1.0,"state":0}]}"""
     }
 
     @Test
@@ -184,5 +196,45 @@ class MexcOrderMappingTest {
             assertTrue(adapter.cancelOrder("5"))
         }
         assertEquals("[5]", body)
+    }
+
+    @Test
+    fun `base quantity converts to contracts and back`() {
+        val submits = mutableListOf<String>()
+        runAdapter(
+            config = ProviderConfig(apiKey = "k", secretKey = "s", displayName = "MEXC"),
+            detailJson = """{"success":true,"code":0,"data":[{"symbol":"SOL_USDT","contractSize":0.1,"priceUnit":0.01,"volUnit":1.0,"minVol":1.0,"state":0}]}""",
+            handler = { req ->
+                when {
+                    req.path.endsWith("/submit") -> {
+                        submits += req.body
+                        """{"success":true,"code":0,"data":1}"""
+                    }
+                    req.path.contains("open_orders") ->
+                        """{"success":true,"code":0,"data":[{"orderId":1,"symbol":"SOL_USDT","vol":10,"dealVol":5,"price":100.0,"side":1,"orderType":1,"state":1}]}"""
+                    else -> """{"success":true,"code":0,"data":null}"""
+                }
+            },
+        ) { adapter ->
+            // 0.3 SOL = 3 контракта, 1 SOL = 10 контрактов (contractSize 0.1)
+            assertTrue(
+                adapter.placeOrder(
+                    OrderRequest("SOLUSDT", OrderSide.BUY, OrderType.LIMIT, 0.3, price = 100.0)
+                ).success
+            )
+            assertTrue(
+                adapter.placeOrder(
+                    OrderRequest("SOLUSDT", OrderSide.BUY, OrderType.LIMIT, 1.0, price = 100.0)
+                ).success
+            )
+
+            // Обратно: 10 контрактов → 1.0 SOL, 5 контрактов → 0.5
+            val orders = adapter.getOpenOrders("SOLUSDT")
+            assertEquals(1, orders.size)
+            assertEquals(1.0, orders[0].quantity)
+            assertEquals(0.5, orders[0].filledQuantity)
+        }
+        assertTrue(submits[0].contains("\"vol\":\"3\""), submits[0])
+        assertTrue(submits[1].contains("\"vol\":\"10\""), submits[1])
     }
 }
