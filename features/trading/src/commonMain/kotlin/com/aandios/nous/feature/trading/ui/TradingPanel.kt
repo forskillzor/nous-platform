@@ -42,7 +42,7 @@ import com.aandios.nous.core.ui.component.PanelTextWatermark
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
-import com.aandios.nous.core.ui.format.plainDecimalString
+import com.aandios.nous.core.ui.format.plainDecimalFixed
 
 enum class TradingTab(val label: String) {
     POSITIONS("Positions"),
@@ -374,16 +374,16 @@ private fun ActionButton(label: String, color: Color, onClick: () -> Unit) {
     }
 }
 
-/** Сумма с 2 знаками без экспоненты ("0.03176562" → "0.03"). */
+/** Сумма с 4 знаками, как на MEXC: "75.8234", "0.0000". */
 private fun fmtAmount(raw: String?): String {
     val v = raw?.toDoubleOrNull() ?: return raw ?: "-"
-    return plainDecimalString(kotlin.math.round(v * 100.0) / 100.0)
+    return plainDecimalFixed(v, 4)
 }
 
-/** Знаковая сумма с 2 знаками ("+1.23" / "-0.50"). */
+/** Знаковая сумма с 4 знаками ("+1.2345" / "-0.5000"). */
 private fun fmtSigned(v: Double): String {
     val sign = if (v > 0.0) "+" else ""
-    return sign + plainDecimalString(kotlin.math.round(v * 100.0) / 100.0)
+    return sign + plainDecimalFixed(v, 4)
 }
 
 // ── Таблицы (колонки заголовка и строк выровнены) ──
@@ -494,10 +494,10 @@ private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Cell(b.currency, BW.ASSET, align = TextAlign.Start, fontWeight = FontWeight.Medium)
-                Cell(b.amount, BW.AVAILABLE)
-                Cell(b.frozen, BW.FROZEN)
-                Cell(b.margin, BW.MARGIN)
-                Cell(b.equity, BW.EQUITY, color = MaterialTheme.colorScheme.primary)
+                Cell(fmtAmount(b.amount), BW.AVAILABLE)
+                Cell(fmtAmount(b.frozen), BW.FROZEN)
+                Cell(fmtAmount(b.margin), BW.MARGIN)
+                Cell(fmtAmount(b.equity), BW.EQUITY, color = MaterialTheme.colorScheme.primary)
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
         }

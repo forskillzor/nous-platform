@@ -22,6 +22,16 @@ class SymbolFormatterTest {
     }
 
     @Test
+    fun `fixed decimals format like mex balance`() {
+        // Балансы MEXC: 4 знака с добором нулей
+        assertEquals("75.8234", plainDecimalFixed(75.82336328956, 4))
+        assertEquals("0.0000", plainDecimalFixed(0.0, 4))
+        assertEquals("12.5000", plainDecimalFixed(12.5, 4))
+        assertEquals("-0.5000", plainDecimalFixed(-0.5, 4))
+        assertEquals("1.0000", plainDecimalFixed(1.0, 4))
+    }
+
+    @Test
     fun `formatter volume for contract min sizes`() {
         val btc = SymbolFormatter(tickSize = 0.1, minQty = 0.0001)
         assertEquals("0.0001", btc.formatVolume(0.0001))

@@ -38,3 +38,23 @@ fun plainDecimalString(value: Double, trimZeros: Boolean = true): String {
     val body = if (trimmed.isEmpty() || trimmed == ".") "0" else trimmed
     return if (negative) "-$body" else body
 }
+
+/**
+ * Double в plain-строку с ФИКСИРОВАННЫМ числом знаков (без экспоненты),
+ * с добором нулей: 75.82336328956 → "75.8234", 0.0 → "0.0000".
+ * Для сумм/балансов в стиле MEXC (4 знака).
+ */
+fun plainDecimalFixed(value: Double, decimals: Int): String {
+    if (value.isNaN() || value.isInfinite()) return if (decimals <= 0) "0" else "0." + "0".repeat(decimals)
+    if (decimals <= 0) return kotlin.math.round(value).toLong().toString()
+    var factor = 1.0
+    repeat(decimals) { factor *= 10.0 }
+    val rounded = kotlin.math.round(value * factor) / factor
+    val s = plainDecimalString(rounded, trimZeros = false)
+    val dot = s.indexOf('.')
+    return if (dot < 0) {
+        "$s." + "0".repeat(decimals)
+    } else {
+        s + "0".repeat((decimals - (s.length - dot - 1)).coerceAtLeast(0))
+    }
+}
