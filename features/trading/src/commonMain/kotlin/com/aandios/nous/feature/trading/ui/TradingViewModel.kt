@@ -7,6 +7,7 @@ package com.aandios.nous.feature.trading.ui
 
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.Balance
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.Position
@@ -14,6 +15,7 @@ import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.core.Disposable
+import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.storage.StateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -88,6 +90,18 @@ class TradingViewModel(
     private val _paperEnabled = MutableStateFlow(false)
     val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
 
+    /** Тип контрактов панели: USDT-M / COIN-M (фильтр таблиц и балансов). */
+    private val _contractType = MutableStateFlow(ContractType.USDT_M)
+    val contractType: StateFlow<ContractType> = _contractType.asStateFlow()
+
+    /** symbol → тип контракта (из SymbolInfo провайдера) для фильтра таблиц. */
+    private val _symbolTypes = MutableStateFlow<Map<String, ContractType>>(emptyMap())
+    val symbolTypes: StateFlow<Map<String, ContractType>> = _symbolTypes.asStateFlow()
+
+    /** Реализованный PnL за сегодня (null — адаптер не поддерживает). */
+    private val _dailyPnl = MutableStateFlow<Double?>(null)
+    val dailyPnl: StateFlow<Double?> = _dailyPnl.asStateFlow()
+
     fun selectTab(tab: String) {
         if (tab.isNotEmpty()) _activeTab.value = tab
     }
@@ -106,6 +120,10 @@ class TradingViewModel(
             // Биржа панели тоже переживает перезапуск (как paper-режим)
             stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
                 if (providerRegistry.get(saved) != null) _providerId.value = saved
+            }
+            // Тип контрактов панели (USDT-M / COIN-M)
+            stateStore?.getString(CONTRACT_TYPE_STORE_KEY)?.let { raw ->
+                runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
             }
             restart()
         }
@@ -149,6 +167,7 @@ class TradingViewModel(
         refreshJob?.cancel()
         liveJobs.forEach { it.cancel() }
         liveJobs.clear()
+        loadSymbolTypes()
         refreshJob = scope.launch {
             val adapter = tradingAdapter() ?: return@launch
             refreshAll(adapter)
@@ -160,6 +179,48 @@ class TradingViewModel(
         }
     }
 
+    /** Смена типа контрактов панели (персист + перефильтрация UI). */
+    fun setContractType(type: ContractType) {
+        if (_contractType.value == type) return
+        _contractType.value = type
+        scope.launch { stateStore?.putString(CONTRACT_TYPE_STORE_KEY, type.name) }
+    }
+
+    /** Карта symbol → тип контракта активного провайдера. */
+    private fun loadSymbolTypes() {
+        val adapter = providerRegistry.get(_providerId.value)?.symbolInfo ?: return
+        scope.launch {
+            runCatching { SymbolInfoRepositoryImpl(adapter).getAllSymbolsInfo() }
+                .onSuccess { infos ->
+                    _symbolTypes.value = infos.associate { it.symbol.uppercase() to ContractType.of(it) }
+                }
+        }
+    }
+
+    /** Подходит ли символ панели выбранному типу контрактов. */
+    fun matchesContractType(symbol: String, type: ContractType): Boolean {
+        val known = _symbolTypes.value[symbol.uppercase()] ?: return true
+        return known == type
+    }
+
+    /** Стейбл-валюты маржи (USDT-M / USDC-M). */
+    private val stableCurrencies = setOf("USDT", "USDC", "USD1", "DAI", "USD")
+
+    /** Подходит ли валюта баланса выбранному типу контрактов. */
+    fun balanceMatchesContractType(currency: String, type: ContractType): Boolean =
+        when (type) {
+            ContractType.USDT_M -> currency.uppercase() in stableCurrencies
+            ContractType.COIN_M -> currency.uppercase() !in stableCurrencies
+        }
+
+    /** Основной баланс для инфо-блока (USDT или крупнейшая монета COIN-M). */
+    fun primaryBalance(balances: List<Balance>, type: ContractType): Balance? = when (type) {
+        ContractType.USDT_M -> balances.firstOrNull { it.currency.uppercase() in stableCurrencies }
+        ContractType.COIN_M -> balances
+            .filterNot { it.currency.uppercase() in stableCurrencies }
+            .maxByOrNull { it.equity.toDoubleOrNull() ?: 0.0 }
+    }
+
     private suspend fun refreshAll(adapter: com.aandios.nous.api.market.adapters.TradingAdapter) {
         runCatching { adapter.getPositions() }.onSuccess { _positions.value = it }
         runCatching { adapter.getOpenOrders() }.onSuccess { _openOrders.value = it }
@@ -167,6 +228,8 @@ class TradingViewModel(
         // История — сразу, чтобы счётчик на табе был точным
         runCatching { adapter.getTradeHistory(limit = 100) }.onSuccess { _tradeHistory.value = it }
         runCatching { adapter.getPositionMode() }.onSuccess { if (it != null) _positionMode.value = it }
+        // Реализованный PnL за сегодня (у Binance-заглушки — null)
+        _dailyPnl.value = runCatching { adapter.getDailyRealizedPnl() }.getOrNull()
     }
 
     fun refreshTradeHistory() {
@@ -305,5 +368,8 @@ class TradingViewModel(
     private companion object {
         /** Ключ StateStore: выбранная биржа docked trading panel. */
         const val PROVIDER_STORE_KEY = "trading_provider"
+
+        /** Ключ StateStore: тип контрактов панели (USDT_M / COIN_M). */
+        const val CONTRACT_TYPE_STORE_KEY = "trading_contract_type"
     }
 }

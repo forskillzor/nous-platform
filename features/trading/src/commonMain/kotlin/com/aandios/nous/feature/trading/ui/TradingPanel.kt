@@ -6,9 +6,11 @@
 package com.aandios.nous.feature.trading.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -17,8 +19,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -26,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.Balance
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.Order
@@ -36,6 +41,7 @@ import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.core.ui.format.plainDecimalString
 
 enum class TradingTab(val label: String) {
     POSITIONS("Positions"),
@@ -102,22 +108,42 @@ fun TradingPanel(
     val positionMode by viewModel.positionMode.collectAsState()
     val lastMessage by viewModel.lastMessage.collectAsState()
     val activeTabRaw by viewModel.activeTab.collectAsState()
-    val tab = TradingTab.values().firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
+    val tab = TradingTab.entries.firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
 
     val paperEnabled by viewModel.paperEnabled.collectAsState()
+    val contractType by viewModel.contractType.collectAsState()
+    val symbolTypes by viewModel.symbolTypes.collectAsState()
+    val dailyPnl by viewModel.dailyPnl.collectAsState()
     val paperSettings: PaperSettingsController = org.koin.compose.koinInject()
 
+    // Фильтр по типу контрактов: позиции/ордера/история/балансы
+    val visiblePositions = remember(positions, contractType, symbolTypes) {
+        positions.filter { viewModel.matchesContractType(it.symbol, contractType) }
+    }
+    val visibleOrders = remember(orders, contractType, symbolTypes) {
+        orders.filter { viewModel.matchesContractType(it.symbol, contractType) }
+    }
+    val visibleHistory = remember(history, contractType, symbolTypes) {
+        history.filter { viewModel.matchesContractType(it.symbol, contractType) }
+    }
+    val visibleBalances = remember(balances, contractType) {
+        balances.filter { viewModel.balanceMatchesContractType(it.currency, contractType) }
+    }
+    val primaryBalance = remember(balances, contractType) {
+        viewModel.primaryBalance(balances, contractType)
+    }
+
     val tabCounts = mapOf(
-        TradingTab.POSITIONS to positions.size,
-        TradingTab.ORDERS to orders.size,
-        TradingTab.BALANCES to balances.size,
-        TradingTab.HISTORY to history.size,
+        TradingTab.POSITIONS to visiblePositions.size,
+        TradingTab.ORDERS to visibleOrders.size,
+        TradingTab.BALANCES to visibleBalances.size,
+        TradingTab.HISTORY to visibleHistory.size,
     )
 
     val formatter = remember { SymbolFormatter.DEFAULT }
 
     Column(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
-        // ── Верхняя строка: exchange (Binance/MEXC) · One-way/Hedge · Paper + шестерёнка ──
+        // ── Верхняя строка: exchange · USDT-M/COIN-M · режим позиций · Paper + шестерёнка ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -132,9 +158,16 @@ fun TradingPanel(
                 },
                 menuWidth = 130.dp,
             )
-            PositionModeToggle(
-                current = positionMode,
-                onSwitch = { mode -> viewModel.switchPositionMode(mode) },
+            TerminalDropdown(
+                currentValue = contractType,
+                items = ContractType.entries.toList(),
+                onValueChanged = { viewModel.setContractType(it) },
+                displayText = { it.label },
+                menuWidth = 120.dp,
+            )
+            PositionModeButton(
+                hedge = positionMode == 1,
+                onClick = { viewModel.switchPositionMode(if (positionMode == 1) 2 else 1) },
             )
             Spacer(Modifier.weight(1f))
             PaperToggle(
@@ -153,31 +186,59 @@ fun TradingPanel(
             )
         }
 
-        // ── Настройки: только Cancel all / Close all ──
+        // ── Счёт: баланс/дневной PnL/маржа слева, Cancel All / Close All справа (стек) ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            Text(
-                text = "Cancel all",
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .clickableNoIndication { viewModel.cancelAllOrders() }
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                text = "Close all",
-                color = Color(0xFFE05B5B),
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                modifier = Modifier
-                    .clickableNoIndication { viewModel.closeAllPositions() }
-                    .padding(horizontal = 4.dp, vertical = 2.dp),
-            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(1.dp),
+            ) {
+                Text(
+                    text = "Balance  ${primaryBalance?.let { "${fmtAmount(it.amount)} ${it.currency}" } ?: "-"}",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+                Text(
+                    text = "Day PnL  ${dailyPnl?.let { "${fmtSigned(it)} USDT" } ?: "-"}",
+                    color = when {
+                        dailyPnl == null -> MaterialTheme.colorScheme.onSurfaceVariant
+                        dailyPnl!! >= 0 -> Color(0xFF26A69A)
+                        else -> Color(0xFFEF5350)
+                    },
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                )
+                primaryBalance?.let { b ->
+                    Text(
+                        text = "Equity ${fmtAmount(b.equity)} · Available ${fmtAmount(b.amount)}",
+                        color = Color(0xFF8A97A5),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                    Text(
+                        text = "In Position ${fmtAmount(b.margin)} · Frozen ${fmtAmount(b.frozen)} · Unrealized ${fmtSigned(b.unrealizedPnl.toDoubleOrNull() ?: 0.0)}",
+                        color = Color(0xFF8A97A5),
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = Alignment.End,
+            ) {
+                ActionButton("Cancel All", Color(0xFFE0A95B)) { viewModel.cancelAllOrders() }
+                ActionButton("Close All", Color(0xFFE05B5B)) { viewModel.closeAllPositions() }
+            }
         }
 
         // ── Табы ──
@@ -209,20 +270,20 @@ fun TradingPanel(
             )
         }
 
-        // ── Контент ──
+        // ── Контент (списки отфильтрованы по типу контрактов) ──
         when (tab) {
             TradingTab.POSITIONS -> PositionsTable(
-                positions, formatter, onClose = { viewModel.closePosition(it) },
+                visiblePositions, formatter, onClose = { viewModel.closePosition(it) },
                 modifier = Modifier.weight(1f),
             )
             TradingTab.ORDERS -> OrdersTable(
-                orders, formatter, onCancel = { viewModel.cancelOrder(it) },
+                visibleOrders, formatter, onCancel = { viewModel.cancelOrder(it) },
                 modifier = Modifier.weight(1f),
             )
-            TradingTab.BALANCES -> BalancesTable(balances, modifier = Modifier.weight(1f))
+            TradingTab.BALANCES -> BalancesTable(visibleBalances, modifier = Modifier.weight(1f))
             TradingTab.HISTORY -> {
                 LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
-                HistoryTable(history, formatter, modifier = Modifier.weight(1f))
+                HistoryTable(visibleHistory, formatter, modifier = Modifier.weight(1f))
             }
         }
     }
@@ -253,18 +314,66 @@ private fun PaperToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
     }
 }
 
+/** Кнопка режима позиций: One-way / Hedge со стрелками переключения. */
 @Composable
-private fun PositionModeToggle(current: Int?, onSwitch: (Int) -> Unit) {
-    val hedge = current == 1
-    Text(
-        text = if (hedge) "Hedge" else "One-way",
-        color = MaterialTheme.colorScheme.primary,
-        fontSize = 11.sp,
-        fontWeight = FontWeight.Medium,
+private fun PositionModeButton(hedge: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clickableNoIndication { onSwitch(if (hedge) 2 else 1) }
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-    )
+            .clip(RoundedCornerShape(3.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))
+            .clickableNoIndication(onClick)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text = if (hedge) "Hedge" else "One-way",
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+        )
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = "⇄",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Кнопка действия панели (обводка в цвет, как Cancel All / Close All в DOM). */
+@Composable
+private fun ActionButton(label: String, color: Color, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            .border(1.dp, color.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
+            .clickableNoIndication(onClick)
+            .padding(horizontal = 12.dp, vertical = 5.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+    }
+}
+
+/** Сумма с 2 знаками без экспоненты ("0.03176562" → "0.03"). */
+private fun fmtAmount(raw: String?): String {
+    val v = raw?.toDoubleOrNull() ?: return raw ?: "-"
+    return plainDecimalString(kotlin.math.round(v * 100.0) / 100.0)
+}
+
+/** Знаковая сумма с 2 знаками ("+1.23" / "-0.50"). */
+private fun fmtSigned(v: Double): String {
+    val sign = if (v > 0.0) "+" else ""
+    return sign + plainDecimalString(kotlin.math.round(v * 100.0) / 100.0)
 }
 
 // ── Таблицы (колонки заголовка и строк выровнены) ──
