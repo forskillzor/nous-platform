@@ -5,12 +5,16 @@
 
 package com.aandios.nous.provider.mexc
 
+import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.provider.mexc.model.MexcContractDetail
 import com.aandios.nous.provider.mexc.model.MexcDeal
 import com.aandios.nous.provider.mexc.model.MexcDepthData
+import com.aandios.nous.provider.mexc.model.MexcHistoryOrder
 import com.aandios.nous.provider.mexc.model.MexcKlineData
 import com.aandios.nous.provider.mexc.model.MexcKlineResponse
+import com.aandios.nous.provider.mexc.model.MexcOrder
+import com.aandios.nous.provider.mexc.model.MexcOrderDeal
 import com.aandios.nous.provider.mexc.model.MexcTickerData
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -172,5 +176,28 @@ class MexcMappingTest {
         assertTrue(MexcSubscriptions.deal("BTC_USDT").subscribeJson.contains("sub.deal"))
         assertTrue(MexcSubscriptions.depthFull("BTC_USDT").subscribeJson.contains("sub.depth.full"))
         assertTrue(MexcSubscriptions.ticker("BTC_USDT").subscribeJson.contains("sub.ticker"))
+    }
+
+    @Test
+    fun orderSidesMapToPlatformSide() {
+        // MEXC: 1 open long, 2 close short, 3 open short, 4 close long
+        // Покупка: 1 и 2; продажа: 3 и 4 (open short раньше рисовался как Open Long)
+        assertEquals(OrderSide.BUY, MexcOrder(side = 1).toOrder().side)
+        assertEquals(OrderSide.BUY, MexcOrder(side = 2).toOrder().side)
+        assertEquals(OrderSide.SELL, MexcOrder(side = 3).toOrder().side)
+        assertEquals(OrderSide.SELL, MexcOrder(side = 4).toOrder().side)
+
+        assertFalse(MexcOrder(side = 1).toOrder().reduceOnly)
+        assertTrue(MexcOrder(side = 2).toOrder().reduceOnly)
+        assertFalse(MexcOrder(side = 3).toOrder().reduceOnly)
+        assertTrue(MexcOrder(side = 4).toOrder().reduceOnly)
+
+        // Сделки и история ордеров используют ту же семантику сторон
+        assertEquals(OrderSide.BUY, MexcOrderDeal(side = 1).toTradeFill().side)
+        assertEquals(OrderSide.BUY, MexcOrderDeal(side = 2).toTradeFill().side)
+        assertEquals(OrderSide.SELL, MexcOrderDeal(side = 3).toTradeFill().side)
+        assertEquals(OrderSide.SELL, MexcOrderDeal(side = 4).toTradeFill().side)
+        assertEquals(OrderSide.SELL, MexcHistoryOrder(side = 3).toTradeFill().side)
+        assertEquals(OrderSide.BUY, MexcHistoryOrder(side = 2).toTradeFill().side)
     }
 }

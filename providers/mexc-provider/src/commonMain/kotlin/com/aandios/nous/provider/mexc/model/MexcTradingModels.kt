@@ -106,7 +106,8 @@ data class MexcOrder(
     fun toOrder(): Order = Order(
         orderId = orderId.toString(),
         symbol = fromMexcSymbol(symbol),
-        side = if (side == 2 || side == 4) OrderSide.SELL else OrderSide.BUY,
+        // 1 open long / 2 close short — покупка; 3 open short / 4 close long — продажа
+        side = if (side == 1 || side == 2) OrderSide.BUY else OrderSide.SELL,
         orderType = when (orderType) {
             1 -> OrderType.LIMIT
             2 -> OrderType.POST_ONLY
@@ -148,7 +149,8 @@ data class MexcOrderDeal(
         id = id.toString(),
         orderId = orderId.toString(),
         symbol = fromMexcSymbol(symbol),
-        side = if (side == 1 || side == 3) OrderSide.BUY else OrderSide.SELL,
+        // 1 open long / 2 close short — BUY, 3 open short / 4 close long — SELL
+        side = if (side == 1 || side == 2) OrderSide.BUY else OrderSide.SELL,
         price = price,
         quantity = vol,
         fee = fee,
@@ -189,7 +191,8 @@ data class MexcHistoryOrder(
         id = orderId.toString(),
         orderId = orderId.toString(),
         symbol = fromMexcSymbol(symbol),
-        side = if (side == 1 || side == 3) OrderSide.BUY else OrderSide.SELL,
+        // 1 open long / 2 close short — BUY, 3 open short / 4 close long — SELL
+        side = if (side == 1 || side == 2) OrderSide.BUY else OrderSide.SELL,
         price = if (dealAvgPrice > 0.0) dealAvgPrice else price,
         quantity = if (dealVol > 0.0) dealVol else vol,
         fee = takerFee + makerFee,
