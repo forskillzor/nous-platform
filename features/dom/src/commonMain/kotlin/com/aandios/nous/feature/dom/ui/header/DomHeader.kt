@@ -5,7 +5,6 @@
 
 package com.aandios.nous.feature.dom.ui.header
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -14,8 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.feature.dom.domain.*
@@ -26,7 +23,6 @@ fun DomHeader(
     onDomOptionsChanged: (DomOptions) -> Unit,
     providers: List<Provider> = emptyList(),
     loadedSymbols: List<TradingSymbol> = emptyList(),
-    isLive: Boolean = true,
     symbolTickSize: Double? = null,
     modifier: Modifier = Modifier
 ) {
@@ -36,7 +32,6 @@ fun DomHeader(
             providerDisplayName = providers.firstOrNull { it.providerId == domOptions.provider }
                 ?.config?.displayName ?: domOptions.provider,
             tradingSymbol = domOptions.symbol,
-            isLive = isLive,
             isExpanded = false,
             onToggleExpand = { onDomOptionsChanged(domOptions.copy(collapsed = false)) },
             modifier = modifier
@@ -48,7 +43,6 @@ fun DomHeader(
             onDomOptionsChanged = onDomOptionsChanged,
             providers = providers,
             loadedSymbols = loadedSymbols,
-            isLive = isLive,
             symbolTickSize = symbolTickSize,
             modifier = modifier
         )
@@ -64,7 +58,6 @@ private fun ExpandedDomHeader(
     onDomOptionsChanged: (DomOptions) -> Unit,
     providers: List<Provider> = emptyList(),
     loadedSymbols: List<TradingSymbol> = emptyList(),
-    isLive: Boolean = true,
     symbolTickSize: Double? = null,
     modifier: Modifier = Modifier
 ) {
@@ -79,10 +72,10 @@ private fun ExpandedDomHeader(
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Первая строка: provider + live индикатор + кнопка сворачивания
+            // Первая строка: provider + тип контрактов + кнопка сворачивания
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Provider dropdown с label — только реально реализованные провайдеры
@@ -92,56 +85,29 @@ private fun ExpandedDomHeader(
                     onProviderChanged = { newProvider ->
                         onDomOptionsChanged(domOptions.copy(provider = newProvider))
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1.2f)
                 )
 
-                // USDT-M / COIN-M — фильтр списка символов
+                // USDT-M / COIN-M — фильтр списка символов (как Ex — тот же dropdown)
                 ContractTypeDropdown(
                     current = domOptions.contractType,
                     onContractTypeChanged = { newType ->
                         onDomOptionsChanged(domOptions.copy(contractType = newType))
                     },
-                    modifier = Modifier.padding(start = 8.dp)
+                    modifier = Modifier.weight(1f)
                 )
-                
-                // Правая часть: live индикатор + кнопка сворачивания
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+
+                // Кнопка сворачивания
+                IconButton(
+                    onClick = { onDomOptionsChanged(domOptions.copy(collapsed = true)) },
+                    modifier = Modifier.size(24.dp)
                 ) {
-                    // Live индикатор
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(8.dp)
-                                .background(
-                                    color = if (isLive) Color.Green else Color.Red,
-                                    shape = MaterialTheme.shapes.small
-                                )
-                        )
-                        Text(
-                            text = if (isLive) "LIVE" else "OFFLINE",
-                            color = if (isLive) Color.Green else Color.Red,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    
-                    // Кнопка сворачивания
-                    IconButton(
-                        onClick = { onDomOptionsChanged(domOptions.copy(collapsed = true)) },
-                        modifier = Modifier.size(24.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Свернуть",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.rotate(180f)
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Свернуть",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.rotate(180f)
+                    )
                 }
             }
 

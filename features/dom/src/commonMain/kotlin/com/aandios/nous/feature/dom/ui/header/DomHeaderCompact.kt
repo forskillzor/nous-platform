@@ -5,7 +5,6 @@
 
 package com.aandios.nous.feature.dom.ui.header
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -14,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 
@@ -25,7 +23,6 @@ import com.aandios.nous.feature.dom.domain.TradingSymbol
 fun DomHeaderCompact(
     providerDisplayName: String,
     tradingSymbol: TradingSymbol,
-    isLive: Boolean = true,
     isExpanded: Boolean = false,
     onToggleExpand: () -> Unit,
     modifier: Modifier = Modifier
@@ -49,45 +46,17 @@ fun DomHeaderCompact(
                 modifier = Modifier.weight(1f)
             )
 
-            // Правая часть: live индикатор + кнопка развертывания
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // Кнопка развертывания/свертывания
+            IconButton(
+                onClick = onToggleExpand,
+                modifier = Modifier.size(24.dp)
             ) {
-                // Live индикатор
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(
-                                color = if (isLive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                shape = MaterialTheme.shapes.small
-                            )
-                    )
-                    Text(
-                        text = if (isLive) "LIVE" else "OFFLINE",
-                        color = if (isLive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-
-                // Кнопка развертывания/свертывания
-                IconButton(
-                    onClick = onToggleExpand,
-                    modifier = Modifier.size(24.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isExpanded) Icons.Default.ArrowDropDown else Icons.Default.ArrowDropDown,
-                        contentDescription = if (isExpanded) "Свернуть" else "Развернуть",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .rotate(if (isExpanded) 180f else 0f)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = if (isExpanded) "Свернуть" else "Развернуть",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.rotate(if (isExpanded) 180f else 0f)
+                )
             }
         }
     }

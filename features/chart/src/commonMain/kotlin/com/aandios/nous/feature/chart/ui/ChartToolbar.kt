@@ -86,9 +86,6 @@ fun ChartToolbar(
 //            Spacer(Modifier.width(12.dp))
         }
 
-        Spacer(Modifier.width(8.dp))
-        ContractTypeSelector(current = contractType, onChange = onContractTypeChange)
-
         SymbolSearchDropdown(
             symbols = availableSymbols,
             currentSymbol = currentSymbol,
@@ -120,11 +117,13 @@ fun ChartToolbar(
             onShowOrdersToggle = onShowOrdersToggle,
             showPositions = showPositions,
             onShowPositionsToggle = onShowPositionsToggle,
+            contractType = contractType,
+            onContractTypeChange = onContractTypeChange,
         )
     }
 }
 
-/** Dropdown «Options» со свичами отображения/режимов чарта. */
+/** Dropdown «Options»: тип контрактов + свичи отображения/режимов чарта. */
 @Composable
 private fun ChartOptionsDropdown(
     tradingEnabled: Boolean,
@@ -135,6 +134,8 @@ private fun ChartOptionsDropdown(
     onShowOrdersToggle: (Boolean) -> Unit,
     showPositions: Boolean,
     onShowPositionsToggle: (Boolean) -> Unit,
+    contractType: ContractType,
+    onContractTypeChange: (ContractType) -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     Box {
@@ -163,12 +164,65 @@ private fun ChartOptionsDropdown(
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(200.dp),
         ) {
+            OptionChoiceRow(
+                label = "Type",
+                options = ContractType.entries.map { it to it.label },
+                selected = contractType,
+                onSelect = onContractTypeChange,
+            )
             OptionSwitchRow("Trading", tradingEnabled) { onTradingToggle(it) }
             OptionSwitchRow("Paper", paperEnabled) { onPaperToggle(it) }
             OptionSwitchRow("Show orders", showOrders) { onShowOrdersToggle(it) }
             OptionSwitchRow("Show positions", showPositions) { onShowPositionsToggle(it) }
         }
     }
+}
+
+/** Строка Options с выбором из нескольких значений (label + опции справа). */
+@Composable
+private fun <T> OptionChoiceRow(
+    label: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    DropdownMenuItem(
+        text = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = label,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                options.forEachIndexed { index, (value, text) ->
+                    Text(
+                        text = text,
+                        color = if (value == selected) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp,
+                        fontWeight = if (value == selected) FontWeight.Bold else FontWeight.Normal,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .clickable { onSelect(value) }
+                            .background(
+                                if (value == selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                                else Color.Transparent,
+                                RoundedCornerShape(3.dp),
+                            )
+                            .padding(horizontal = 5.dp, vertical = 3.dp),
+                    )
+                    if (index != options.lastIndex) Spacer(Modifier.width(4.dp))
+                }
+            }
+        },
+        onClick = {},
+    )
 }
 
 /** Строка Options: label + компактный свич (клик по строке тоже переключает). */
@@ -389,35 +443,6 @@ private fun FpAggregationSelector(level: AggregationLevel, onChange: (Aggregatio
                 ).padding(horizontal = 5.dp, vertical = 3.dp),
             )
             if (ag != AggregationLevel.all().last()) Spacer(Modifier.width(2.dp))
-        }
-    }
-}
-
-/** USDT-M / COIN-M — компактный переключатель типа контрактов панели. */
-@Composable
-private fun ContractTypeSelector(
-    current: ContractType,
-    onChange: (ContractType) -> Unit,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        ContractType.entries.forEach { type ->
-            val isActive = type == current
-            Text(
-                text = type.label,
-                color = if (isActive) MaterialTheme.colorScheme.inverseOnSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp,
-                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .clickable { onChange(type) }
-                    .background(
-                        if (isActive) accentColor.copy(alpha = 0.25f) else Color.Transparent,
-                        RoundedCornerShape(3.dp)
-                    )
-                    .padding(horizontal = 5.dp, vertical = 3.dp),
-            )
-            if (type != ContractType.entries.last()) Spacer(Modifier.width(2.dp))
         }
     }
 }
