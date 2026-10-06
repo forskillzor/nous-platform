@@ -54,7 +54,7 @@ class MexcProvider(
     )
 
     override val trades: TradesAdapter by lazy { MexcTradesAdapter(mexcHttpClient, config, restGate, streamHub) }
-    override val dom: DomAdapter by lazy { MexcDomAdapter(mexcHttpClient, config, streamHub) }
+    override val dom: DomAdapter by lazy { MexcDomAdapter(mexcHttpClient, config, restGate, streamHub) }
     override val bookTicker: BookTickerAdapter by lazy { MexcBookTickerAdapter(mexcHttpClient, config, restGate, streamHub) }
     override val chart: ChartAdapter by lazy { MexcChartAdapter(mexcHttpClient, config, restGate, streamHub) }
     override val trading: TradingAdapter by lazy { MexcTradingAdapter(mexcHttpClient, config, restGate, streamHub) }

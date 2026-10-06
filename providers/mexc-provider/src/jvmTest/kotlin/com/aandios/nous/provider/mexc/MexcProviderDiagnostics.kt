@@ -86,7 +86,7 @@ class MexcProviderDiagnostics {
 
         println("=== DOM adapter flow ===")
         runCatching {
-            val flow = MexcDomAdapter(client, config, hub).subscribeToBookWindow("BTC_USDT", 5)
+            val flow = MexcDomAdapter(client, config, gate, hub).subscribeToBookWindow("BTC_USDT", 5)
             withTimeoutOrNull(20_000) { flow.take(1).toList().firstOrNull() }
         }.onSuccess { println(if (it != null) "OK bids=${it.bids.size} asks=${it.asks.size}" else "NO DATA") }
             .onFailure { println("ERR ${it.message}") }

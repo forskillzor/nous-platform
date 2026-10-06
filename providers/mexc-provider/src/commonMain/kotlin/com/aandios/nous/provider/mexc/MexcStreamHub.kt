@@ -89,11 +89,15 @@ class MexcStreamHub(
     /**
      * Подписка на канал. Поток отдаёт сырой payload push-сообщения.
      * Отписка — отмена сбора потока.
+     *
+     * @param bufferCapacity буфер потока (по умолчанию 64); для
+     *   высокочастотных каналов (инкрементальный стакан, ~сотни msg/s)
+     *   передаём больше, чтобы дропы не создавали ложные version-разрывы.
      */
-    fun subscribe(sub: MexcSub): Flow<String> = flow {
+    fun subscribe(sub: MexcSub, bufferCapacity: Int = 64): Flow<String> = flow {
         val shared = mutex.withLock {
             val f = streams.getOrPut(sub.key) {
-                MutableSharedFlow(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+                MutableSharedFlow(extraBufferCapacity = bufferCapacity, onBufferOverflow = BufferOverflow.DROP_OLDEST)
             }
             subscriberCounts[sub.key] = (subscriberCounts[sub.key] ?: 0) + 1
             if (subscriberCounts[sub.key] == 1) {

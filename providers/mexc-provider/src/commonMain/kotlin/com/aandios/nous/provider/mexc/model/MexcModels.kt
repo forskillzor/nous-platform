@@ -105,6 +105,8 @@ data class MexcDealsResponse(
 data class MexcDepthData(
     val asks: List<List<Double>> = emptyList(),
     val bids: List<List<Double>> = emptyList(),
+    /** Версия стакана: в `push.depth` строго инкрементальная (version+1). */
+    val version: Long = 0,
 ) {
     fun toBookWindowLevels(): BookWindowLevels = BookWindowLevels(
         bids = bids.mapNotNull { row ->

@@ -47,6 +47,18 @@ object MexcSubscriptions {
         unsubscribeJson = """{"method":"unsub.depth.full","param":{"symbol":"$symbol"}}""",
     )
 
+    /**
+     * Инкрементальный стакан (`push.depth`): количества абсолютные (0 = уровень
+     * снят), version строго инкрементальная. compress=false отключает merge
+     * (включён у MEXC по умолчанию) — максимальная частота, как partial-стримы
+     * Binance. Локальную книгу ведёт [MexcDepthBook].
+     */
+    fun depth(symbol: String, compress: Boolean = false): MexcSub = MexcSub(
+        key = "depth:$symbol",
+        subscribeJson = """{"method":"sub.depth","param":{"symbol":"$symbol","compress":$compress}}""",
+        unsubscribeJson = """{"method":"unsub.depth","param":{"symbol":"$symbol"}}""",
+    )
+
     fun ticker(symbol: String): MexcSub = MexcSub(
         key = "ticker:$symbol",
         subscribeJson = """{"method":"sub.ticker","param":{"symbol":"$symbol"}}""",

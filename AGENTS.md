@@ -114,6 +114,12 @@ Mind this when writing paths.
   adapters of the provider.
 - Personal WS channels: `push.personal.order`, `push.personal.position`,
   `push.personal.asset`; the hub re-logs in on reconnect.
+- DOM depth: incremental `sub.depth` with `compress:false` (~hundreds of
+  diffs/s) is maintained by `MexcDepthBook` (absolute quantities, 0 removes,
+  version must be exactly prev+1, gap → REST `contract/depth` resync); the
+  adapter emits full top-N `BookWindowLevels` windows to the UI at most every
+  100ms (like Binance `depth20@100ms`), so the DOM is UI-agnostic of the
+  increment. `sub.depth.full` (~3 pushes/s) is not used anymore.
 - Fees: `getFeeRates` via `account/tiered_fee_rate/v2`; paper engine consumes
   these rates through `TradingAdapter.getFeeRates`.
 - MEXC has no public liquidation stream — `Provider.liquidation` is `null`.
