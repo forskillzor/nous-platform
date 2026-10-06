@@ -157,6 +157,10 @@ class DomViewModel(
     private val _symbolStepSize = MutableStateFlow<Double?>(null)
     val symbolStepSize: StateFlow<Double?> = _symbolStepSize.asStateFlow()
 
+    /** Минимальный размер символа (форматированный) — placeholder поля qty. */
+    private val _symbolMinQty = MutableStateFlow<String?>(null)
+    val symbolMinQty: StateFlow<String?> = _symbolMinQty.asStateFlow()
+
     // --- Scaled-Long модель ---
 
     private var tickSize: Double = 0.0
@@ -926,6 +930,9 @@ class DomViewModel(
         viewModelScope.launch {
             try {
                 val info = symbolInfoRepository.getSymbolInfo(symbol) ?: return@launch
+                // Символ уже сменился, пока грузились метаданные: устаревший
+                // ответ не должен перетирать tick/step/min/qty нового символа
+                if (_domOptions.value.symbol.symbol != symbol) return@launch
                 tickSize = info.tickSize
                 stepSize = info.stepSize
                 _symbolTickSize.value = tickSize
@@ -941,10 +948,11 @@ class DomViewModel(
                 if (current.symbol.symbol == info.symbol) {
                     _domOptions.value = current.copy(symbol = current.symbol.copy(symbolInfo = info))
                 }
-                // Минимальный qty инструмента подтягивается в поле (если
-                // пользователь ещё не правил qty вручную)
+                // Минимальный qty инструмента: placeholder + префилл поля
+                // (если пользователь ещё не правил qty вручную)
+                val minQty = info.minQty.takeIf { it > 0.0 } ?: info.stepSize.takeIf { it > 0.0 }
+                _symbolMinQty.value = minQty?.let { fmtQty(it) }
                 if (!qtyUserEdited) {
-                    val minQty = info.minQty.takeIf { it > 0.0 } ?: info.stepSize.takeIf { it > 0.0 }
                     minQty?.let { _orderQuantity.value = fmtQty(it) }
                 }
                 // Метаданные могли прийти после первого окна — пересобираем

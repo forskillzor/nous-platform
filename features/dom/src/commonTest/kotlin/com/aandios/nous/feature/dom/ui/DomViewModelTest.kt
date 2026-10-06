@@ -473,6 +473,29 @@ class DomViewModelTest {
         val tickSize = viewModel.symbolTickSize.first()
         assertEquals(0.01, tickSize)
     }
+
+    @Test
+    fun `stale symbol metadata does not overwrite qty of the new symbol`() = testScope.runTest {
+        fakeSymbolInfoAdapter.tickSize = 0.01
+        // AAAUSDT отвечает медленно; его minQty на момент запроса — 0.001
+        fakeSymbolInfoAdapter.delayBySymbol["AAAUSDT"] = 1_000
+
+        viewModel.updateDomOptions(
+            DomOptions.default().copy(symbol = TradingSymbol("AAAUSDT", "AAA/USDT", "binance-nous-0.0.1"))
+        )
+        runCurrent()
+
+        // Пока метаданные AAA ещё грузятся — переключаемся на BBB (min 0.5)
+        fakeSymbolInfoAdapter.minQty = 0.5
+        viewModel.updateDomOptions(
+            viewModel.domOptions.value.copy(symbol = TradingSymbol("BBBUSDT", "BBB/USDT", "binance-nous-0.0.1"))
+        )
+        advanceUntilIdle()
+
+        // Устаревший ответ AAA не должен перетереть qty/placeholder нового символа
+        assertEquals("0.5", viewModel.orderQuantity.first())
+        assertEquals("0.5", viewModel.symbolMinQty.first())
+    }
 }
 
 // Fake adapters / provider
@@ -499,14 +522,21 @@ class FakeBookTickerAdapter : BookTickerAdapter {
 
 class FakeSymbolInfoAdapter : SymbolInfoAdapter {
     var tickSize: Double? = null
+    var minQty: Double = 0.001
+
+    /** Задержка ответа по символу — для тестов гонки метаданных. */
+    val delayBySymbol = mutableMapOf<String, Long>()
 
     override suspend fun getSymbolInfo(symbol: String): SymbolInfo? {
+        // Значения фиксируем на момент запроса (как реальный REST-ответ)
+        val minAtRequest = minQty
+        delayBySymbol[symbol]?.let { kotlinx.coroutines.delay(it) }
         return tickSize?.let {
             SymbolInfo(
                 symbol = symbol,
                 tickSize = it,
                 stepSize = 0.01,
-                minQty = 0.001,
+                minQty = minAtRequest,
                 minNotional = 10.0,
                 status = "TRADING",
                 baseAsset = symbol.substring(0, 3),

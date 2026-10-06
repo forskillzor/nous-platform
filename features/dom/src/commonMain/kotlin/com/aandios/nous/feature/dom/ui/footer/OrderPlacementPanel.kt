@@ -53,6 +53,8 @@ fun OrderPlacementPanel(
     symbol: String,
     selectedPrice: Double?,
     orderQuantity: String,
+    /** Минимальный размер символа — серый placeholder пустого поля qty. */
+    qtyPlaceholder: String? = null,
     bestBidPrice: Double?,
     bestAskPrice: Double?,
     onQuantityChanged: (String) -> Unit,
@@ -174,7 +176,18 @@ fun OrderPlacementPanel(
                     singleLine = true,
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorationBox = { inner ->
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { inner() }
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            if (orderQuantity.isEmpty() && !qtyPlaceholder.isNullOrBlank()) {
+                                Text(
+                                    text = qtyPlaceholder,
+                                    color = labelColor,
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                )
+                            }
+                            inner()
+                        }
                     },
                 )
                 TerminalDropdown(

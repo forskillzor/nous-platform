@@ -65,6 +65,7 @@ fun DomWindow(
     val isTradingEnabled by domViewModel.isTradingEnabled.collectAsState()
     val symbolTickSize by domViewModel.symbolTickSize.collectAsState()
     val symbolStepSize by domViewModel.symbolStepSize.collectAsState()
+    val symbolMinQty by domViewModel.symbolMinQty.collectAsState()
     val selectedPrice by domViewModel.selectedPrice.collectAsState()
     val reduceOnly by domViewModel.reduceOnly.collectAsState()
     val limitOrderType by domViewModel.limitOrderType.collectAsState()
@@ -199,6 +200,7 @@ fun DomWindow(
             symbol = domOptions.symbol.symbol,
             selectedPrice = selectedPrice,
             orderQuantity = orderQuantity,
+            qtyPlaceholder = symbolMinQty,
             bestBidPrice = bestBidPrice,
             bestAskPrice = bestAskPrice,
             onQuantityChanged = { qty -> domViewModel.updateOrderQuantity(qty) },
