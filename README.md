@@ -1,13 +1,13 @@
-# Nous Platform v0.0.1 Pre-Alpha
+# Nous Platform v0.1.0 pre-Alpha
 
-![Windows](https://shields.io)
-![Linux](https://shields.io)
-![macOS](https://shields.io)
+![Windows](https://img.shields.io/badge/platform-Windows-blue)
+![Linux](https://img.shields.io/badge/platform-Linux-orange)
+![macOS](https://img.shields.io/badge/platform-macOS-lightgrey)
 
 ***Project in active development***
 
 > [!WARNING]
-> **Live trading** and **paper trading** are not yet supported.
+> **Live trading works only MEXC USDT-M futures**.
 
 This ambitious project needs your active support! You can help out by donating, contributing, or submitting PRs (pull requests).
 
