@@ -216,6 +216,10 @@ class DomViewModel(
                 ensureNoticesSubscription()
                 // Смена провайдера = смена цели торговли — Trading выключаем
                 setTradingEnabled(false)
+                // Биржа этой DOM-панели персистится (как paper/trading)
+                stateStore?.let { store ->
+                    viewModelScope.launch { store.putString(providerStoreKey(), newOptions.provider) }
+                }
             } else if (oldOptions.symbol != newOptions.symbol) {
                 qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
@@ -516,13 +520,21 @@ class DomViewModel(
     }
 
     /**
-     * Привязка панели: paper-режим этой DOM-панели персистится отдельно
-     * (как у графиков) и восстанавливается при появлении панели.
+     * Привязка панели: paper-режим и биржа этой DOM-панели персистятся
+     * отдельно (как у графиков) и восстанавливаются при появлении панели.
      */
     fun attachPanel(panelId: String?) {
         panelKey = panelId
         val store = stateStore ?: return
         viewModelScope.launch {
+            // Биржа: восстанавливаем до paper/trading, чтобы флаги легли на неё
+            val savedProvider = store.getString(providerStoreKey())
+            if (!savedProvider.isNullOrBlank() &&
+                savedProvider != _domOptions.value.provider &&
+                providerRegistry.get(savedProvider) != null
+            ) {
+                updateDomOptions(_domOptions.value.copy(provider = savedProvider))
+            }
             val enabled = store.getString(paperStoreKey()) == "1"
             if (enabled != _paperEnabled.value) {
                 _paperEnabled.value = enabled
@@ -541,6 +553,8 @@ class DomViewModel(
     private fun paperStoreKey(): String = "dom_paper_${panelKey ?: "default"}"
 
     private fun tradingStoreKey(): String = "dom_trading_${panelKey ?: "default"}"
+
+    private fun providerStoreKey(): String = "dom_provider_${panelKey ?: "default"}"
 
     /** Подписка на уведомления активного адаптера (отказы движка). */
     private fun ensureNoticesSubscription() {

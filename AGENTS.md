@@ -53,8 +53,14 @@ Mind this when writing paths.
   `chart_{workspace}_{panel}_...`. Keys cover trading enabled, confirm, qty,
   order type, reduce-only, leverage, margin mode, show-orders, show-positions,
   panel collapsed, and paper mode (`PaperTrading.STORE_KEY` in the same prefix).
-- DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`.
-- Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`).
+  Symbol/timeframe/provider state (`chart_symbol`, `chart_provider_id`, ...) is
+  saved globally (no prefix); in the workspace the symbol/timeframe come from
+  `PanelConfig`, so `ChartWindow` only restores the provider via
+  `ChartViewModel.restoreProvider()`.
+- DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`.
+- Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`) and
+  `trading_provider` (global keys).
+- Trades panel: `trades_provider` (global key).
 
 ### Safety invariants (learned the hard way — keep them)
 - Trading is **OFF by default** on both chart and DOM panels.

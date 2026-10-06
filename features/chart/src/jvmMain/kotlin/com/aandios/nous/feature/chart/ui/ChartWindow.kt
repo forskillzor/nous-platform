@@ -112,6 +112,8 @@ fun ChartWindow(
     // персистятся и восстанавливаются отдельно от других графиков
     LaunchedEffect(workspaceId, panelId) {
         chartViewModel.attachPanel(workspaceId, panelId)
+        // Биржу панели восстанавливаем из персиста (символ/ТФ — из PanelConfig)
+        chartViewModel.restoreProvider()
     }
     ChartWindowContent(
         chartViewModel = chartViewModel,

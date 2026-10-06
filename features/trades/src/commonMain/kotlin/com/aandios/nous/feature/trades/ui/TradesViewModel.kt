@@ -11,6 +11,7 @@ import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.data.repository.TradesRepositoryImpl
 import com.aandios.nous.core.Disposable
+import com.aandios.nous.core.storage.StateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +51,7 @@ sealed class TradesState {
 
 class TradesViewModel(
     private val providerRegistry: ProviderRegistry,
+    private val stateStore: StateStore? = null,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var subscriptionJob: Job? = null
@@ -104,8 +106,13 @@ class TradesViewModel(
     }
 
     init {
-        // Загружаем список символов при старте
-        loadSymbols()
+        // Биржа панели переживает перезапуск + список символов при старте
+        viewModelScope.launch {
+            stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
+                if (providerRegistry.get(saved) != null) _currentProviderId.value = saved
+            }
+            loadSymbols()
+        }
     }
 
     /**
@@ -195,6 +202,7 @@ class TradesViewModel(
     fun selectProvider(providerId: String) {
         if (_currentProviderId.value == providerId) return
         _currentProviderId.value = providerId
+        viewModelScope.launch { stateStore?.putString(PROVIDER_STORE_KEY, providerId) }
         _filteredBuffer.value = emptyList()
         subscribedSymbol = ""
         loadSymbols()
@@ -294,5 +302,8 @@ class TradesViewModel(
 
     companion object {
         private val fmt = com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT
+
+        /** Ключ StateStore: выбранная биржа trades-панели. */
+        const val PROVIDER_STORE_KEY = "trades_provider"
     }
 }

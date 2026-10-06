@@ -784,6 +784,22 @@ class ChartViewModel(
         }
     }
 
+    /**
+     * Восстановить только биржу (для workspace-панелей: символ/ТФ задаёт
+     * PanelConfig, а провайдер живёт в персисте графика).
+     */
+    fun restoreProvider() {
+        val persistor = persistor ?: return
+        viewModelScope.launch {
+            val savedId = persistor.restore().providerId ?: return@launch
+            if (providerRegistry.get(savedId) == null || activeProviderId == savedId) return@launch
+            activeProviderId = savedId
+            _state.update { it.copy(currentProviderId = savedId, symbols = emptyList()) }
+            loadSymbols()
+            refreshOpenOrders()
+        }
+    }
+
     private fun loadFootprintSymbols() {
         val api = footprintApiClient ?: return
         viewModelScope.launch {

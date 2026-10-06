@@ -93,7 +93,7 @@ val appModule = module {
     }
 
     factory {
-        TradesViewModel(providerRegistry = get())
+        TradesViewModel(providerRegistry = get(), stateStore = get())
     }
 
     factory {

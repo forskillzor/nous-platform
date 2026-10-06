@@ -103,6 +103,10 @@ class TradingViewModel(
         scope.launch {
             // Paper-режим панели переживает перезапуск (общий ключ панели)
             _paperEnabled.value = stateStore?.getString(PaperTrading.STORE_KEY) == "1"
+            // Биржа панели тоже переживает перезапуск (как paper-режим)
+            stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
+                if (providerRegistry.get(saved) != null) _providerId.value = saved
+            }
             restart()
         }
     }
@@ -116,6 +120,9 @@ class TradingViewModel(
     fun selectProvider(providerId: String) {
         if (_providerId.value == providerId) return
         _providerId.value = providerId
+        scope.launch {
+            stateStore?.putString(PROVIDER_STORE_KEY, providerId)
+        }
         _positions.value = emptyList()
         _openOrders.value = emptyList()
         _balances.value = emptyList()
@@ -293,5 +300,10 @@ class TradingViewModel(
 
     fun clearMessage() {
         _lastMessage.value = null
+    }
+
+    private companion object {
+        /** Ключ StateStore: выбранная биржа docked trading panel. */
+        const val PROVIDER_STORE_KEY = "trading_provider"
     }
 }
