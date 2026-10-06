@@ -128,6 +128,9 @@ fun CandleStickChartInteraction(
     tradingPositions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
     /** Базовый актив символа (SOL/BTC) — для бейджа позиции. */
     symbolBase: String? = null,
+    /** Inverse (COIN-M): номинал контракта в USD и признак — для PnL. */
+    contractSize: Double = 1.0,
+    inverse: Boolean = false,
     onChartTradingClick: ((Double) -> Unit)? = null,
     /** Отмена ордера с графика (✕ на бейдже). */
     onCancelTradingOrder: ((com.aandios.nous.api.market.model.trading.Order) -> Unit)? = null,
@@ -842,14 +845,26 @@ fun CandleStickChartInteraction(
                     ?: position.markPrice.takeIf { it > 0.0 }
                     ?: 0.0
                 val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
-                val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
-                val tick = config.priceFormatter.tickSize
-                val ticks = if (tick > 0.0 && mark > 0.0) {
-                    (mark - position.avgPrice) * dir / tick
-                } else 0.0
+                val pnl = if (mark > 0.0) {
+                    if (inverse) {
+                        position.quantity * contractSize * (mark - position.avgPrice) / position.avgPrice * dir
+                    } else {
+                        (mark - position.avgPrice) * position.quantity * dir
+                    }
+                } else {
+                    0.0
+                }
                 val pnlLabel = if (mark > 0.0) {
                     val sign = if (pnl >= 0) "+" else ""
-                    "$sign${ticks.roundToLong()}t  $sign${fmtPnl2(pnl)} USDT"
+                    val deltaText = if (inverse) {
+                        val coinDelta = position.quantity * contractSize *
+                            (1.0 / position.avgPrice - 1.0 / mark) * dir
+                        plainDecimalString(kotlin.math.round(coinDelta * 1e8) / 1e8)
+                    } else {
+                        // Изменение цены в базовых значениях (без «тиков»)
+                        config.priceFormatter.formatPrice((mark - position.avgPrice) * dir)
+                    }
+                    "$sign$deltaText  $sign${fmtPnl2(pnl)} USDT"
                 } else null
                 Box(
                     modifier = Modifier

@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
 /**
@@ -15,6 +16,9 @@ sealed interface ChartIntent {
     data class SelectSymbol(val symbol: String) : ChartIntent
     data class SelectTimeframe(val timeframe: String) : ChartIntent
     data class SelectProvider(val providerId: String) : ChartIntent
+
+    /** USDT-M / COIN-M — фильтр списка символов панели. */
+    data class SelectContractType(val type: ContractType) : ChartIntent
     data object ToggleChartMode : ChartIntent
     data class SelectChartMode(val mode: ChartMode) : ChartIntent
     data class SetFpAggregation(val level: AggregationLevel) : ChartIntent

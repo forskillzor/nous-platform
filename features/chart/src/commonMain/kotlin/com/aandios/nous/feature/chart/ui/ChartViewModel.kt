@@ -11,6 +11,7 @@ import com.aandios.nous.api.market.adapters.replaceOrder
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
@@ -178,6 +179,7 @@ class ChartViewModel(
             is ChartIntent.SelectSymbol -> selectSymbol(intent.symbol)
             is ChartIntent.SelectTimeframe -> selectTimeframe(intent.timeframe)
             is ChartIntent.SelectProvider -> selectProvider(intent.providerId)
+            is ChartIntent.SelectContractType -> selectContractType(intent.type)
             is ChartIntent.ToggleChartMode -> toggleChartMode()
             is ChartIntent.SelectChartMode -> selectChartMode(intent.mode)
             is ChartIntent.SetFpAggregation -> setFpAggregation(intent.level)
@@ -216,6 +218,33 @@ class ChartViewModel(
         refreshOpenOrders()
     }
 
+    /** USDT-M / COIN-M: фильтр списка символов + fallback текущего символа. */
+    private fun selectContractType(type: ContractType) {
+        if (_state.value.contractType == type) return
+        _state.update { it.copy(contractType = type) }
+        saveState()
+        applyContractTypeFilter()
+        ensureSymbolMatchesContractType()
+    }
+
+    /** Символы провайдера выбранного типа контракта (для dropdown). */
+    private fun applyContractTypeFilter() {
+        val type = _state.value.contractType
+        val filtered = _symbolInfoMap.value.values
+            .filter { type.matches(it) }
+            .map { it.symbol }
+            .sorted()
+        _state.update { it.copy(symbols = filtered) }
+    }
+
+    /** Если текущий символ не того типа — выбрать первый подходящий. */
+    private fun ensureSymbolMatchesContractType() {
+        val s = _state.value
+        val info = s.currentSymbolInfo ?: _symbolInfoMap.value[s.currentSymbol] ?: return
+        if (s.contractType.matches(info)) return
+        s.symbols.firstOrNull()?.let { selectSymbol(it) }
+    }
+
     private fun loadSymbols() {
         val symbolInfoAdapter = activeProvider()?.symbolInfo ?: return
         viewModelScope.launch {
@@ -226,7 +255,10 @@ class ChartViewModel(
                 _symbolInfoMap.value = map
                 _state.update { s ->
                     s.copy(
-                        symbols = trading.map { it.symbol }.sorted(),
+                        symbols = trading
+                            .filter { s.contractType.matches(it) }
+                            .map { it.symbol }
+                            .sorted(),
                         // Set formatter for current symbol
                         currentSymbolFormatter = map[s.currentSymbol]?.let {
                             SymbolFormatter(it.tickSize, it.minQty)
@@ -234,9 +266,18 @@ class ChartViewModel(
                         currentSymbolInfo = map[s.currentSymbol] ?: s.currentSymbolInfo,
                     )
                 }
+                ensurePaperCompatibility()
             } catch (e: Exception) {
                 println("Failed to load symbols: ${e.message}")
             }
+        }
+    }
+
+    /** Paper-движок линейный: для COIN-M (inverse) paper выключаем. */
+    private fun ensurePaperCompatibility() {
+        if (_paperEnabled.value && _state.value.currentSymbolInfo?.isInverse == true) {
+            setPaperEnabled(false)
+            notify("Paper trading недоступен для COIN-M — выключен")
         }
     }
 
@@ -396,6 +437,10 @@ class ChartViewModel(
      * в одном workspace можно видеть paper и live одновременно.
      */
     fun setPaperEnabled(enabled: Boolean) {
+        if (enabled && _state.value.currentSymbolInfo?.isInverse == true) {
+            notify("Paper trading недоступен для COIN-M")
+            return
+        }
         if (_paperEnabled.value == enabled) return
         _paperEnabled.value = enabled
         viewModelScope.launch { persistor?.savePaperEnabled(enabled) }
@@ -757,6 +802,7 @@ class ChartViewModel(
                 chartMode = current.chartMode,
                 fpAggregation = current.fpAggregation,
                 providerId = activeProviderId,
+                contractType = current.contractType,
             )
         }
     }
@@ -768,6 +814,11 @@ class ChartViewModel(
             // Провайдер применяем только если он реально зарегистрирован
             saved.providerId?.let { savedId ->
                 if (providerRegistry.get(savedId) != null) activeProviderId = savedId
+            }
+            saved.contractType?.let { savedType ->
+                if (_state.value.contractType != savedType) {
+                    _state.update { it.copy(contractType = savedType) }
+                }
             }
             _state.update { s ->
                 s.copy(
@@ -791,7 +842,14 @@ class ChartViewModel(
     fun restoreProvider() {
         val persistor = persistor ?: return
         viewModelScope.launch {
-            val savedId = persistor.restore().providerId ?: return@launch
+            val saved = persistor.restore()
+            // Тип контрактов — тоже часть персиста графика
+            saved.contractType?.let { savedType ->
+                if (_state.value.contractType != savedType) {
+                    _state.update { it.copy(contractType = savedType) }
+                }
+            }
+            val savedId = saved.providerId ?: return@launch
             if (providerRegistry.get(savedId) == null || activeProviderId == savedId) return@launch
             activeProviderId = savedId
             _state.update { it.copy(currentProviderId = savedId, symbols = emptyList()) }

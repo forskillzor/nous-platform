@@ -6,6 +6,7 @@
 package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.ui.format.SymbolFormatter
@@ -36,6 +37,8 @@ data class ChartUiState(
     val symbolsWithFootprint: Set<String> = emptySet(),
     val fpAggregation: AggregationLevel = AggregationLevel.BaseTick,
     val hasMoreFootprintHistory: Boolean = true,
+    /** Тип контрактов панели: USDT-M / COIN-M (фильтр списка символов). */
+    val contractType: ContractType = ContractType.USDT_M,
 )
 
 sealed interface ChartState {

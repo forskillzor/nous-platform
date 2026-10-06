@@ -77,8 +77,16 @@ fun DomWindow(
     val orders by domViewModel.orders.collectAsState()
     val positions by domViewModel.positions.collectAsState()
     val markPrice by domViewModel.markPrice.collectAsState()
-    val baseText = domOptions.symbol.symbolInfo?.baseAsset
-        ?: domOptions.symbol.displayName.substringBefore("/").takeIf { it.isNotBlank() }
+    val symbolInfo = domOptions.symbol.symbolInfo
+    val isInverse = symbolInfo?.isInverse == true
+    val contractSize = symbolInfo?.contractSize ?: 1.0
+    // Inverse: qty в контрактах — подпись «cont» вместо базового актива
+    val baseText = if (isInverse) {
+        "cont"
+    } else {
+        symbolInfo?.baseAsset
+            ?: domOptions.symbol.displayName.substringBefore("/").takeIf { it.isNotBlank() }
+    }
 
     // Одно состояние лучших цен
     val bestPrices by domViewModel.bestPrices.collectAsState()
@@ -99,7 +107,7 @@ fun DomWindow(
 
     // PnL позиции — дублируется в самую верхнюю строку панели ордеров
     val pnl = positions.firstOrNull()?.let {
-        domPositionPnl(it, markPrice, symbolTickSize ?: 0.01)
+        domPositionPnl(it, markPrice, symbolTickSize ?: 0.01, contractSize, isInverse)
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -131,6 +139,8 @@ fun DomWindow(
                 positions = positions,
                 markPrice = markPrice,
                 baseText = baseText,
+                contractSize = contractSize,
+                inverse = isInverse,
                 onCancelOrder = { orderId -> domViewModel.cancelDomOrder(orderId) },
                 onResizeOrder = { order, qty -> domViewModel.resizeDomOrder(order, qty) },
                 onMoveOrder = { order, price -> domViewModel.moveDomOrder(order, price) },

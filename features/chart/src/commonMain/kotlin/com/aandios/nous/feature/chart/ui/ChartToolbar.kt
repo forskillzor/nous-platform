@@ -24,6 +24,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.ui.component.SymbolSearchDropdown
 import com.aandios.nous.core.ui.component.TerminalDropdownWithLabel
 import com.aandios.nous.core.ui.component.TerminalSwitch
@@ -53,6 +54,8 @@ fun ChartToolbar(
     exchanges: List<String> = emptyList(),
     currentExchange: String = "",
     onExchangeChange: (String) -> Unit = {},
+    contractType: ContractType = ContractType.USDT_M,
+    onContractTypeChange: (ContractType) -> Unit = {},
     chartMode: ChartMode = ChartMode.CANDLESTICK,
     onChartModeChange: (ChartMode) -> Unit = {},
     symbolsWithFootprint: Set<String> = emptySet(),
@@ -82,6 +85,9 @@ fun ChartToolbar(
             )
 //            Spacer(Modifier.width(12.dp))
         }
+
+        Spacer(Modifier.width(8.dp))
+        ContractTypeSelector(current = contractType, onChange = onContractTypeChange)
 
         SymbolSearchDropdown(
             symbols = availableSymbols,
@@ -383,6 +389,35 @@ private fun FpAggregationSelector(level: AggregationLevel, onChange: (Aggregatio
                 ).padding(horizontal = 5.dp, vertical = 3.dp),
             )
             if (ag != AggregationLevel.all().last()) Spacer(Modifier.width(2.dp))
+        }
+    }
+}
+
+/** USDT-M / COIN-M — компактный переключатель типа контрактов панели. */
+@Composable
+private fun ContractTypeSelector(
+    current: ContractType,
+    onChange: (ContractType) -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        ContractType.entries.forEach { type ->
+            val isActive = type == current
+            Text(
+                text = type.label,
+                color = if (isActive) MaterialTheme.colorScheme.inverseOnSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = FontFamily.Monospace,
+                modifier = Modifier
+                    .clickable { onChange(type) }
+                    .background(
+                        if (isActive) accentColor.copy(alpha = 0.25f) else Color.Transparent,
+                        RoundedCornerShape(3.dp)
+                    )
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+            )
+            if (type != ContractType.entries.last()) Spacer(Modifier.width(2.dp))
         }
     }
 }

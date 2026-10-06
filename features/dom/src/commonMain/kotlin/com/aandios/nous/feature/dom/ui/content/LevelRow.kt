@@ -83,6 +83,9 @@ fun LevelRow(
     position: Position? = null,
     markPrice: Double = 0.0,
     baseText: String? = null,
+    /** Номинал inverse-контракта (USD) и признак COIN-M — для PnL позиции. */
+    contractSize: Double = 1.0,
+    inverse: Boolean = false,
     /** Цена одной строки лесенки (tickSize * шаг агрегации) — для драга. */
     priceStepPerRow: Double = 0.0,
     /** Общее состояние драга: чип «летит» за курсором поверх лесенки. */
@@ -242,7 +245,7 @@ fun LevelRow(
                     )
                 }
             } else {
-                val (pnlText, pnlColor) = positionPnlText(position, markPrice, tickSize)
+                val (pnlText, pnlColor) = positionPnlText(position, markPrice, tickSize, contractSize, inverse)
                 // Тёмная мини-плашка под PnL — как у бейджа позиции в chart trading
                 Box(
                     modifier = Modifier
@@ -288,20 +291,42 @@ data class DomPnlLines(
 )
 
 /**
- * PnL позиции в базовых значениях цены (SOL: 0.35, без «тиков») ·
+ * PnL позиции: изменение цены в базовых значениях (SOL: 0.35, без «тиков») ·
  * % от изменения цены · USDT.
+ *
+ * Inverse (COIN-M): qty в контрактах, номинал [contractSize] USD — первое
+ * значение в монете по формуле inverse-контракта, USDT = qty·CS·(M−A)/A.
  */
-fun domPositionPnl(position: Position, markPrice: Double, tickSize: Double): DomPnlLines {
+fun domPositionPnl(
+    position: Position,
+    markPrice: Double,
+    tickSize: Double,
+    contractSize: Double = 1.0,
+    inverse: Boolean = false,
+): DomPnlLines {
     val mark = if (markPrice > 0.0) markPrice else position.markPrice
     val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
-    val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
-    val delta = if (mark > 0.0) (mark - position.avgPrice) * dir else 0.0
-    val pct = if (mark > 0.0 && position.avgPrice > 0.0) {
-        delta / position.avgPrice * 100.0
-    } else 0.0
+    val avg = position.avgPrice
+    val pnl = if (mark > 0.0) {
+        if (inverse) position.quantity * contractSize * (mark - avg) / avg * dir
+        else (mark - avg) * position.quantity * dir
+    } else {
+        0.0
+    }
+    val delta = if (mark > 0.0 && avg > 0.0) {
+        if (inverse) position.quantity * contractSize * (1.0 / avg - 1.0 / mark) * dir
+        else (mark - avg) * dir
+    } else {
+        0.0
+    }
+    val pct = if (mark > 0.0 && avg > 0.0) {
+        (mark - avg) * dir / avg * 100.0
+    } else {
+        0.0
+    }
     val sign = if (pnl > 0.0) "+" else ""
     return DomPnlLines(
-        price = "$sign${fmtByTick(delta, tickSize)}",
+        price = "$sign${if (inverse) fmtCoin(delta) else fmtByTick(delta, tickSize)}",
         percent = "$sign${fmt2(pct)}%",
         usdt = "$sign${fmt2(pnl)} USDT",
         up = pnl >= 0,
@@ -309,18 +334,44 @@ fun domPositionPnl(position: Position, markPrice: Double, tickSize: Double): Dom
 }
 
 /** PnL позиции в лесенке: изменение цены в базовых значениях и % от изменения. */
-private fun positionPnlText(position: Position, markPrice: Double, tickSize: Double): Pair<String, Color> {
+private fun positionPnlText(
+    position: Position,
+    markPrice: Double,
+    tickSize: Double,
+    contractSize: Double,
+    inverse: Boolean,
+): Pair<String, Color> {
     val mark = if (markPrice > 0.0) markPrice else position.markPrice
     val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
-    val pnl = if (mark > 0.0) (mark - position.avgPrice) * position.quantity * dir else 0.0
-    val delta = if (mark > 0.0) (mark - position.avgPrice) * dir else 0.0
-    // % — от изменения цены, а не от маржи (как просили)
-    val pct = if (mark > 0.0 && position.avgPrice > 0.0) {
-        delta / position.avgPrice * 100.0
-    } else 0.0
+    val avg = position.avgPrice
+    val pnl = if (mark > 0.0) {
+        if (inverse) position.quantity * contractSize * (mark - avg) / avg * dir
+        else (mark - avg) * position.quantity * dir
+    } else {
+        0.0
+    }
+    val delta = if (mark > 0.0 && avg > 0.0) {
+        if (inverse) position.quantity * contractSize * (1.0 / avg - 1.0 / mark) * dir
+        else (mark - avg) * dir
+    } else {
+        0.0
+    }
+    // % — от изменения цены, а не от маржи
+    val pct = if (mark > 0.0 && avg > 0.0) {
+        (mark - avg) * dir / avg * 100.0
+    } else {
+        0.0
+    }
     val sign = if (pnl > 0.0) "+" else ""
-    val text = "$sign${fmtByTick(delta, tickSize)} $sign${fmt2(pct)}%"
+    val deltaText = if (inverse) fmtCoin(delta) else fmtByTick(delta, tickSize)
+    val text = "$sign$deltaText $sign${fmt2(pct)}%"
     return text to (if (pnl >= 0) longColor else shortColor)
+}
+
+/** Монетное значение (inverse): до 8 знаков, без экспоненты и хвостовых нулей. */
+private fun fmtCoin(v: Double): String {
+    val factor = 100_000_000.0
+    return com.aandios.nous.core.ui.format.plainDecimalString(kotlin.math.round(v * factor) / factor)
 }
 
 /**

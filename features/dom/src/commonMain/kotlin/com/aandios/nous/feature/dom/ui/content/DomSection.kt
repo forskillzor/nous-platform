@@ -65,6 +65,9 @@ fun DomSection(
     positions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
     markPrice: Double = 0.0,
     baseText: String? = null,
+    /** Inverse-контракт: номинал (USD) и признак COIN-M — для PnL позиции. */
+    contractSize: Double = 1.0,
+    inverse: Boolean = false,
     onCancelOrder: (String) -> Unit = {},
     onResizeOrder: (com.aandios.nous.api.market.model.trading.Order, Double) -> Unit = { _, _ -> },
     onMoveOrder: (com.aandios.nous.api.market.model.trading.Order, Double) -> Unit = { _, _ -> },
@@ -190,6 +193,8 @@ fun DomSection(
                         position = positionByTicks[key],
                         markPrice = markPrice,
                         baseText = baseText,
+                        contractSize = contractSize,
+                        inverse = inverse,
                         priceStepPerRow = tickSize * step.toDouble(),
                         dragState = dragState,
                         onCancelOrder = onCancelOrder,

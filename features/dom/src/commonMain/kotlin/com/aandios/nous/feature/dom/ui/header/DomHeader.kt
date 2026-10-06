@@ -94,6 +94,15 @@ private fun ExpandedDomHeader(
                     },
                     modifier = Modifier.weight(1f)
                 )
+
+                // USDT-M / COIN-M — фильтр списка символов
+                ContractTypeDropdown(
+                    current = domOptions.contractType,
+                    onContractTypeChanged = { newType ->
+                        onDomOptionsChanged(domOptions.copy(contractType = newType))
+                    },
+                    modifier = Modifier.padding(start = 8.dp)
+                )
                 
                 // Правая часть: live индикатор + кнопка сворачивания
                 Row(

@@ -40,6 +40,7 @@ import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
@@ -172,21 +173,29 @@ private fun ChartWindowContent(
         } else base
     } else null
 
-    // PnL текущей позиции: %, тики, USDT — считается от живой цены графика
+    // PnL текущей позиции: % от изменения цены, изменение цены, USDT (живая цена)
     val pnlPosition = tradingPositions.firstOrNull()
     val pnlInfo: Pair<String, Boolean>? = pnlPosition?.let { p ->
         val mark = chartViewModel.chartLastPrice() ?: p.markPrice
         if (mark <= 0.0 || p.avgPrice <= 0.0) return@let null
-        val lev = (p.leverage ?: 1).coerceAtLeast(1)
-        val margin = p.avgPrice * p.quantity / lev
+        val info = uiState.currentSymbolInfo
+        val inverse = info?.isInverse == true
+        val cs = info?.contractSize ?: 1.0
         val dir = if (p.side == TradeSide.BUY) 1.0 else -1.0
-        val pnl = (mark - p.avgPrice) * p.quantity * dir
-        val pct = if (margin > 0) pnl / margin * 100 else 0.0
-        val tick = uiState.currentSymbolFormatter.tickSize
-        val ticks = if (tick > 0) (mark - p.avgPrice) * dir / tick else 0.0
+        val pnl = if (inverse) {
+            p.quantity * cs * (mark - p.avgPrice) / p.avgPrice * dir
+        } else {
+            (mark - p.avgPrice) * p.quantity * dir
+        }
+        val pct = (mark - p.avgPrice) * dir / p.avgPrice * 100.0
+        val deltaText = if (inverse) {
+            val coinDelta = p.quantity * cs * (1.0 / p.avgPrice - 1.0 / mark) * dir
+            plainDecimalString(kotlin.math.round(coinDelta * 1e8) / 1e8)
+        } else {
+            uiState.currentSymbolFormatter.formatPrice((mark - p.avgPrice) * dir)
+        }
         val sign = if (pnl >= 0) "+" else ""
-        val text = "PnL $sign${String.format(java.util.Locale.US, "%.2f", pct)}%  " +
-            "$sign${ticks.roundToLong()}t  " +
+        val text = "PnL $sign${String.format(java.util.Locale.US, "%.2f", pct)}%  $sign$deltaText  " +
             "$sign${String.format(java.util.Locale.US, "%.2f", pnl)} USDT"
         text to (pnl >= 0)
     }
@@ -284,6 +293,10 @@ private fun ChartWindowContent(
                 registry.idByDisplayName(name)?.let { id ->
                     chartViewModel.dispatch(ChartIntent.SelectProvider(id))
                 }
+            },
+            contractType = uiState.contractType,
+            onContractTypeChange = { type ->
+                chartViewModel.dispatch(ChartIntent.SelectContractType(type))
             },
             chartMode = uiState.chartMode,
             onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
@@ -396,7 +409,13 @@ private fun ChartWindowContent(
                                 onZoomChange = onZoomChange,
                                 tradingOrders = if (showOrders) tradingOrders else emptyList(),
                                 tradingPositions = if (showPositions) tradingPositions else emptyList(),
-                                symbolBase = uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol,
+                                symbolBase = if (uiState.currentSymbolInfo?.isInverse == true) {
+                                    "cont"
+                                } else {
+                                    uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol
+                                },
+                                contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
+                                inverse = uiState.currentSymbolInfo?.isInverse == true,
                                 onChartTradingClick = if (tradingEnabled) {
                                     { price -> chartViewModel.placeChartOrder(price) }
                                 } else null,
@@ -455,7 +474,13 @@ private fun ChartWindowContent(
                             onZoomChange = onZoomChange,
                             tradingOrders = if (showOrders) tradingOrders else emptyList(),
                             tradingPositions = if (showPositions) tradingPositions else emptyList(),
-                            symbolBase = uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol,
+                            symbolBase = if (uiState.currentSymbolInfo?.isInverse == true) {
+                        "cont"
+                    } else {
+                        uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol
+                    },
+                    contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
+                    inverse = uiState.currentSymbolInfo?.isInverse == true,
                             onChartTradingClick = if (tradingEnabled) {
                                 { price -> chartViewModel.placeChartOrder(price) }
                             } else null,

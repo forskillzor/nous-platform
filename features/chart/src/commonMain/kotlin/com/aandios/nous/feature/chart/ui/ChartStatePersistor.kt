@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
@@ -32,6 +33,7 @@ class ChartStatePersistor(
         val fpAggregation: AggregationLevel? = null,
         val zoomLevel: Float? = null,
         val providerId: String? = null,
+        val contractType: ContractType? = null,
     )
 
     data class TradingState(
@@ -110,11 +112,13 @@ class ChartStatePersistor(
         chartMode: ChartMode,
         fpAggregation: AggregationLevel,
         providerId: String,
+        contractType: ContractType,
     ) {
         store.putString(KEY_SYMBOL, symbol)
         store.putString(KEY_TIMEFRAME, timeframe)
         store.putString(KEY_CHART_MODE, chartMode.name)
         store.putString(KEY_PROVIDER_ID, providerId)
+        store.putString(KEY_CONTRACT_TYPE, contractType.name)
         store.putString(KEY_FP_AGGREGATION, when (fpAggregation) {
             AggregationLevel.BaseTick -> "BaseTick"
             AggregationLevel.TenTick -> "TenTick"
@@ -151,6 +155,9 @@ class ChartStatePersistor(
             chartMode = mode,
             fpAggregation = aggregation,
             providerId = store.getString(KEY_PROVIDER_ID),
+            contractType = store.getString(KEY_CONTRACT_TYPE)?.let { raw ->
+                runCatching { ContractType.valueOf(raw) }.getOrNull()
+            },
         )
     }
 
@@ -159,6 +166,7 @@ class ChartStatePersistor(
         const val KEY_TIMEFRAME = "chart_timeframe"
         const val KEY_CHART_MODE = "chart_mode"
         const val KEY_PROVIDER_ID = "chart_provider_id"
+        const val KEY_CONTRACT_TYPE = "chart_contract_type"
         const val KEY_FP_AGGREGATION = "fp_aggregation"
         const val KEY_ZOOM = "chart_zoom"
         const val KEY_TRADING_ENABLED = "chart_trading_enabled"

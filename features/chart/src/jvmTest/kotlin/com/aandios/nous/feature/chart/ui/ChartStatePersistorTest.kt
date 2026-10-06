@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import kotlinx.coroutines.test.runTest
@@ -33,6 +34,7 @@ class ChartStatePersistorTest {
             chartMode = ChartMode.FOOTPRINT,
             fpAggregation = AggregationLevel.TenTick,
             providerId = "mexc-nous-0.0.1",
+            contractType = ContractType.COIN_M,
         )
 
         val restored = persistor.restore()
@@ -41,6 +43,7 @@ class ChartStatePersistorTest {
         assertEquals(ChartMode.FOOTPRINT, restored.chartMode)
         assertEquals(AggregationLevel.TenTick, restored.fpAggregation)
         assertEquals("mexc-nous-0.0.1", restored.providerId)
+        assertEquals(ContractType.COIN_M, restored.contractType)
     }
 
     @Test
@@ -78,13 +81,14 @@ class ChartStatePersistorTest {
         val store = FakeStateStore()
         val persistor = ChartStatePersistor(store)
 
-        persistor.save("BTCUSDT", "1h", ChartMode.CANDLESTICK, AggregationLevel.HundredTick, "binance-nous-0.0.1")
+        persistor.save("BTCUSDT", "1h", ChartMode.CANDLESTICK, AggregationLevel.HundredTick, "binance-nous-0.0.1", ContractType.USDT_M)
 
         assertEquals("BTCUSDT", store.data["chart_symbol"])
         assertEquals("1h", store.data["chart_timeframe"])
         assertEquals("CANDLESTICK", store.data["chart_mode"])
         assertEquals("HundredTick", store.data["fp_aggregation"])
         assertEquals("binance-nous-0.0.1", store.data["chart_provider_id"])
+        assertEquals("USDT_M", store.data["chart_contract_type"])
     }
 
     @Test

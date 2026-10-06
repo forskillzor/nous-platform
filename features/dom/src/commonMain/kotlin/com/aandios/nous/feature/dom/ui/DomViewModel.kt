@@ -11,6 +11,7 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.commands.*
 import com.aandios.nous.api.market.adapters.replaceOrder
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.api.market.model.orderbook.DomEvent
@@ -138,6 +139,12 @@ class DomViewModel(
     private val _loadedSymbols = MutableStateFlow<List<TradingSymbol>>(emptyList())
     val loadedSymbols: StateFlow<List<TradingSymbol>> = _loadedSymbols.asStateFlow()
 
+    /** Полный список символов провайдера (без фильтра по типу контракта). */
+    private var allSymbols: List<TradingSymbol> = emptyList()
+
+    /** Текущий символ — inverse (COIN-M): qty в контрактах, paper недоступен. */
+    private var symbolIsInverse: Boolean = false
+
     private val _symbolTickSize = MutableStateFlow<Double?>(null)
     val symbolTickSize: StateFlow<Double?> = _symbolTickSize.asStateFlow()
 
@@ -197,6 +204,7 @@ class DomViewModel(
         val oldOptions = _domOptions.value
         if (oldOptions != newOptions) {
             val aggChanged = oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
+            val contractTypeChanged = oldOptions.contractType != newOptions.contractType
             _domOptions.value = newOptions
             updateAggMultiplier()
 
@@ -219,6 +227,14 @@ class DomViewModel(
                 // Биржа этой DOM-панели персистится (как paper/trading)
                 stateStore?.let { store ->
                     viewModelScope.launch { store.putString(providerStoreKey(), newOptions.provider) }
+                }
+            } else if (contractTypeChanged) {
+                // Другой тип контрактов: перефильтровать список и, если текущий
+                // символ не подходит, взять ближайший (BTC_USDT ↔ BTC_USD)
+                applyContractTypeFilter()
+                ensureSymbolMatchesContractType()
+                stateStore?.let { store ->
+                    viewModelScope.launch { store.putString(contractTypeStoreKey(), newOptions.contractType.name) }
                 }
             } else if (oldOptions.symbol != newOptions.symbol) {
                 qtyUserEdited = false
@@ -480,6 +496,11 @@ class DomViewModel(
 
     /** Переключение paper/live этой DOM-панели. */
     fun setPaperEnabled(enabled: Boolean) {
+        // Paper-движок линейный: COIN-M (inverse) в нём не поддержан
+        if (enabled && symbolIsInverse) {
+            notify("Paper trading недоступен для COIN-M")
+            return
+        }
         val changed = enabled != _paperEnabled.value
         _paperEnabled.value = enabled
         stateStore?.let { store ->
@@ -527,6 +548,14 @@ class DomViewModel(
         panelKey = panelId
         val store = stateStore ?: return
         viewModelScope.launch {
+            // Тип контрактов — до провайдера: фильтр символов применится сразу
+            store.getString(contractTypeStoreKey())
+                ?.let { raw -> runCatching { ContractType.valueOf(raw) }.getOrNull() }
+                ?.let { savedType ->
+                    if (savedType != _domOptions.value.contractType) {
+                        _domOptions.value = _domOptions.value.copy(contractType = savedType)
+                    }
+                }
             // Биржа: восстанавливаем до paper/trading, чтобы флаги легли на неё
             val savedProvider = store.getString(providerStoreKey())
             if (!savedProvider.isNullOrBlank() &&
@@ -555,6 +584,8 @@ class DomViewModel(
     private fun tradingStoreKey(): String = "dom_trading_${panelKey ?: "default"}"
 
     private fun providerStoreKey(): String = "dom_provider_${panelKey ?: "default"}"
+
+    private fun contractTypeStoreKey(): String = "dom_contract_${panelKey ?: "default"}"
 
     /** Подписка на уведомления активного адаптера (отказы движка). */
     private fun ensureNoticesSubscription() {
@@ -827,16 +858,40 @@ class DomViewModel(
         val repository: SymbolInfoRepository = SymbolInfoRepositoryImpl(symbolInfoAdapter)
         viewModelScope.launch {
             try {
-                val allSymbols = repository.getAllSymbolsInfo()
-                val tradingSymbols = allSymbols
+                val infos = repository.getAllSymbolsInfo()
+                allSymbols = infos
                     .filter { it.status == "TRADING" }
                     .map { TradingSymbol.fromSymbolInfo(it, providerId) }
                     .sortedBy { it.symbol }
-                if (tradingSymbols.isNotEmpty()) _loadedSymbols.value = tradingSymbols
+                if (allSymbols.isNotEmpty()) {
+                    applyContractTypeFilter()
+                    ensureSymbolMatchesContractType()
+                }
             } catch (e: Exception) {
                 println("⚠️ Failed to load symbols from SymbolInfoRepository: ${e.message}")
             }
         }
+    }
+
+    /** Показать только символы выбранного типа контракта (USDT-M / COIN-M). */
+    private fun applyContractTypeFilter() {
+        val type = _domOptions.value.contractType
+        val filtered = allSymbols.filter { symbol ->
+            val info = symbol.symbolInfo ?: return@filter true
+            type.matches(info)
+        }
+        if (filtered.isNotEmpty()) _loadedSymbols.value = filtered
+    }
+
+    /** Если текущий символ не того типа — взять первый подходящий из списка. */
+    private fun ensureSymbolMatchesContractType() {
+        val opts = _domOptions.value
+        val info = opts.symbol.symbolInfo ?: return
+        if (opts.contractType.matches(info)) return
+        val fallback = _loadedSymbols.value.firstOrNull() ?: return
+        _domOptions.value = opts.copy(symbol = fallback)
+        qtyUserEdited = false
+        fetchSymbolMetadata(fallback.symbol)
     }
 
     private fun fetchSymbolMetadata(symbol: String) {
@@ -850,6 +905,17 @@ class DomViewModel(
                 stepSize = info.stepSize
                 _symbolTickSize.value = tickSize
                 _symbolStepSize.value = stepSize
+                // Inverse (COIN-M): qty в контрактах, paper торговля недоступна
+                symbolIsInverse = info.isInverse
+                if (symbolIsInverse && _paperEnabled.value) {
+                    setPaperEnabled(false)
+                    notify("Paper trading недоступен для COIN-M — выключен")
+                }
+                // SymbolInfo в текущем символе — для base-текста/PnL/маржи
+                val current = _domOptions.value
+                if (current.symbol.symbol == info.symbol) {
+                    _domOptions.value = current.copy(symbol = current.symbol.copy(symbolInfo = info))
+                }
                 // Минимальный qty инструмента подтягивается в поле (если
                 // пользователь ещё не правил qty вручную)
                 if (!qtyUserEdited) {

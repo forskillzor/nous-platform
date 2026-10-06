@@ -49,6 +49,9 @@ fun CandleStickChart(
     tradingOrders: List<Order> = emptyList(),
     tradingPositions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
     symbolBase: String? = null,
+    /** Inverse (COIN-M): номинал контракта (USD) и признак — для PnL. */
+    contractSize: Double = 1.0,
+    inverse: Boolean = false,
     onChartTradingClick: ((Double) -> Unit)? = null,
     onCancelTradingOrder: ((Order) -> Unit)? = null,
     onMoveTradingOrder: ((Order, Double) -> Unit)? = null,
@@ -73,6 +76,8 @@ fun CandleStickChart(
         tradingOrders = tradingOrders,
         tradingPositions = tradingPositions,
         symbolBase = symbolBase,
+        contractSize = contractSize,
+        inverse = inverse,
         onChartTradingClick = onChartTradingClick,
         onCancelTradingOrder = onCancelTradingOrder,
         onMoveTradingOrder = onMoveTradingOrder,
