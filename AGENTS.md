@@ -85,6 +85,13 @@ Mind this when writing paths.
 - `MexcTradingAdapter` converts at the boundary: base qty → contracts on place
   (half-up rounding to the contract step, sub-minimum rejected), and scales
   open orders, positions, trade history and personal WS pushes back to base.
+- **Book windows must match `SymbolInfo` units**: `BookWindowLevels.quantity`
+  must be in the same unit as `SymbolInfo.stepSize`/`minQty` (base asset for
+  linear, contracts for inverse) because `DomViewModel` divides window volume
+  by `stepSize`. Providers with contract-based feeds convert at the adapter
+  boundary (`MexcDomAdapter` scales by `domQuantityScale`: `contractSize` for
+  linear, 1.0 for inverse/unknown) — otherwise volumes render off by the
+  contract-size factor (seen as 10x on SOL_USDT).
 - Client-side PnL: `(mark - avgPrice) * quantity * dir`; percent =
   `(mark - avgPrice) / avgPrice * 100 * dir`. Never count “ticks” in UI output —
   show price change in base units.

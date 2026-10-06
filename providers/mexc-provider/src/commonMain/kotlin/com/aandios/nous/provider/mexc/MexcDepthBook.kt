@@ -5,6 +5,7 @@
 
 package com.aandios.nous.provider.mexc
 
+import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.orderbook.BookWindowLevels
 import com.aandios.nous.api.market.model.orderbook.PriceUpdate
 
@@ -52,18 +53,18 @@ class MexcDepthBook {
     }
 
     /** Топ-[depth] уровней: bids по убыванию цены, asks по возрастанию. */
-    fun window(depth: Int): BookWindowLevels {
+    fun window(depth: Int, quantityScale: Double = 1.0): BookWindowLevels {
         val n = depth.coerceAtLeast(1)
         val bids = bidLevels.entries
             .filter { it.value > 0.0 }
             .sortedByDescending { it.key }
             .take(n)
-            .map { PriceUpdate(it.key, it.value) }
+            .map { PriceUpdate(it.key, it.value * quantityScale) }
         val asks = askLevels.entries
             .filter { it.value > 0.0 }
             .sortedBy { it.key }
             .take(n)
-            .map { PriceUpdate(it.key, it.value) }
+            .map { PriceUpdate(it.key, it.value * quantityScale) }
         return BookWindowLevels(bids = bids, asks = asks)
     }
 
@@ -74,4 +75,23 @@ class MexcDepthBook {
             if (quantity == 0.0) target.remove(price) else target[price] = quantity
         }
     }
+}
+
+/**
+ * Коэффициент перевода объёмов стакана MEXC в единицы [SymbolInfo]
+ * (в них же у DOM `stepSize`/`minQty`).
+ *
+ * MEXC depth отдаёт объёмы в контрактах:
+ *  * linear (USDT-M/USDC-M) — платформа в базовом активе: ×contractSize;
+ *  * inverse (COIN-M) — платформа в контрактах: ×1;
+ *  * метаданные неизвестны — ×1 (как раньше, не выдумываем коэффициент).
+ *
+ * Инвариант для всех провайдеров: `BookWindowLevels.quantity` обязан быть
+ * в тех же единицах, что `SymbolInfo.stepSize`/`minQty` — иначе DOM
+ * отрисует объёмы с кратным перекосом (см. AGENTS.md).
+ */
+internal fun domQuantityScale(info: SymbolInfo?): Double {
+    if (info == null) return 1.0
+    if (info.isInverse) return 1.0
+    return info.contractSize.takeIf { it > 0.0 } ?: 1.0
 }

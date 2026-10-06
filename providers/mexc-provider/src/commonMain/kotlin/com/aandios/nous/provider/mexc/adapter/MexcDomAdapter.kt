@@ -15,6 +15,7 @@ import com.aandios.nous.provider.mexc.MexcStreamHub
 import com.aandios.nous.provider.mexc.MexcSubscriptions
 import com.aandios.nous.provider.mexc.MexcWeights
 import com.aandios.nous.provider.mexc.currentTimeMillis
+import com.aandios.nous.provider.mexc.domQuantityScale
 import com.aandios.nous.provider.mexc.model.MexcDepthData
 import com.aandios.nous.provider.mexc.model.MexcDepthPush
 import com.aandios.nous.provider.mexc.toMexcSymbol
@@ -61,12 +62,19 @@ class MexcDomAdapter(
     }
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val symbolInfoAdapter = MexcSymbolInfoAdapter(client, config, restGate)
 
     override suspend fun subscribeToBookWindow(symbol: String, depth: Int): Flow<BookWindowLevels> =
         channelFlow {
             val mexcSymbol = toMexcSymbol(symbol)
             val book = MexcDepthBook()
             val raw = Channel<MexcDepthPush>(Channel.UNLIMITED)
+
+            // Объёмы MEXC depth — в контрактах; в UI отдаём в единицах
+            // SymbolInfo (базовый актив / контракты для inverse) — инвариант DOM
+            val quantityScale = domQuantityScale(
+                runCatching { symbolInfoAdapter.getSymbolInfo(symbol) }.getOrNull()
+            )
 
             // Сырые диффы принимаем сразу — ни один не потеряется до снапшота
             launch {
@@ -84,7 +92,7 @@ class MexcDomAdapter(
             var lastEmit = 0L
             fetchDepthSnapshot(mexcSymbol)?.let { snap ->
                 book.reset(asks = snap.asks, bids = snap.bids, version = snap.version)
-                send(book.window(depth))
+                send(book.window(depth, quantityScale))
                 lastEmit = currentTimeMillis()
             }
 
@@ -98,7 +106,7 @@ class MexcDomAdapter(
                         MexcDepthBook.ApplyResult.APPLIED -> {
                             val now = currentTimeMillis()
                             if (now - lastEmit >= WINDOW_INTERVAL_MS) {
-                                send(book.window(depth))
+                                send(book.window(depth, quantityScale))
                                 lastEmit = now
                                 dirty = false
                             } else {
@@ -110,7 +118,7 @@ class MexcDomAdapter(
                             // Потеря version — переснапшот и продолжаем
                             fetchDepthSnapshot(mexcSymbol)?.let { snap ->
                                 book.reset(asks = snap.asks, bids = snap.bids, version = snap.version)
-                                send(book.window(depth))
+                                send(book.window(depth, quantityScale))
                                 lastEmit = currentTimeMillis()
                                 dirty = false
                             }
@@ -119,7 +127,7 @@ class MexcDomAdapter(
                 }
                 // Хвостовой эмит: диффы затихли — доставляем последнее состояние
                 if (dirty && currentTimeMillis() - lastEmit >= WINDOW_INTERVAL_MS) {
-                    send(book.window(depth))
+                    send(book.window(depth, quantityScale))
                     lastEmit = currentTimeMillis()
                     dirty = false
                 }

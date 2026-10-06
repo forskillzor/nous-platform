@@ -79,4 +79,19 @@ class MexcDepthBookTest {
         assertEquals(listOf(101.0, 102.0, 103.0, 104.0, 105.0), window.asks.map { it.price })
         assertEquals(listOf(99.0, 98.0, 97.0, 96.0, 95.0), window.bids.map { it.price })
     }
+
+    @Test
+    fun `window scales contract quantities to symbol units`() {
+        val book = MexcDepthBook()
+        book.reset(
+            asks = listOf(listOf(101.0, 20.0)),
+            bids = listOf(listOf(100.0, 10.0)),
+            version = 1,
+        )
+
+        // SOL_USDT: 10 контрактов × contractSize 0.1 = 1 SOL (как на сайте MEXC)
+        val window = book.window(5, quantityScale = 0.1)
+        assertEquals(1.0, window.bids[0].quantity)
+        assertEquals(2.0, window.asks[0].quantity)
+    }
 }

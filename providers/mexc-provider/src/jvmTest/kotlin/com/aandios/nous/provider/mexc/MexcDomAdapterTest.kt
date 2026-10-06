@@ -6,6 +6,7 @@
 package com.aandios.nous.provider.mexc
 
 import com.aandios.nous.api.market.ProviderConfig
+import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.provider.mexc.adapter.MexcDomAdapter
 import com.aandios.nous.provider.mexc.model.MexcDepthPush
 import io.ktor.client.HttpClient
@@ -60,5 +61,28 @@ class MexcDomAdapterTest {
         )
         assertEquals(96801927L, push.data?.version)
         assertEquals(100.5, push.data?.asks?.first()?.first())
+    }
+
+    @Test
+    fun `dom quantity scale converts contracts to symbol units`() {
+        val linear = SymbolInfo(
+            symbol = "SOLUSDT",
+            tickSize = 0.01,
+            stepSize = 0.1, // volUnit 1 * contractSize 0.1 (базовый актив)
+            minQty = 0.1,
+            minNotional = 0.0,
+            status = "TRADING",
+            baseAsset = "SOL",
+            quoteAsset = "USDT",
+            contractType = "PERPETUAL",
+            marginAsset = "USDT",
+            contractSize = 0.1,
+        )
+        // Linear: контракты → базовый актив (10 контрактов = 1 SOL)
+        assertEquals(0.1, domQuantityScale(linear))
+        // Inverse (COIN-M): платформа уже в контрактах
+        assertEquals(1.0, domQuantityScale(linear.copy(marginAsset = "BTC", contractSize = 100.0)))
+        // Метаданные неизвестны — не додумываем
+        assertEquals(1.0, domQuantityScale(null))
     }
 }
