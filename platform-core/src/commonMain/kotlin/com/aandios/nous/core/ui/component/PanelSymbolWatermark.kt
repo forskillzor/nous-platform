@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -19,7 +20,8 @@ import com.aandios.nous.api.market.model.SymbolInfo
 /**
  * Водяной знак панели как на графике: крупный тикер, ниже — биржа и тип
  * контракта, всё в столбик, очень прозрачно (нижний слой, не перехватывает
- * клики). Для DOM/Trades.
+ * клики). Размеры шрифта — как у водяного знака chart. Вызывающий центрует
+ * блок относительно контент-области (Modifier.align(Alignment.Center)).
  */
 @Composable
 fun PanelSymbolWatermark(
@@ -27,11 +29,14 @@ fun PanelSymbolWatermark(
     currentSymbol: String,
     exchange: String?,
     modifier: Modifier = Modifier,
-    symbolFontSize: TextUnit = 44.sp,
-    infoFontSize: TextUnit = 16.sp,
+    symbolFontSize: TextUnit = 72.sp,
+    infoFontSize: TextUnit = 26.sp,
 ) {
     val color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f)
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(
             text = symbolInfo?.baseAsset ?: currentSymbol,
             color = color,

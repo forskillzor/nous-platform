@@ -117,11 +117,7 @@ fun TradesWidget(
                 currentSymbol = currentSymbol,
                 exchange = providers.firstOrNull { it.providerId == currentProviderId }
                     ?.config?.displayName,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 8.dp, top = 4.dp),
-                symbolFontSize = 40.sp,
-                infoFontSize = 14.sp,
+                modifier = Modifier.align(Alignment.Center),
             )
             when (val currentState = state) {
             is TradesState.Loading -> {

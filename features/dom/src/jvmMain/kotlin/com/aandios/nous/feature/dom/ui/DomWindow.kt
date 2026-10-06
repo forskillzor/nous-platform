@@ -159,16 +159,12 @@ fun DomWindow(
                 .background(MaterialTheme.colorScheme.surface)
                 .fillMaxWidth()
         ) {
-            // Водяной знак (нижний слой): тикер · биржа · тип контракта — в столбик
+            // Водяной знак (нижний слой, по центру области): тикер · биржа · контракт
             PanelSymbolWatermark(
                 symbolInfo = symbolInfo,
                 currentSymbol = domOptions.symbol.symbol,
                 exchange = registry.get(domOptions.provider)?.config?.displayName,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 8.dp, top = 4.dp),
-                symbolFontSize = 40.sp,
-                infoFontSize = 14.sp,
+                modifier = Modifier.align(Alignment.Center),
             )
             DomContent(
                 levelsMap = levelsMap,
