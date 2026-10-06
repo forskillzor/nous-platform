@@ -203,6 +203,8 @@ class ChartViewModel(
         val provider = providerRegistry.get(providerId) ?: return
         if (activeProviderId == providerId) return
         activeProviderId = providerId
+        // Смена биржи = смена цели торговли — Trading выключаем
+        setTradingEnabled(false)
         // Подписка на ордера была у старого адаптера — переподпишемся после рефреша
         ordersLiveJob?.cancel()
         ordersLiveJob = null
@@ -211,7 +213,7 @@ class ChartViewModel(
         saveState()
         loadSymbols()
         loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
-        if (_tradingEnabled.value) refreshOpenOrders()
+        refreshOpenOrders()
     }
 
     private fun loadSymbols() {
@@ -397,6 +399,9 @@ class ChartViewModel(
         if (_paperEnabled.value == enabled) return
         _paperEnabled.value = enabled
         viewModelScope.launch { persistor?.savePaperEnabled(enabled) }
+        // Смена paper/live — Trading выключаем: включение только осознанно
+        // (флаги показа ордеров/позиций не трогаем — как выбрано, так и живёт)
+        setTradingEnabled(false)
         ordersLiveJob?.cancel()
         positionsLiveJob?.cancel()
         ordersLiveJob = null
@@ -413,17 +418,20 @@ class ChartViewModel(
     private suspend fun restoreTradingState() {
         val p = persistor ?: return
         val trading = p.restoreTrading()
-        _tradingEnabled.value = trading.enabled
+        val paperEnabled = p.restorePaperEnabled()
+        _paperEnabled.value = paperEnabled
+        // Live-Trading не восстанавливаем: только в paper-режиме
+        _tradingEnabled.value = trading.enabled && paperEnabled
         _confirmOrders.value = trading.confirmOrders
         _tradingQuantity.value = trading.quantity
         _chartOrderType.value = trading.orderType
         _reduceOnly.value = trading.reduceOnly
         _chartLeverage.value = trading.leverage
         _chartMarginMode.value = trading.marginMode
+        // Показ ордеров/позиций — как выбрано пользователем, не трогаем
         _showOrders.value = trading.showOrders
         _showPositions.value = trading.showPositions
         _panelCollapsed.value = trading.panelCollapsed
-        _paperEnabled.value = p.restorePaperEnabled()
         refreshOpenOrders()
         refreshPaperFees(_state.value.currentSymbol)
     }
