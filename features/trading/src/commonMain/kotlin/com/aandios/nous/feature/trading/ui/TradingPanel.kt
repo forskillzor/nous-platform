@@ -43,6 +43,7 @@ import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
+import org.koin.compose.koinInject
 
 enum class TradingTab(val label: String) {
     POSITIONS("Positions"),
@@ -53,7 +54,7 @@ enum class TradingTab(val label: String) {
 
 // Веса колонок: заголовок и строки используют одни и те же —
 // колонки выровнены.
-private object PW {
+private object PositionsWindow {
     const val SYMBOL = 1.3f
     const val SIDE = 0.7f
     const val QTY = 0.9f
@@ -63,7 +64,7 @@ private object PW {
     const val ACTION = 0.7f
 }
 
-private object OW {
+private object OrdersWindow {
     const val SYMBOL = 1.2f
     const val SIDE_TYPE = 0.9f
     const val PRICE = 1f
@@ -73,7 +74,7 @@ private object OW {
     const val ACTION = 0.7f
 }
 
-private object BW {
+private object BalancesWindow {
     const val ASSET = 0.8f
     const val AVAILABLE = 1.2f
     const val FROZEN = 1f
@@ -81,7 +82,7 @@ private object BW {
     const val EQUITY = 1f
 }
 
-private object HW {
+private object HistoryWindow {
     const val SYMBOL = 1.2f
     const val SIDE = 0.7f
     const val PRICE = 1f
@@ -115,7 +116,7 @@ fun TradingPanel(
     val contractType by viewModel.contractType.collectAsState()
     val symbolTypes by viewModel.symbolTypes.collectAsState()
     val dailyPnl by viewModel.dailyPnl.collectAsState()
-    val paperSettings: PaperSettingsController = org.koin.compose.koinInject()
+    val paperSettings: PaperSettingsController = koinInject()
 
     // Фильтр по типу контрактов: позиции/ордера/история/балансы
     val visiblePositions = remember(positions, contractType, symbolTypes) {
@@ -398,8 +399,8 @@ private fun PositionsTable(
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
-                "Symbol" to PW.SYMBOL, "Side" to PW.SIDE, "Qty" to PW.QTY,
-                "Entry" to PW.ENTRY, "Liq" to PW.LIQ, "PnL" to PW.PNL, "" to PW.ACTION,
+                "Symbol" to PositionsWindow.SYMBOL, "Side" to PositionsWindow.SIDE, "Qty" to PositionsWindow.QTY,
+                "Entry" to PositionsWindow.ENTRY, "Liq" to PositionsWindow.LIQ, "PnL" to PositionsWindow.PNL, "" to PositionsWindow.ACTION,
             )
         )
         if (positions.isEmpty()) {
@@ -411,13 +412,13 @@ private fun PositionsTable(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Cell(p.symbol, PW.SYMBOL, align = TextAlign.Start)
-                Cell(p.side.name, PW.SIDE, color = sideColor(p.side), align = TextAlign.Start)
-                Cell(formatter.formatVolume(p.quantity), PW.QTY)
-                Cell(formatter.formatPrice(p.avgPrice), PW.ENTRY)
-                Cell(p.liquidatePrice?.let { formatter.formatPrice(it) } ?: "-", PW.LIQ)
-                Cell(formatSigned(p.pnl, formatter), PW.PNL, color = pnlColor(p.pnl))
-                ActionCell("Close", PW.ACTION) { onClose(p) }
+                Cell(p.symbol, PositionsWindow.SYMBOL, align = TextAlign.Start)
+                Cell(p.side.name, PositionsWindow.SIDE, color = sideColor(p.side), align = TextAlign.Start)
+                Cell(formatter.formatVolume(p.quantity), PositionsWindow.QTY)
+                Cell(formatter.formatPrice(p.avgPrice), PositionsWindow.ENTRY)
+                Cell(p.liquidatePrice?.let { formatter.formatPrice(it) } ?: "-", PositionsWindow.LIQ)
+                Cell(formatSigned(p.pnl, formatter), PositionsWindow.PNL, color = pnlColor(p.pnl))
+                ActionCell("Close", PositionsWindow.ACTION) { onClose(p) }
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
         }
@@ -434,8 +435,8 @@ private fun OrdersTable(
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
-                "Symbol" to OW.SYMBOL, "Side/Type" to OW.SIDE_TYPE, "Price" to OW.PRICE,
-                "Qty/Filled" to OW.QTY, "Time" to OW.TIME, "Status" to OW.STATUS, "" to OW.ACTION,
+                "Symbol" to OrdersWindow.SYMBOL, "Side/Type" to OrdersWindow.SIDE_TYPE, "Price" to OrdersWindow.PRICE,
+                "Qty/Filled" to OrdersWindow.QTY, "Time" to OrdersWindow.TIME, "Status" to OrdersWindow.STATUS, "" to OrdersWindow.ACTION,
             )
         )
         if (orders.isEmpty()) {
@@ -447,17 +448,17 @@ private fun OrdersTable(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Cell(o.symbol, OW.SYMBOL, align = TextAlign.Start)
-                Cell("${o.side.name}/${o.orderType.name}", OW.SIDE_TYPE, color = sideColor(o.side), align = TextAlign.Start)
+                Cell(o.symbol, OrdersWindow.SYMBOL, align = TextAlign.Start)
+                Cell("${o.side.name}/${o.orderType.name}", OrdersWindow.SIDE_TYPE, color = sideColor(o.side), align = TextAlign.Start)
                 Cell(
                     if (o.orderType == OrderType.MARKET) "market" else formatter.formatPrice(o.price),
-                    OW.PRICE,
+                    OrdersWindow.PRICE,
                 )
-                Cell("${formatter.formatVolume(o.quantity)}/${formatter.formatVolume(o.filledQuantity)}", OW.QTY)
-                Cell(formatTime(o.timestamp), OW.TIME)
+                Cell("${formatter.formatVolume(o.quantity)}/${formatter.formatVolume(o.filledQuantity)}", OrdersWindow.QTY)
+                Cell(formatTime(o.timestamp), OrdersWindow.TIME)
                 Cell(
                     o.status.name,
-                    OW.STATUS,
+                    OrdersWindow.STATUS,
                     color = when (o.status) {
                         OrderStatus.OPEN -> Color.Yellow
                         OrderStatus.FILLED -> MaterialTheme.colorScheme.primary
@@ -465,9 +466,9 @@ private fun OrdersTable(
                     },
                 )
                 if (o.status == OrderStatus.OPEN) {
-                    ActionCell("Cancel", OW.ACTION) { onCancel(o.orderId) }
+                    ActionCell("Cancel", OrdersWindow.ACTION) { onCancel(o.orderId) }
                 } else {
-                    Spacer(Modifier.weight(OW.ACTION))
+                    Spacer(Modifier.weight(OrdersWindow.ACTION))
                 }
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
@@ -480,8 +481,8 @@ private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
-                "Asset" to BW.ASSET, "Available" to BW.AVAILABLE, "Frozen" to BW.FROZEN,
-                "Margin" to BW.MARGIN, "Equity" to BW.EQUITY,
+                "Asset" to BalancesWindow.ASSET, "Available" to BalancesWindow.AVAILABLE, "Frozen" to BalancesWindow.FROZEN,
+                "Margin" to BalancesWindow.MARGIN, "Equity" to BalancesWindow.EQUITY,
             )
         )
         if (balances.isEmpty()) {
@@ -493,11 +494,11 @@ private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Cell(b.currency, BW.ASSET, align = TextAlign.Start, fontWeight = FontWeight.Medium)
-                Cell(fmtAmount(b.amount), BW.AVAILABLE)
-                Cell(fmtAmount(b.frozen), BW.FROZEN)
-                Cell(fmtAmount(b.margin), BW.MARGIN)
-                Cell(fmtAmount(b.equity), BW.EQUITY, color = MaterialTheme.colorScheme.primary)
+                Cell(b.currency, BalancesWindow.ASSET, align = TextAlign.Start, fontWeight = FontWeight.Medium)
+                Cell(fmtAmount(b.amount), BalancesWindow.AVAILABLE)
+                Cell(fmtAmount(b.frozen), BalancesWindow.FROZEN)
+                Cell(fmtAmount(b.margin), BalancesWindow.MARGIN)
+                Cell(fmtAmount(b.equity), BalancesWindow.EQUITY, color = MaterialTheme.colorScheme.primary)
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
         }
@@ -509,8 +510,8 @@ private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, m
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
-                "Symbol" to HW.SYMBOL, "Side" to HW.SIDE, "Price" to HW.PRICE,
-                "Qty" to HW.QTY, "Fee" to HW.FEE, "PnL" to HW.PNL,
+                "Symbol" to HistoryWindow.SYMBOL, "Side" to HistoryWindow.SIDE, "Price" to HistoryWindow.PRICE,
+                "Qty" to HistoryWindow.QTY, "Fee" to HistoryWindow.FEE, "PnL" to HistoryWindow.PNL,
             )
         )
         if (history.isEmpty()) {
@@ -522,12 +523,12 @@ private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, m
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Cell(f.symbol, HW.SYMBOL, align = TextAlign.Start)
-                Cell(f.side.name, HW.SIDE, color = sideColor(f.side), align = TextAlign.Start)
-                Cell(formatter.formatPrice(f.price), HW.PRICE)
-                Cell(formatter.formatVolume(f.quantity), HW.QTY)
-                Cell(formatter.formatPrice(f.fee), HW.FEE)
-                Cell(formatSigned(f.pnl, formatter), HW.PNL, color = pnlColor(f.pnl))
+                Cell(f.symbol, HistoryWindow.SYMBOL, align = TextAlign.Start)
+                Cell(f.side.name, HistoryWindow.SIDE, color = sideColor(f.side), align = TextAlign.Start)
+                Cell(formatter.formatPrice(f.price), HistoryWindow.PRICE)
+                Cell(formatter.formatVolume(f.quantity), HistoryWindow.QTY)
+                Cell(formatter.formatPrice(f.fee), HistoryWindow.FEE)
+                Cell(formatSigned(f.pnl, formatter), HistoryWindow.PNL, color = pnlColor(f.pnl))
             }
             HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
         }
