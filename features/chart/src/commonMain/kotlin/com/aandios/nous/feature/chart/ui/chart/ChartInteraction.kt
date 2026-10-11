@@ -12,42 +12,22 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isAltPressed
 import androidx.compose.ui.input.pointer.isCtrlPressed
@@ -61,43 +41,27 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.toSize
-import androidx.compose.ui.text.drawText
+import androidx.compose.ui.unit.*
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.Order
+import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
-import com.aandios.nous.feature.chart.rendering.drawCrosshair
-import com.aandios.nous.feature.chart.rendering.drawCurrentPriceLine
-import com.aandios.nous.feature.chart.rendering.drawFootprintPopup
-import com.aandios.nous.feature.chart.rendering.drawPriceScale
-import com.aandios.nous.feature.chart.rendering.drawTimeScale
+import com.aandios.nous.feature.chart.rendering.*
 import com.aandios.nous.feature.chart.scale.PriceScale
 import com.aandios.nous.feature.chart.scale.TimeScale
-import com.aandios.nous.feature.chart.tools.Drawing
-import com.aandios.nous.feature.chart.tools.DrawingHistory
+import com.aandios.nous.feature.chart.tools.*
 import com.aandios.nous.feature.chart.tools.DrawingRenderer.drawDrawings
-import com.aandios.nous.feature.chart.tools.drawDrawingProjections
-import com.aandios.nous.feature.chart.tools.drawDrawingSelection
-import com.aandios.nous.feature.chart.tools.drawProjectionPriceTags
-import com.aandios.nous.feature.chart.tools.DrawingToolType
-import com.aandios.nous.feature.chart.tools.hitTestDrawings
-import com.aandios.nous.feature.chart.tools.moveDrawing
+import com.aandios.nous.feature.chart.ui.ChartConfig
+import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import com.aandios.nous.feature.chart.utils.prependedCount
 import com.aandios.nous.feature.chart.utils.priceFromY
 import com.aandios.nous.feature.chart.utils.priceToY
-import com.aandios.nous.feature.chart.ui.ChartConfig
-import com.aandios.nous.feature.chart.ui.DefaultChartConfig
 import kotlin.math.max
-import kotlin.math.roundToLong
 
 /** Высота бейджа ордера (перетаскивание/правка qty). */
 private val TRADING_BADGE_HEIGHT = 18.dp
@@ -125,21 +89,27 @@ fun CandleStickChartInteraction(
     initialZoomLevel: Float = 1f,
     onZoomChange: ((Float) -> Unit)? = null,
     tradingOrders: List<com.aandios.nous.api.market.model.trading.Order> = emptyList(),
-    tradingPositions: List<com.aandios.nous.api.market.model.trading.Position> = emptyList(),
+    tradingPositions: List<Position> = emptyList(),
+
     /** Базовый актив символа (SOL/BTC) — для бейджа позиции. */
     symbolBase: String? = null,
+
     /** Inverse (COIN-M): номинал контракта в USD и признак — для PnL. */
     contractSize: Double = 1.0,
     inverse: Boolean = false,
     onChartTradingClick: ((Double) -> Unit)? = null,
+
     /** Отмена ордера с графика (✕ на бейдже). */
-    onCancelTradingOrder: ((com.aandios.nous.api.market.model.trading.Order) -> Unit)? = null,
+    onCancelTradingOrder: ((Order) -> Unit)? = null,
+
     /** Перемещение ордера: cancel+replace по новой цене (перетаскивание). */
-    onMoveTradingOrder: ((com.aandios.nous.api.market.model.trading.Order, Double) -> Unit)? = null,
+    onMoveTradingOrder: ((Order, Double) -> Unit)? = null,
+
     /** Изменение qty ордера: cancel+replace (правка прямо на бейдже). */
-    onResizeTradingOrder: ((com.aandios.nous.api.market.model.trading.Order, Double) -> Unit)? = null,
+    onResizeTradingOrder: ((Order, Double) -> Unit)? = null,
+
     /** Закрытие позиции по рынку (✕ на бейдже позиции). */
-    onCloseTradingPosition: ((com.aandios.nous.api.market.model.trading.Position) -> Unit)? = null,
+    onCloseTradingPosition: ((Position) -> Unit)? = null,
 ) {
     if (candles.isEmpty()) return
 
@@ -149,27 +119,36 @@ fun CandleStickChartInteraction(
     var chartHeightPx by remember { mutableFloatStateOf(0f) }
     var verticalScroll by remember { mutableFloatStateOf(0f) }
     var isCtrlPressed by remember { mutableStateOf(false) }
-    // Alt+hover popup position for footprint
+
+    /** Alt+hover popup position for footprint */
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
-    // Превью фигуры во время рисования / последний диапазон для жестов
+
+    /** Превью фигуры во время рисования / последний диапазон для жестов */
     var previewDrawing by remember { mutableStateOf<Drawing?>(null) }
-    var currentPriceRange by remember { mutableStateOf<PriceRange>(PriceRange(0f, 0f, 0f, 0f, 0f)) }
-    // Выделенный рисунок (клик по фигуре; удаление по Delete/Backspace)
+    var currentPriceRange by remember { mutableStateOf(PriceRange(0f, 0f, 0f, 0f, 0f)) }
+
+    /** Выделенный рисунок (клик по фигуре; удаление по Delete/Backspace) */
     var selectedDrawingId by remember { mutableStateOf<String?>(null) }
-    // Follow-live: следуем за новой свечой, пока пользователь у правого края
+
+    /** Follow-live: следуем за новой свечой, пока пользователь у правого края */
     var followLive by remember { mutableStateOf(true) }
     var prevFirstTs by remember { mutableStateOf<Long?>(null) }
-    // Перетаскивание торгового ордера (грип бейджа): ордер рисуется по drag-цене
+
+    /** Перетаскивание торгового ордера (грип бейджа): ордер рисуется по drag-цен */
     var draggingOrderId by remember { mutableStateOf<String?>(null) }
     var draggingOrderPrice by remember { mutableStateOf<Double?>(null) }
-    // Измеренные размеры бейджей ордеров (для исключения кликов по ним)
+
+    /** Измеренные размеры бейджей ордеров (для исключения кликов по ним) */
+
     val orderBadgeSizes = remember { mutableStateMapOf<String, IntSize>() }
-    // Границы поля qty внутри бейджа (эта зона не инициирует драг)
+
+    /** Границы поля qty внутри бейджа (эта зона не инициирует драг) */
     val orderQtyRects = remember { mutableStateMapOf<String, Rect>() }
-    // Размеры бейджей позиций (тоже поглощают клики по себе)
+
+    /** Размеры бейджей позиций (тоже поглощают клики по себе) */
     val positionBadgeSizes = remember { mutableStateMapOf<String, IntSize>() }
 
-    // Шкалы и серия — единая модель для свечей и footprint
+    /** Шкалы и серия — единая модель для свечей и footprint */
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
     val priceScale = remember { PriceScale() }
     val series: ChartSeries = remember(candles, footprintCandles, config) {
@@ -180,22 +159,25 @@ fun CandleStickChartInteraction(
         }
     }
 
-    // Актуальные данные для обработчиков жестов (pointerInput не перезапускается)
+    /** Актуальные данные для обработчиков жестов (pointerInput не перезапускается) */
     val currentCandles by rememberUpdatedState(candles)
     val currentTradingOrders by rememberUpdatedState(tradingOrders)
     val currentTradingPositions by rememberUpdatedState(tradingPositions)
-    // Колбэки Trading, включённого ПОСЛЕ старта pointerInput, иначе жест
-    // держит старый null и клик «не размещает» до пересоздания композиции
+
+    /** Колбэки Trading, включённого ПОСЛЕ старта pointerInput, иначе жест
+     *  держит старый null и клик «не размещает» до пересоздания композиции
+     */
     val currentOnChartTradingClick by rememberUpdatedState(onChartTradingClick)
     val currentOnMoveTradingOrder by rememberUpdatedState(onMoveTradingOrder)
 
     val zoomStep = 1.25f
     val minZoom = config.minZoom
     val maxZoom = if (footprintCandles != null) config.maxZoomFootprint else config.maxZoom
-    // Порог «клик» vs «drag» для выделения рисунков
+
+    /** Порог «клик» vs «drag» для выделения рисунков */
     val tapThresholdPx = 4f
 
-    // TextMeasurer для измерения текста
+    /** TextMeasurer для измерения текста */
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
@@ -212,14 +194,16 @@ fun CandleStickChartInteraction(
                         isCtrlPressed = event.type == KeyEventType.KeyDown
                         true
                     }
-                    // Undo/Redo рисунков: потребляем только когда есть что откатить,
-                    // иначе событие уходит наверх (undo/redo сплитов workspace)
+                    /** Undo/Redo рисунков: потребляем только когда есть что откатить,
+                     * иначе событие уходит наверх (undo/redo сплитов workspace)
+                     */
                     event.key == Key.Z && isCtrlPressed && event.type == KeyEventType.KeyDown -> {
                         val h = drawingHistory
                         if (h != null && h.canUndo) {
                             h.undo(); true
                         } else false
                     }
+
                     event.key == Key.Y && isCtrlPressed && event.type == KeyEventType.KeyDown -> {
                         val h = drawingHistory
                         if (h != null && h.canRedo) {
@@ -228,7 +212,7 @@ fun CandleStickChartInteraction(
                     }
                     // Удаление выделенного рисунка
                     (event.key == Key.Delete || event.key == Key.Backspace) &&
-                        event.type == KeyEventType.KeyDown -> {
+                            event.type == KeyEventType.KeyDown -> {
                         val id = selectedDrawingId
                         if (id != null && drawingHistory != null) {
                             drawingHistory.drawings.firstOrNull { it.id == id }?.let { drawingHistory.remove(it) }
@@ -238,16 +222,19 @@ fun CandleStickChartInteraction(
                             false
                         }
                     }
+
                     else -> false
                 }
             }
-            // Обработка жестов: move/resize рисунков, pan / Alt+вертикаль (footprint).
-            // Модификаторы читаются из PointerEvent.keyboardModifiers —
-            // не зависят от фокуса (раньше onKeyEvent их «терял» после кликов по тулбару).
+            /** Обработка жестов: move/resize рисунков, pan / Alt+вертикаль (footprint).
+             * Модификаторы читаются из PointerEvent.keyboardModifiers —
+             * не зависят от фокуса (раньше onKeyEvent их «терял» после кликов по тулбару).
+             */
             .pointerInput(activeDrawingTool, drawingHistory) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    // 1. Перемещение/изменение размера существующего рисунка
+
+                    /** 1. Перемещение/изменение размера существующего рисунка */
                     val history = drawingHistory
                     if (history != null && activeDrawingTool == DrawingToolType.NONE) {
                         val hitMetrics = timeScale.metrics()
@@ -300,8 +287,9 @@ fun CandleStickChartInteraction(
                     // Активный инструмент рисования — жесты обрабатывает DrawingOverlay
                     if (activeDrawingTool != DrawingToolType.NONE) return@awaitEachGesture
 
-                    // 1b. Перетаскивание торгового ордера: вся поверхность
-                    // бейджа (центр чарта), кроме поля qty
+                    /** 1b. Перетаскивание торгового ордера: вся поверхность
+                     * бейджа (центр чарта), кроме поля qty
+                     */
                     if (currentOnMoveTradingOrder != null && currentTradingOrders.isNotEmpty()) {
                         val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
                         val hitOrder = currentTradingOrders.firstOrNull { o ->
@@ -312,12 +300,12 @@ fun CandleStickChartInteraction(
                             val left = chartWidthPx / 2f - size.width / 2f
                             val top = y - badgeH / 2f
                             val inside = down.position.x in left..(left + size.width.toFloat()) &&
-                                down.position.y in top..(top + badgeH)
+                                    down.position.y in top..(top + badgeH)
                             if (!inside) return@firstOrNull false
                             val q = orderQtyRects[o.orderId]
                             val overQty = q != null &&
-                                down.position.x in (left + q.left)..(left + q.right) &&
-                                down.position.y in (top + q.top)..(top + q.bottom)
+                                    down.position.x in (left + q.left)..(left + q.right) &&
+                                    down.position.y in (top + q.top)..(top + q.bottom)
                             !overQty
                         }
                         if (hitOrder != null) {
@@ -351,7 +339,7 @@ fun CandleStickChartInteraction(
                         }
                     }
 
-                    // 2. Панорамирование / Alt+вертикаль (footprint)
+                    /** 2. Панорамирование / Alt+вертикаль (footprint) */
                     var previous = down.position
                     var moved = false
                     do {
@@ -381,10 +369,12 @@ fun CandleStickChartInteraction(
                     } while (true)
                     // Клик по пустому месту — снимаем выделение рисунка
                     if (!moved) selectedDrawingId = null
-                    // Chart trading: клик по области графика размещает ордер.
-                    // Клики по бейджам (грип/qty/✕) ордер не размещают; проверка —
-                    // по измеренным размерам бейджей (down.isConsumed не годится:
-                    // double-tap детектор footprint потребляет down в каждом клике).
+
+                    /** Chart trading: клик по области графика размещает ордер.
+                     * Клики по бейджам (грип/qty/✕) ордер не размещают; проверка —
+                     * по измеренным размерам бейджей (down.isConsumed не годится:
+                     * double-tap детектор footprint потребляет down в каждом клике).
+                     */
                     if (!moved && currentOnChartTradingClick != null) {
                         val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
                         val overBadge = currentTradingOrders.any { o ->
@@ -394,7 +384,7 @@ fun CandleStickChartInteraction(
                             val left = chartWidthPx / 2f - size.width / 2f
                             val top = y - badgeH / 2f
                             down.position.x in left..(left + size.width.toFloat()) &&
-                                down.position.y in top..(top + badgeH)
+                                    down.position.y in top..(top + badgeH)
                         } || currentTradingPositions.any { p ->
                             val key = positionBadgeKey(p)
                             val size = positionBadgeSizes[key] ?: return@any false
@@ -403,7 +393,7 @@ fun CandleStickChartInteraction(
                             val left = chartWidthPx / 2f - size.width / 2f
                             val top = y - badgeH / 2f
                             down.position.x in left..(left + size.width.toFloat()) &&
-                                down.position.y in top..(top + badgeH)
+                                    down.position.y in top..(top + badgeH)
                         }
                         // chartMainArea — Rect(0, 0, chartWidthPx, chartHeightPx)
                         if (!overBadge &&
@@ -457,9 +447,10 @@ fun CandleStickChartInteraction(
                     })
                 }
             }
-            // Hover-трекинг: crosshair всегда включён (как в TradingView),
-            // Alt+hover popup для footprint. Модификатор читаем из pointer-события,
-            // чтобы не зависеть от фокуса.
+            /** Hover-трекинг: crosshair всегда включён (как в TradingView),
+             * Alt+hover popup для footprint. Модификатор читаем из pointer-события,
+             * чтобы не зависеть от фокуса.
+             */
             .pointerInput(footprintCandles) {
                 awaitPointerEventScope {
                     while (true) {
@@ -470,11 +461,13 @@ fun CandleStickChartInteraction(
                                 mousePosition = change.position
                                 isCrosshairVisible = true
                             }
+
                             PointerEventType.Exit -> {
                                 isCrosshairVisible = false
                                 mousePosition = null
                                 footprintHoverPos = null
                             }
+
                             else -> Unit
                         }
                         footprintHoverPos = if (footprintCandles != null && event.keyboardModifiers.isAltPressed) {
@@ -492,63 +485,64 @@ fun CandleStickChartInteraction(
 
         val density = LocalDensity.current
 
-        val layout = remember(config.priceScaleWidth, canvasWidth, canvasHeight, indicatorRenderers.size, indicatorHeightDp) {
-            val widthPx = with(density) { canvasWidth.toPx() }
-            val heightPx = with(density) { canvasHeight.toPx() }
-            val chartPadding = 8f
+        val layout =
+            remember(config.priceScaleWidth, canvasWidth, canvasHeight, indicatorRenderers.size, indicatorHeightDp) {
+                val widthPx = with(density) { canvasWidth.toPx() }
+                val heightPx = with(density) { canvasHeight.toPx() }
+                val chartPadding = 8f
 
-            val timeScaleHeight = (heightPx * 0.04f).coerceAtLeast(20f).coerceAtMost(40f)
+                val timeScaleHeight = (heightPx * 0.04f).coerceAtLeast(20f).coerceAtMost(40f)
 
-            val priceScaleWidthPx = with(density) {
-                config.priceScaleWidth.toPx()
-            }
+                val priceScaleWidthPx = with(density) {
+                    config.priceScaleWidth.toPx()
+                }
 
-            val indicatorH = with(density) { indicatorHeightDp.toPx() }
-            val indicatorTotalH = indicatorH * indicatorRenderers.size
+                val indicatorH = with(density) { indicatorHeightDp.toPx() }
+                val indicatorTotalH = indicatorH * indicatorRenderers.size
 
-            // Единое Y-пространство для серии, crosshair и шкалы цен: chartMainArea
-            val chartMainArea = Rect(
-                left = 0f,
-                top = 0f,
-                right = widthPx - priceScaleWidthPx - chartPadding,
-                bottom = heightPx - timeScaleHeight - indicatorTotalH
-            )
-
-            val priceScaleArea = Rect(
-                left = widthPx - priceScaleWidthPx,
-                top = chartMainArea.top,
-                right = widthPx,
-                bottom = chartMainArea.bottom
-            )
-
-            val timeScaleArea = Rect(
-                left = 0f,
-                top = heightPx - timeScaleHeight,
-                right = widthPx - priceScaleWidthPx - chartPadding,
-                bottom = heightPx
-            )
-
-            val indicatorAreas = (0 until indicatorRenderers.size).map { i ->
-                Rect(
+                // Единое Y-пространство для серии, crosshair и шкалы цен: chartMainArea
+                val chartMainArea = Rect(
                     left = 0f,
-                    top = chartMainArea.bottom + i * indicatorH,
+                    top = 0f,
                     right = widthPx - priceScaleWidthPx - chartPadding,
-                    bottom = chartMainArea.bottom + (i + 1) * indicatorH
+                    bottom = heightPx - timeScaleHeight - indicatorTotalH
+                )
+
+                val priceScaleArea = Rect(
+                    left = widthPx - priceScaleWidthPx,
+                    top = chartMainArea.top,
+                    right = widthPx,
+                    bottom = chartMainArea.bottom
+                )
+
+                val timeScaleArea = Rect(
+                    left = 0f,
+                    top = heightPx - timeScaleHeight,
+                    right = widthPx - priceScaleWidthPx - chartPadding,
+                    bottom = heightPx
+                )
+
+                val indicatorAreas = (0 until indicatorRenderers.size).map { i ->
+                    Rect(
+                        left = 0f,
+                        top = chartMainArea.bottom + i * indicatorH,
+                        right = widthPx - priceScaleWidthPx - chartPadding,
+                        bottom = chartMainArea.bottom + (i + 1) * indicatorH
+                    )
+                }
+
+                ChartLayout(
+                    canvasWidth = widthPx,
+                    canvasHeight = heightPx,
+                    priceScaleWidth = priceScaleWidthPx,
+                    priceScaleArea = priceScaleArea,
+                    chartPadding = chartPadding,
+                    timeScaleHeight = timeScaleHeight,
+                    chartMainArea = chartMainArea,
+                    timeScaleArea = timeScaleArea,
+                    indicatorAreas = indicatorAreas
                 )
             }
-
-            ChartLayout(
-                canvasWidth = widthPx,
-                canvasHeight = heightPx,
-                priceScaleWidth = priceScaleWidthPx,
-                priceScaleArea = priceScaleArea,
-                chartPadding = chartPadding,
-                timeScaleHeight = timeScaleHeight,
-                chartMainArea = chartMainArea,
-                timeScaleArea = timeScaleArea,
-                indicatorAreas = indicatorAreas
-            )
-        }
 
         // Метрики свечей и скролл — из TimeScale
         chartWidthPx = layout.chartMainArea.width
@@ -557,9 +551,10 @@ fun CandleStickChartInteraction(
         val totalW = candleMetrics.width + candleMetrics.spacing
         val maxScroll = timeScale.maxScroll(candles.size, chartWidthPx)
 
-        // Единый эффект на изменение списка свечей:
-        //  * prepend истории (первая свеча стала старше) — удерживаем позицию;
-        //  * иначе новая realtime-свеча — следуем за ней, если стоим у правого края.
+        /** Единый эффект на изменение списка свечей:
+         *   prepend истории (первая свеча стала старше) — удерживаем позицию;
+         *   иначе новая realtime-свеча — следуем за ней, если стоим у правого края.
+         */
         val firstCandleTs = candles.firstOrNull()?.timestamp
         LaunchedEffect(candles.size, firstCandleTs) {
             val prepended = prependedCount(candles, prevFirstTs)
@@ -573,17 +568,19 @@ fun CandleStickChartInteraction(
             prevFirstTs = firstCandleTs
         }
 
-        // При ресайзе панели/окна ширина вьюпорта меняется: если прижаты
-        // к последней свече (followLive) — держимся за неё, иначе свеча
-        // «отлипает» и новые данные уходят за правый край.
+        /** При ресайзе панели/окна ширина вьюпорта меняется: если прижаты
+         * к последней свече (followLive) — держимся за неё, иначе свеча
+         * «отлипает» и новые данные уходят за правый край.
+         */
         LaunchedEffect(chartWidthPx) {
             if (followLive) {
                 timeScale.scrollToLatest(candles.size, chartWidthPx)
             }
         }
 
-        // Автозаполнение вьюпорта: если свечей меньше, чем помещается на экран
-        // (например, восстановлен зум «вдаль»), догружаем недостающие
+        /** Автозаполнение вьюпорта: если свечей меньше, чем помещается на экран
+         * (например, восстановлен зум «вдаль»), догружаем недостающие
+         */
         LaunchedEffect(candles.size, hasMoreHistory) {
             if (hasMoreHistory && candles.isNotEmpty() &&
                 timeScale.maxScroll(candles.size, chartWidthPx) == 0f
@@ -639,10 +636,10 @@ fun CandleStickChartInteraction(
                 .fillMaxSize()
                 .clipToBounds()
         ) {
-            // 1. Серия (свечи или footprint)
+            /** 1. Серия (свечи или footprint) */
             series.draw(this, chartCanvas)
 
-            // 2. Пунктирная линия текущей цены в footprint-режиме
+            /** 2. Пунктирная линия текущей цены в footprint-режиме */
             val footprintData = series.footprintCandles
             if (footprintData != null && visibleCurrentPrice != null) {
                 drawCurrentPriceLine(
@@ -655,7 +652,7 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            // 2b. Линии открытых торговых ордеров (chart trading)
+            /** 2b. Линии открытых торговых ордеров (chart trading) */
             if (tradingOrders.isNotEmpty()) {
                 drawTradingOrderLines(
                     orders = tradingOrders,
@@ -666,7 +663,7 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            // 2c. Линии позиций (Show positions)
+            /** 2c. Линии позиций (Show positions) */
             if (tradingPositions.isNotEmpty()) {
                 drawTradingPositionLines(
                     positions = tradingPositions,
@@ -675,7 +672,7 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            // 3. Шкала времени (по каркасным свечам — общая для обоих режимов)
+            /** 3. Шкала времени (по каркасным свечам — общая для обоих режимов) */
             drawTimeScale(
                 candles = candles,
                 config = config,
@@ -685,9 +682,10 @@ fun CandleStickChartInteraction(
                 zoomLevel = timeScale.zoomLevel,
             )
 
-            // 5. Indicator panels (below main chart, above timescale)
+            /** 5. Indicator panels (below main chart, above timescale) */
             layout.indicatorAreas.forEachIndexed { idx, area ->
-                indicatorRenderers.getOrNull(idx)?.invoke(this, area, candles, priceRange, clampedOffset, timeScale.zoomLevel)
+                indicatorRenderers.getOrNull(idx)
+                    ?.invoke(this, area, candles, priceRange, clampedOffset, timeScale.zoomLevel)
                 // Separator line below each indicator
                 drawLine(
                     color = config.gridColor.copy(alpha = 0.3f),
@@ -697,7 +695,7 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            // 5b. Проекции линейки/трендовой на шкалу цен (под тиками шкалы)
+            /** 5b. Проекции линейки/трендовой на шкалу цен (под тиками шкалы) */
             if (projectionTrend != null) {
                 drawDrawingProjections(
                     drawing = projectionTrend,
@@ -706,7 +704,7 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            // 6. Шкала цен
+            /** 6. Шкала цен */
             if (config.showPriceScale) {
                 drawPriceScale(
                     priceRange = priceRange,
@@ -724,7 +722,7 @@ fun CandleStickChartInteraction(
                     strokeWidth = 1f
                 )
             }
-            // 6b. Ценовые теги проекций (поверх шкалы)
+            /** 6b. Ценовые теги проекций (поверх шкалы) */
             if (config.showPriceScale && projectionTrend != null) {
                 drawProjectionPriceTags(
                     drawing = projectionTrend,
@@ -734,7 +732,7 @@ fun CandleStickChartInteraction(
                     formatter = config.priceFormatter,
                 )
             }
-            // 7. Alt+hover popup for footprint
+            /** 7. Alt+hover popup for footprint */
             if (footprintData != null && footprintHoverPos != null) {
                 drawFootprintPopup(
                     mousePosition = footprintHoverPos!!,
@@ -747,7 +745,7 @@ fun CandleStickChartInteraction(
                     zoomLevel = timeScale.zoomLevel,
                 )
             }
-            // 8. Drawings
+            /** 8. Drawings */
             drawingHistory?.let { history ->
                 drawDrawings(
                     drawings = history.drawings, candles = candles,
@@ -760,7 +758,7 @@ fun CandleStickChartInteraction(
                     textMeasurer = textMeasurer,
                 )
             }
-            // 8b. Превью рисуемой фигуры (линейка с актуальными вычислениями)
+            /** 8b. Превью рисуемой фигуры (линейка с актуальными вычислениями) */
             previewDrawing?.let { preview ->
                 drawDrawings(
                     drawings = listOf(preview), candles = candles,
@@ -773,7 +771,7 @@ fun CandleStickChartInteraction(
                     textMeasurer = textMeasurer,
                 )
             }
-            // 8c. Ручки выделенного рисунка
+            /** 8c. Ручки выделенного рисунка */
             if (selectedDrawing != null) {
                 drawDrawingSelection(
                     drawing = selectedDrawing,
@@ -786,8 +784,9 @@ fun CandleStickChartInteraction(
                     candleSpacing = candleMetrics.spacing,
                 )
             }
-            // 9. Crosshair: всегда включён (hover), единый для свечей и footprint.
-            // Во время трейдинга горизонтальная линия — цветом будущей стороны.
+            /** 9. Crosshair: всегда включён (hover), единый для свечей и footprint.
+             * Во время трейдинга горизонтальная линия — цветом будущей стороны.
+             */
             if (isCrosshairVisible && mousePosition != null) {
                 drawCrosshair(
                     mousePosition = mousePosition!!,
@@ -803,8 +802,9 @@ fun CandleStickChartInteraction(
                 )
             }
         }
-        // Бейджи открытых ордеров поверх графика (TradingView-style):
-        // по центру чарта на линии цены; драг — вся поверхность, кроме qty.
+        /** Бейджи открытых ордеров поверх графика (TradingView-style):
+         * по центру чарта на линии цены; драг — вся поверхность, кроме qty.
+         */
         if (tradingOrders.isNotEmpty()) {
             tradingOrders.forEach { order ->
                 val displayPrice = if (draggingOrderId == order.orderId) {
@@ -861,7 +861,7 @@ fun CandleStickChartInteraction(
                     val sign = if (pnl >= 0) "+" else ""
                     val deltaText = if (inverse) {
                         val coinDelta = position.quantity * contractSize *
-                            (1.0 / position.avgPrice - 1.0 / mark) * dir
+                                (1.0 / position.avgPrice - 1.0 / mark) * dir
                         plainDecimalString(kotlin.math.round(coinDelta * 1e8) / 1e8)
                     } else {
                         // Изменение цены в базовых значениях (без «тиков»)
