@@ -28,9 +28,5 @@ kotlin {
             api(libs.koin.compose)
             api(libs.ktor.client.cio)
         }
-
-        val wasmJsMain by getting
-        wasmJsMain.dependencies {
-        }
     }
 }
