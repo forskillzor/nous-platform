@@ -9,7 +9,6 @@ import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.pow
-import kotlin.math.round
 
 /**
  * Унифицированное форматирование цен и объёмов с учётом tickSize и minQty инструмента.
