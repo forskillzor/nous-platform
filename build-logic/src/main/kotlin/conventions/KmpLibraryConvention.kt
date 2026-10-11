@@ -22,7 +22,6 @@ class KmpLibraryConvention : Plugin<Project> {
             extensions.configure<KotlinMultiplatformExtension> {
                 jvm()
                 js(IR) { browser() }
-                wasmJs { browser() }
             }
         }
     }
