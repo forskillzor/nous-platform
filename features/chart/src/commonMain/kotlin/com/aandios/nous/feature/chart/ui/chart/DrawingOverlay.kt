@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.core.ui.format.SymbolFormatter
@@ -134,30 +135,37 @@ internal fun buildDrawing(
         DrawingToolType.HORIZONTAL -> {
             val price = priceFromY(start.y, priceRange, chartH)
             Drawing.HorizontalLevel(
-                id = "h_$ts", price = price,
-                color = androidx.compose.ui.graphics.Color(0xFF2196F3),
+                id = "h_$ts",
+                price = price,
+                color = Color(0xFF2196F3),
                 label = formatPrice(price, priceFormatter)
             )
         }
         DrawingToolType.VERTICAL -> {
             Drawing.VerticalLine(
-                id = "v_$ts", timeMs = candleTs(start.x),
-                color = androidx.compose.ui.graphics.Color(0xFFFF5722)
+                id = "v_$ts",
+                timeMs = candleTs(start.x),
+                color = Color(0xFFFF5722)
             )
         }
         DrawingToolType.TREND_LINE -> {
             val p1 = priceFromY(start.y, priceRange, chartH)
             val p2 = priceFromY(end.y, priceRange, chartH)
             Drawing.TrendLine(
-                id = "tl_$ts", startPrice = p1, endPrice = p2,
-                startTimeMs = candleTs(start.x), endTimeMs = candleTs(end.x)
+                id = "tl_$ts",
+                startPrice = p1,
+                endPrice = p2,
+                startTimeMs = candleTs(start.x),
+                endTimeMs = candleTs(end.x)
             )
         }
         DrawingToolType.RECTANGLE -> {
             val top = priceFromY(min(start.y, end.y), priceRange, chartH)
             val bot = priceFromY(max(start.y, end.y), priceRange, chartH)
             Drawing.Rectangle(
-                id = "r_$ts", topPrice = top, bottomPrice = bot,
+                id = "r_$ts",
+                topPrice = top,
+                bottomPrice = bot,
                 startTimeMs = candleTs(min(start.x, end.x)),
                 endTimeMs = candleTs(max(start.x, end.x))
             )
@@ -165,11 +173,15 @@ internal fun buildDrawing(
         DrawingToolType.RULER -> {
             val p1 = priceFromY(start.y, priceRange, chartH)
             val p2 = priceFromY(end.y, priceRange, chartH)
-            val t1 = candleTs(start.x); val t2 = candleTs(end.x)
+            val t1 = candleTs(start.x)
+            val t2 = candleTs(end.x)
             Drawing.TrendLine(
-                id = "ruler_$ts", startPrice = p1, endPrice = p2,
-                startTimeMs = t1, endTimeMs = t2,
-                color = androidx.compose.ui.graphics.Color(0xFFFFEB00),
+                id = "ruler_$ts",
+                startPrice = p1,
+                endPrice = p2,
+                startTimeMs = t1,
+                endTimeMs = t2,
+                color = Color(0xFFFFEB00),
                 label = rulerLabel(p1, p2, t1, t2, priceFormatter)
             )
         }
