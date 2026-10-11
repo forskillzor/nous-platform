@@ -56,7 +56,6 @@ import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.roundToLong
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.context.stopKoin
