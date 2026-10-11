@@ -6,7 +6,7 @@
 package com.aandios.nous.bidasker.web
 
 import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.window.CanvasBasedWindow
+import androidx.compose.ui.window.ComposeViewport
 import io.ktor.client.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
@@ -29,7 +29,7 @@ fun main() {
         timeframe = params["tf"] ?: "1m"
     )
 
-    CanvasBasedWindow("Bidasker Footprint") {
+    ComposeViewport("Bidasker Footprint") {
         BidaskerApp(httpClient = httpClient, config = config)
     }
 }
