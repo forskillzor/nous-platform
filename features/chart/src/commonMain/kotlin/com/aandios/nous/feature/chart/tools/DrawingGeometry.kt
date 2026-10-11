@@ -125,17 +125,17 @@ fun moveDrawing(
             DrawingHandle.START -> drawing.copy(
                 startPrice = drawing.startPrice + priceDelta,
                 startTimeMs = drawing.startTimeMs + timeDelta,
-            ).withUpdatedLabel(formatter)
+            )
             DrawingHandle.END -> drawing.copy(
                 endPrice = drawing.endPrice + priceDelta,
                 endTimeMs = drawing.endTimeMs + timeDelta,
-            ).withUpdatedLabel(formatter)
+            )
             null -> drawing.copy(
                 startPrice = drawing.startPrice + priceDelta,
                 endPrice = drawing.endPrice + priceDelta,
                 startTimeMs = drawing.startTimeMs + timeDelta,
                 endTimeMs = drawing.endTimeMs + timeDelta,
-            ).withUpdatedLabel(formatter)
+            )
         }
         is Drawing.Rectangle -> when (handle) {
             DrawingHandle.START -> drawing.copy(
@@ -204,10 +204,6 @@ private fun formatPercent(value: Float): String {
     val sign = if (rounded < 0f) "-" else ""
     return "$sign$whole.${frac.toString().padStart(2, '0')}"
 }
-
-/** Обновляет label трендовой линии (линейки) после перемещения. */
-private fun Drawing.TrendLine.withUpdatedLabel(formatter: SymbolFormatter): Drawing.TrendLine =
-    if (label != null) copy(label = rulerLabel(startPrice, endPrice, startTimeMs, endTimeMs, formatter)) else this
 
 /** X-координата времени на виртуальной ленте. */
 internal fun timeToX(

@@ -51,6 +51,7 @@ object DrawingRenderer {
         candleWidth: Float,
         candleSpacing: Float,
         textMeasurer: TextMeasurer,
+        priceFormatter: SymbolFormatter
     ) {
         if (candles.isEmpty()) return
         val totalW = candleWidth + candleSpacing
@@ -61,7 +62,7 @@ object DrawingRenderer {
         for (drawing in drawings) {
             when (drawing) {
                 is Drawing.TrendLine -> drawTrendLine(drawing, candles, priceRange, chartHeight, scrollOffset, totalW, firstTime, timeRange, textMeasurer)
-                is Drawing.HorizontalLevel -> drawHorizontal(drawing, priceRange, chartHeight, chartWidth, textMeasurer)
+                is Drawing.HorizontalLevel -> drawHorizontal(drawing, priceRange, chartHeight, chartWidth, textMeasurer,  priceFormatter)
                 is Drawing.Rectangle -> drawRect(drawing, candles, priceRange, chartHeight, scrollOffset, totalW, firstTime, timeRange)
                 is Drawing.VerticalLine -> drawVertical(drawing, candles, chartHeight, scrollOffset, totalW, firstTime, timeRange, textMeasurer)
             }
@@ -110,6 +111,7 @@ object DrawingRenderer {
         chartHeight: Float,
         chartWidth: Float,
         textMeasurer: TextMeasurer,
+        priceFormatter:  SymbolFormatter,
     ) {
         val y = priceToY(d.price, priceRange, chartHeight)
 
@@ -133,7 +135,7 @@ object DrawingRenderer {
 
         // Price label on the right
         d.label?.let { label ->
-            drawLabel(label, chartWidth, y - 16f, textMeasurer, alignRight = true)
+            drawLabel(priceFormatter.formatPrice(d.price), chartWidth, y - 16f, textMeasurer, alignRight = true)
         }
     }
 

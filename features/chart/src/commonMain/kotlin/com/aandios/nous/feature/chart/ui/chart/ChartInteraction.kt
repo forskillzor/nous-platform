@@ -756,6 +756,7 @@ fun CandleStickChartInteraction(
                     candleWidth = candleMetrics.width,
                     candleSpacing = candleMetrics.spacing,
                     textMeasurer = textMeasurer,
+                    priceFormatter = config.priceFormatter,
                 )
             }
             /** 8b. Превью рисуемой фигуры (линейка с актуальными вычислениями) */
@@ -769,6 +770,7 @@ fun CandleStickChartInteraction(
                     candleWidth = candleMetrics.width,
                     candleSpacing = candleMetrics.spacing,
                     textMeasurer = textMeasurer,
+                    priceFormatter = config.priceFormatter,
                 )
             }
             /** 8c. Ручки выделенного рисунка */
