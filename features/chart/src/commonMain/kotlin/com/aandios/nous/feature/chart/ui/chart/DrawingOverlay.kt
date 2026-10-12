@@ -104,6 +104,7 @@ fun DrawingOverlay(
                     }
                     onPreviewChange(null)
                     draft?.let { drawingHistory.add(it) }
+                    onToolChange(DrawingToolType.NONE)
                 }
             }
         }
@@ -182,7 +183,7 @@ internal fun buildDrawing(
                 startTimeMs = t1,
                 endTimeMs = t2,
                 color = Color(0xFFFFEB00),
-                label = rulerLabel(p1, p2, t1, t2, priceFormatter)
+                isRuler = true,
             )
         }
         else -> null

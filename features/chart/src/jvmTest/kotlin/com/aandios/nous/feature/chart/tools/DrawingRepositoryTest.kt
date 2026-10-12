@@ -31,7 +31,6 @@ class DrawingRepositoryTest {
             endTimeMs = 61_000L,
             color = Color(0xFFFFEB00),
             createdAt = 42L,
-            label = "trend",
         ),
         Drawing.HorizontalLevel(
             id = "h_1",

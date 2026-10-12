@@ -8,6 +8,7 @@ package com.aandios.nous.feature.chart.ui.chart
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -20,6 +21,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -151,6 +154,7 @@ fun CandleStickChartInteraction(
     /** Шкалы и серия — единая модель для свечей и footprint */
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
     val priceScale = remember { PriceScale() }
+
     val series: ChartSeries = remember(candles, footprintCandles, config) {
         if (footprintCandles != null) {
             FootprintSeries(skeleton = candles, footprintCandles = footprintCandles, config = config)
@@ -181,13 +185,13 @@ fun CandleStickChartInteraction(
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
 
+    val chartFocusRequester = remember { FocusRequester() }
+
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { /* no-op: make composable focusable for onKeyEvent */ }
+            .focusRequester(chartFocusRequester)
+            .focusable()
             .onKeyEvent { event ->
                 when {
                     event.key == Key.CtrlLeft || event.key == Key.CtrlRight -> {
@@ -226,6 +230,7 @@ fun CandleStickChartInteraction(
                     else -> false
                 }
             }
+
             /** Обработка жестов: move/resize рисунков, pan / Alt+вертикаль (footprint).
              * Модификаторы читаются из PointerEvent.keyboardModifiers —
              * не зависят от фокуса (раньше onKeyEvent их «терял» после кликов по тулбару).
@@ -269,7 +274,6 @@ fun CandleStickChartInteraction(
                                         scrollOffset = timeScale.scrollOffset,
                                         candleWidth = hitMetrics.width,
                                         candleSpacing = hitMetrics.spacing,
-                                        formatter = config.priceFormatter,
                                     )
                                     history.update(hit.id, updated)
                                 }
@@ -280,6 +284,7 @@ fun CandleStickChartInteraction(
                             } else {
                                 // Клик без движения — выделяем рисунок
                                 selectedDrawingId = hit.id
+                                chartFocusRequester.requestFocus()
                             }
                             return@awaitEachGesture
                         }
@@ -627,9 +632,19 @@ fun CandleStickChartInteraction(
         val selectedDrawing = selectedDrawingId?.let { id ->
             drawingHistory?.drawings?.firstOrNull { it.id == id }
         }
-        val projectionTrend = (previewDrawing as? Drawing.TrendLine)
-            ?: (selectedDrawing as? Drawing.TrendLine)
+        val projectionTrends: List<Drawing.TrendLine> = buildList {
+            drawingHistory?.drawings
+                ?.filterIsInstance<Drawing.TrendLine>()
+                ?.filter { it.isRuler }
+                ?.let { addAll(it) }
 
+            // Превью/выделенный — только если это НЕ ruler (иначе будет дубль)
+            val active = (previewDrawing as? Drawing.TrendLine)
+                ?: (selectedDrawing as? Drawing.TrendLine)
+            if (active != null && !active.isRuler && none { it.id == active.id }) {
+                add(active)
+            }
+        }
         // Основной Canvas для графика
         Canvas(
             modifier = Modifier
@@ -696,9 +711,9 @@ fun CandleStickChartInteraction(
             }
 
             /** 5b. Проекции линейки/трендовой на шкалу цен (под тиками шкалы) */
-            if (projectionTrend != null) {
+            projectionTrends.forEach { trend ->
                 drawDrawingProjections(
-                    drawing = projectionTrend,
+                    drawing = trend,
                     priceRange = priceRange,
                     layout = layout,
                 )
@@ -723,14 +738,16 @@ fun CandleStickChartInteraction(
                 )
             }
             /** 6b. Ценовые теги проекций (поверх шкалы) */
-            if (config.showPriceScale && projectionTrend != null) {
-                drawProjectionPriceTags(
-                    drawing = projectionTrend,
-                    priceRange = priceRange,
-                    layout = layout,
-                    textMeasurer = textMeasurer,
-                    formatter = config.priceFormatter,
-                )
+            if (config.showPriceScale && projectionTrends != null) {
+                projectionTrends.forEach { trend ->
+                    drawProjectionPriceTags(
+                        drawing = trend,
+                        priceRange = priceRange,
+                        layout = layout,
+                        textMeasurer = textMeasurer,
+                        formatter = config.priceFormatter,
+                    )
+                }
             }
             /** 7. Alt+hover popup for footprint */
             if (footprintData != null && footprintHoverPos != null) {
@@ -978,7 +995,7 @@ private fun DrawScope.drawTradingOrderLines(
 
 /** Сплошные линии позиций по средней цене входа (Show positions). */
 private fun DrawScope.drawTradingPositionLines(
-    positions: List<com.aandios.nous.api.market.model.trading.Position>,
+    positions: List<Position>,
     priceRange: PriceRange,
     chartArea: Rect,
 ) {

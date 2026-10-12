@@ -61,10 +61,24 @@ object DrawingRenderer {
 
         for (drawing in drawings) {
             when (drawing) {
-                is Drawing.TrendLine -> drawTrendLine(drawing, candles, priceRange, chartHeight, scrollOffset, totalW, firstTime, timeRange, textMeasurer)
-                is Drawing.HorizontalLevel -> drawHorizontal(drawing, priceRange, chartHeight, chartWidth, textMeasurer,  priceFormatter)
-                is Drawing.Rectangle -> drawRect(drawing, candles, priceRange, chartHeight, scrollOffset, totalW, firstTime, timeRange)
-                is Drawing.VerticalLine -> drawVertical(drawing, candles, chartHeight, scrollOffset, totalW, firstTime, timeRange, textMeasurer)
+                is Drawing.TrendLine -> drawTrendLine(
+                    drawing, candles, priceRange, chartHeight,
+                    scrollOffset, totalW, firstTime, timeRange, textMeasurer, priceFormatter
+                )
+
+                is Drawing.HorizontalLevel -> drawHorizontal(
+                    drawing, priceRange, chartHeight, chartWidth, textMeasurer, priceFormatter
+                )
+
+                is Drawing.Rectangle -> drawRect(
+                    drawing, candles, priceRange, chartHeight,
+                    scrollOffset, totalW, firstTime, timeRange
+                )
+
+                is Drawing.VerticalLine -> drawVertical(
+                    drawing, candles, chartHeight, scrollOffset, totalW,
+                    firstTime, timeRange, textMeasurer
+                )
             }
         }
     }
@@ -79,6 +93,7 @@ object DrawingRenderer {
         firstTime: Long,
         timeRange: Long,
         textMeasurer: TextMeasurer,
+        priceFormatter: SymbolFormatter
     ) {
         val x1 = timeToX(d.startTimeMs, firstTime, timeRange, candles.size, totalW, scrollOffset)
         val x2 = timeToX(d.endTimeMs, firstTime, timeRange, candles.size, totalW, scrollOffset)
@@ -97,7 +112,8 @@ object DrawingRenderer {
         drawCircle(d.color, 5f, Offset(x2, y2), style = Stroke(1.5f))
 
         // Label at midpoint
-        d.label?.let { label ->
+        if (d.isRuler) {
+            val label = rulerLabel(d.startPrice, d.endPrice, d.startTimeMs, d.endTimeMs, priceFormatter)
             val midX = (x1 + x2) / 2f
             val midY = (y1 + y2) / 2f
             val labelY = if (y2 > y1) midY - 14f else midY + 6f
@@ -111,7 +127,7 @@ object DrawingRenderer {
         chartHeight: Float,
         chartWidth: Float,
         textMeasurer: TextMeasurer,
-        priceFormatter:  SymbolFormatter,
+        priceFormatter: SymbolFormatter,
     ) {
         val y = priceToY(d.price, priceRange, chartHeight)
 
@@ -245,11 +261,13 @@ fun DrawScope.drawDrawingSelection(
             handle(Offset(handleX(drawing.startTimeMs), handleY(drawing.startPrice)))
             handle(Offset(handleX(drawing.endTimeMs), handleY(drawing.endPrice)))
         }
+
         is Drawing.HorizontalLevel -> handle(Offset(chartWidth - 4f, handleY(drawing.price)))
         is Drawing.Rectangle -> {
             handle(Offset(handleX(drawing.startTimeMs), handleY(drawing.topPrice)))
             handle(Offset(handleX(drawing.endTimeMs), handleY(drawing.bottomPrice)))
         }
+
         is Drawing.VerticalLine -> handle(Offset(handleX(drawing.timeMs), 8f))
     }
 }

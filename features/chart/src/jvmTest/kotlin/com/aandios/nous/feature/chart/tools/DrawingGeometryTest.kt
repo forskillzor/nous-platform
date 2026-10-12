@@ -154,7 +154,6 @@ class DrawingGeometryTest {
             from = from, to = to,
             candles = candles, priceRange = range, chartHeight = chartHeight,
             scrollOffset = 0f, candleWidth = 8f, candleSpacing = 8f * 0.3f / 0.7f,
-            formatter = formatter,
         ) as Drawing.HorizontalLevel
 
         assertEquals(105f, moved.price, 0.001f)
@@ -171,7 +170,6 @@ class DrawingGeometryTest {
             from = from, to = to,
             candles = candles, priceRange = range, chartHeight = chartHeight,
             scrollOffset = 0f, candleWidth = 8f, candleSpacing = 8f * 0.3f / 0.7f,
-            formatter = formatter,
         ) as Drawing.VerticalLine
 
         assertEquals(420_000L, moved.timeMs)
@@ -188,7 +186,6 @@ class DrawingGeometryTest {
             from = from, to = to,
             candles = candles, priceRange = range, chartHeight = chartHeight,
             scrollOffset = 0f, candleWidth = 8f, candleSpacing = 8f * 0.3f / 0.7f,
-            formatter = formatter,
         ) as Drawing.TrendLine
 
         assertEquals(100f, moved.startPrice, 0.001f) // 90 + 10
@@ -208,7 +205,6 @@ class DrawingGeometryTest {
             from = from, to = to,
             candles = candles, priceRange = range, chartHeight = chartHeight,
             scrollOffset = 0f, candleWidth = 8f, candleSpacing = 8f * 0.3f / 0.7f,
-            formatter = formatter,
         ) as Drawing.TrendLine
 
         assertEquals(90f, moved.startPrice, 0.001f) // не изменилась
@@ -227,7 +223,6 @@ class DrawingGeometryTest {
             from = from, to = to,
             candles = candles, priceRange = range, chartHeight = chartHeight,
             scrollOffset = 0f, candleWidth = 8f, candleSpacing = 8f * 0.3f / 0.7f,
-            formatter = formatter,
         ) as Drawing.Rectangle
 
         assertEquals(105f, moved.topPrice, 0.001f)

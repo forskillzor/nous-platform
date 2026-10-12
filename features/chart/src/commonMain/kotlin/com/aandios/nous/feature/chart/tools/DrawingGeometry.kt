@@ -112,7 +112,6 @@ fun moveDrawing(
     scrollOffset: Float,
     candleWidth: Float,
     candleSpacing: Float,
-    formatter: SymbolFormatter,
 ): Drawing {
     val priceDelta = priceFromY(to.y, priceRange, chartHeight) - priceFromY(from.y, priceRange, chartHeight)
     val timeDelta = candleTimeAt(to.x, candles, scrollOffset, candleWidth, candleSpacing) -

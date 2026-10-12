@@ -50,7 +50,7 @@ sealed class Drawing {
         override val color: Color = Color(0xFFFFEB00),
         override val createdAt: Long = currentTime(),
         val lineWidth: Float = 1.5f,
-        val label: String? = null
+        val isRuler: Boolean = false
     ) : Drawing()
 
     /**
