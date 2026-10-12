@@ -24,12 +24,17 @@ class LiquidationSeriesSource(
 
     override suspend fun loadInitial(): List<LiquidationOrder> {
         val endTime = currentTimeMillis()
-        return adapter.getHistoricalLiquidations(
-            symbol = symbol,
-            startTime = endTime - historyWindowMs,
-            endTime = endTime,
-            limit = 100,
-        )
+        return try {
+            adapter.getHistoricalLiquidations(
+                symbol = symbol,
+                startTime = endTime - historyWindowMs,
+                endTime = endTime,
+                limit = 100,
+            )
+        } catch (e: UnsupportedOperationException) {
+            println("Historical liquidations unavailable for $symbol: ${e.message}")
+            emptyList()
+        }
     }
 
     /** Пагинация назад адаптерами ликвидаций не поддерживается. */

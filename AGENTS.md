@@ -9,7 +9,7 @@ invariant), add it here.
 Desktop Kotlin Multiplatform (Compose) trading terminal. The workspace is a
 tile grid with panels: chart (candlestick + footprint), DOM depth ladder,
 time & sales, docked trading panel. Market data and trading come from
-providers (Binance, MEXC). A shared paper-trading engine mirrors real trading
+providers (Binance, Bybit, MEXC). A shared paper-trading engine mirrors real trading
 so the whole UI can be exercised without exchange credentials. Per-panel
 state (trading flags, paper mode, order settings) is persisted in a local
 SQLite state store.
@@ -24,6 +24,7 @@ SQLite state store.
 | `public-api/api-market` | Provider contracts: `Provider`, `ProviderConfig`, `ProviderRegistry`, adapter interfaces (`TradingAdapter`, `SymbolInfoAdapter`, `DomAdapter`, `ChartAdapter`, `TradesAdapter`, `BookTickerAdapter`), models (`SymbolInfo`, trading models), the paper engine (`PaperTrading`, `PaperTradingAdapter`, `effectiveTrading`), trading commands (`MarketOrderCommand`, `LimitOrderCommand`, `BestBidAskCommand`), shared `TradingAdapter.replaceOrder` extension in `adapters/OrderOperations.kt`. |
 | `public-api/api-trading`, `public-api/api-ui` | Additional API surfaces. |
 | `providers/binance-provider` | Binance USDT-M. Market data is real; `trading` is a stub that returns fake success with `TEST-<timestamp>` ids and tracks nothing — never use it to validate real order behaviour. |
+| `providers/bybit-provider` | Bybit V5 USDT linear perpetual market data and trading: public candles, order book, trades, best bid/ask, symbol info, live liquidations, signed private REST, and private account WebSocket. Credentials are `ProviderConfig.apiKey/secretKey` or `BYBIT_API_KEY` / `BYBIT_SECRET_KEY`; historical liquidations are not exposed by the documented public API. Margin mode is account-wide on UTA and must match the order's requested mode; the adapter never switches it implicitly. |
 | `providers/mexc-provider` | MEXC USDT-M Futures Contract API v1: signed REST client, rate gate, WS hub (public + personal), adapters, contract-size aware trading adapter. |
 | `features/chart` | Chart panel: rendering (candles/footprint), `ChartViewModel`, panel-scoped persistence (`ChartStatePersistor`), chart trading (order/position badges, TP/SL, drag = cancel+replace). JVM UI: `ChartWindow`, `ChartTradingPanel`. |
 | `features/dom` | DOM depth ladder: `DomViewModel` (order book, click-to-place, order chips with resize/drag/cancel, position plates, margin chip), `DomWindow` (jvm), `content/LevelRow` + `DomSection`, `footer/OrderPlacementPanel`. |
@@ -151,7 +152,7 @@ Repo root: `C:\Users\skillzor\IdeaProjects\nous\nous-platform`
 - Module compile: `:features:dom:compileKotlinJvm`, `:features:chart:compileKotlinJvm`, etc.
 - Standard test set:
   `:platform-core:jvmTest :public-api:api-market:jvmTest :features:chart:jvmTest :features:trading:jvmTest :features:dom:jvmTest`
-- Provider tests: `:providers:mexc-provider:jvmTest`, `:providers:binance-provider:jvmTest`
+- Provider tests: `:providers:mexc-provider:jvmTest`, `:providers:binance-provider:jvmTest`, `:providers:bybit-provider:jvmTest`
 
 ### IMPORTANT: never run `gradlew` synchronously in the shell tool
 

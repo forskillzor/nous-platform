@@ -20,6 +20,7 @@ import com.aandios.nous.feature.dom.ui.DomViewModel
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.feature.trading.ui.TradingViewModel
 import com.aandios.nous.provider.binance.BinanceProviderFactory
+import com.aandios.nous.provider.bybit.BybitProviderFactory
 import com.aandios.nous.provider.mexc.MexcProviderFactory
 import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.AppStateRepository
@@ -44,6 +45,13 @@ val appModule = module {
     single<Provider>(named("binance")) {
         BinanceProviderFactory().createProvider(
             config = ProviderConfig(displayName = "Binance"),
+            networkManager = get<NetworkManager>(),
+        )
+    }
+
+    single<Provider>(named("bybit")) {
+        BybitProviderFactory().createProvider(
+            config = ProviderConfig(displayName = "Bybit"),
             networkManager = get<NetworkManager>(),
         )
     }

@@ -17,6 +17,8 @@ interface LiquidationAdapter : MarketAdapter {
 
     /**
      * Fetch historical liquidation orders via REST API.
+     * Implementations without a public history endpoint may throw
+     * [UnsupportedOperationException]; callers can still use the live stream.
      * @param symbol e.g. "BTCUSDT"
      * @param startTime optional start timestamp (ms)
      * @param endTime optional end timestamp (ms)
