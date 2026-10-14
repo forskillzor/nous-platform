@@ -27,9 +27,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.core.ui.component.PanelSymbolWatermark
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.header.TradesHeaderBar
 
 /**
@@ -65,6 +65,7 @@ fun TradesWidget(
     val density = androidx.compose.ui.platform.LocalDensity.current
     var measuredMinWidth by remember { mutableStateOf(120.dp) }
     val panelWidthDp by viewModel.panelWidthDp.collectAsState()
+    val tokens = LocalTerminalDesignTokens.current
 
     // Автоскролл живёт, пока пользователь у вершины списка. Выключаем только
     // на РУЧНОЙ прокрутке вниз (программная вставка новых сделок сверху
@@ -106,8 +107,8 @@ fun TradesWidget(
         ColumnHeaderRow()
 
         HorizontalDivider(
-            thickness = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            thickness = tokens.dimensions.dividerThickness,
+            color = tokens.colors.panelBorder,
         )
 
         // Контент (водяной знак — нижним слоем)
@@ -128,7 +129,7 @@ fun TradesWidget(
                     Text(
                         text = "Подключение...",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp
+                        fontSize = tokens.typography.bodySize
                     )
                 }
             }
@@ -140,7 +141,7 @@ fun TradesWidget(
                     Text(
                         text = currentState.message,
                         color = MaterialTheme.colorScheme.error,
-                        fontSize = 13.sp
+                        fontSize = tokens.typography.bodySize
                     )
                 }
             }
@@ -152,7 +153,7 @@ fun TradesWidget(
                 if (visibleTrades.isNotEmpty()) {
                     val maxQty = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
                     val maxPrice = visibleTrades.maxOfOrNull { it.price } ?: 0.0
-                    val sampleStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp)
+                    val sampleStyle = androidx.compose.ui.text.TextStyle(fontSize = tokens.typography.compactSize)
                     val wTime = measurer.measure(
                         androidx.compose.ui.text.AnnotatedString(
                             viewModel.formatTime(visibleTrades.first().timestamp)
@@ -180,7 +181,7 @@ fun TradesWidget(
                         Text(
                             text = if (selectedSizeFilter !is SizeFilter.All) "Нет сделок > фильтра" else "Ожидание данных...",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp
+                            fontSize = tokens.typography.bodySize
                         )
                     }
                 } else {
@@ -219,23 +220,24 @@ fun TradesWidget(
  */
 @Composable
 private fun ColumnHeaderRow() {
+    val tokens = LocalTerminalDesignTokens.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(horizontal = 8.dp, vertical = 5.dp)
+            .background(tokens.colors.panelHeaderSurface)
+            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs)
     ) {
         Text(
             text = "Время",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
             modifier = Modifier.weight(1f)
         )
         Text(
             text = "Цена",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f)
@@ -243,7 +245,7 @@ private fun ColumnHeaderRow() {
         Text(
             text = "Кол-во",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1.4f)
@@ -262,23 +264,23 @@ private fun TradeRow(
     maxQuantity: Double,
     index: Int
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     val bgColor = if (index % 2 == 0) Color.Transparent
-    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-    val priceColor = if (trade.isBuyerMaker) MaterialTheme.colorScheme.secondary  // продажа (красный)
-    else MaterialTheme.colorScheme.primary  // покупка (зелёный)
+    else tokens.colors.panelHeaderSurface.copy(alpha = 0.35f)
+    val priceColor = if (trade.isBuyerMaker) tokens.colors.bearish else tokens.colors.bullish
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(bgColor)
-            .padding(horizontal = 8.dp, vertical = 0.dp),
+            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.none),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Время
         Text(
             text = viewModel.formatTime(trade.timestamp),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             modifier = Modifier.weight(1f)
         )
 
@@ -286,7 +288,7 @@ private fun TradeRow(
         Text(
             text = viewModel.formatPrice(trade.price),
             color = priceColor,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f)
@@ -311,7 +313,7 @@ private fun TradeRow(
             Text(
                 text = viewModel.formatQuantity(trade.quantity),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp,
+                fontSize = tokens.typography.compactSize,
                 textAlign = TextAlign.End,
                 modifier = Modifier.align(Alignment.CenterEnd)
             )

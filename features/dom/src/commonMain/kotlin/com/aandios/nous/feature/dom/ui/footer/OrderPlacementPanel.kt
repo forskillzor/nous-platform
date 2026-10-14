@@ -24,18 +24,10 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
-
-// Стили — как у chart trading panel (SideButton/Chip/LimitButton)
-private val buyColor = Color(0xFF26A69A)
-private val sellColor = Color(0xFFEF5350)
-private val okColor = Color(0xFF00C853)
-private val warnColor = Color(0xFFE0A95B)
-private val accent = Color(0xFF5B9BD5)
-private val labelColor = Color(0xFF8A97A5)
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 /**
  * Компактная панель ордеров DOM.
@@ -89,15 +81,23 @@ fun OrderPlacementPanel(
     onCancelPending: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
+    val buyColor = tokens.colors.bullish
+    val sellColor = tokens.colors.bearish
+    val okColor = tokens.colors.profit
+    val warnColor = tokens.colors.warning
+    val accent = tokens.colors.accent
+    val labelColor = tokens.colors.label
+
     Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = tokens.colors.panelSurface,
         modifier = modifier
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)
         ) {
             // PnL позиции — самая верхняя строка, видна всегда (без позиций: -/-),
             // три значения равномерно по ширине панели
@@ -129,8 +129,8 @@ fun OrderPlacementPanel(
 
             // Строка 1: Trading · Confirm · RO · маржа · Paper (всё в одну строку)
             FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 itemVerticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -140,36 +140,57 @@ fun OrderPlacementPanel(
                     activeColor = okColor,
                     inactiveColor = sellColor,
                 ) { onOrderIntent(OrderIntent.ToggleTrading) }
-                ToggleChip(label = "Confirm", active = confirmOrders) { onConfirmChanged(!confirmOrders) }
-                ToggleChip(label = "RO", active = reduceOnly) { onReduceOnlyChanged(!reduceOnly) }
+                ToggleChip(
+                    label = "Confirm",
+                    active = confirmOrders,
+                    activeColor = accent,
+                    inactiveColor = labelColor,
+                ) { onConfirmChanged(!confirmOrders) }
+                ToggleChip(
+                    label = "RO",
+                    active = reduceOnly,
+                    activeColor = accent,
+                    inactiveColor = labelColor,
+                ) { onReduceOnlyChanged(!reduceOnly) }
                 // Маржа: Cross / Isol (компактный тумблер)
                 ToggleChip(
                     label = if (marginMode == 1) "Isol" else "Cross",
                     active = marginMode == 1,
                     activeColor = accent,
+                    inactiveColor = labelColor,
                 ) { onMarginModeChanged(if (marginMode == 1) 2 else 1) }
-                ToggleChip(label = "Paper", active = paperEnabled) { onPaperChanged(!paperEnabled) }
+                ToggleChip(
+                    label = "Paper",
+                    active = paperEnabled,
+                    activeColor = accent,
+                    inactiveColor = labelColor,
+                ) { onPaperChanged(!paperEnabled) }
             }
 
             // Строка 2: qty (узкий) / тип лимитки / плечо
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Qty:", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
+                Text(
+                    "Qty:",
+                    color = labelColor,
+                    fontSize = tokens.typography.microSize,
+                    fontFamily = TerminalFontFamily,
+                )
                 BasicTextField(
                     value = orderQuantity,
                     onValueChange = onQuantityChanged,
                     modifier = Modifier
                         .width(70.dp)
                         .height(24.dp)
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(3.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(tokens.cornerRadii.card))
+                        .border(tokens.dimensions.borderWidth, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(tokens.cornerRadii.card))
+                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs + 1.dp),
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 11.sp,
+                        fontSize = tokens.typography.compactSize,
                         fontFamily = TerminalFontFamily,
                         textAlign = TextAlign.Center,
                     ),
@@ -181,7 +202,7 @@ fun OrderPlacementPanel(
                                 Text(
                                     text = qtyPlaceholder,
                                     color = labelColor,
-                                    fontSize = 11.sp,
+                                    fontSize = tokens.typography.compactSize,
                                     fontFamily = TerminalFontFamily,
                                     maxLines = 1,
                                 )
@@ -210,13 +231,13 @@ fun OrderPlacementPanel(
             pendingText?.let { text ->
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
                         text = "Confirm $text",
                         color = accent,
-                        fontSize = 10.sp,
+                        fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -228,9 +249,9 @@ fun OrderPlacementPanel(
             }
 
             // Cancel All / Close All (порядок: cancel слева, close справа)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), modifier = Modifier.fillMaxWidth()) {
                 SideButton("Cancel All", warnColor, onCancelAll, Modifier.weight(1f), outlined = true)
-                SideButton("Close All", Color(0xFFE05B5B), onCloseAll, Modifier.weight(1f), outlined = true)
+                SideButton("Close All", tokens.colors.loss, onCloseAll, Modifier.weight(1f), outlined = true)
             }
 
             // Лимитки по выбранной цене (выбор — Confirm: ON + клик по уровню)
@@ -239,7 +260,7 @@ fun OrderPlacementPanel(
                 if (selectedPrice == null) " (click price)" else ""
             val sellLimitLabel = (if (reduceOnly && hasLongPosition) "CLong" else "Sell Limit") +
                 if (selectedPrice == null) " (click price)" else ""
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), modifier = Modifier.fillMaxWidth()) {
                 LimitButton(
                     label = buyLimitLabel,
                     color = buyColor,
@@ -263,7 +284,7 @@ fun OrderPlacementPanel(
             }
 
             // Market
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), modifier = Modifier.fillMaxWidth()) {
                 SideButton("Buy", buyColor, {
                     onOrderIntent(OrderIntent.MarketBuy(symbol, orderQuantity.toDoubleOrNull() ?: 0.0))
                 }, Modifier.weight(1f))
@@ -273,7 +294,7 @@ fun OrderPlacementPanel(
             }
 
             // Best Bid / Best Ask
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs), modifier = Modifier.fillMaxWidth()) {
                 val bidReady = bestBidPrice != null && bestBidPrice > 0
                 val askReady = bestAskPrice != null && bestAskPrice > 0
                 LimitButton(
@@ -299,11 +320,11 @@ fun OrderPlacementPanel(
                 Text(
                     text = text,
                     color = labelColor,
-                    fontSize = 10.sp,
+                    fontSize = tokens.typography.microSize,
                     fontFamily = TerminalFontFamily,
                     maxLines = 1,
                     softWrap = false,
-                    modifier = Modifier.padding(top = 2.dp),
+                    modifier = Modifier.padding(top = tokens.spacing.xxs),
                 )
             }
         }
@@ -319,10 +340,11 @@ private fun PnlCell(
     textAlign: TextAlign,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Text(
         text = text,
         color = color,
-        fontSize = 11.sp,
+        fontSize = tokens.typography.compactSize,
         fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
@@ -336,29 +358,30 @@ private fun PnlCell(
 private fun ToggleChip(
     label: String,
     active: Boolean,
-    activeColor: Color = accent,
-    inactiveColor: Color = labelColor,
+    activeColor: Color,
+    inactiveColor: Color,
     onClick: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Text(
         text = label,
         color = if (active) activeColor else inactiveColor,
-        fontSize = 10.sp,
+        fontSize = tokens.typography.microSize,
         fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
             .background(
                 if (active) activeColor.copy(alpha = 0.2f) else Color.Transparent,
-                RoundedCornerShape(3.dp),
+                RoundedCornerShape(tokens.cornerRadii.card),
             )
             .border(
-                1.dp,
+                tokens.dimensions.borderWidth,
                 if (active) activeColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant,
-                RoundedCornerShape(3.dp),
+                RoundedCornerShape(tokens.cornerRadii.card),
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 5.dp, vertical = 2.dp),
+            .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
     )
 }
 
@@ -371,21 +394,22 @@ private fun SideButton(
     modifier: Modifier = Modifier,
     outlined: Boolean = false,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Box(
         modifier = modifier
             .height(24.dp)
             .background(
                 if (outlined) Color.Transparent else color.copy(alpha = 0.15f),
-                RoundedCornerShape(3.dp),
+                RoundedCornerShape(tokens.cornerRadii.card),
             )
-            .border(1.dp, color.copy(alpha = if (outlined) 0.45f else 0.6f), RoundedCornerShape(3.dp))
+            .border(tokens.dimensions.borderWidth, color.copy(alpha = if (outlined) 0.45f else 0.6f), RoundedCornerShape(tokens.cornerRadii.card))
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = color,
-            fontSize = 10.sp,
+            fontSize = tokens.typography.microSize,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -402,18 +426,19 @@ private fun LimitButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Box(
         modifier = modifier
             .height(24.dp)
-            .background(color.copy(alpha = if (ready) 0.15f else 0.05f), RoundedCornerShape(3.dp))
-            .border(1.dp, color.copy(alpha = if (ready) 0.6f else 0.25f), RoundedCornerShape(3.dp))
+            .background(color.copy(alpha = if (ready) 0.15f else 0.05f), RoundedCornerShape(tokens.cornerRadii.card))
+            .border(tokens.dimensions.borderWidth, color.copy(alpha = if (ready) 0.6f else 0.25f), RoundedCornerShape(tokens.cornerRadii.card))
             .clickable(enabled = ready, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = color.copy(alpha = if (ready) 1f else 0.4f),
-            fontSize = 10.sp,
+            fontSize = tokens.typography.microSize,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,

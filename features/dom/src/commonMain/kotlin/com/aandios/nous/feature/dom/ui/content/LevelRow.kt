@@ -44,18 +44,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.dom.ui.model.DomLevel
 import kotlin.math.round
 import kotlin.math.roundToLong
-
-internal val longColor = Color(0xFF26A69A)
-internal val shortColor = Color(0xFFEF5350)
 
 /**
  * Строка ценовой лесенки. `level == null` — пустой уровень (только цена).
@@ -97,6 +94,9 @@ fun LevelRow(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
+    val tokens = LocalTerminalDesignTokens.current
+    val longColor = tokens.colors.bullish
+    val shortColor = tokens.colors.bearish
 
     val isSelected = selectedDisplayTicks?.let { it == priceTicks } ?: false
     val isLastPrice = lastPriceDisplayTicks?.let { it == priceTicks } ?: false
@@ -113,7 +113,7 @@ fun LevelRow(
         position != null -> positionColor
         // Весь уровень с лимитным ордером подсвечен цветом ордера
         order != null -> orderColor.copy(alpha = 0.35f)
-        isSelected -> Color.Yellow.copy(alpha = 0.3f)
+        isSelected -> tokens.colors.selection
         isLastPrice -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)
         isHovered -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         else -> Color.Transparent
@@ -140,7 +140,7 @@ fun LevelRow(
                 if (order == null) onPriceClick(priceTicks, price)
             }
             .background(backgroundColor)
-            .padding(horizontal = 8.dp, vertical = 1.dp),
+            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs / 2),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -165,7 +165,7 @@ fun LevelRow(
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = TerminalFontFamily,
-                            fontSize = 11.sp
+                            fontSize = tokens.typography.compactSize
                         ),
                         modifier = Modifier.align(Alignment.CenterStart)
                     )
@@ -181,8 +181,8 @@ fun LevelRow(
                         }
                     },
                     color = Color.White,
-                    fontSize = 10.sp,
-                    lineHeight = 11.sp,
+                    fontSize = tokens.typography.microSize,
+                    lineHeight = tokens.typography.compactLineHeight,
                     fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -211,7 +211,7 @@ fun LevelRow(
             color = priceColor,
             style = MaterialTheme.typography.bodySmall.copy(
                 fontFamily = TerminalFontFamily,
-                fontSize = 11.sp,
+                fontSize = tokens.typography.compactSize,
                 fontWeight = if (isSelected || position != null || order != null) FontWeight.Bold else FontWeight.Normal
             ),
             modifier = Modifier.weight(0.6f)
@@ -239,25 +239,33 @@ fun LevelRow(
                         color = MaterialTheme.colorScheme.secondary,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = TerminalFontFamily,
-                            fontSize = 11.sp
+                            fontSize = tokens.typography.compactSize
                         ),
                         modifier = Modifier.align(Alignment.CenterEnd)
                     )
                 }
             } else {
-                val (pnlText, pnlColor) = positionPnlText(position, markPrice, tickSize, contractSize, inverse)
+                val (pnlText, pnlColor) = positionPnlText(
+                    position = position,
+                    markPrice = markPrice,
+                    tickSize = tickSize,
+                    contractSize = contractSize,
+                    inverse = inverse,
+                    positiveColor = tokens.colors.profit,
+                    negativeColor = tokens.colors.loss,
+                )
                 // Тёмная мини-плашка под PnL — как у бейджа позиции в chart trading
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .background(Color(0xFF1B222B), RoundedCornerShape(2.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp),
+                        .background(tokens.colors.pnlPlate, RoundedCornerShape(tokens.cornerRadii.card))
+                        .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs / 2),
                 ) {
                     Text(
                         text = pnlText,
                         color = pnlColor,
-                        fontSize = 10.sp,
-                        lineHeight = 11.sp,
+                        fontSize = tokens.typography.microSize,
+                        lineHeight = tokens.typography.compactLineHeight,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -340,6 +348,8 @@ private fun positionPnlText(
     tickSize: Double,
     contractSize: Double,
     inverse: Boolean,
+    positiveColor: Color,
+    negativeColor: Color,
 ): Pair<String, Color> {
     val mark = if (markPrice > 0.0) markPrice else position.markPrice
     val dir = if (position.side == TradeSide.BUY) 1.0 else -1.0
@@ -365,7 +375,7 @@ private fun positionPnlText(
     val sign = if (pnl > 0.0) "+" else ""
     val deltaText = if (inverse) fmtCoin(delta) else fmtByTick(delta, tickSize)
     val text = "$sign$deltaText $sign${fmt2(pct)}%"
-    return text to (if (pnl >= 0) longColor else shortColor)
+    return text to (if (pnl >= 0) positiveColor else negativeColor)
 }
 
 /** Монетное значение (inverse): до 8 знаков, без экспоненты и хвостовых нулей. */
@@ -406,7 +416,8 @@ private fun OrderChip(
     modifier: Modifier = Modifier,
 ) {
     val isBuy = order.side == OrderSide.BUY
-    val color = if (isBuy) longColor else shortColor
+    val tokens = LocalTerminalDesignTokens.current
+    val color = if (isBuy) tokens.colors.bullish else tokens.colors.bearish
     val kind = if (order.reduceOnly) "Close" else "Open"
     val sideName = if (isBuy) "Long" else "Short"
     val base = baseText.orEmpty()
@@ -438,13 +449,13 @@ private fun OrderChip(
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val style = TextStyle(
             color = Color.White,
-            fontSize = 10.sp,
-            lineHeight = 11.sp,
+            fontSize = tokens.typography.microSize,
+            lineHeight = tokens.typography.compactLineHeight,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
         )
         // Фиксированная часть: инпут qty
-        val fixedPx = with(density) { 44.dp.toPx() }
+        val fixedPx = with(density) { (40.dp + tokens.spacing.xs).toPx() }
         val textBudgetPx = with(density) { maxWidth.toPx() } - fixedPx
         val label = listOf(full, short, shortest).firstOrNull { candidate ->
             measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
@@ -452,12 +463,12 @@ private fun OrderChip(
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(3.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs + 1.dp),
             modifier = Modifier
                 .fillMaxWidth()
-                .height(18.dp)
-                .background(color, RoundedCornerShape(2.dp))
-                .padding(horizontal = 3.dp)
+                .height(tokens.dimensions.compactControlHeight)
+                .background(color, RoundedCornerShape(tokens.cornerRadii.card))
+                .padding(horizontal = tokens.spacing.xxs + tokens.dimensions.borderWidth)
                 .alpha(if (beingDragged) 0.3f else 1f)
                 // Поглощаем одиночные клики, чтобы строка лесенки не реагировала
                 .clickable(
@@ -543,7 +554,7 @@ private fun QtyField(
         singleLine = true,
         textStyle = TextStyle(
             color = Color(0xFF1A1A1A),
-            fontSize = 10.sp,
+            fontSize = LocalTerminalDesignTokens.current.typography.microSize,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
@@ -551,7 +562,7 @@ private fun QtyField(
         cursorBrush = SolidColor(cursorColor),
         modifier = Modifier
             .width(40.dp)
-            .background(Color.White, RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.onPrimary, RoundedCornerShape(2.dp))
             .padding(horizontal = 2.dp, vertical = 1.dp)
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown &&

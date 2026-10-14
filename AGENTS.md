@@ -292,6 +292,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
 - Internal panel headers use `TerminalPanelHeader` for the shared surface,
   spacing and bottom divider; keep panel-specific controls and actions inside it.
+- DOM ladder and order-entry colors should come from
+  `LocalTerminalDesignTokens.current`; preserve strong white-on-side-color and
+  dark-on-quantity-input contrast.
 - Compact selects use `TerminalDropdown`; panel headers (DOM/Trades) use
   `TerminalInlineSelect` — a single-layer mono `label value ▾` row (~18dp).
 - Panel watermarks: `PanelSymbolWatermark` (platform-core) draws the big ticker

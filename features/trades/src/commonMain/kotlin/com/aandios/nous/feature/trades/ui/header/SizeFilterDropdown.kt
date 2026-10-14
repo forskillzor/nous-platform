@@ -27,7 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.SizeFilter
 
 @Composable
@@ -41,6 +41,7 @@ fun SizeFilterDropdown(
     onPresetDelete: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
     var customText by remember { mutableStateOf("") }
 
@@ -58,30 +59,30 @@ fun SizeFilterDropdown(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .clickable { expanded = true }
-                .padding(horizontal = 4.dp, vertical = 2.dp)
+                .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs)
         ) {
             Text(
                 text = "Size",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
+                fontSize = tokens.typography.microSize,
                 fontFamily = TerminalFontFamily,
                 maxLines = 1,
             )
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(tokens.spacing.xs))
             Text(
                 text = displayLabel,
                 color = MaterialTheme.colorScheme.inverseOnSurface,
-                fontSize = 11.sp,
+                fontSize = tokens.typography.compactSize,
                 fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.width(2.dp))
+            Spacer(Modifier.width(tokens.spacing.xxs))
             Text(
                 text = "▾",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
+                fontSize = tokens.typography.microSize,
                 fontFamily = TerminalFontFamily,
             )
         }
@@ -89,11 +90,11 @@ fun SizeFilterDropdown(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(200.dp)
+            modifier = Modifier.width(tokens.dimensions.tradeFilterMenuWidth)
         ) {
             // "All" option
             DropdownMenuItem(
-                text = { Text("All", fontSize = 12.sp) },
+                text = { Text("All", fontSize = tokens.typography.controlSize) },
                 onClick = {
                     onFilterChanged(SizeFilter.All)
                     customText = ""
@@ -106,13 +107,16 @@ fun SizeFilterDropdown(
                 }
             )
 
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            HorizontalDivider(
+                thickness = tokens.dimensions.dividerThickness,
+                color = tokens.colors.panelBorder,
+            )
 
             // Manual input row
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                    .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BasicTextField(
@@ -121,25 +125,25 @@ fun SizeFilterDropdown(
                     singleLine = true,
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.inverseOnSurface,
-                        fontSize = 12.sp,
+                        fontSize = tokens.typography.controlSize,
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.weight(1f).height(28.dp),
+                    modifier = Modifier.weight(1f).height(tokens.dimensions.compactFieldHeight),
                     decorationBox = { innerTextField ->
                         Box(contentAlignment = Alignment.CenterStart) {
                             if (customText.isEmpty()) {
                                 Text(
                                     "≥ custom…",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                                    fontSize = 12.sp,
+                                    fontSize = tokens.typography.controlSize,
                                 )
                             }
                             innerTextField()
                         }
                     }
                 )
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(tokens.spacing.sm))
                 TextButton(
                     onClick = {
                         val v = customText.toDoubleOrNull()
@@ -148,15 +152,18 @@ fun SizeFilterDropdown(
                             expanded = false
                         }
                     },
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                    contentPadding = PaddingValues(horizontal = tokens.spacing.sm, vertical = tokens.spacing.none),
                 ) {
-                    Text("Apply", fontSize = 11.sp)
+                    Text("Apply", fontSize = tokens.typography.compactSize)
                 }
             }
 
             // Saved presets
             if (customPresets.isNotEmpty() || minQty != null) {
-                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                HorizontalDivider(
+                    thickness = tokens.dimensions.dividerThickness,
+                    color = tokens.colors.panelBorder,
+                )
 
                 // Quick min-based presets
                 if (minQty != null) {
@@ -173,7 +180,10 @@ fun SizeFilterDropdown(
 
                 // User-saved presets
                 if (customPresets.isNotEmpty()) {
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    HorizontalDivider(
+                        thickness = tokens.dimensions.dividerThickness,
+                        color = tokens.colors.panelBorder,
+                    )
                     customPresets.forEachIndexed { index, value ->
                         EditablePresetRow(value, index, onPresetEdit, onPresetDelete, onFilterChanged) { expanded = false }
                     }
@@ -181,9 +191,18 @@ fun SizeFilterDropdown(
             }
 
             // Add preset button
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            HorizontalDivider(
+                thickness = tokens.dimensions.dividerThickness,
+                color = tokens.colors.panelBorder,
+            )
             DropdownMenuItem(
-                text = { Text("+ Add preset", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary) },
+                text = {
+                    Text(
+                        "+ Add preset",
+                        fontSize = tokens.typography.controlSize,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                },
                 leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary) },
                 onClick = {
                     val v = customText.toDoubleOrNull()
@@ -203,18 +222,19 @@ private fun PresetRow(
     isActive: Boolean,
     onClick: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (isActive)
             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
         else Spacer(Modifier.size(14.dp))
-        Spacer(Modifier.width(8.dp))
-        Text(label, fontSize = 12.sp)
+        Spacer(Modifier.width(tokens.spacing.md))
+        Text(label, fontSize = tokens.typography.controlSize)
     }
 }
 
@@ -227,6 +247,7 @@ private fun EditablePresetRow(
     onFilterChanged: (SizeFilter) -> Unit,
     closeMenu: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var editing by remember { mutableStateOf(false) }
     var editText by remember(value) { mutableStateOf(value.toString().trimEnd('0').trimEnd('.')) }
 
@@ -236,7 +257,12 @@ private fun EditablePresetRow(
             .clickable {
                 if (!editing) { onFilterChanged(SizeFilter.Custom(value)); closeMenu() }
             }
-            .padding(start = 12.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            .padding(
+                start = tokens.spacing.lg,
+                end = tokens.spacing.xs,
+                top = tokens.spacing.xxs,
+                bottom = tokens.spacing.xxs,
+            ),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (editing) {
@@ -244,10 +270,13 @@ private fun EditablePresetRow(
                 value = editText,
                 onValueChange = { editText = it },
                 singleLine = true,
-                textStyle = TextStyle(fontSize = 12.sp, color = MaterialTheme.colorScheme.inverseOnSurface),
+                textStyle = TextStyle(
+                    fontSize = tokens.typography.controlSize,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                modifier = Modifier.weight(1f).height(28.dp),
+                modifier = Modifier.weight(1f).height(tokens.dimensions.compactFieldHeight),
             )
             IconButton(onClick = {
                 val v = editText.toDoubleOrNull()
@@ -260,7 +289,7 @@ private fun EditablePresetRow(
                 "≥ ${
                     value.toString().trimEnd('0').trimEnd('.')
                 }",
-                fontSize = 12.sp,
+                fontSize = tokens.typography.controlSize,
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = { editing = true; editText = value.toString().trimEnd('0').trimEnd('.') }, modifier = Modifier.size(20.dp)) {

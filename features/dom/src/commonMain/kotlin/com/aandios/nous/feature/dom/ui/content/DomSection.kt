@@ -24,10 +24,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.dom.ui.model.DomLevel
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -74,6 +74,7 @@ fun DomSection(
     modifier: Modifier = Modifier
 ) {
     val lazyListState = rememberLazyListState()
+    val tokens = LocalTerminalDesignTokens.current
 
     // Ордер/позиция по ценовым строкам (в тиках лесенки)
     val orderByTicks = remember(orders, tickSize) {
@@ -149,8 +150,8 @@ fun DomSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-                .padding(horizontal = 8.dp, vertical = 4.dp),
+                .background(tokens.colors.panelHeaderSurface)
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("Bid Vol",
@@ -210,7 +211,11 @@ fun DomSection(
         // «Летящий» чип при драге ордера — как перетаскивание в chart trading
         val draggingOrder = dragState.order
         if (draggingOrder != null) {
-            val color = if (draggingOrder.side == OrderSide.BUY) longColor else shortColor
+            val color = if (draggingOrder.side == OrderSide.BUY) {
+                tokens.colors.bullish
+            } else {
+                tokens.colors.bearish
+            }
             val rows = dragState.deltaY / rowHeightPx
             val targetPrice = (draggingOrder.price - rows * tickSize * step).coerceAtLeast(0.0)
             val kind = if (draggingOrder.reduceOnly) "Close" else "Open"
@@ -228,15 +233,15 @@ fun DomSection(
                     }
                     .width(with(density) { dragState.widthPx.toDp() })
                     .zIndex(10f)
-                    .shadow(4.dp, RoundedCornerShape(2.dp))
-                    .background(color, RoundedCornerShape(2.dp))
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                    .shadow(4.dp, RoundedCornerShape(tokens.cornerRadii.card))
+                    .background(color, RoundedCornerShape(tokens.cornerRadii.card))
+                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs + 1.dp),
             ) {
                 Text(
                     text = label,
                     color = Color.White,
-                    fontSize = 10.sp,
-                    lineHeight = 11.sp,
+                    fontSize = tokens.typography.microSize,
+                    lineHeight = tokens.typography.compactLineHeight,
                     fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,

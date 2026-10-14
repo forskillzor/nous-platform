@@ -183,8 +183,8 @@ fun TradingPanel(
             // Настройки paper trading (баланс/сбросы) — отдельное окно
             Text(
                 text = "⚙",
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 13.sp,
+                color = tokens.colors.accent,
+                fontSize = tokens.typography.bodySize,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier
                     .clickableNoIndication { paperSettings.open() }
@@ -213,8 +213,8 @@ fun TradingPanel(
                     text = "Day PnL  ${dailyPnl?.let { "${fmtSigned(it)} USDT" } ?: "-"}",
                     color = when {
                         dailyPnl == null -> MaterialTheme.colorScheme.onSurfaceVariant
-                        dailyPnl!! >= 0 -> Color(0xFF26A69A)
-                        else -> Color(0xFFEF5350)
+                        dailyPnl!! >= 0 -> tokens.colors.profit
+                        else -> tokens.colors.loss
                     },
                     fontSize = tokens.typography.compactSize,
                     fontFamily = TerminalFontFamily,
@@ -224,14 +224,14 @@ fun TradingPanel(
                 primaryBalance?.let { b ->
                     Text(
                         text = "Equity ${fmtAmount(b.equity)} · Available ${fmtAmount(b.amount)}",
-                        color = Color(0xFF8A97A5),
+                        color = tokens.colors.label,
                         fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                     Text(
                         text = "In Position ${fmtAmount(b.margin)} · Frozen ${fmtAmount(b.frozen)} · Unrealized ${fmtSigned(b.unrealizedPnl.toDoubleOrNull() ?: 0.0)}",
-                        color = Color(0xFF8A97A5),
+                        color = tokens.colors.label,
                         fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
@@ -242,8 +242,8 @@ fun TradingPanel(
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 horizontalAlignment = Alignment.End,
             ) {
-                ActionButton("Cancel All", Color(0xFFE0A95B)) { viewModel.cancelAllOrders() }
-                ActionButton("Close All", Color(0xFFE05B5B)) { viewModel.closeAllPositions() }
+                ActionButton("Cancel All", tokens.colors.warning) { viewModel.cancelAllOrders() }
+                ActionButton("Close All", tokens.colors.loss) { viewModel.closeAllPositions() }
             }
         }
 
@@ -270,9 +270,9 @@ fun TradingPanel(
             Text(
                 text = msg,
                 color = MaterialTheme.colorScheme.primary,
-                fontSize = 11.sp,
+                fontSize = tokens.typography.compactSize,
                 maxLines = 1,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs),
             )
         }
 
@@ -308,14 +308,15 @@ fun TradingPanel(
 
 @Composable
 private fun PaperToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
+    val tokens = LocalTerminalDesignTokens.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
     ) {
         Text(
             text = "Paper",
-            color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
+            color = if (enabled) tokens.colors.profit else tokens.colors.label,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
         )
         // Отключаем M3 min-touch-target (48dp) — компактная строка заголовка
@@ -332,27 +333,32 @@ private fun PaperToggle(enabled: Boolean, onToggle: (Boolean) -> Unit) {
 /** Кнопка режима позиций: One-way / Hedge со стрелками переключения. */
 @Composable
 private fun PositionModeButton(hedge: Boolean, onClick: () -> Unit) {
+    val tokens = LocalTerminalDesignTokens.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .clip(RoundedCornerShape(3.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(3.dp))
+            .clip(RoundedCornerShape(tokens.cornerRadii.card))
+            .background(tokens.colors.panelHeaderSurface)
+            .border(
+                tokens.dimensions.borderWidth,
+                tokens.colors.panelBorder,
+                RoundedCornerShape(tokens.cornerRadii.card),
+            )
             .clickableNoIndication(onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
     ) {
         Text(
             text = if (hedge) "Hedge" else "One-way",
             color = MaterialTheme.colorScheme.onSurface,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
         )
-        Spacer(Modifier.width(4.dp))
+        Spacer(Modifier.width(tokens.spacing.xs))
         Text(
             text = "⇄",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             maxLines = 1,
         )
     }
@@ -361,18 +367,19 @@ private fun PositionModeButton(hedge: Boolean, onClick: () -> Unit) {
 /** Кнопка действия панели (обводка в цвет, как Cancel All / Close All в DOM). */
 @Composable
 private fun ActionButton(label: String, color: Color, onClick: () -> Unit) {
+    val tokens = LocalTerminalDesignTokens.current
     Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(3.dp))
-            .border(1.dp, color.copy(alpha = 0.85f), RoundedCornerShape(3.dp))
+            .clip(RoundedCornerShape(tokens.cornerRadii.card))
+            .border(tokens.dimensions.borderWidth, color.copy(alpha = 0.85f), RoundedCornerShape(tokens.cornerRadii.card))
             .clickableNoIndication(onClick)
-            .padding(horizontal = 12.dp, vertical = 5.dp),
+            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = label,
             color = color,
-            fontSize = 11.sp,
+            fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
@@ -400,6 +407,7 @@ private fun PositionsTable(
     onClose: (Position) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
@@ -413,7 +421,7 @@ private fun PositionsTable(
         }
         positions.forEach { p ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs + tokens.dimensions.borderWidth),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Cell(p.symbol, PositionsWindow.SYMBOL, align = TextAlign.Start)
@@ -424,7 +432,11 @@ private fun PositionsTable(
                 Cell(formatSigned(p.pnl, formatter), PositionsWindow.PNL, color = pnlColor(p.pnl))
                 ActionCell("Close", PositionsWindow.ACTION) { onClose(p) }
             }
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            )
         }
     }
 }
@@ -436,6 +448,7 @@ private fun OrdersTable(
     onCancel: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
@@ -449,7 +462,7 @@ private fun OrdersTable(
         }
         orders.forEach { o ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs + tokens.dimensions.borderWidth),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Cell(o.symbol, OrdersWindow.SYMBOL, align = TextAlign.Start)
@@ -464,8 +477,8 @@ private fun OrdersTable(
                     o.status.name,
                     OrdersWindow.STATUS,
                     color = when (o.status) {
-                        OrderStatus.OPEN -> Color.Yellow
-                        OrderStatus.FILLED -> MaterialTheme.colorScheme.primary
+                        OrderStatus.OPEN -> tokens.colors.warning
+                        OrderStatus.FILLED -> tokens.colors.profit
                         else -> MaterialTheme.colorScheme.onSurfaceVariant
                     },
                 )
@@ -475,13 +488,18 @@ private fun OrdersTable(
                     Spacer(Modifier.weight(OrdersWindow.ACTION))
                 }
             }
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            )
         }
     }
 }
 
 @Composable
 private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier) {
+    val tokens = LocalTerminalDesignTokens.current
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
@@ -495,22 +513,27 @@ private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier
         }
         balances.forEach { b ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs + tokens.dimensions.borderWidth),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Cell(b.currency, BalancesWindow.ASSET, align = TextAlign.Start, fontWeight = FontWeight.Medium)
                 Cell(fmtAmount(b.amount), BalancesWindow.AVAILABLE)
                 Cell(fmtAmount(b.frozen), BalancesWindow.FROZEN)
                 Cell(fmtAmount(b.margin), BalancesWindow.MARGIN)
-                Cell(fmtAmount(b.equity), BalancesWindow.EQUITY, color = MaterialTheme.colorScheme.primary)
+                Cell(fmtAmount(b.equity), BalancesWindow.EQUITY, color = tokens.colors.profit)
             }
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            )
         }
     }
 }
 
 @Composable
 private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, modifier: Modifier = Modifier) {
+    val tokens = LocalTerminalDesignTokens.current
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
@@ -524,7 +547,7 @@ private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, m
         }
         history.forEach { f ->
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs + tokens.dimensions.borderWidth),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Cell(f.symbol, HistoryWindow.SYMBOL, align = TextAlign.Start)
@@ -534,7 +557,11 @@ private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, m
                 Cell(formatter.formatPrice(f.fee), HistoryWindow.FEE)
                 Cell(formatSigned(f.pnl, formatter), HistoryWindow.PNL, color = pnlColor(f.pnl))
             }
-            HorizontalDivider(modifier = Modifier.padding(horizontal = 8.dp))
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            )
         }
     }
 }
@@ -543,22 +570,23 @@ private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, m
 
 @Composable
 private fun TableHeader(columns: List<Pair<String, Float>>) {
+    val tokens = LocalTerminalDesignTokens.current
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         columns.forEach { (label, weight) ->
             Text(
                 text = label,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 10.sp,
+                fontSize = tokens.typography.microSize,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 modifier = Modifier.weight(weight),
             )
         }
     }
-    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.dividerThickness)
 }
 
 @Composable
@@ -569,10 +597,11 @@ private fun RowScope.Cell(
     align: TextAlign = TextAlign.End,
     fontWeight: FontWeight = FontWeight.Normal,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Text(
         text = text,
         color = color,
-        fontSize = 11.sp,
+        fontSize = tokens.typography.compactSize,
         maxLines = 1,
         textAlign = align,
         fontWeight = fontWeight,
@@ -582,10 +611,11 @@ private fun RowScope.Cell(
 
 @Composable
 private fun RowScope.ActionCell(label: String, weight: Float, onClick: () -> Unit) {
+    val tokens = LocalTerminalDesignTokens.current
     Text(
         text = label,
-        color = MaterialTheme.colorScheme.error,
-        fontSize = 11.sp,
+        color = tokens.colors.loss,
+        fontSize = tokens.typography.compactSize,
         textAlign = TextAlign.End,
         maxLines = 1,
         modifier = Modifier
@@ -596,19 +626,26 @@ private fun RowScope.ActionCell(label: String, weight: Float, onClick: () -> Uni
 
 @Composable
 private fun EmptyHint(text: String) {
-    Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
-        Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+    val tokens = LocalTerminalDesignTokens.current
+    Box(Modifier.fillMaxWidth().padding(vertical = tokens.spacing.xxl), contentAlignment = Alignment.Center) {
+        Text(text, color = tokens.colors.label, fontSize = tokens.typography.controlSize)
     }
 }
 
+@Composable
 private fun sideColor(side: TradeSide): Color =
-    if (side == TradeSide.BUY) Color(0xFF26A69A) else Color(0xFFEF5350)
+    if (side == TradeSide.BUY) LocalTerminalDesignTokens.current.colors.bullish
+    else LocalTerminalDesignTokens.current.colors.bearish
 
+@Composable
 private fun sideColor(side: OrderSide): Color =
-    if (side == OrderSide.BUY) Color(0xFF26A69A) else Color(0xFFEF5350)
+    if (side == OrderSide.BUY) LocalTerminalDesignTokens.current.colors.bullish
+    else LocalTerminalDesignTokens.current.colors.bearish
 
+@Composable
 private fun pnlColor(pnl: Double): Color =
-    if (pnl >= 0) Color(0xFF26A69A) else Color(0xFFEF5350)
+    if (pnl >= 0) LocalTerminalDesignTokens.current.colors.profit
+    else LocalTerminalDesignTokens.current.colors.loss
 
 private fun formatSigned(v: Double, formatter: SymbolFormatter): String =
     (if (v >= 0) "+" else "") + formatter.formatPrice(v)

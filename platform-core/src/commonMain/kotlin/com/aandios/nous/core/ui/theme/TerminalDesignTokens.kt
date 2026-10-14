@@ -68,6 +68,7 @@ data class TerminalSpacing(
 data class TerminalDimensions(
     val controlHeight: Dp = 32.dp,
     val compactControlHeight: Dp = 20.dp,
+    val compactFieldHeight: Dp = 28.dp,
     val toolbarHeight: Dp = 48.dp,
     val borderWidth: Dp = 1.dp,
     val dividerThickness: Dp = 1.dp,
@@ -77,6 +78,7 @@ data class TerminalDimensions(
     val dropdownLabelSeparatorWidth: Dp = 2.dp,
     val dropdownLabelSeparatorHeight: Dp = 18.dp,
     val contextPopupWidth: Dp = 280.dp,
+    val tradeFilterMenuWidth: Dp = 200.dp,
     val workspaceTabBarHeight: Dp = 32.dp,
     val workspaceTabHeight: Dp = 28.dp,
     val workspaceTabMaxWidth: Dp = 140.dp,
