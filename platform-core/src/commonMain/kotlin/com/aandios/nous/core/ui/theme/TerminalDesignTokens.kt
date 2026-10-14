@@ -79,6 +79,11 @@ data class TerminalDimensions(
     val dropdownLabelSeparatorHeight: Dp = 18.dp,
     val contextPopupWidth: Dp = 280.dp,
     val tradeFilterMenuWidth: Dp = 200.dp,
+    val marketWatchListMenuWidth: Dp = 180.dp,
+    val marketWatchAddListMenuWidth: Dp = 170.dp,
+    val marketWatchTemplateMenuWidth: Dp = 460.dp,
+    val marketWatchTemplateCardWidth: Dp = 124.dp,
+    val marketWatchTemplatePreviewHeight: Dp = 68.dp,
     val workspaceTabBarHeight: Dp = 32.dp,
     val workspaceTabHeight: Dp = 28.dp,
     val workspaceTabMaxWidth: Dp = 140.dp,
@@ -101,9 +106,12 @@ data class TerminalDimensions(
 )
 
 data class TerminalTypographyTokens(
+    val nanoSize: TextUnit = 8.sp,
     val microSize: TextUnit = 9.sp,
+    val smallSize: TextUnit = 10.sp,
     val compactSize: TextUnit = 11.sp,
     val controlSize: TextUnit = 12.sp,
+    val compactActionSize: TextUnit = 14.sp,
     val inlineSelectValueSize: TextUnit = 11.sp,
     val bodySize: TextUnit = 13.sp,
     val compactLineHeight: TextUnit = 12.sp,
@@ -114,6 +122,7 @@ data class TerminalTypographyTokens(
 
 data class TerminalCornerRadii(
     val card: Dp = 0.dp,
+    val smallCard: Dp = 4.dp,
     val toolbar: Dp = 0.dp,
     val workspacePanel: Dp = 6.dp,
     val workspaceTab: Dp = 4.dp,

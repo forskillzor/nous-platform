@@ -47,8 +47,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.component.ExchangeDropdown
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
@@ -146,7 +144,7 @@ fun SymbolsPanel(
     }
     val tokens = LocalTerminalDesignTokens.current
 
-    Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(modifier = modifier.fillMaxSize().background(tokens.colors.panelSurface)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(
                 horizontal = tokens.spacing.sm,
@@ -178,7 +176,7 @@ fun SymbolsPanel(
                 items = listChoices,
                 onValueChanged = { selectedListId = it.id },
                 displayText = { it.title },
-                menuWidth = 180.dp,
+                menuWidth = tokens.dimensions.marketWatchListMenuWidth,
             )
         }
 
@@ -199,10 +197,10 @@ fun SymbolsPanel(
                     fontSize = tokens.typography.controlSize,
                     fontFamily = TerminalFontFamily,
                 ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                cursorBrush = SolidColor(tokens.colors.accent),
                 modifier = Modifier.weight(1f)
                     .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
                         RoundedCornerShape(tokens.cornerRadii.card),
                     )
                     .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
@@ -210,7 +208,7 @@ fun SymbolsPanel(
                     if (search.isEmpty()) {
                         Text(
                             "Regex search…",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            color = tokens.colors.label.copy(alpha = 0.65f),
                             fontSize = tokens.typography.compactSize,
                             fontFamily = TerminalFontFamily,
                         )
@@ -222,7 +220,7 @@ fun SymbolsPanel(
                 val mode = watchlistDialogMode
                 Text(
                     text = if (selectedList == null) "+ LIST" else "RENAME",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = tokens.colors.accent,
                     fontSize = tokens.typography.microSize,
                     fontWeight = FontWeight.Bold,
                     fontFamily = TerminalFontFamily,
@@ -233,7 +231,7 @@ fun SymbolsPanel(
                         } else {
                             WatchlistDialogMode.RENAME
                         }
-                    }.padding(4.dp),
+                    }.padding(tokens.spacing.xs),
                 )
                 TerminalContextPopup(
                     expanded = watchlistDialogMode != null,
@@ -268,8 +266,8 @@ fun SymbolsPanel(
             if (selectedList != null) {
                 Text(
                     "DELETE",
-                    color = MaterialTheme.colorScheme.error,
-                    fontSize = 9.sp,
+                    color = tokens.colors.loss,
+                    fontSize = tokens.typography.microSize,
                     modifier = Modifier.clickable {
                         val repository = watchlistsRepository ?: return@clickable
                         scope.launch {
@@ -283,13 +281,18 @@ fun SymbolsPanel(
                                 listActionError = e.message
                             }
                         }
-                    }.padding(horizontal = 5.dp),
+                    }.padding(horizontal = tokens.spacing.sm),
                 )
             }
         }
 
         listActionError?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 8.dp))
+            Text(
+                it,
+                color = tokens.colors.loss,
+                fontSize = tokens.typography.smallSize,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            )
         }
 
         Row(
@@ -302,8 +305,8 @@ fun SymbolsPanel(
         ) {
             Text(
                 text = if (marketState.loading) "SYNC" else "${sortedRows.size} SYMBOLS",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 9.sp,
+                color = tokens.colors.label,
+                fontSize = tokens.typography.microSize,
                 fontFamily = TerminalFontFamily,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
@@ -311,8 +314,7 @@ fun SymbolsPanel(
                     val active = sort == option
                     Text(
                         option.label,
-                        color = if (active) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (active) tokens.colors.accent else tokens.colors.label,
                         fontSize = tokens.typography.microSize,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         fontFamily = TerminalFontFamily,
@@ -335,32 +337,32 @@ fun SymbolsPanel(
             ),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("SYMBOL", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 8.sp)
-            Text("24H %", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 8.sp)
+            Text("SYMBOL", color = tokens.colors.label, fontSize = tokens.typography.nanoSize)
+            Text("24H %", color = tokens.colors.label, fontSize = tokens.typography.nanoSize)
         }
 
         symbolSearch.error?.let {
             Text(
                 "REGEX: $it",
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 9.sp,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                color = tokens.colors.loss,
+                fontSize = tokens.typography.microSize,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
             )
         }
 
         if (marketState.error != null) {
             Text(
                 marketState.error.orEmpty(),
-                color = MaterialTheme.colorScheme.error,
-                fontSize = 9.sp,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                color = tokens.colors.loss,
+                fontSize = tokens.typography.microSize,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
             )
         }
 
         if (marketState.loading && marketState.rows.isEmpty()) {
             CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(12.dp),
-                strokeWidth = 2.dp,
+                modifier = Modifier.align(Alignment.CenterHorizontally).padding(tokens.spacing.lg),
+                strokeWidth = tokens.dimensions.borderWidth * 2,
             )
         }
 
@@ -435,13 +437,14 @@ private fun MarketWatchSymbolRow(
     onRemoveFromList: () -> Unit,
     onOpenWithTemplate: (String, WorkspaceConfig) -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var addMenuExpanded by remember(row.exchangeId, row.symbol) { mutableStateOf(false) }
     var openWithExpanded by remember(row.exchangeId, row.symbol) { mutableStateOf(false) }
     val positive = row.stats?.changePercent24h?.let { it >= 0.0 } == true
     val changeColor = when {
-        row.stats == null -> MaterialTheme.colorScheme.onSurfaceVariant
-        positive -> Color(0xFF00C853)
-        else -> Color(0xFFEF5350)
+        row.stats == null -> tokens.colors.label
+        positive -> tokens.colors.profit
+        else -> tokens.colors.loss
     }
     Surface(
         modifier = Modifier.fillMaxWidth()
@@ -461,20 +464,23 @@ private fun MarketWatchSymbolRow(
                 }
             }
             .clickable(onClick = onSelect),
-        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+        color = if (selected) tokens.colors.selection
         else Color.Transparent,
     ) {
         Box {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
+                modifier = Modifier.fillMaxWidth().padding(
+                    horizontal = tokens.spacing.md,
+                    vertical = tokens.spacing.sm,
+                ),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = highlightedSymbol(row.symbol, matchRange),
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                        fontSize = 11.sp,
+                        color = if (selected) tokens.colors.accent else MaterialTheme.colorScheme.onSurface,
+                        fontSize = tokens.typography.compactSize,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -482,8 +488,8 @@ private fun MarketWatchSymbolRow(
                     )
                     Text(
                         row.exchangeName,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 8.sp,
+                        color = tokens.colors.label,
+                        fontSize = tokens.typography.nanoSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
@@ -492,44 +498,45 @@ private fun MarketWatchSymbolRow(
                     Text(
                         row.stats?.changePercent24h?.let { "%+.2f%%".format(it) } ?: "—",
                         color = changeColor,
-                        fontSize = 10.sp,
+                        fontSize = tokens.typography.smallSize,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         row.stats?.quoteVolume24h?.let(::formatMarketVolume) ?: "VOL —",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 8.sp,
+                        color = tokens.colors.label,
+                        fontSize = tokens.typography.nanoSize,
                         fontFamily = TerminalFontFamily,
                     )
                 }
                 if (selectedList != null && inSelectedList) {
                     Text(
                         "−",
-                        color = MaterialTheme.colorScheme.primary,
-                        fontSize = 14.sp,
-                        modifier = Modifier.clickable(onClick = onRemoveFromList).padding(start = 8.dp),
+                        color = tokens.colors.accent,
+                        fontSize = tokens.typography.compactActionSize,
+                        modifier = Modifier.clickable(onClick = onRemoveFromList)
+                            .padding(start = tokens.spacing.md),
                     )
                 } else if (canAddToLists) {
                     Box {
                         Text(
                             "+",
-                            color = MaterialTheme.colorScheme.primary,
-                            fontSize = 14.sp,
+                            color = tokens.colors.accent,
+                            fontSize = tokens.typography.compactActionSize,
                             modifier = Modifier.clickable { addMenuExpanded = true }
-                                .padding(start = 8.dp, end = 4.dp),
+                                .padding(start = tokens.spacing.md, end = tokens.spacing.xs),
                         )
                         DropdownMenu(
                             expanded = addMenuExpanded,
                             onDismissRequest = { addMenuExpanded = false },
-                            modifier = Modifier.width(170.dp),
+                            modifier = Modifier.width(tokens.dimensions.marketWatchAddListMenuWidth),
                         ) {
                             availableLists.forEach { list ->
                                 DropdownMenuItem(
                                     text = {
                                         Text(
                                             "Add to ${list.name}",
-                                            fontSize = 11.sp,
+                                            fontSize = tokens.typography.compactSize,
                                             fontFamily = TerminalFontFamily,
                                         )
                                     },
@@ -547,44 +554,51 @@ private fun MarketWatchSymbolRow(
                 expanded = openWithExpanded,
                 onDismissRequest = { openWithExpanded = false },
             ) {
-                Column(Modifier.width(460.dp).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                Column(
+                    Modifier.width(tokens.dimensions.marketWatchTemplateMenuWidth)
+                        .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+                ) {
                     Text(
                         "OPEN ${row.symbol} WITH",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 9.sp,
+                        color = tokens.colors.label,
+                        fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(
+                            horizontal = tokens.spacing.xs,
+                            vertical = tokens.spacing.xs,
+                        ),
                     )
                     Row(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
                     ) {
                         workspaceTemplates.forEach { (templateName, template) ->
                             Column(
-                                modifier = Modifier.width(124.dp)
+                                modifier = Modifier.width(tokens.dimensions.marketWatchTemplateCardWidth)
                                     .clickable {
                                         openWithExpanded = false
                                         onOpenWithTemplate(templateName, template)
                                     }
                                     .background(
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                        RoundedCornerShape(4.dp),
+                                        tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
+                                        RoundedCornerShape(tokens.cornerRadii.smallCard),
                                     )
-                                    .padding(6.dp),
+                                    .padding(tokens.spacing.sm),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
                                 WorkspaceLayoutThumbnail(
                                     config = template,
-                                    modifier = Modifier.fillMaxWidth().height(68.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                        .height(tokens.dimensions.marketWatchTemplatePreviewHeight),
                                 )
                                 Text(
                                     templateName,
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 9.sp,
+                                    fontSize = tokens.typography.microSize,
                                     fontFamily = TerminalFontFamily,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 5.dp),
+                                    modifier = Modifier.padding(top = tokens.spacing.sm),
                                 )
                             }
                         }
