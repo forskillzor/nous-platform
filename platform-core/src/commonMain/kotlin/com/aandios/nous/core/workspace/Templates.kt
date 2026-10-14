@@ -179,6 +179,7 @@ fun builtinWorkspaceTemplates(): List<BuiltinWorkspaceTemplate> {
 
 fun WorkspaceConfig.forMarketWatchSymbol(
     symbol: String,
+    providerId: String,
     providerName: String,
     templateName: String,
 ): WorkspaceConfig {
@@ -186,7 +187,9 @@ fun WorkspaceConfig.forMarketWatchSymbol(
     return copy(
         id = generateId(),
         name = "$symbol $templateName",
-        providers = providers.map { it.copy(name = providerName, symbols = listOf(symbol)) },
+        providers = providers.map {
+            it.copy(name = providerName, providerId = providerId, symbols = listOf(symbol))
+        },
         panels = panels.map { it.copy(symbol = symbol) },
         createdAt = now,
         updatedAt = now,

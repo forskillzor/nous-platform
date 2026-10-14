@@ -77,7 +77,7 @@ fun TerminalLayout(
     activeWorkspaceId: String? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
-    onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String) -> Unit)? = null,
+    onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)? = null,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
     var topPanelState by remember { mutableStateOf(ToolPanelState()) }

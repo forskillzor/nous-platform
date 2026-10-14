@@ -12,5 +12,6 @@ data class ProviderRef(
     val id: String,
     val name: String,
     val isTestnet: Boolean = false,
-    val symbols: List<String> = emptyList()
+    val symbols: List<String> = emptyList(),
+    val providerId: String? = null,
 )

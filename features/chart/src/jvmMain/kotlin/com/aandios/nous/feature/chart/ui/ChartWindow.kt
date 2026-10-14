@@ -107,13 +107,14 @@ fun ChartWindow(
     onZoomChange: ((Float) -> Unit)? = null,
     workspaceId: String? = null,
     panelId: String? = null,
+    initialProviderId: String? = null,
 ) {
     // Торговые настройки этой панели (trading/paper/show orders/positions)
     // персистятся и восстанавливаются отдельно от других графиков
     LaunchedEffect(workspaceId, panelId) {
         chartViewModel.attachPanel(workspaceId, panelId)
         // Биржу панели восстанавливаем из персиста (символ/ТФ — из PanelConfig)
-        chartViewModel.restoreProvider()
+        chartViewModel.restoreProvider(initialProviderId)
     }
     ChartWindowContent(
         chartViewModel = chartViewModel,

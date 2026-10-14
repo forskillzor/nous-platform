@@ -863,7 +863,8 @@ class ChartViewModel(
      * Восстановить только биржу (для workspace-панелей: символ/ТФ задаёт
      * PanelConfig, а провайдер живёт в персисте графика).
      */
-    fun restoreProvider() {
+    fun restoreProvider(preferredProviderId: String? = null) {
+        val preferredId = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
         val persistor = persistor ?: return
         viewModelScope.launch {
             val saved = persistor.restore()
@@ -873,12 +874,11 @@ class ChartViewModel(
                     _state.update { it.copy(contractType = savedType) }
                 }
             }
-            val savedId = saved.providerId ?: return@launch
-            if (providerRegistry.get(savedId) == null || activeProviderId == savedId) return@launch
-            activeProviderId = savedId
-            _state.update { it.copy(currentProviderId = savedId, symbols = emptyList()) }
-            loadSymbols()
-            refreshOpenOrders()
+            val targetId = preferredId
+                ?: saved.providerId?.takeIf { providerRegistry.get(it) != null }
+                ?: return@launch
+            if (activeProviderId == targetId) return@launch
+            selectProvider(targetId)
         }
     }
 

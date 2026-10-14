@@ -122,9 +122,14 @@ fun TerminalWindowContent(
             onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
             onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
             marketWatchTemplates = marketWatchTemplates,
-            onOpenMarketWatchTemplate = { template, templateName, symbol, providerName ->
+            onOpenMarketWatchTemplate = { template, templateName, symbol, providerId, providerName ->
                 scope.launch {
-                    val fresh = template.forMarketWatchSymbol(symbol, providerName, templateName)
+                    val fresh = template.forMarketWatchSymbol(
+                        symbol = symbol,
+                        providerId = providerId,
+                        providerName = providerName,
+                        templateName = templateName,
+                    )
                     workspaceRepo.create(fresh)
                     windowManager.openWorkspaceIn(session.id, fresh)
                     workspaceBus.workspaceChanged()

@@ -113,6 +113,7 @@ class TradesViewModel(
     val customPresets: StateFlow<List<Double>> = _customPresets.asStateFlow()
 
     private var subscribedSymbol: String = ""
+    private var providerSelectedExplicitly = false
 
     override fun dispose() {
         subscriptionJob?.cancel()
@@ -123,7 +124,9 @@ class TradesViewModel(
         // Биржа панели переживает перезапуск + список символов при старте
         viewModelScope.launch {
             stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
-                if (providerRegistry.get(saved) != null) _currentProviderId.value = saved
+                if (!providerSelectedExplicitly && providerRegistry.get(saved) != null) {
+                    _currentProviderId.value = saved
+                }
             }
             // Тип контрактов панели (USDT-M / COIN-M) — до загрузки списка
             stateStore?.getString(CONTRACT_TYPE_STORE_KEY)?.let { raw ->
@@ -252,6 +255,7 @@ class TradesViewModel(
 
     /** Смена провайдера данных: переподписка на текущий символ + перезагрузка символов. */
     fun selectProvider(providerId: String) {
+        providerSelectedExplicitly = true
         if (_currentProviderId.value == providerId) return
         _currentProviderId.value = providerId
         viewModelScope.launch { stateStore?.putString(PROVIDER_STORE_KEY, providerId) }

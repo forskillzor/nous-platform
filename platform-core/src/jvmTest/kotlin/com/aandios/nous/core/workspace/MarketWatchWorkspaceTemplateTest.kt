@@ -13,6 +13,7 @@ class MarketWatchWorkspaceTemplateTest {
 
         val opened = template.forMarketWatchSymbol(
             symbol = "ETHUSDT",
+            providerId = "bybit-nous-0.0.1",
             providerName = "Bybit",
             templateName = "Multi-Chart",
         )
@@ -23,6 +24,7 @@ class MarketWatchWorkspaceTemplateTest {
         assertTrue(opened.panels.all { it.symbol == "ETHUSDT" })
         assertEquals(listOf("ETHUSDT"), opened.providers.single().symbols)
         assertEquals("Bybit", opened.providers.single().name)
+        assertEquals("bybit-nous-0.0.1", opened.providers.single().providerId)
         assertEquals(template.layout, opened.layout)
     }
 }

@@ -39,7 +39,7 @@ fun ToolDetailsPanel(
     onTimeframeSelected: (String) -> Unit,
     onClose: () -> Unit,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>>,
-    onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String) -> Unit)?,
+    onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)?,
     modifier: Modifier = Modifier.Companion
 ) {
     Surface(

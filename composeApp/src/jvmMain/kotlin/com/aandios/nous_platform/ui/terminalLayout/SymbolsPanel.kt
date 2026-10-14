@@ -28,6 +28,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -49,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.adapters.MarketOverviewAdapter
@@ -90,12 +92,17 @@ private data class MatchedMarketRow(
     val rank: Int,
 )
 
+private enum class WatchlistDialogMode {
+    CREATE,
+    RENAME,
+}
+
 @Composable
 fun SymbolsPanel(
     selectedSymbol: String,
     onSymbolSelected: (String) -> Unit,
     workspaceTemplates: List<Pair<String, WorkspaceConfig>>,
-    onOpenWorkspaceTemplate: ((WorkspaceConfig, String, String, String) -> Unit)?,
+    onOpenWorkspaceTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val registry: ProviderRegistry = koinInject()
@@ -109,7 +116,8 @@ fun SymbolsPanel(
     var selectedExchange by remember { mutableStateOf(ALL_EXCHANGES) }
     var selectedListId by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
-    var listNameInput by remember { mutableStateOf("") }
+    var watchlistDialogMode by remember { mutableStateOf<WatchlistDialogMode?>(null) }
+    var watchlistDialogName by remember { mutableStateOf("") }
     var listActionError by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(MarketSort.SYMBOL) }
     var descending by remember { mutableStateOf(false) }
@@ -172,32 +180,6 @@ fun SymbolsPanel(
     }
 
     Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        BasicTextField(
-            value = search,
-            onValueChange = { search = it },
-            singleLine = true,
-            textStyle = TextStyle(
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 12.sp,
-                fontFamily = FontFamily.Monospace,
-            ),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 7.dp)
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-                .padding(horizontal = 8.dp, vertical = 7.dp),
-            decorationBox = { inner ->
-                if (search.isEmpty()) {
-                    Text(
-                        "Regex search…",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                    )
-                }
-                inner()
-            },
-        )
-
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -236,24 +218,25 @@ fun SymbolsPanel(
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
             BasicTextField(
-                value = listNameInput,
-                onValueChange = { listNameInput = it },
+                value = search,
+                onValueChange = { search = it },
                 singleLine = true,
                 textStyle = TextStyle(
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 10.sp,
+                    fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier.weight(1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(3.dp))
-                    .padding(horizontal = 6.dp, vertical = 5.dp),
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 7.dp),
                 decorationBox = { inner ->
-                    if (listNameInput.isEmpty()) {
+                    if (search.isEmpty()) {
                         Text(
-                            if (selectedList == null) "NEW LIST" else "RENAME LIST",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 9.sp,
+                            "Regex search…",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
                         )
                     }
                     inner()
@@ -266,21 +249,11 @@ fun SymbolsPanel(
                 fontWeight = FontWeight.Bold,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.clickable {
-                    val repository = watchlistsRepository ?: return@clickable
-                    scope.launch {
-                        try {
-                            if (selectedList == null) {
-                                selectedListId = repository.create(listNameInput).id
-                            } else {
-                                repository.rename(selectedList.id, listNameInput)
-                            }
-                            listNameInput = ""
-                            listActionError = null
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            listActionError = e.message
-                        }
+                    watchlistDialogName = selectedList?.name.orEmpty()
+                    watchlistDialogMode = if (selectedList == null) {
+                        WatchlistDialogMode.CREATE
+                    } else {
+                        WatchlistDialogMode.RENAME
                     }
                 }.padding(4.dp),
             )
@@ -309,6 +282,89 @@ fun SymbolsPanel(
 
         listActionError?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 8.dp))
+        }
+
+        watchlistDialogMode?.let { mode ->
+            Dialog(onDismissRequest = { watchlistDialogMode = null }) {
+                Column(
+                    modifier = Modifier.width(320.dp)
+                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
+                        .padding(16.dp),
+                ) {
+                    Text(
+                        if (mode == WatchlistDialogMode.CREATE) "Create watchlist" else "Rename watchlist",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    BasicTextField(
+                        value = watchlistDialogName,
+                        onValueChange = { watchlistDialogName = it },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace,
+                        ),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                RoundedCornerShape(4.dp),
+                            )
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        decorationBox = { inner ->
+                            if (watchlistDialogName.isEmpty()) {
+                                Text(
+                                    "List name",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                )
+                            }
+                            inner()
+                        },
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        TextButton(onClick = { watchlistDialogMode = null }) {
+                            Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        TextButton(
+                            onClick = {
+                                val repository = watchlistsRepository ?: return@TextButton
+                                val listToRename = selectedList
+                                val name = watchlistDialogName
+                                watchlistDialogMode = null
+                                scope.launch {
+                                    try {
+                                        if (mode == WatchlistDialogMode.CREATE) {
+                                            selectedListId = repository.create(name).id
+                                        } else if (listToRename != null) {
+                                            repository.rename(listToRename.id, name)
+                                        }
+                                        listActionError = null
+                                    } catch (e: CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        listActionError = e.message
+                                    }
+                                }
+                            },
+                        ) {
+                            Text(
+                                if (mode == WatchlistDialogMode.CREATE) "Create" else "Save",
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         Row(
@@ -423,6 +479,7 @@ fun SymbolsPanel(
                             template,
                             templateName,
                             item.row.symbol,
+                            item.row.exchangeId,
                             item.row.exchangeName,
                         )
                     },

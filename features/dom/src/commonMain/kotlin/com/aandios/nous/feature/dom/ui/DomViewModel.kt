@@ -572,7 +572,7 @@ class DomViewModel(
      * Привязка панели: paper-режим и биржа этой DOM-панели персистятся
      * отдельно (как у графиков) и восстанавливаются при появлении панели.
      */
-    fun attachPanel(panelId: String?) {
+    fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
         panelKey = panelId
         val store = stateStore ?: return
         viewModelScope.launch {
@@ -585,7 +585,8 @@ class DomViewModel(
                     }
                 }
             // Биржа: восстанавливаем до paper/trading, чтобы флаги легли на неё
-            val savedProvider = store.getString(providerStoreKey())
+            val savedProvider = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
+                ?: store.getString(providerStoreKey())?.takeIf { providerRegistry.get(it) != null }
             if (!savedProvider.isNullOrBlank() &&
                 savedProvider != _domOptions.value.provider &&
                 providerRegistry.get(savedProvider) != null
