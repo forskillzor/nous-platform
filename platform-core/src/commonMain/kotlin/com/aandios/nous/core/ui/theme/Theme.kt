@@ -148,6 +148,8 @@ object TerminalThemes {
         shapes = TerminalShapes,
         tokens = terminalTokens(NightTerminalColorScheme),
     )
+
+    val available = listOf(Dark, Night)
 }
 
 object ChartColors {

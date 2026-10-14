@@ -78,6 +78,7 @@ data class TerminalDimensions(
     val dropdownLabelSeparatorWidth: Dp = 2.dp,
     val dropdownLabelSeparatorHeight: Dp = 18.dp,
     val contextPopupWidth: Dp = 280.dp,
+    val themeSettingsDialogWidth: Dp = 360.dp,
     val tradeFilterMenuWidth: Dp = 200.dp,
     val marketWatchListMenuWidth: Dp = 180.dp,
     val marketWatchAddListMenuWidth: Dp = 170.dp,

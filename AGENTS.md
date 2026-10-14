@@ -67,6 +67,9 @@ Mind this when writing paths.
 - Trades panel: `trades_provider` (global key).
 - Chart: provider/contract-type state is global (`chart_provider_id`,
   `chart_contract_type`).
+- Theme selection is global (`terminal_theme`) and is managed by
+  `ThemeSettingsController`; keep persisted names aligned with
+  `TerminalThemes.available`, and surface load/save errors in the theme UI.
 
 ### Safety invariants (learned the hard way — keep them)
 - Trading is **OFF by default** on both chart and DOM panels.
@@ -295,6 +298,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - DOM ladder and order-entry colors should come from
   `LocalTerminalDesignTokens.current`; preserve strong white-on-side-color and
   dark-on-quantity-input contrast.
+- Market Watch and other migrated panel content should use active semantic
+  colors and centralized typography, spacing, shape, and dimension tokens.
 - Compact selects use `TerminalDropdown`; panel headers (DOM/Trades) use
   `TerminalInlineSelect` — a single-layer mono `label value ▾` row (~18dp).
 - Panel watermarks: `PanelSymbolWatermark` (platform-core) draws the big ticker

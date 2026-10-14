@@ -27,6 +27,7 @@ import com.aandios.nous_platform.di.initKoin
 import com.aandios.nous_platform.ui.main.TerminalWindowContent
 import com.aandios.nous_platform.ui.terminalLayout.PaperSettingsOverlay
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
+import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsController
 import org.koin.compose.koinInject
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -41,6 +42,10 @@ fun main() {
         val windowManager: WindowManager = koinInject()
         val dragBus: TabDragBus = koinInject()
         val terminalStateViewModel: TerminalStateViewModel = koinInject()
+        val themeSettingsController: ThemeSettingsController = koinInject()
+        val themeState by themeSettingsController.state.collectAsState()
+
+        LaunchedEffect(themeSettingsController) { themeSettingsController.start() }
 
         val appIcon = remember {
             try {
@@ -89,8 +94,7 @@ fun main() {
                     // Тёмный заголовок окна (Windows, DWM); no-op на других ОС.
                     LaunchedEffect(Unit) { applyWindowsDarkTitleBar(window) }
                     TradingTerminalTheme(
-                        darkTheme = true,
-                        nightMode = false
+                        theme = themeState.theme,
                     ) {
                         Box {
                             TerminalWindowContent(

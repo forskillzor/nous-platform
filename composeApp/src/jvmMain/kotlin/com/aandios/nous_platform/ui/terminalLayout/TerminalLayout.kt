@@ -79,6 +79,7 @@ fun TerminalLayout(
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
     onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)? = null,
+    onOpenThemeSettings: () -> Unit,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
     val designTokens = LocalTerminalDesignTokens.current
@@ -188,6 +189,12 @@ fun TerminalLayout(
                             }
                         )
                     }
+                    ToolBarIcon(
+                        icon = Res.drawable.settings,
+                        description = "Theme settings",
+                        isSelected = false,
+                        onClick = onOpenThemeSettings,
+                    )
                 }
             }
 

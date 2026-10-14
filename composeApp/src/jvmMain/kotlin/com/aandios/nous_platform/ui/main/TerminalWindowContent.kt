@@ -27,6 +27,7 @@ import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
 import com.aandios.nous_platform.ui.terminalLayout.MarketWatchStore
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
+import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsOverlay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
@@ -111,34 +112,37 @@ fun TerminalWindowContent(
     var dragPayload by remember { mutableStateOf<TabDragBus.Payload?>(null) }
     val externalDrag by dragBus.active.collectAsState()
     val externalDragActive = externalDrag?.let { it.sourceWindowId != session.id } == true
+    var themeSettingsOpen by remember { mutableStateOf(false) }
 
     CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
-        TerminalLayout(
-            modifier = Modifier.fillMaxHeight(),
-            terminalState = terminalStateViewModel,
-            tabManager = tabManager,
-            workspaceRepo = workspaceRepo,
-            templateRepo = templateRepo,
-            workspaceBus = workspaceBus,
-            activeWorkspaceId = session.activeWorkspaceId,
-            onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
-            onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
-            onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
-            marketWatchTemplates = marketWatchTemplates,
-            onOpenMarketWatchTemplate = { template, templateName, symbol, providerId, providerName ->
-                scope.launch {
-                    val fresh = template.forMarketWatchSymbol(
-                        symbol = symbol,
-                        providerId = providerId,
-                        providerName = providerName,
-                        templateName = templateName,
-                    )
-                    workspaceRepo.create(fresh)
-                    windowManager.openWorkspaceIn(session.id, fresh)
-                    workspaceBus.workspaceChanged()
-                }
-            },
-        ) {
+        Box(Modifier.fillMaxSize()) {
+            TerminalLayout(
+                modifier = Modifier.fillMaxSize(),
+                terminalState = terminalStateViewModel,
+                tabManager = tabManager,
+                workspaceRepo = workspaceRepo,
+                templateRepo = templateRepo,
+                workspaceBus = workspaceBus,
+                activeWorkspaceId = session.activeWorkspaceId,
+                onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
+                onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
+                onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
+                marketWatchTemplates = marketWatchTemplates,
+                onOpenThemeSettings = { themeSettingsOpen = true },
+                onOpenMarketWatchTemplate = { template, templateName, symbol, providerId, providerName ->
+                    scope.launch {
+                        val fresh = template.forMarketWatchSymbol(
+                            symbol = symbol,
+                            providerId = providerId,
+                            providerName = providerName,
+                            templateName = templateName,
+                        )
+                        workspaceRepo.create(fresh)
+                        windowManager.openWorkspaceIn(session.id, fresh)
+                        workspaceBus.workspaceChanged()
+                    }
+                },
+            ) {
             if (windowWorkspaces.isEmpty()) {
             WelcomeScreen(
                 recentWorkspaces = recentConfigs,
@@ -265,6 +269,10 @@ fun TerminalWindowContent(
                         }
                     }
                 }
+            }
+        }
+            if (themeSettingsOpen) {
+                ThemeSettingsOverlay(onClose = { themeSettingsOpen = false })
             }
         }
     }
