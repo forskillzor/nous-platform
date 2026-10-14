@@ -6,7 +6,6 @@
 package com.aandios.nous.feature.chart.rendering
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.text.AnnotatedString
@@ -38,6 +37,11 @@ fun DrawScope.drawPriceScale(
         translate(left = priceScaleArea.left, top = priceScaleArea.top)
         clipRect(0f, 0f, priceScaleArea.width, priceScaleArea.height)
     }) {
+        drawRect(
+            color = config.backgroundColor,
+            size = androidx.compose.ui.geometry.Size(priceScaleArea.width, priceScaleArea.height),
+        )
+
         val numberOfLevels = 8
 
         // Генерируем уровни цен
@@ -95,7 +99,7 @@ fun DrawScope.drawCurrentPriceBadge(
     val priceText = formatPrice(price, config.priceFormatter)
 
     val textStyle = TextStyle(
-        color = Color.Green,
+        color = config.currentPriceColor,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
         fontFamily = TerminalFontFamily
@@ -126,7 +130,7 @@ fun DrawScope.drawCurrentPriceBadge(
     }
 
     drawRect(
-        color = Color.Green.copy(alpha = 0.2f),
+        color = config.currentPriceColor.copy(alpha = 0.2f),
         topLeft = Offset(badgeLeft, adjustedBadgeTop),
         size = androidx.compose.ui.geometry.Size(badgeWidth, badgeHeight)
     )

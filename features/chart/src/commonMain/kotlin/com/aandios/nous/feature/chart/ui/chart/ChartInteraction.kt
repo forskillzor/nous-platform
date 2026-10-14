@@ -675,6 +675,8 @@ fun CandleStickChartInteraction(
                     chartArea = layout.chartMainArea,
                     draggingOrderId = draggingOrderId,
                     draggingPrice = draggingOrderPrice,
+                    buyColor = config.candleStyle.bullishColor,
+                    sellColor = config.candleStyle.bearishColor,
                 )
             }
 
@@ -684,6 +686,8 @@ fun CandleStickChartInteraction(
                     positions = tradingPositions,
                     priceRange = priceRange,
                     chartArea = layout.chartMainArea,
+                    buyColor = config.candleStyle.bullishColor,
+                    sellColor = config.candleStyle.bearishColor,
                 )
             }
 
@@ -845,6 +849,8 @@ fun CandleStickChartInteraction(
                     TradingOrderBadge(
                         order = order,
                         priceText = config.priceFormatter.formatPrice(displayPrice),
+                        sideColor = if (order.side == OrderSide.BUY) config.candleStyle.bullishColor
+                        else config.candleStyle.bearishColor,
                         onCancel = { onCancelTradingOrder?.invoke(order) },
                         onResize = { qty -> onResizeTradingOrder?.invoke(order, qty) },
                         onQtyBounds = { rect -> orderQtyRects[order.orderId] = rect },
@@ -900,6 +906,11 @@ fun CandleStickChartInteraction(
                         priceText = config.priceFormatter.formatPrice(position.avgPrice),
                         pnlLabel = pnlLabel,
                         pnlUp = pnl >= 0,
+                        sideColor = if (position.side == TradeSide.BUY) config.candleStyle.bullishColor
+                        else config.candleStyle.bearishColor,
+                        pnlUpColor = config.currentPriceColor,
+                        pnlDownColor = config.candleStyle.bearishColor,
+                        pnlPlateColor = config.pnlPlateColor,
                         onClose = onCloseTradingPosition?.let { cb -> { cb(position) } },
                         modifier = Modifier
                             .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
@@ -918,7 +929,7 @@ fun CandleStickChartInteraction(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = config.priceScaleWidth + 10.dp, bottom = controlsBottomPadding)
-                .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                .background(config.backgroundColor.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
                 .clickable {
                     followLive = true
                     timeScale.scrollToLatest(candles.size, chartWidthPx)
@@ -927,7 +938,7 @@ fun CandleStickChartInteraction(
         ) {
             Text(
                 text = "\u21E5",
-                color = if (isAtRightEdge) Color(0xFF6B7A88) else Color(0xFF5B9BD5),
+                color = if (isAtRightEdge) config.axisTextColor else config.accentColor,
                 fontSize = 14.sp,
                 fontFamily = TerminalFontFamily,
             )
@@ -968,6 +979,8 @@ private fun DrawScope.drawTradingOrderLines(
     chartArea: Rect,
     draggingOrderId: String?,
     draggingPrice: Double?,
+    buyColor: Color,
+    sellColor: Color,
 ) {
     orders.forEach { order ->
         val price = if (order.orderId == draggingOrderId && draggingPrice != null) {
@@ -980,7 +993,7 @@ private fun DrawScope.drawTradingOrderLines(
         if (y < 0f || y > chartArea.height) return@forEach
 
         val isBuy = order.side == OrderSide.BUY
-        val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+        val color = if (isBuy) buyColor else sellColor
         val dash = 8f
 
         drawLine(
@@ -998,13 +1011,15 @@ private fun DrawScope.drawTradingPositionLines(
     positions: List<Position>,
     priceRange: PriceRange,
     chartArea: Rect,
+    buyColor: Color,
+    sellColor: Color,
 ) {
     positions.forEach { position ->
         if (position.avgPrice <= 0.0) return@forEach
         val y = priceToY(position.avgPrice.toFloat(), priceRange, chartArea.height)
         if (y < 0f || y > chartArea.height) return@forEach
         val isBuy = position.side == TradeSide.BUY
-        val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+        val color = if (isBuy) buyColor else sellColor
         drawLine(
             color = color.copy(alpha = 0.95f),
             start = Offset(chartArea.left, chartArea.top + y),
@@ -1022,13 +1037,14 @@ private fun DrawScope.drawTradingPositionLines(
 private fun TradingOrderBadge(
     order: Order,
     priceText: String,
+    sideColor: Color,
     onCancel: () -> Unit,
     onResize: (Double) -> Unit,
     onQtyBounds: (Rect) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val isBuy = order.side == OrderSide.BUY
-    val color = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
+    val color = sideColor
     // reduce-only закрывает позицию со стороны ордера, но бейдж пишет, ЧТО
     // закрываем: SELL reduce-only = Close Long, BUY reduce-only = Close Short
     val longTitle = if (order.reduceOnly) !isBuy else isBuy
@@ -1162,12 +1178,15 @@ private fun TradingPositionBadge(
     priceText: String,
     pnlLabel: String?,
     pnlUp: Boolean,
+    sideColor: Color,
+    pnlUpColor: Color,
+    pnlDownColor: Color,
+    pnlPlateColor: Color,
     onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val isBuy = position.side == TradeSide.BUY
-    val sideColor = if (isBuy) Color(0xFF26A69A) else Color(0xFFEF5350)
-    val pnlColor = if (pnlUp) Color(0xFF26A69A) else Color(0xFFEF5350)
+    val pnlColor = if (pnlUp) pnlUpColor else pnlDownColor
     val title = buildString {
         append(if (isBuy) "Long " else "Short ")
         append(trimQtyText(position.quantity))
@@ -1201,7 +1220,7 @@ private fun TradingPositionBadge(
         pnlLabel?.let { label ->
             Box(
                 modifier = Modifier
-                    .background(Color(0xFF1B222B), RoundedCornerShape(2.dp))
+                    .background(pnlPlateColor, RoundedCornerShape(2.dp))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             ) {
                 Text(

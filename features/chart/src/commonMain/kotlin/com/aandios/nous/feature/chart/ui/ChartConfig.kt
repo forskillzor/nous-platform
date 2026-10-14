@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.theme.ChartColors
+import com.aandios.nous.core.ui.theme.TerminalDesignTokens
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
 enum class ChartMode {
@@ -38,7 +39,12 @@ data class FootprintConfig(
 data class ChartConfig(
     val backgroundColor: Color = ChartColors.chartBackground,
     val gridColor: Color = ChartColors.gridLine,
+    val majorGridColor: Color = ChartColors.gridLineMajor,
     val axisTextColor: Color = ChartColors.axisText,
+    val currentPriceColor: Color = ChartColors.bullish,
+    val crosshairColor: Color = ChartColors.crosshair,
+    val accentColor: Color = ChartColors.bullish,
+    val pnlPlateColor: Color = ChartColors.orderBackground,
     val showGrid: Boolean = true,
     val showPriceScale: Boolean = true,
     val priceScaleWidth: Dp = 60.dp,
@@ -49,6 +55,26 @@ data class ChartConfig(
     val minZoom: Float = 0.05f,
     val maxZoom: Float = 4f,
     val maxZoomFootprint: Float = 30f
+)
+
+fun ChartConfig.withTheme(tokens: TerminalDesignTokens): ChartConfig = copy(
+    backgroundColor = tokens.colors.chartBackground,
+    gridColor = tokens.colors.gridLine,
+    majorGridColor = tokens.colors.gridLineMajor,
+    axisTextColor = tokens.colors.axisText,
+    currentPriceColor = tokens.colors.bullish,
+    crosshairColor = tokens.colors.crosshair,
+    accentColor = tokens.colors.accent,
+    pnlPlateColor = tokens.colors.pnlPlate,
+    candleStyle = candleStyle.copy(
+        bullishColor = tokens.colors.bullish,
+        bearishColor = tokens.colors.bearish,
+        shadowColor = tokens.colors.candleShadow,
+    ),
+    footprintConfig = footprintConfig.copy(
+        bidColor = tokens.colors.volumeBullish,
+        askColor = tokens.colors.volumeBearish,
+    ),
 )
 
 // Дефолтные настройки

@@ -22,7 +22,9 @@ fun DrawScope.drawLiquidationHistogram(
     candles: List<Candle>,
     orders: List<LiquidationOrder>,
     scrollOffset: Float,
-    zoomLevel: Float
+    zoomLevel: Float,
+    longColor: Color = Color(0xFF22AA22),
+    shortColor: Color = Color(0xFFCC2222),
 ) {
     if (candles.isEmpty()) return
 
@@ -65,7 +67,7 @@ fun DrawScope.drawLiquidationHistogram(
         if (bar.longVol > 0f) {
             val h = (bar.longVol / maxVol * (area.height / 2 - 4f)).coerceAtLeast(1f)
             drawRect(
-                color = Color(0xFF22AA22),
+                color = longColor,
                 topLeft = Offset(left, midY - h),
                 size = Size(barW, h)
             )
@@ -75,7 +77,7 @@ fun DrawScope.drawLiquidationHistogram(
         if (bar.shortVol > 0f) {
             val h = (bar.shortVol / maxVol * (area.height / 2 - 4f)).coerceAtLeast(1f)
             drawRect(
-                color = Color(0xFFCC2222),
+                color = shortColor,
                 topLeft = Offset(left, midY),
                 size = Size(barW, h)
             )

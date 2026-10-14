@@ -8,7 +8,6 @@ import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
@@ -64,7 +63,7 @@ fun DrawScope.drawCrosshair(
 
     // Вертикальная линия через весь график
     drawLine(
-        color = Color.White.copy(alpha = 0.3f),
+        color = config.crosshairColor.copy(alpha = 0.7f),
         start = Offset(mousePosition.x, mainArea.top),
         end = Offset(mousePosition.x, mainArea.bottom),
         strokeWidth = 1f
@@ -76,12 +75,12 @@ fun DrawScope.drawCrosshair(
     val horizontalColor = if (tradingEnabled) {
         val reference = currentPrice?.takeIf { it > 0f }
         when {
-            reference == null -> Color.White.copy(alpha = 0.9f)
-            priceAtCursor <= reference -> Color(0xFF26A69A)
-            else -> Color(0xFFEF5350)
+            reference == null -> config.crosshairColor
+            priceAtCursor <= reference -> config.candleStyle.bullishColor
+            else -> config.candleStyle.bearishColor
         }
     } else {
-        Color.White.copy(alpha = 0.3f)
+        config.crosshairColor.copy(alpha = 0.7f)
     }
     drawLine(
         color = horizontalColor,
@@ -130,7 +129,7 @@ private fun DrawScope.drawPriceBadgeOnScale(
     val priceText = formatPrice(price, config.priceFormatter)
 
     val textStyle = TextStyle(
-        color = Color.White,
+        color = config.axisTextColor,
         fontSize = 10.sp,
         fontFamily = TerminalFontFamily,
     )
@@ -151,7 +150,7 @@ private fun DrawScope.drawPriceBadgeOnScale(
     val badgeTop = (mouseY - badgeHeight / 2).coerceIn(scale.top, scale.bottom - badgeHeight)
 
     drawRect(
-        color = Color.Black.copy(alpha = 0.85f),
+        color = config.backgroundColor,
         topLeft = Offset(badgeLeft, badgeTop),
         size = Size(badgeWidth, badgeHeight)
     )
@@ -175,7 +174,7 @@ private fun DrawScope.drawTimeBadgeOnScale(
     val timeText = formatTime(candle.timestamp)
 
     val textStyle = TextStyle(
-        color = Color.White,
+        color = config.axisTextColor,
         fontSize = 10.sp,
         fontFamily = TerminalFontFamily,
     )
@@ -196,7 +195,7 @@ private fun DrawScope.drawTimeBadgeOnScale(
     val badgeTop = (scale.top + (scale.height - badgeHeight) / 2).coerceAtLeast(scale.top)
 
     drawRect(
-        color = Color.Black.copy(alpha = 0.85f),
+        color = config.backgroundColor,
         topLeft = Offset(badgeLeft, badgeTop),
         size = Size(badgeWidth, badgeHeight)
     )

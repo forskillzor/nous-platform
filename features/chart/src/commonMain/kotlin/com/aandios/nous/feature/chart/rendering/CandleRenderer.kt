@@ -37,6 +37,11 @@ fun DrawScope.drawChart(
         translate(left = chartArea.left, top = chartArea.top)
         clipRect(0f, 0f, chartArea.width, chartArea.height)
     }) {
+        drawRect(
+            color = config.backgroundColor,
+            size = androidx.compose.ui.geometry.Size(chartArea.width, chartArea.height),
+        )
+
         // Сначала сетка
         drawGrid(config, chartArea.width, chartArea.height)
 
@@ -154,16 +159,16 @@ fun DrawScope.drawGrid(
 ) {
     if (!config.showGrid) return
 
-    // Горизонтальные линии
+    // Major lines anchor the grid; minor lines keep intermediate levels readable.
     val horizontalLines = 5
     for (i in 0..horizontalLines) {
         val y = height * i / horizontalLines.toFloat()
 
         drawLine(
-            color = config.gridColor,
+            color = if (i == 0 || i == horizontalLines) config.majorGridColor else config.gridColor,
             start = Offset(0f, y),
             end = Offset(width, y),
-            strokeWidth = 1f
+            strokeWidth = if (i == 0 || i == horizontalLines) 1.25f else 1f
         )
     }
 
@@ -171,12 +176,13 @@ fun DrawScope.drawGrid(
     val verticalLines = 10
     for (i in 0..verticalLines) {
         val x = width * i / verticalLines.toFloat()
+        val major = i == 0 || i == verticalLines / 2 || i == verticalLines
 
         drawLine(
-            color = config.gridColor,
+            color = if (major) config.majorGridColor else config.gridColor,
             start = Offset(x, 0f),
             end = Offset(x, height),
-            strokeWidth = 1f
+            strokeWidth = if (major) 1.25f else 1f
         )
     }
 }
@@ -197,7 +203,7 @@ fun DrawScope.drawCurrentPriceLine(
 
     // Пунктирная линия через весь график
     drawLine(
-        color = androidx.compose.ui.graphics.Color.Green.copy(alpha = alpha),
+        color = config.currentPriceColor.copy(alpha = alpha),
         start = Offset(0f, y),
         end = Offset(chartWidth, y),
         strokeWidth = strokeWidth,

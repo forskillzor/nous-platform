@@ -20,7 +20,6 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.FootprintLevel
-import com.aandios.nous.core.ui.theme.ChartColors
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.ChartLayout
@@ -124,7 +123,7 @@ fun DrawScope.drawFootprintCandle(
         if (askWidth > 0f) {
             val alpha = (minAlpha + (1f - minAlpha) * (level.askVolumeFloat / viewportMaxVol)).coerceIn(minAlpha, 1f)
             drawRect(
-                color = ChartColors.bearish.copy(alpha = alpha),
+                color = config.footprintConfig.askColor.copy(alpha = alpha),
                 topLeft = Offset(centerX - halfWidth + (maxBarWidth - askWidth), topY),
                 size = Size(askWidth, levelHeight)
             )
@@ -132,7 +131,7 @@ fun DrawScope.drawFootprintCandle(
         if (bidWidth > 0f) {
             val alpha = (minAlpha + (1f - minAlpha) * (level.bidVolumeFloat / viewportMaxVol)).coerceIn(minAlpha, 1f)
             drawRect(
-                color = ChartColors.bullish.copy(alpha = alpha),
+                color = config.footprintConfig.bidColor.copy(alpha = alpha),
                 topLeft = Offset(centerX + halfWidth - maxBarWidth, topY),
                 size = Size(bidWidth, levelHeight)
             )

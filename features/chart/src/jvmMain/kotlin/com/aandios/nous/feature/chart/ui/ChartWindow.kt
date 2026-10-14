@@ -41,6 +41,7 @@ import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.ChartColors
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.window.applyWindowDarkBackground
@@ -54,6 +55,7 @@ import com.aandios.nous.feature.chart.tools.DrawingRepository
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
 import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
+import com.aandios.nous.feature.chart.ui.withTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.KoinContext
@@ -247,14 +249,17 @@ private fun ChartWindowContent(
         liquidationViewModel.setAdapter(registry.get(uiState.currentProviderId)?.liquidation)
     }
 
-    val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter) {
-        DefaultChartConfig.copy(
-            footprintConfig = DefaultChartConfig.footprintConfig.copy(
-                aggregationLevel = uiState.fpAggregation,
-                tickSize = uiState.currentSymbolFormatter.tickSize
-            ),
-            priceFormatter = uiState.currentSymbolFormatter
-        )
+    val designTokens = LocalTerminalDesignTokens.current
+    val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter, designTokens) {
+        DefaultChartConfig.withTheme(designTokens).let { themed ->
+            themed.copy(
+                footprintConfig = themed.footprintConfig.copy(
+                    aggregationLevel = uiState.fpAggregation,
+                    tickSize = uiState.currentSymbolFormatter.tickSize
+                ),
+                priceFormatter = uiState.currentSymbolFormatter
+            )
+        }
     }
 
     // Liquidation state
@@ -267,10 +272,18 @@ private fun ChartWindowContent(
     }
 
     val liqOrders = liquidationState.orders
-    val indicatorRenderers = remember(liqOrders) {
+    val indicatorRenderers = remember(liqOrders, designTokens.colors.bullish, designTokens.colors.bearish) {
         listOf<DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit>(
             { area, candles, _, scroll, zoom ->
-                drawLiquidationHistogram(area, candles, liqOrders, scroll, zoom)
+                drawLiquidationHistogram(
+                    area = area,
+                    candles = candles,
+                    orders = liqOrders,
+                    scrollOffset = scroll,
+                    zoomLevel = zoom,
+                    longColor = designTokens.colors.bullish,
+                    shortColor = designTokens.colors.bearish,
+                )
             }
         )
     }

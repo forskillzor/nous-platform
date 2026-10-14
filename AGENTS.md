@@ -282,6 +282,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   generic `FontFamily.Monospace`.
 - Chart panel surfaces: DrawingToolPanel style — border `ChartColors.gridLine`,
   panel background, 8dp rounding.
+- App chart surfaces derive renderer colors through `ChartConfig.withTheme`
+  from `LocalTerminalDesignTokens`; `ChartColors` remains a static compatibility
+  facade for callers that are not hosted inside the app theme.
 - Prices: always via `SymbolFormatter` (`formatPrice`, `roundPrice`).
 - Paper vs real data source: `Provider.effectiveTrading(paper)`; per-panel flag.
 - `TerminalSwitch`: OFF = grey; ON = grey thumb on a terminal-green track
