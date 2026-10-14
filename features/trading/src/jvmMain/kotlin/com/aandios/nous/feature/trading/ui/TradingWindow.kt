@@ -31,7 +31,7 @@ fun TradingWindow() {
 }
 
 /** Рекомендуемая ширина торговой панели в workspace (flex — ширину задаёт layout). */
-val TradingRecommendedWidth: Dp = 320.dp
+val TradingRecommendedWidth: Dp = 450.dp
 
 /**
  * Торговая панель для использования внутри workspace-панелей.

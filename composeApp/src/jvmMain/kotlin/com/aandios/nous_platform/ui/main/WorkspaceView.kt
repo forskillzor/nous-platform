@@ -40,6 +40,7 @@ import com.aandios.nous.feature.trades.ui.TradesWindow
 import com.aandios.nous.feature.trading.ui.TradingViewModel
 import com.aandios.nous.feature.trading.ui.TradingWindow
 import com.aandios.nous.feature.trades.ui.TradesRecommendedWidth
+import com.aandios.nous.feature.trading.ui.TradingRecommendedWidth
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -145,7 +146,7 @@ fun WorkspaceView(
                     PanelType.DOM -> id to DomRecommendedWidth
                     PanelType.TRADES -> id to (tradesWidths[id] ?: TradesRecommendedWidth)
                     PanelType.CHART -> null
-                    PanelType.TRADING -> null // гибкая ширина — как у chart
+                    PanelType.TRADING -> id to TradingRecommendedWidth
                 }
             }.toMap(),
             onRatioChange = { persistConfig() },
