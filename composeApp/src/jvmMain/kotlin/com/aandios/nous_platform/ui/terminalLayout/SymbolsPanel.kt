@@ -28,7 +28,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,7 +49,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.adapters.MarketOverviewAdapter
@@ -61,6 +59,7 @@ import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolSearchMatch
 import com.aandios.nous.core.ui.component.SymbolWatchlist
 import com.aandios.nous.core.ui.component.TerminalDropdown
+import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.ui.component.searchSymbols
 import com.aandios.nous.core.ui.workspace.WorkspaceLayoutThumbnail
 import com.aandios.nous.core.workspace.WorkspaceConfig
@@ -242,21 +241,53 @@ fun SymbolsPanel(
                     inner()
                 },
             )
-            Text(
-                text = if (selectedList == null) "+ LIST" else "RENAME",
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 9.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier.clickable {
-                    watchlistDialogName = selectedList?.name.orEmpty()
-                    watchlistDialogMode = if (selectedList == null) {
-                        WatchlistDialogMode.CREATE
-                    } else {
-                        WatchlistDialogMode.RENAME
-                    }
-                }.padding(4.dp),
-            )
+            Box {
+                val mode = watchlistDialogMode
+                Text(
+                    text = if (selectedList == null) "+ LIST" else "RENAME",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.clickable {
+                        watchlistDialogName = selectedList?.name.orEmpty()
+                        watchlistDialogMode = if (selectedList == null) {
+                            WatchlistDialogMode.CREATE
+                        } else {
+                            WatchlistDialogMode.RENAME
+                        }
+                    }.padding(4.dp),
+                )
+                TerminalContextPopup(
+                    expanded = watchlistDialogMode != null,
+                    onDismiss = { watchlistDialogMode = null },
+                    title = if (mode == WatchlistDialogMode.CREATE) "Create watchlist" else "Rename watchlist",
+                    value = watchlistDialogName,
+                    onValueChange = { watchlistDialogName = it },
+                    placeholder = "List name",
+                    confirmText = if (mode == WatchlistDialogMode.CREATE) "Create" else "Save",
+                    onConfirm = {
+                        val repository = watchlistsRepository ?: return@TerminalContextPopup
+                        val listToRename = selectedList
+                        val name = watchlistDialogName
+                        watchlistDialogMode = null
+                        scope.launch {
+                            try {
+                                if (mode == WatchlistDialogMode.CREATE) {
+                                    selectedListId = repository.create(name).id
+                                } else if (listToRename != null) {
+                                    repository.rename(listToRename.id, name)
+                                }
+                                listActionError = null
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                listActionError = e.message
+                            }
+                        }
+                    },
+                )
+            }
             if (selectedList != null) {
                 Text(
                     "DELETE",
@@ -282,89 +313,6 @@ fun SymbolsPanel(
 
         listActionError?.let {
             Text(it, color = MaterialTheme.colorScheme.error, fontSize = 10.sp, modifier = Modifier.padding(horizontal = 8.dp))
-        }
-
-        watchlistDialogMode?.let { mode ->
-            Dialog(onDismissRequest = { watchlistDialogMode = null }) {
-                Column(
-                    modifier = Modifier.width(320.dp)
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
-                        .padding(16.dp),
-                ) {
-                    Text(
-                        if (mode == WatchlistDialogMode.CREATE) "Create watchlist" else "Rename watchlist",
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    BasicTextField(
-                        value = watchlistDialogName,
-                        onValueChange = { watchlistDialogName = it },
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 13.sp,
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
-                            .background(
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                                RoundedCornerShape(4.dp),
-                            )
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        decorationBox = { inner ->
-                            if (watchlistDialogName.isEmpty()) {
-                                Text(
-                                    "List name",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                )
-                            }
-                            inner()
-                        },
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        TextButton(onClick = { watchlistDialogMode = null }) {
-                            Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        TextButton(
-                            onClick = {
-                                val repository = watchlistsRepository ?: return@TextButton
-                                val listToRename = selectedList
-                                val name = watchlistDialogName
-                                watchlistDialogMode = null
-                                scope.launch {
-                                    try {
-                                        if (mode == WatchlistDialogMode.CREATE) {
-                                            selectedListId = repository.create(name).id
-                                        } else if (listToRename != null) {
-                                            repository.rename(listToRename.id, name)
-                                        }
-                                        listActionError = null
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (e: Exception) {
-                                        listActionError = e.message
-                                    }
-                                }
-                            },
-                        ) {
-                            Text(
-                                if (mode == WatchlistDialogMode.CREATE) "Create" else "Save",
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                    }
-                }
-            }
         }
 
         Row(

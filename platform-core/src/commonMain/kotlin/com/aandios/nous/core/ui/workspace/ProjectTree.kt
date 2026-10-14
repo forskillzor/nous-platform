@@ -26,7 +26,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aandios.nous.core.ui.component.ConfirmDeleteDialog
+import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.workspace.WorkspaceConfig
 
 @Composable
@@ -206,14 +206,17 @@ private fun WorkspaceTreeItem(
         }
 
         if (confirmDelete) {
-            ConfirmDeleteDialog(
+            TerminalContextPopup(
+                expanded = true,
+                onDismiss = { confirmDelete = false },
                 title = "Delete workspace",
                 message = "Workspace \"$name\" will be permanently deleted.",
+                confirmText = "Delete",
+                destructive = true,
                 onConfirm = {
                     confirmDelete = false
                     onDelete?.invoke()
                 },
-                onDismiss = { confirmDelete = false },
             )
         }
     }
