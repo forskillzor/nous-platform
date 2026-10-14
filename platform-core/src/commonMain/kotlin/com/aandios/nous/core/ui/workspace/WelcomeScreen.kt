@@ -43,8 +43,8 @@ import com.aandios.nous.core.ui.component.ConfirmDeleteDialog
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelState
 import com.aandios.nous.core.workspace.PanelType
-import com.aandios.nous.core.workspace.Templates
 import com.aandios.nous.core.workspace.WorkspaceConfig
+import com.aandios.nous.core.workspace.builtinWorkspaceTemplates
 
 /**
  * Экран-заставка терминала (показывается, когда нет открытых workspace):
@@ -69,18 +69,7 @@ fun WelcomeScreen(
     onChangeTemplateDescription: (WorkspaceConfig, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val builtinTemplates = remember {
-        val gridSymbols = listOf("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
-            "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT", "TRXUSDT", "LTCUSDT")
-        listOf(
-            BuiltinCard("builtin-scalping", "Scalping", Templates.scalping()) { Templates.scalping() },
-            BuiltinCard("builtin-classic", "Classic", Templates.classic()) { Templates.classic() },
-            BuiltinCard("builtin-orderflow", "Order Flow", Templates.orderFlow()) { Templates.orderFlow() },
-            BuiltinCard("builtin-multichart", "Multi-Chart", Templates.multiChart()) { Templates.multiChart() },
-            BuiltinCard("builtin-domgrid", "DOM Grid", Templates.domGrid(gridSymbols)) { Templates.domGrid(gridSymbols) },
-            BuiltinCard("builtin-empty", "Empty", Templates.empty()) { Templates.empty() },
-        )
-    }
+    val builtinTemplates = remember { builtinWorkspaceTemplates() }
     val visibleBuiltins = remember(builtinTemplates, hiddenBuiltinTemplates) {
         builtinTemplates.filter { it.id !in hiddenBuiltinTemplates }
     }
@@ -201,13 +190,6 @@ private fun SectionTitle(text: String) {
     Spacer(Modifier.height(12.dp))
 }
 
-private data class BuiltinCard(
-    val id: String,
-    val title: String,
-    val preview: WorkspaceConfig,
-    val build: () -> WorkspaceConfig,
-)
-
 private data class TemplateEntry(
     val title: String,
     val config: WorkspaceConfig,
@@ -255,7 +237,7 @@ private fun WorkspaceCard(
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            LayoutPreview(config = config, modifier = Modifier.width(156.dp).height(90.dp))
+            WorkspaceLayoutThumbnail(config = config, modifier = Modifier.width(156.dp).height(90.dp))
             Spacer(Modifier.height(10.dp))
             Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
             Spacer(Modifier.height(4.dp))
@@ -470,7 +452,7 @@ private fun infoOf(config: WorkspaceConfig): String {
  * настроек панелей (таймфрейм графика, глубина DOM, символ).
  */
 @Composable
-private fun LayoutPreview(config: WorkspaceConfig, modifier: Modifier = Modifier) {
+fun WorkspaceLayoutThumbnail(config: WorkspaceConfig, modifier: Modifier = Modifier) {
     val panels = remember(config.panels) { config.panels.associateBy { it.id } }
     val textMeasurer = rememberTextMeasurer()
 

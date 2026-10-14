@@ -152,3 +152,44 @@ object Templates {
         )
     }
 }
+
+data class BuiltinWorkspaceTemplate(
+    val id: String,
+    val title: String,
+    val preview: WorkspaceConfig,
+    val build: () -> WorkspaceConfig,
+)
+
+fun builtinWorkspaceTemplates(): List<BuiltinWorkspaceTemplate> {
+    val gridSymbols = listOf(
+        "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT",
+        "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT", "TRXUSDT", "LTCUSDT",
+    )
+    return listOf(
+        BuiltinWorkspaceTemplate("builtin-scalping", "Scalping", Templates.scalping()) { Templates.scalping() },
+        BuiltinWorkspaceTemplate("builtin-classic", "Classic", Templates.classic()) { Templates.classic() },
+        BuiltinWorkspaceTemplate("builtin-orderflow", "Order Flow", Templates.orderFlow()) { Templates.orderFlow() },
+        BuiltinWorkspaceTemplate("builtin-multichart", "Multi-Chart", Templates.multiChart()) { Templates.multiChart() },
+        BuiltinWorkspaceTemplate("builtin-domgrid", "DOM Grid", Templates.domGrid(gridSymbols)) {
+            Templates.domGrid(gridSymbols)
+        },
+        BuiltinWorkspaceTemplate("builtin-empty", "Empty", Templates.empty()) { Templates.empty() },
+    )
+}
+
+fun WorkspaceConfig.forMarketWatchSymbol(
+    symbol: String,
+    providerName: String,
+    templateName: String,
+): WorkspaceConfig {
+    val now = currentTime()
+    return copy(
+        id = generateId(),
+        name = "$symbol $templateName",
+        providers = providers.map { it.copy(name = providerName, symbols = listOf(symbol)) },
+        panels = panels.map { it.copy(symbol = symbol) },
+        createdAt = now,
+        updatedAt = now,
+        order = 0,
+    )
+}

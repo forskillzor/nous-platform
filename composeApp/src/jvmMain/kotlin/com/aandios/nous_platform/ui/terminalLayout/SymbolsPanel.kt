@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
@@ -37,6 +40,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +60,8 @@ import com.aandios.nous.core.ui.component.SymbolSearchMatch
 import com.aandios.nous.core.ui.component.SymbolWatchlist
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.searchSymbols
+import com.aandios.nous.core.ui.workspace.WorkspaceLayoutThumbnail
+import com.aandios.nous.core.workspace.WorkspaceConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -86,6 +94,8 @@ private data class MatchedMarketRow(
 fun SymbolsPanel(
     selectedSymbol: String,
     onSymbolSelected: (String) -> Unit,
+    workspaceTemplates: List<Pair<String, WorkspaceConfig>>,
+    onOpenWorkspaceTemplate: ((WorkspaceConfig, String, String, String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val registry: ProviderRegistry = koinInject()
@@ -378,6 +388,7 @@ fun SymbolsPanel(
                     inSelectedList = item.row.symbol in (selectedList?.symbols ?: emptyList()),
                     selectedList = selectedList,
                     availableLists = watchlists,
+                    workspaceTemplates = workspaceTemplates,
                     canAddToLists = selectedList == null && watchlists.isNotEmpty(),
                     onSelect = { onSymbolSelected(item.row.symbol) },
                     onAddToList = { listId ->
@@ -407,6 +418,14 @@ fun SymbolsPanel(
                             }
                         }
                     },
+                    onOpenWithTemplate = { templateName, template ->
+                        onOpenWorkspaceTemplate?.invoke(
+                            template,
+                            templateName,
+                            item.row.symbol,
+                            item.row.exchangeName,
+                        )
+                    },
                 )
             }
         }
@@ -421,12 +440,15 @@ private fun MarketWatchSymbolRow(
     inSelectedList: Boolean,
     selectedList: SymbolWatchlist?,
     availableLists: List<SymbolWatchlist>,
+    workspaceTemplates: List<Pair<String, WorkspaceConfig>>,
     canAddToLists: Boolean,
     onSelect: () -> Unit,
     onAddToList: (String) -> Unit,
     onRemoveFromList: () -> Unit,
+    onOpenWithTemplate: (String, WorkspaceConfig) -> Unit,
 ) {
     var addMenuExpanded by remember(row.exchangeId, row.symbol) { mutableStateOf(false) }
+    var openWithExpanded by remember(row.exchangeId, row.symbol) { mutableStateOf(false) }
     val positive = row.stats?.changePercent24h?.let { it >= 0.0 } == true
     val changeColor = when {
         row.stats == null -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -434,83 +456,149 @@ private fun MarketWatchSymbolRow(
         else -> Color(0xFFEF5350)
     }
     Surface(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onSelect),
+        modifier = Modifier.fillMaxWidth()
+            .pointerInput(row.exchangeId, row.symbol) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (
+                            event.type == PointerEventType.Press &&
+                            event.buttons.isSecondaryPressed &&
+                            workspaceTemplates.isNotEmpty()
+                        ) {
+                            openWithExpanded = true
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                }
+            }
+            .clickable(onClick = onSelect),
         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
         else Color.Transparent,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = highlightedSymbol(row.symbol, matchRange),
-                    color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    row.exchangeName,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace,
-                    maxLines = 1,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    row.stats?.changePercent24h?.let { "%+.2f%%".format(it) } ?: "—",
-                    color = changeColor,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                )
-                Text(
-                    row.stats?.quoteVolume24h?.let(::formatMarketVolume) ?: "VOL —",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 8.sp,
-                    fontFamily = FontFamily.Monospace,
-                )
-            }
-            if (selectedList != null && inSelectedList) {
-                Text(
-                    "−",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontSize = 14.sp,
-                    modifier = Modifier.clickable(onClick = onRemoveFromList).padding(start = 8.dp),
-                )
-            } else if (canAddToLists) {
-                Box {
+        Box {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "+",
+                        text = highlightedSymbol(row.symbol, matchRange),
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        row.exchangeName,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        row.stats?.changePercent24h?.let { "%+.2f%%".format(it) } ?: "—",
+                        color = changeColor,
+                        fontSize = 10.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        row.stats?.quoteVolume24h?.let(::formatMarketVolume) ?: "VOL —",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                    )
+                }
+                if (selectedList != null && inSelectedList) {
+                    Text(
+                        "−",
                         color = MaterialTheme.colorScheme.primary,
                         fontSize = 14.sp,
-                        modifier = Modifier.clickable { addMenuExpanded = true }
-                            .padding(start = 8.dp, end = 4.dp),
+                        modifier = Modifier.clickable(onClick = onRemoveFromList).padding(start = 8.dp),
                     )
-                    DropdownMenu(
-                        expanded = addMenuExpanded,
-                        onDismissRequest = { addMenuExpanded = false },
-                        modifier = Modifier.width(170.dp),
+                } else if (canAddToLists) {
+                    Box {
+                        Text(
+                            "+",
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 14.sp,
+                            modifier = Modifier.clickable { addMenuExpanded = true }
+                                .padding(start = 8.dp, end = 4.dp),
+                        )
+                        DropdownMenu(
+                            expanded = addMenuExpanded,
+                            onDismissRequest = { addMenuExpanded = false },
+                            modifier = Modifier.width(170.dp),
+                        ) {
+                            availableLists.forEach { list ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            "Add to ${list.name}",
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                        )
+                                    },
+                                    onClick = {
+                                        onAddToList(list.id)
+                                        addMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            DropdownMenu(
+                expanded = openWithExpanded,
+                onDismissRequest = { openWithExpanded = false },
+            ) {
+                Column(Modifier.width(460.dp).padding(horizontal = 8.dp, vertical = 6.dp)) {
+                    Text(
+                        "OPEN ${row.symbol} WITH",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 9.sp,
+                        fontFamily = FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                    )
+                    Row(
+                        modifier = Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        availableLists.forEach { list ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        "Add to ${list.name}",
-                                        fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
+                        workspaceTemplates.forEach { (templateName, template) ->
+                            Column(
+                                modifier = Modifier.width(124.dp)
+                                    .clickable {
+                                        openWithExpanded = false
+                                        onOpenWithTemplate(templateName, template)
+                                    }
+                                    .background(
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                        RoundedCornerShape(4.dp),
                                     )
-                                },
-                                onClick = {
-                                    onAddToList(list.id)
-                                    addMenuExpanded = false
-                                },
-                            )
+                                    .padding(6.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                WorkspaceLayoutThumbnail(
+                                    config = template,
+                                    modifier = Modifier.fillMaxWidth().height(68.dp),
+                                )
+                                Text(
+                                    templateName,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 5.dp),
+                                )
+                            }
                         }
                     }
                 }

@@ -76,6 +76,8 @@ fun TerminalLayout(
     workspaceBus: WorkspaceBus? = null,
     activeWorkspaceId: String? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
+    marketWatchTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
+    onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String) -> Unit)? = null,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
     var topPanelState by remember { mutableStateOf(ToolPanelState()) }
@@ -242,6 +244,8 @@ fun TerminalLayout(
                             selectedTimeframe = selectedTimeframe,
                             onTimeframeSelected = onTimeframeSelected,
                             onClose = { topPanelState = topPanelState.copy(isExpanded = false) },
+                            marketWatchTemplates = marketWatchTemplates,
+                            onOpenMarketWatchTemplate = onOpenMarketWatchTemplate,
                             modifier = Modifier.fillMaxHeight()
                         )
                     }

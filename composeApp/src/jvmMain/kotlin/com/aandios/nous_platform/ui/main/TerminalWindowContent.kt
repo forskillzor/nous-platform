@@ -97,6 +97,12 @@ fun TerminalWindowContent(
             hiddenBuiltins = templateRepo.hiddenBuiltins()
         }
     }
+    val marketWatchTemplates = remember(userTemplates, hiddenBuiltins) {
+        builtinWorkspaceTemplates()
+            .filter { it.id !in hiddenBuiltins }
+            .map { it.title to it.preview } +
+            userTemplates.map { it.name to it }
+    }
 
     // Перенос вкладки между окнами
     var dragPayload by remember { mutableStateOf<TabDragBus.Payload?>(null) }
@@ -115,6 +121,15 @@ fun TerminalWindowContent(
             onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
             onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
             onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
+            marketWatchTemplates = marketWatchTemplates,
+            onOpenMarketWatchTemplate = { template, templateName, symbol, providerName ->
+                scope.launch {
+                    val fresh = template.forMarketWatchSymbol(symbol, providerName, templateName)
+                    workspaceRepo.create(fresh)
+                    windowManager.openWorkspaceIn(session.id, fresh)
+                    workspaceBus.workspaceChanged()
+                }
+            },
         ) {
             if (windowWorkspaces.isEmpty()) {
             WelcomeScreen(

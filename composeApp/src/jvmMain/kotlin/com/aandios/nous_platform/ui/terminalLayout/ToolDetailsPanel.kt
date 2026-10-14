@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.workspace.WorkspaceConfig
 import org.jetbrains.compose.resources.painterResource
 import nous_platform.composeapp.generated.resources.Res
 import nous_platform.composeapp.generated.resources.close
@@ -37,6 +38,8 @@ fun ToolDetailsPanel(
     selectedTimeframe: String,
     onTimeframeSelected: (String) -> Unit,
     onClose: () -> Unit,
+    marketWatchTemplates: List<Pair<String, WorkspaceConfig>>,
+    onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String) -> Unit)?,
     modifier: Modifier = Modifier.Companion
 ) {
     Surface(
@@ -88,6 +91,8 @@ fun ToolDetailsPanel(
                     SymbolsPanel(
                         selectedSymbol = selectedSymbol,
                         onSymbolSelected = onSymbolSelected,
+                        workspaceTemplates = marketWatchTemplates,
+                        onOpenWorkspaceTemplate = onOpenMarketWatchTemplate,
                         modifier = Modifier.Companion.weight(1f)
                     )
                 }
