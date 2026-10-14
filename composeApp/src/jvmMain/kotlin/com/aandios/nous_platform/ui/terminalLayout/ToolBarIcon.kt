@@ -22,7 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -35,13 +35,14 @@ fun ToolBarIcon(
     onClick: () -> Unit,
     modifier: Modifier = Modifier.Companion
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
 
     Box(
         modifier = modifier
-            .size(36.dp)
-            .clip(RoundedCornerShape(4.dp))
+            .size(tokens.dimensions.workspaceToolSize)
+            .clip(RoundedCornerShape(tokens.cornerRadii.workspaceTab))
             .background(
                 color = when {
                     isSelected -> MaterialTheme.colorScheme.primary
@@ -59,7 +60,7 @@ fun ToolBarIcon(
         Icon(
             painter = painterResource(icon),
             contentDescription = description,
-            modifier = Modifier.Companion.size(20.dp),
+            modifier = Modifier.Companion.size(tokens.dimensions.workspaceToolIconSize),
             tint = if (isSelected) MaterialTheme.colorScheme.onPrimary
             else MaterialTheme.colorScheme.onSurfaceVariant
         )

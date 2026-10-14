@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.component.ExchangeDropdown
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.component.highlightedSymbol
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolSearchMatch
@@ -143,11 +144,15 @@ fun SymbolsPanel(
         }
         matchingRows.sortedWith(if (descending) comparator.reversed() else comparator)
     }
+    val tokens = LocalTerminalDesignTokens.current
 
     Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = tokens.spacing.sm,
+                vertical = tokens.spacing.xs,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val exchangeOptions = remember(registry) {
@@ -178,9 +183,12 @@ fun SymbolsPanel(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = tokens.spacing.sm,
+                vertical = tokens.spacing.xxs,
+            ),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(5.dp),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             BasicTextField(
                 value = search,
@@ -188,19 +196,22 @@ fun SymbolsPanel(
                 singleLine = true,
                 textStyle = TextStyle(
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
+                    fontSize = tokens.typography.controlSize,
                     fontFamily = TerminalFontFamily,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier.weight(1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f), RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 7.dp),
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        RoundedCornerShape(tokens.cornerRadii.card),
+                    )
+                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
                 decorationBox = { inner ->
                     if (search.isEmpty()) {
                         Text(
                             "Regex search…",
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                            fontSize = 11.sp,
+                            fontSize = tokens.typography.compactSize,
                             fontFamily = TerminalFontFamily,
                         )
                     }
@@ -212,7 +223,7 @@ fun SymbolsPanel(
                 Text(
                     text = if (selectedList == null) "+ LIST" else "RENAME",
                     color = MaterialTheme.colorScheme.primary,
-                    fontSize = 9.sp,
+                    fontSize = tokens.typography.microSize,
                     fontWeight = FontWeight.Bold,
                     fontFamily = TerminalFontFamily,
                     modifier = Modifier.clickable {
@@ -282,7 +293,10 @@ fun SymbolsPanel(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = tokens.spacing.sm,
+                vertical = tokens.spacing.xs,
+            ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -292,14 +306,14 @@ fun SymbolsPanel(
                 fontSize = 9.sp,
                 fontFamily = TerminalFontFamily,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
                 MarketSort.entries.forEach { option ->
                     val active = sort == option
                     Text(
                         option.label,
                         color = if (active) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 8.sp,
+                        fontSize = tokens.typography.microSize,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                         fontFamily = TerminalFontFamily,
                         modifier = Modifier.clickable {
@@ -315,7 +329,10 @@ fun SymbolsPanel(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 3.dp),
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = tokens.spacing.sm,
+                vertical = tokens.spacing.xxs,
+            ),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text("SYMBOL", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 8.sp)

@@ -41,6 +41,12 @@ data class TerminalSemanticColors(
     val signal: Color,
     val supportLevel: Color,
     val resistanceLevel: Color,
+    val workspaceBackground: Color,
+    val panelSurface: Color,
+    val panelHeaderSurface: Color,
+    val panelBorder: Color,
+    val inactiveTabSurface: Color,
+    val splitHandle: Color,
     val warning: Color,
     val accent: Color,
     val label: Color,
@@ -71,6 +77,25 @@ data class TerminalDimensions(
     val dropdownLabelSeparatorWidth: Dp = 2.dp,
     val dropdownLabelSeparatorHeight: Dp = 18.dp,
     val contextPopupWidth: Dp = 280.dp,
+    val workspaceTabBarHeight: Dp = 32.dp,
+    val workspaceTabHeight: Dp = 28.dp,
+    val workspaceTabMaxWidth: Dp = 140.dp,
+    val workspaceSidebarWidth: Dp = 48.dp,
+    val workspaceToolSize: Dp = 36.dp,
+    val workspaceToolIconSize: Dp = 20.dp,
+    val splitHandleSize: Dp = 4.dp,
+    val workspaceTabDragEstimate: Dp = 120.dp,
+    val workspaceDropIndicatorWidth: Dp = 2.dp,
+    val workspaceDropIndicatorHeight: Dp = 24.dp,
+    val workspaceDropTargetBand: Dp = 28.dp,
+    val workspaceDropPreviewStrip: Dp = 6.dp,
+    val chartMinimumWidth: Dp = 200.dp,
+    val workspaceToolPanelWidth: Dp = 200.dp,
+    val workspaceToolPanelMinWidth: Dp = 140.dp,
+    val workspaceToolPanelMaxWidth: Dp = 500.dp,
+    val workspaceBottomPanelInitialHeight: Dp = 300.dp,
+    val workspaceBottomPanelMinHeight: Dp = 120.dp,
+    val workspaceProjectTreeMinWidth: Dp = 140.dp,
 )
 
 data class TerminalTypographyTokens(
@@ -88,6 +113,8 @@ data class TerminalTypographyTokens(
 data class TerminalCornerRadii(
     val card: Dp = 0.dp,
     val toolbar: Dp = 0.dp,
+    val workspacePanel: Dp = 6.dp,
+    val workspaceTab: Dp = 4.dp,
 )
 
 data class TerminalDesignTokens(

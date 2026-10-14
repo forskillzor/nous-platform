@@ -22,6 +22,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
@@ -103,12 +104,11 @@ fun WorkspaceView(
     // Корень — фокусируемый, чтобы ловить Ctrl+Z / Ctrl+Shift+Z (undo/redo сплитов).
     // Если истории нет — не потребляем событие: оно уйдёт к undo рисунков графика.
     val focusInteraction = remember { MutableInteractionSource() }
+    val designTokens = LocalTerminalDesignTokens.current
 
     Box(
         modifier = modifier
-            // Тёмный фон под панелями: при fly-анимациях в щелях не должен
-            // просвечивать фон AWT-окна.
-            .background(MaterialTheme.colorScheme.background)
+            .background(designTokens.colors.workspaceBackground)
             .clickable(
                 interactionSource = focusInteraction,
                 indication = null

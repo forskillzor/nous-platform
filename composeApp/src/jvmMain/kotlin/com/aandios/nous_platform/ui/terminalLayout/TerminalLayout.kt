@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.workspace.ProjectTree
 import com.aandios.nous.core.workspace.TemplateRepository
 import com.aandios.nous.core.workspace.WorkspaceBus
@@ -43,7 +44,7 @@ enum class ToolPanelType {
 data class ToolPanelState(
     val isExpanded: Boolean = false,
     val type: ToolPanelType? = null,
-    val width: Dp = 200.dp
+    val width: Dp
 )
 
 enum class BottomToolType {
@@ -80,17 +81,21 @@ fun TerminalLayout(
     onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)? = null,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
-    var topPanelState by remember { mutableStateOf(ToolPanelState()) }
+    val designTokens = LocalTerminalDesignTokens.current
+    var topPanelState by remember {
+        mutableStateOf(ToolPanelState(width = designTokens.dimensions.workspaceToolPanelWidth))
+    }
     var bottomPanelState by remember { mutableStateOf<BottomToolType?>(null) }
     var portfolioTab by remember { mutableStateOf(PortfolioTab.POSITIONS) }
     // Высота нижней панели запоминается на время сессии
-    var bottomPanelHeight by remember { mutableStateOf(300.dp) }
+    var bottomPanelHeight by remember {
+        mutableStateOf(designTokens.dimensions.workspaceBottomPanelInitialHeight)
+    }
     var contentAreaHeightPx by remember { mutableFloatStateOf(0f) }
 
     // Реактивные значения из VM (раньше читались один раз через remember)
     val selectedSymbol by terminalState.selectedSymbol.collectAsState()
     val selectedTimeframe by terminalState.selectedTimeFrame.collectAsState()
-
     // Workspace state
     val scope = rememberCoroutineScope()
     val useWorkspaces = tabManager != null && workspaceRepo != null
@@ -115,15 +120,13 @@ fun TerminalLayout(
     Column(
         modifier = modifier
             .fillMaxSize()
-            // Тёмный фон под всем терминалом: иначе при анимациях панелей
-            // в щелях проблёскивает фон AWT-окна.
-            .background(MaterialTheme.colorScheme.background)
+            .background(designTokens.colors.workspaceBackground)
     ) {
         Row(modifier = Modifier.fillMaxSize()) {
             // Основная панель с иконками (всегда видима)
             Column(
                 modifier = Modifier
-                    .width(48.dp)
+                    .width(designTokens.dimensions.workspaceSidebarWidth)
                     .fillMaxHeight()
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
@@ -131,8 +134,8 @@ fun TerminalLayout(
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                        .padding(vertical = designTokens.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(designTokens.spacing.md),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     val topIcons = buildList {
@@ -158,16 +161,16 @@ fun TerminalLayout(
                 // Разделитель
                 Box(
                     modifier = Modifier
-                        .padding(horizontal = 8.dp)
+                        .padding(horizontal = designTokens.spacing.md)
                         .fillMaxWidth()
-                        .height(1.dp)
+                        .height(designTokens.dimensions.dividerThickness)
                         .background(MaterialTheme.colorScheme.outline)
                 )
 
                 // Нижняя группа иконок
                 Column(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(vertical = designTokens.spacing.md),
+                    verticalArrangement = Arrangement.spacedBy(designTokens.spacing.md),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     val bottomIcons = listOf(
@@ -252,13 +255,19 @@ fun TerminalLayout(
                     // Draggable right border
                     Box(
                         modifier = Modifier
-                            .width(4.dp).fillMaxHeight()
-                            .background(if (sidebarHovered) Color(0xFF00C853).copy(alpha = 0.4f) else Color(0xFF333333))
+                            .width(designTokens.dimensions.splitHandleSize).fillMaxHeight()
+                            .background(
+                                if (sidebarHovered) designTokens.colors.buyOrder.copy(alpha = 0.4f)
+                                else designTokens.colors.splitHandle
+                            )
                             .hoverable(sidebarInteractionSource)
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     topPanelState = topPanelState.copy(
-                                        width = (topPanelState.width + dragAmount.dp).coerceIn(140.dp, 500.dp)
+                                        width = (topPanelState.width + dragAmount.dp).coerceIn(
+                                            designTokens.dimensions.workspaceToolPanelMinWidth,
+                                            designTokens.dimensions.workspaceToolPanelMaxWidth
+                                        )
                                     )
                                 }
                             }
@@ -276,7 +285,7 @@ fun TerminalLayout(
                 mainContent()
                 if (bottomPanelState != null) {
                     val density = LocalDensity.current
-                    val minHeight = 120.dp
+                    val minHeight = designTokens.dimensions.workspaceBottomPanelMinHeight
                     val maxHeight = with(density) {
                         (contentAreaHeightPx * 0.75f).toDp()
                     }.coerceAtLeast(minHeight)

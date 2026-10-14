@@ -10,10 +10,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import org.jetbrains.compose.resources.painterResource
 import nous_platform.composeapp.generated.resources.Res
@@ -50,40 +49,38 @@ fun ToolDetailsPanel(
             modifier = Modifier.Companion.fillMaxSize()
         ) {
             // Заголовок панели
-            Row(
-                modifier = Modifier.Companion
-                    .fillMaxWidth()
-                    .padding(12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Companion.CenterVertically
-            ) {
-                Text(
-                    text = when (type) {
-                        ToolPanelType.SYMBOLS -> "Symbols"
-                        ToolPanelType.INDICATORS -> "Indicators"
-                        ToolPanelType.TIMEFRAMES -> "Timeframes"
-                        ToolPanelType.DRAWINGS -> "Drawing Tools"
-                        ToolPanelType.STRATEGIES -> "Strategies"
-                        ToolPanelType.WORKSPACES -> "Workspaces"
-                    },
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                IconButton(
-                    onClick = onClose,
-                    modifier = Modifier.Companion.size(24.dp)
+            TerminalPanelHeader {
+                Row(
+                    modifier = Modifier.Companion.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Companion.CenterVertically
                 ) {
-                    Icon(
-                        painter = painterResource(Res.drawable.close), // Замени на свою иконку
-                        contentDescription = "Close",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.Companion.size(16.dp)
+                    Text(
+                        text = when (type) {
+                            ToolPanelType.SYMBOLS -> "Symbols"
+                            ToolPanelType.INDICATORS -> "Indicators"
+                            ToolPanelType.TIMEFRAMES -> "Timeframes"
+                            ToolPanelType.DRAWINGS -> "Drawing Tools"
+                            ToolPanelType.STRATEGIES -> "Strategies"
+                            ToolPanelType.WORKSPACES -> "Workspaces"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
+
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.Companion.size(24.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(Res.drawable.close), // Замени на свою иконку
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.Companion.size(16.dp)
+                        )
+                    }
                 }
             }
-
-            HorizontalDivider()
 
             // Контент в зависимости от типа
             when (type) {

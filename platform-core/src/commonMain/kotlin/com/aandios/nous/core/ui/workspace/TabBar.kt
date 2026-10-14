@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -18,16 +19,15 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalDesignTokens
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
 import kotlin.math.roundToInt
 
@@ -56,7 +56,8 @@ fun TabBar(
     var targetIndex by remember { mutableStateOf<Int?>(null) }
     var pendingReorder by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val density = LocalDensity.current
-    val tabWidthEstimate = with(density) { 120.dp.toPx() }
+    val tokens = LocalTerminalDesignTokens.current
+    val tabWidthEstimate = with(density) { tokens.dimensions.workspaceTabDragEstimate.toPx() }
 
     // Defer reorder to next frame — avoids recomposition during active drag
     if (onTabReorder != null) {
@@ -71,13 +72,13 @@ fun TabBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(32.dp)
-            .background(Color(0xFF0A0A0A))
+            .height(tokens.dimensions.workspaceTabBarHeight)
+            .background(tokens.colors.workspaceBackground)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 4.dp),
+                .padding(start = tokens.spacing.xs),
             verticalAlignment = Alignment.CenterVertically
         ) {
             workspaces.forEachIndexed { index, ws ->
@@ -89,9 +90,9 @@ fun TabBar(
                 if (isTarget && draggedIndex != null) {
                     Box(
                         modifier = Modifier
-                            .width(2.dp)
-                            .height(24.dp)
-                            .background(Color(0xFF00C853))
+                            .width(tokens.dimensions.workspaceDropIndicatorWidth)
+                            .height(tokens.dimensions.workspaceDropIndicatorHeight)
+                            .background(MaterialTheme.colorScheme.primary)
                     )
                 }
 
@@ -146,6 +147,7 @@ fun TabBar(
                     TabItem(
                         name = ws.config.name,
                         isActive = isActive && !isDragged,
+                        tokens = tokens,
                         onClick = { if (!isDragged) onTabClick(index) },
                         onClose = { if (!isDragged) onTabClose(ws.config.id) },
                         onOpenInNewWindow = onOpenInNewWindow?.let { fn -> { fn(ws.config.id) } },
@@ -157,9 +159,9 @@ fun TabBar(
             if (targetIndex == workspaces.size && draggedIndex != null) {
                 Box(
                     modifier = Modifier
-                        .width(2.dp)
-                        .height(24.dp)
-                        .background(Color(0xFF00C853))
+                        .width(tokens.dimensions.workspaceDropIndicatorWidth)
+                        .height(tokens.dimensions.workspaceDropIndicatorHeight)
+                        .background(MaterialTheme.colorScheme.primary)
                 )
             }
         }
@@ -169,14 +171,14 @@ fun TabBar(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF00C853).copy(alpha = 0.12f))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
             )
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(2.dp)
-                    .background(Color(0xFF00C853))
+                    .height(tokens.dimensions.borderWidth * 2)
+                    .background(MaterialTheme.colorScheme.primary)
             )
         }
     }
@@ -186,6 +188,7 @@ fun TabBar(
 private fun TabItem(
     name: String,
     isActive: Boolean,
+    tokens: TerminalDesignTokens,
     onClick: () -> Unit,
     onClose: () -> Unit,
     onOpenInNewWindow: (() -> Unit)? = null,
@@ -194,38 +197,51 @@ private fun TabItem(
 
     Row(
         modifier = Modifier
-            .padding(end = 1.dp)
-            .height(28.dp)
-            .clip(RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp))
-            .background(if (isActive) Color(0xFF1E1E1E) else Color(0xFF111111))
+            .padding(end = tokens.dimensions.borderWidth)
+            .height(tokens.dimensions.workspaceTabHeight)
+            .clip(RoundedCornerShape(
+                topStart = tokens.cornerRadii.workspaceTab,
+                topEnd = tokens.cornerRadii.workspaceTab,
+            ))
+            .background(
+                if (isActive) MaterialTheme.colorScheme.surfaceVariant
+                else tokens.colors.inactiveTabSurface
+            )
             .clickable { onClick() }
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = name,
-            color = if (isActive) Color(0xFF00C853) else Color(0xFF888888),
-            fontSize = 11.sp,
+            color = if (isActive) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = tokens.typography.compactSize,
             fontFamily = TerminalFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 140.dp)
+            modifier = Modifier.widthIn(max = tokens.dimensions.workspaceTabMaxWidth)
         )
-        Spacer(Modifier.width(6.dp))
+        Spacer(Modifier.width(tokens.spacing.sm))
         if (onOpenInNewWindow != null) {
             Box {
                 Text(
                     text = "\u22EE",
-                    color = if (isActive) Color(0xFF555555) else Color(0xFF333333),
-                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.outlineVariant,
+                    fontSize = tokens.typography.controlSize,
                     fontFamily = TerminalFontFamily,
                     modifier = Modifier
                         .clickable { menuExpanded = true }
-                        .padding(horizontal = 2.dp)
+                        .padding(horizontal = tokens.spacing.xxs)
                 )
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("Open in new window", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
+                        text = {
+                            Text(
+                                "Open in new window",
+                                fontSize = tokens.typography.controlSize,
+                                fontFamily = TerminalFontFamily,
+                            )
+                        },
                         onClick = {
                             menuExpanded = false
                             onOpenInNewWindow()
@@ -233,12 +249,12 @@ private fun TabItem(
                     )
                 }
             }
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(tokens.spacing.xs))
         }
         Text(
             text = "×",
-            color = if (isActive) Color(0xFF666666) else Color(0xFF444444),
-            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = tokens.typography.bodySize,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.clickable { onClose() }
         )

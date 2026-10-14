@@ -22,13 +22,14 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -48,15 +49,11 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
 import com.aandios.nous.core.workspace.PanelType
-
-// Минимальные ширины панелей (тайл-менеджерская логика):
-// charts — гибкие, но не уже CHART_MIN; dom/trades — фиксированные preferred,
-// при нехватке места сжимаются через k-масштаб.
-private val ChartMinWidthDp = 200.dp
 
 /**
  * Состояние перетаскивания панели внутри workspace (IntelliJ-стиль).
@@ -117,6 +114,7 @@ fun LayoutRenderer(
     fixedPanelWidths: Map<String, Dp> = emptyMap(),
     panelContent: @Composable (panelId: String) -> Unit
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     // Drag-состояние привязано к дереву: при любом split/close/move/undo или
     // смене воркспейса дерево — новый инстанс, и состояние начинается с чистого
     // листа. Иначе протухшие rect'ы давали битую цель дропа.
@@ -125,8 +123,8 @@ fun LayoutRenderer(
     var rootSize by remember { mutableStateOf(IntSize.Zero) }
     val focusInteraction = remember { MutableInteractionSource() }
     val density = LocalDensity.current
-    val rootBandPx = with(density) { 28.dp.toPx() }
-    val rootStripPx = with(density) { 6.dp.toPx() }
+    val rootBandPx = with(density) { tokens.dimensions.workspaceDropTargetBand.toPx() }
+    val rootStripPx = with(density) { tokens.dimensions.workspaceDropPreviewStrip.toPx() }
 
     // Позиции панелей (координаты окна) — единый источник для hit-test'а
     // drag'а и анимации перелёта. Живёт дольше dragState.
@@ -167,6 +165,7 @@ fun LayoutRenderer(
 
     Box(
         modifier = modifier
+            .background(tokens.colors.workspaceBackground)
             .onSizeChanged { rootSize = it }
             .onGloballyPositioned { rootOrigin = it.positionInWindow() }
             .clickable(interactionSource = focusInteraction, indication = null) { /* focusable for Esc */ }
@@ -238,13 +237,20 @@ private fun RenderNode(
     fixedPanelWidthsPx: Map<String, Float> = emptyMap(),
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     when (node) {
         is LayoutNode.Leaf -> {
             val config = panels[node.panelId]
             val panelId = node.panelId
             Column(
                 modifier = modifier
-                    .border(1.dp, Color(0xFF222222))
+                    .clip(RoundedCornerShape(tokens.cornerRadii.workspacePanel))
+                    .background(tokens.colors.panelSurface)
+                    .border(
+                        tokens.dimensions.borderWidth,
+                        tokens.colors.panelBorder,
+                        RoundedCornerShape(tokens.cornerRadii.workspacePanel)
+                    )
                     .onGloballyPositioned {
                         fly.rects.value = fly.rects.value + (panelId to it.boundsInWindow())
                     }
@@ -335,7 +341,7 @@ private fun RenderNode(
                     //    k-масштаб при тесноте): никогда не ресайзится,
                     //    весь остаток автоматически достаётся chart'ам;
                     //  * ручка рендерится ТОЛЬКО между двумя FLEX-детьми.
-                    val chartMinPx = with(density) { ChartMinWidthDp.toPx() }
+                    val chartMinPx = with(density) { tokens.dimensions.chartMinimumWidth.toPx() }
 
                     fun containsChart(child: LayoutNode): Boolean = when (child) {
                         is LayoutNode.Leaf -> fixedWidthOf(child) == null
@@ -582,6 +588,7 @@ private fun rootLandingRect(ws: Rect, zone: LayoutEngine.DropZone, thickness: Fl
  */
 @Composable
 private fun DropPreview(landing: Rect?) {
+    val tokens = LocalTerminalDesignTokens.current
     val lastLanding = remember { mutableStateOf(Rect.Zero) }
     LaunchedEffect(landing) {
         if (landing != null) lastLanding.value = landing
@@ -596,7 +603,7 @@ private fun DropPreview(landing: Rect?) {
         animationSpec = tween(durationMillis = 120),
     )
     if (alpha > 0.01f) {
-        val accent = Color(0xFF00C853)
+        val accent = tokens.colors.buyOrder
         Canvas(Modifier.fillMaxSize()) {
             drawRoundRect(
                 color = accent.copy(alpha = 0.22f * alpha),
@@ -622,9 +629,10 @@ private fun SplitHandle(
     onResizeStart: (() -> Unit)? = null,
     onResize: (Float) -> Unit
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val bgColor = if (isHovered) Color(0xFF00C853).copy(alpha = 0.4f) else Color(0xFF333333)
+    val bgColor = if (isHovered) tokens.colors.buyOrder.copy(alpha = 0.4f) else tokens.colors.splitHandle
 
     // Свежие ссылки: pointerInput(Unit) создаётся один раз, и без
     // rememberUpdatedState он навсегда держал бы СТАРЫЕ onResize/onResizeStart
@@ -638,8 +646,8 @@ private fun SplitHandle(
         modifier = Modifier
             .then(
                 if (direction == LayoutNode.Direction.HORIZONTAL)
-                    Modifier.width(4.dp).fillMaxHeight()
-                else Modifier.height(4.dp).fillMaxWidth()
+                    Modifier.width(tokens.dimensions.splitHandleSize).fillMaxHeight()
+                else Modifier.height(tokens.dimensions.splitHandleSize).fillMaxWidth()
             )
             .background(bgColor)
             .hoverable(interactionSource)
@@ -664,4 +672,3 @@ private fun SplitHandle(
             }
     )
 }
-

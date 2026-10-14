@@ -23,7 +23,9 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.format.plainDecimalString
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.dom.domain.*
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.domain.model.DepthLimit
@@ -74,24 +76,21 @@ private fun ExpandedDomHeader(
     symbolTickSize: Double? = null,
     modifier: Modifier = Modifier
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 1.dp,
-        modifier = modifier.fillMaxWidth()
-    ) {
+    val tokens = LocalTerminalDesignTokens.current
+
+    TerminalPanelHeader(modifier = modifier) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         // Узкие панели: агрегация переезжает в третью тонкую строку
         val narrow = maxWidth < 360.dp
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)
         ) {
             // Строка 1: биржа · тип контрактов · сворачивание
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TerminalInlineSelect(
@@ -132,7 +131,7 @@ private fun ExpandedDomHeader(
             // Строка 2: символ (сжимается, клип) · глубина · агрегация
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f).clipToBounds()) {
@@ -210,4 +209,3 @@ private fun aggregationLabel(level: AggregationLevel, baseTickSize: Double?): St
         AggregationLevel.HundredTick -> "100×" + (tick?.let { " ($it)" } ?: "")
     }
 }
-

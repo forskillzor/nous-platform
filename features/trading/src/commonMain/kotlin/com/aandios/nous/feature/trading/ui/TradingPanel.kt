@@ -40,9 +40,11 @@ import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.component.PanelTextWatermark
 import com.aandios.nous.core.ui.component.TerminalDropdown
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import org.koin.compose.koinInject
 
 enum class TradingTab(val label: String) {
@@ -143,13 +145,15 @@ fun TradingPanel(
     )
 
     val formatter = remember { SymbolFormatter.DEFAULT }
+    val tokens = LocalTerminalDesignTokens.current
 
     Column(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
+        TerminalPanelHeader {
         // ── Верхняя строка: exchange · USDT-M/COIN-M · режим позиций · Paper + шестерёнка ──
         Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)
         ) {
             TerminalDropdown(
                 currentValue = providerId,
@@ -190,7 +194,7 @@ fun TradingPanel(
 
         // ── Счёт: баланс/дневной PnL/маржа слева, Cancel All / Close All справа (стек) ──
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
@@ -200,7 +204,7 @@ fun TradingPanel(
                 Text(
                     text = "Balance  ${primaryBalance?.let { "${fmtAmount(it.amount)} ${it.currency}" } ?: "-"}",
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 11.sp,
+                    fontSize = tokens.typography.compactSize,
                     fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -212,7 +216,7 @@ fun TradingPanel(
                         dailyPnl!! >= 0 -> Color(0xFF26A69A)
                         else -> Color(0xFFEF5350)
                     },
-                    fontSize = 11.sp,
+                    fontSize = tokens.typography.compactSize,
                     fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -221,21 +225,21 @@ fun TradingPanel(
                     Text(
                         text = "Equity ${fmtAmount(b.equity)} · Available ${fmtAmount(b.amount)}",
                         color = Color(0xFF8A97A5),
-                        fontSize = 10.sp,
+                        fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                     Text(
                         text = "In Position ${fmtAmount(b.margin)} · Frozen ${fmtAmount(b.frozen)} · Unrealized ${fmtSigned(b.unrealizedPnl.toDoubleOrNull() ?: 0.0)}",
                         color = Color(0xFF8A97A5),
-                        fontSize = 10.sp,
+                        fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                 }
             }
             Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 horizontalAlignment = Alignment.End,
             ) {
                 ActionButton("Cancel All", Color(0xFFE0A95B)) { viewModel.cancelAllOrders() }
@@ -245,22 +249,22 @@ fun TradingPanel(
 
         // ── Табы ──
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)
         ) {
             TradingTab.entries.forEach { t ->
                 Text(
                     text = "${t.label} (${tabCounts[t] ?: 0})",
                     color = if (t == tab) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.sp,
+                    fontSize = tokens.typography.controlSize,
                     fontWeight = if (t == tab) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier
                         .clickableNoIndication { viewModel.selectTab(t.name) }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs),
                 )
             }
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+        }
 
         lastMessage?.let { msg ->
             Text(

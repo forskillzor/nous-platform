@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,6 +26,8 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.SizeFilter
 import kotlin.math.roundToInt
 
@@ -60,21 +61,17 @@ fun TradesHeaderBar(
     onPresetEdit: (Int, Double) -> Unit,
     onPresetDelete: (Int) -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    val tokens = LocalTerminalDesignTokens.current
+
+    TerminalPanelHeader {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)
         ) {
             // Строка 1: биржа · USDT-M/COIN-M
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TerminalInlineSelect(
@@ -109,7 +106,7 @@ fun TradesHeaderBar(
             // Строка 2: символ (сжимается) · фильтр размера
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f).clipToBounds()) {
@@ -145,6 +142,7 @@ private fun TradesSettingsGear(
     onPanelWidthDpChanged: (Float) -> Unit,
     onPanelWidthDpChangeFinished: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
     val lo = minPanelWidthDp.coerceAtMost((maxPanelWidthDp - 8f).coerceAtLeast(40f))
     val hi = maxPanelWidthDp.coerceAtLeast(lo + 8f)
@@ -154,7 +152,7 @@ private fun TradesSettingsGear(
         Text(
             text = "⚙",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
+            fontSize = tokens.typography.controlSize,
             maxLines = 1,
             modifier = Modifier
                 .clickable { expanded = true }
@@ -172,7 +170,7 @@ private fun TradesSettingsGear(
                 Text(
                     text = "Width  ${current.roundToInt()} dp",
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 11.sp,
+                    fontSize = tokens.typography.compactSize,
                     fontFamily = TerminalFontFamily,
                 )
                 Spacer(Modifier.height(2.dp))

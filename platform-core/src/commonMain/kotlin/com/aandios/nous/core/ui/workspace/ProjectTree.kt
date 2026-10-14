@@ -24,9 +24,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.ui.component.TerminalContextPopup
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.WorkspaceConfig
 
 @Composable
@@ -43,28 +45,29 @@ fun ProjectTree(
     modifier: Modifier = Modifier
 ) {
     val groups = workspaces.groupBy { it.group.ifEmpty { "Unsorted" } }
+    val tokens = LocalTerminalDesignTokens.current
 
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .widthIn(min = 140.dp)
-            .background(Color(0xFF0A0A0A))
-            .padding(8.dp)
+            .widthIn(min = tokens.dimensions.workspaceProjectTreeMinWidth)
+            .background(tokens.colors.panelSurface)
+            .padding(tokens.spacing.md)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = tokens.spacing.md),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 "Project",
-                color = Color(0xFF888888),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp,
                 fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "+", color = Color(0xFF00C853), fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                "+", color = MaterialTheme.colorScheme.primary, fontSize = 14.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.clickable { onNewWorkspace() })
         }
 

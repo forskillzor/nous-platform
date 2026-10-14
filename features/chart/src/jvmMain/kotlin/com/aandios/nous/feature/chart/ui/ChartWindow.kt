@@ -333,7 +333,7 @@ private fun ChartWindowContent(
             onShowOrdersToggle = { chartViewModel.setShowOrders(it) },
             showPositions = showPositions,
             onShowPositionsToggle = { chartViewModel.setShowPositions(it) },
-            modifier = Modifier.padding(8.dp)
+            modifier = Modifier
         )
 
         // Область графика: Loading/Error — только внутри неё.

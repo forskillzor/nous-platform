@@ -27,12 +27,13 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.ui.component.ExchangeDropdown
 import com.aandios.nous.core.ui.component.SymbolSearchDropdown
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.component.TerminalDropdownWithLabel
 import com.aandios.nous.core.ui.component.TerminalSwitch
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
 private val timeframes = listOf("1m", "5m", "15m", "30m", "1h", "4h", "1d", "1w")
-private val toolbarBg = Color.Black.copy(alpha = 0.35f)
 private val accentColor = Color(0xFF5B9BD5)
 
 private val chartModes = listOf(
@@ -72,55 +73,53 @@ fun ChartToolbar(
     onShowPositionsToggle: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .background(toolbarBg, RoundedCornerShape(6.dp))
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (currentExchange.isNotEmpty()) {
-            ExchangeDropdown(
-                current = currentExchange,
-                exchanges = exchanges,
-                onChange = onExchangeChange,
+    val tokens = LocalTerminalDesignTokens.current
+
+    TerminalPanelHeader(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (currentExchange.isNotEmpty()) {
+                ExchangeDropdown(
+                    current = currentExchange,
+                    exchanges = exchanges,
+                    onChange = onExchangeChange,
+                )
+            }
+
+            SymbolSearchDropdown(
+                symbols = availableSymbols,
+                currentSymbol = currentSymbol,
+                onSymbolSelected = onSymbolChange,
+                symbolsWithFootprint = symbolsWithFootprint,
+                showLabel = false,
             )
-//            Spacer(Modifier.width(12.dp))
+
+            ChartModeDropdown(mode = chartMode, onModeChange = onChartModeChange)
+
+            if (chartMode == ChartMode.FOOTPRINT) {
+                Spacer(Modifier.width(tokens.spacing.md))
+                FpAggregationSelector(level = fpAggregation, onChange = onFpAggregationChange)
+            }
+
+            Spacer(Modifier.width(tokens.spacing.md))
+            TimeframeDropdown(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
+
+            Spacer(Modifier.width(tokens.spacing.md))
+            ChartOptionsDropdown(
+                tradingEnabled = tradingEnabled,
+                onTradingToggle = onTradingToggle,
+                paperEnabled = paperEnabled,
+                onPaperToggle = onPaperToggle,
+                showOrders = showOrders,
+                onShowOrdersToggle = onShowOrdersToggle,
+                showPositions = showPositions,
+                onShowPositionsToggle = onShowPositionsToggle,
+                contractType = contractType,
+                onContractTypeChange = onContractTypeChange,
+            )
         }
-
-        SymbolSearchDropdown(
-            symbols = availableSymbols,
-            currentSymbol = currentSymbol,
-            onSymbolSelected = onSymbolChange,
-            symbolsWithFootprint = symbolsWithFootprint,
-            showLabel = false,
-        )
-
-//        Spacer(Modifier.width(12.dp))
-
-        ChartModeDropdown(mode = chartMode, onModeChange = onChartModeChange)
-
-        if (chartMode == ChartMode.FOOTPRINT) {
-            Spacer(Modifier.width(8.dp))
-            FpAggregationSelector(level = fpAggregation, onChange = onFpAggregationChange)
-        }
-
-        Spacer(Modifier.width(8.dp))
-        TimeframeDropdown(currentTimeframe = currentTimeframe, onTimeframeChange = onTimeframeChange)
-
-        // Options: один dropdown со свичами trading/paper/show orders/show positions
-        Spacer(Modifier.width(8.dp))
-        ChartOptionsDropdown(
-            tradingEnabled = tradingEnabled,
-            onTradingToggle = onTradingToggle,
-            paperEnabled = paperEnabled,
-            onPaperToggle = onPaperToggle,
-            showOrders = showOrders,
-            onShowOrdersToggle = onShowOrdersToggle,
-            showPositions = showPositions,
-            onShowPositionsToggle = onShowPositionsToggle,
-            contractType = contractType,
-            onContractTypeChange = onContractTypeChange,
-        )
     }
 }
 

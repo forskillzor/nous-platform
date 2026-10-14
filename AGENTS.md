@@ -19,7 +19,7 @@ SQLite state store.
 | Module | Responsibility |
 | --- | --- |
 | `composeApp` | Desktop entry point, Koin DI (`di/AppModule.kt`), workspace UI, paper settings overlay. This is the executable app (`:composeApp:run`). |
-| `platform-core` | Workspace/tile/window system, theme (`TradingTerminalTheme`), shared UI components (`TerminalSwitch`, `TerminalDropdown`), number formatting (`SymbolFormatter`, `PlainDecimal`), `StateStore` interface. |
+| `platform-core` | Workspace/tile/window system, theme (`TradingTerminalTheme`), shared UI components (`TerminalSwitch`, `TerminalDropdown`, `TerminalPanelHeader`), number formatting (`SymbolFormatter`, `PlainDecimal`), `StateStore` interface. |
 | `core/core-dependencies` | Shared Compose and dependency helpers. |
 | `public-api/api-market` | Provider contracts: `Provider`, `ProviderConfig`, `ProviderRegistry`, adapter interfaces (`TradingAdapter`, `SymbolInfoAdapter`, `DomAdapter`, `ChartAdapter`, `TradesAdapter`, `BookTickerAdapter`), models (`SymbolInfo`, trading models), the paper engine (`PaperTrading`, `PaperTradingAdapter`, `effectiveTrading`), trading commands (`MarketOrderCommand`, `LimitOrderCommand`, `BestBidAskCommand`), shared `TradingAdapter.replaceOrder` extension in `adapters/OrderOperations.kt`. |
 | `public-api/api-trading`, `public-api/api-ui` | Additional API surfaces. |
@@ -287,6 +287,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - `TerminalSwitch`: OFF = grey; ON = grey thumb on a terminal-green track
   (`0xFF00C853`, 65% alpha). In compact headers disable the M3 touch target
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
+- Internal panel headers use `TerminalPanelHeader` for the shared surface,
+  spacing and bottom divider; keep panel-specific controls and actions inside it.
 - Compact selects use `TerminalDropdown`; panel headers (DOM/Trades) use
   `TerminalInlineSelect` — a single-layer mono `label value ▾` row (~18dp).
 - Panel watermarks: `PanelSymbolWatermark` (platform-core) draws the big ticker
