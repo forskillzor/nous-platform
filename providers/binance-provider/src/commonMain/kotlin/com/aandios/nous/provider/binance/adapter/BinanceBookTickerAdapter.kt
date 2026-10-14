@@ -7,7 +7,9 @@ package com.aandios.nous.provider.binance.adapter
 
 import com.aandios.nous.api.market.ProviderConfig
 import com.aandios.nous.api.market.adapters.BookTickerAdapter
+import com.aandios.nous.api.market.adapters.MarketOverviewAdapter
 import com.aandios.nous.api.market.model.BookTicker
+import com.aandios.nous.api.market.model.MarketTickerStats
 import com.aandios.nous.provider.binance.BinanceRestGate
 import com.aandios.nous.provider.binance.BinanceStreamHub
 import com.aandios.nous.provider.binance.currentTimeMillis
@@ -25,7 +27,7 @@ class BinanceBookTickerAdapter(
     private val config: ProviderConfig,
     private val restGate: BinanceRestGate,
     private val streamHub: BinanceStreamHub,
-) : BookTickerAdapter {
+) : BookTickerAdapter, MarketOverviewAdapter {
     private val json = Json {
         ignoreUnknownKeys = true
         isLenient = true
@@ -62,4 +64,17 @@ class BinanceBookTickerAdapter(
             null
         }
     }
+
+    override suspend fun getMarketOverview(): List<MarketTickerStats> =
+        restGate.execute(key = "marketOverview24h", weight = 40) {
+            val rows: List<Map<String, String>> =
+                client.get("https://fapi.binance.com/fapi/v1/ticker/24hr").body()
+            rows.mapNotNull { row ->
+                val symbol = row["symbol"] ?: return@mapNotNull null
+                val lastPrice = row["lastPrice"]?.toDoubleOrNull() ?: return@mapNotNull null
+                val changePercent = row["priceChangePercent"]?.toDoubleOrNull() ?: return@mapNotNull null
+                val quoteVolume = row["quoteVolume"]?.toDoubleOrNull() ?: return@mapNotNull null
+                MarketTickerStats(symbol, lastPrice, changePercent, quoteVolume)
+            }
+        }
 }

@@ -13,6 +13,7 @@ import com.aandios.nous.core.di.coreModule
 import com.aandios.nous.core.domain.cache.CandleCacheStore
 import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
 import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.ui.ChartViewModel
@@ -73,6 +74,7 @@ val appModule = module {
     // 4. Local storage (SQLite)
     single<LocalStorage> { LocalStorage() }
     single<StateStore> { get<LocalStorage>() }
+    single { SymbolWatchlistRepository(get()) }
     single<CandleCacheStore> { get<LocalStorage>() }
     single<FootprintCacheStore> { get<LocalStorage>() }
 

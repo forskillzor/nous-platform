@@ -22,8 +22,7 @@ fun TradesSymbolDropdown(
     modifier: Modifier = Modifier
 ) {
     val symbolList = remember(availableSymbols) {
-        if (availableSymbols.isNotEmpty()) availableSymbols.map { it.symbol }
-        else listOf("BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT", "DOTUSDT", "AVAXUSDT", "LINKUSDT")
+        availableSymbols.map { it.symbol }
     }
 
     SymbolSearchDropdown(

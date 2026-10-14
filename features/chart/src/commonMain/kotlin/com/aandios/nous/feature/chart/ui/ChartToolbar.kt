@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.ContractType
+import com.aandios.nous.core.ui.component.ExchangeDropdown
 import com.aandios.nous.core.ui.component.SymbolSearchDropdown
 import com.aandios.nous.core.ui.component.TerminalDropdownWithLabel
 import com.aandios.nous.core.ui.component.TerminalSwitch
@@ -253,62 +254,6 @@ private fun OptionSwitchRow(label: String, checked: Boolean, onCheckedChange: (B
         },
         onClick = { onCheckedChange(!checked) },
     )
-}
-
-@Composable
-private fun ExchangeDropdown(current: String, exchanges: List<String>, onChange: (String) -> Unit) {
-    var expanded by remember { mutableStateOf(false) }
-
-    TerminalDropdownWithLabel(label = "") {
-        Box {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.clickable { expanded = true }
-        ) {
-            Text(
-                text = current,
-                color = MaterialTheme.colorScheme.inverseOnSurface,
-                fontSize = MaterialTheme.typography.labelSmall.fontSize,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = "\u25BE",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-            )
-        }
-
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-            modifier = Modifier.widthIn(min = 130.dp)
-        ) {
-            exchanges.forEach { ex ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = ex,
-                            color = if (ex == current) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                            fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
-                        )
-                    },
-                    onClick = {
-                        onChange(ex)
-                        expanded = false
-                    },
-                    modifier = Modifier.background(
-                        if (ex == current) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                        else Color.Transparent
-                    )
-                )
-            }
-        }
-        }
-    }
 }
 
 @Composable

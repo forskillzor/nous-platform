@@ -8,6 +8,7 @@ package com.aandios.nous.core.ui.component
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -20,6 +21,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -27,8 +30,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.flow.flowOf
 
-enum class SymbolTab { ALL, FAVORITES, MD }
+enum class SymbolTab { ALL, FAVORITES, MD, WATCHLIST }
 
 /**
  * Унифицированный дропдаун выбора символа с поиском и табами.
@@ -60,21 +64,29 @@ fun SymbolSearchDropdown(
     var expanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var activeTab by remember { mutableStateOf(SymbolTab.ALL) }
+    var activeWatchlistId by remember { mutableStateOf<String?>(null) }
+    val watchlistRepository = LocalSymbolWatchlistRepository.current
+    val watchlists by (
+        watchlistRepository?.lists ?: flowOf<List<SymbolWatchlist>>(emptyList())
+        ).collectAsState(initial = emptyList())
 
     if (!expanded) { searchQuery = "" }
 
-    val sortedSymbols = remember(symbols, activeTab, favorites, symbolsWithFootprint) {
+    val sortedSymbols = remember(symbols, activeTab, favorites, symbolsWithFootprint, watchlists, activeWatchlistId) {
         val base = when (activeTab) {
             SymbolTab.ALL -> symbols
             SymbolTab.FAVORITES -> symbols.filter { it in favorites }
             SymbolTab.MD -> symbols.filter { it in symbolsWithFootprint }
+            SymbolTab.WATCHLIST -> {
+                val selectedSymbols = watchlists.firstOrNull { it.id == activeWatchlistId }?.symbols.orEmpty()
+                symbols.filter { it in selectedSymbols }
+            }
         }
         base.sortedWith(compareBy({ it !in favorites }, { it }))
     }
 
-    val filteredSymbols = remember(sortedSymbols, searchQuery) {
-        if (searchQuery.isBlank()) sortedSymbols
-        else sortedSymbols.filter { it.contains(searchQuery, ignoreCase = true) }
+    val searchResult = remember(sortedSymbols, searchQuery) {
+        searchSymbols(sortedSymbols, searchQuery)
     }
 
     val dropdownContent: @Composable () -> Unit = {
@@ -119,15 +131,34 @@ fun SymbolSearchDropdown(
                 modifier = Modifier.widthIn(min = 200.dp, max = 280.dp)
             ) {
                 // Tabs
-                if (symbolsWithFootprint.isNotEmpty() || favorites.isNotEmpty()) {
+                if (symbolsWithFootprint.isNotEmpty() || favorites.isNotEmpty() || watchlists.isNotEmpty()) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        TabChip("All", SymbolTab.ALL, activeTab) { activeTab = it }
-                        TabChip("Fav", SymbolTab.FAVORITES, activeTab) { activeTab = it }
+                        TabChip("All", activeTab == SymbolTab.ALL) {
+                            activeTab = SymbolTab.ALL
+                            activeWatchlistId = null
+                        }
+                        TabChip("Fav", activeTab == SymbolTab.FAVORITES) {
+                            activeTab = SymbolTab.FAVORITES
+                            activeWatchlistId = null
+                        }
                         if (symbolsWithFootprint.isNotEmpty()) {
-                            TabChip("md", SymbolTab.MD, activeTab) { activeTab = it }
+                            TabChip("md", activeTab == SymbolTab.MD) {
+                                activeTab = SymbolTab.MD
+                                activeWatchlistId = null
+                            }
+                        }
+                        watchlists.forEach { list ->
+                            TabChip(
+                                list.name.take(8),
+                                activeTab == SymbolTab.WATCHLIST && activeWatchlistId == list.id,
+                            ) {
+                                activeTab = SymbolTab.WATCHLIST
+                                activeWatchlistId = list.id
+                            }
                         }
                     }
                 }
@@ -154,12 +185,13 @@ fun SymbolSearchDropdown(
                 Column(
                     modifier = Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())
                 ) {
-                    filteredSymbols.forEach { sym ->
+                    searchResult.matches.forEach { match ->
+                        val sym = match.symbol
                         DropdownMenuItem(
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = sym,
+                                        text = highlightedSymbol(sym, match.matchRange),
                                         color = if (sym == currentSymbol) MaterialTheme.colorScheme.primary
                                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                                         fontSize = 11.sp,
@@ -182,8 +214,14 @@ fun SymbolSearchDropdown(
                             modifier = Modifier.background(if (sym == currentSymbol) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
                         )
                     }
-                    if (filteredSymbols.isEmpty()) {
-                        Text("No symbols", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), fontSize = 11.sp, modifier = Modifier.padding(12.dp))
+                    if (searchResult.matches.isEmpty()) {
+                        Text(
+                            searchResult.error ?: "No symbols",
+                            color = if (searchResult.error != null) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(12.dp),
+                        )
                     }
                 }
             }
@@ -202,8 +240,7 @@ fun SymbolSearchDropdown(
 }
 
 @Composable
-private fun TabChip(label: String, tab: SymbolTab, active: SymbolTab, onSelect: (SymbolTab) -> Unit) {
-    val isActive = tab == active
+private fun TabChip(label: String, isActive: Boolean, onSelect: () -> Unit) {
     Text(
         text = label,
         color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -211,8 +248,72 @@ private fun TabChip(label: String, tab: SymbolTab, active: SymbolTab, onSelect: 
         fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
         fontFamily = FontFamily.Monospace,
         modifier = Modifier
-            .clickable { onSelect(tab) }
+            .clickable(onClick = onSelect)
             .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent, RoundedCornerShape(3.dp))
             .padding(horizontal = 5.dp, vertical = 3.dp)
     )
+}
+
+data class SymbolSearchMatch(
+    val symbol: String,
+    val matchRange: IntRange?,
+)
+
+data class SymbolSearchResult(
+    val matches: List<SymbolSearchMatch>,
+    val error: String? = null,
+)
+
+fun searchSymbols(symbols: List<String>, query: String): SymbolSearchResult {
+    if (query.isBlank()) return SymbolSearchResult(symbols.map { SymbolSearchMatch(it, null) })
+    val regex = try {
+        Regex(query, RegexOption.IGNORE_CASE)
+    } catch (e: IllegalArgumentException) {
+        return SymbolSearchResult(emptyList(), e.message ?: "Invalid regular expression")
+    }
+
+    return SymbolSearchResult(
+        symbols.mapNotNull { symbol ->
+            val match = regex.find(symbol) ?: return@mapNotNull null
+            val range = match.range.takeIf { !match.value.isEmpty() }
+            val score = when {
+                range == null -> 3
+                range.first == 0 && match.value.length == symbol.length -> 0
+                range.first == 0 -> 1
+                else -> 2
+            }
+            Triple(SymbolSearchMatch(symbol, range), score, range?.first ?: Int.MAX_VALUE)
+        }.sortedWith(
+            compareBy<Triple<SymbolSearchMatch, Int, Int>>(
+                { it.second },
+                { it.third },
+                { it.first.matchRange?.let { range -> range.last - range.first } ?: Int.MAX_VALUE },
+                { it.first.symbol },
+            )
+        ).map { it.first }
+    )
+}
+
+fun rankSymbolMatches(symbols: List<String>, query: String): List<String> =
+    searchSymbols(symbols, query).matches.map { it.symbol }
+
+fun highlightedSymbol(symbol: String, matchRange: IntRange?) = buildAnnotatedString {
+    val range = matchRange
+    if (range == null || range.isEmpty() || range.first !in symbol.indices) {
+        append(symbol)
+        return@buildAnnotatedString
+    }
+    val start = range.first.coerceIn(0, symbol.length)
+    val endExclusive = (range.last + 1).coerceIn(start, symbol.length)
+    append(symbol.substring(0, start))
+    pushStyle(
+        SpanStyle(
+            background = androidx.compose.ui.graphics.Color(0xFF00C853).copy(alpha = 0.24f),
+            color = androidx.compose.ui.graphics.Color(0xFF00C853),
+            fontWeight = FontWeight.Bold,
+        )
+    )
+    append(symbol.substring(start, endExclusive))
+    pop()
+    append(symbol.substring(endExclusive))
 }

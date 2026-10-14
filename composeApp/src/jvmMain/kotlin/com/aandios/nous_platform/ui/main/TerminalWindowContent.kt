@@ -22,10 +22,14 @@ import com.aandios.nous.core.ui.workspace.WelcomeScreen
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
+import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
+import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.CompositionLocalProvider
+import org.koin.compose.koinInject
 
 /**
  * Содержимое одного окна терминала: сессия вкладок, TabBar, активный workspace
@@ -46,6 +50,8 @@ fun TerminalWindowContent(
 ) {
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val symbolWatchlists: SymbolWatchlistRepository = koinInject()
+    LaunchedEffect(symbolWatchlists) { symbolWatchlists.load() }
 
     // Публикуем границы окна (px) для hit-test переноса вкладок + персистим геометрию
     LaunchedEffect(session.id, windowState) {
@@ -97,19 +103,20 @@ fun TerminalWindowContent(
     val externalDrag by dragBus.active.collectAsState()
     val externalDragActive = externalDrag?.let { it.sourceWindowId != session.id } == true
 
-    TerminalLayout(
-        modifier = Modifier.fillMaxHeight(),
-        terminalState = terminalStateViewModel,
-        tabManager = tabManager,
-        workspaceRepo = workspaceRepo,
-        templateRepo = templateRepo,
-        workspaceBus = workspaceBus,
-        activeWorkspaceId = session.activeWorkspaceId,
-        onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
-        onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
-        onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
-    ) {
-        if (windowWorkspaces.isEmpty()) {
+    CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
+        TerminalLayout(
+            modifier = Modifier.fillMaxHeight(),
+            terminalState = terminalStateViewModel,
+            tabManager = tabManager,
+            workspaceRepo = workspaceRepo,
+            templateRepo = templateRepo,
+            workspaceBus = workspaceBus,
+            activeWorkspaceId = session.activeWorkspaceId,
+            onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
+            onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
+            onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
+        ) {
+            if (windowWorkspaces.isEmpty()) {
             WelcomeScreen(
                 recentWorkspaces = recentConfigs,
                 userTemplates = userTemplates,
@@ -171,8 +178,8 @@ fun TerminalWindowContent(
                 },
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
-        } else {
-            Column(Modifier.fillMaxWidth().weight(1f)) {
+            } else {
+                Column(Modifier.fillMaxWidth().weight(1f)) {
                 TabBar(
                     workspaces = windowWorkspaces,
                     activeIndex = activeIdx,
@@ -232,6 +239,7 @@ fun TerminalWindowContent(
                             workspaceRepo = workspaceRepo,
                             modifier = Modifier.fillMaxSize()
                         )
+                        }
                     }
                 }
             }
