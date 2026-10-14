@@ -5,42 +5,13 @@
 
 package com.aandios.nous_platform.ui.components
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.component.TerminalBadge as SharedTerminalBadge
 
 @Composable
 fun TerminalBadge(
     text: String,
     isBullish: Boolean? = null,
     modifier: Modifier = Modifier
-) {
-    val backgroundColor = when (isBullish) {
-        true -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-        false -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
-        null -> MaterialTheme.colorScheme.surfaceVariant
-    }
-
-    val textColor = when (isBullish) {
-        true -> MaterialTheme.colorScheme.primary
-        false -> MaterialTheme.colorScheme.secondary
-        null -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Surface(
-        modifier = modifier,
-        color = backgroundColor,
-        shape = MaterialTheme.shapes.extraSmall
-    ) {
-        Text(
-            text = text,
-            color = textColor,
-            style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
-    }
-}
+) = SharedTerminalBadge(text, isBullish, modifier)

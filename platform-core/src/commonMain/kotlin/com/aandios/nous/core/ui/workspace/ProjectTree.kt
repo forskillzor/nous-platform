@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.core.ui.workspace
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -60,7 +60,7 @@ fun ProjectTree(
                 "Project",
                 color = Color(0xFF888888),
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold
             )
             Text(
@@ -91,7 +91,7 @@ fun ProjectTree(
 @Composable
 private fun GroupHeader(name: String) {
     Text(
-        "▸ $name", color = Color(0xFF666666), fontSize = 11.sp, fontFamily = FontFamily.Monospace,
+        "▸ $name", color = Color(0xFF666666), fontSize = 11.sp, fontFamily = TerminalFontFamily,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
     )
 }
@@ -130,7 +130,7 @@ private fun WorkspaceTreeItem(
                         onValueChange = { editName = it },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
-                            color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = FontFamily.Monospace
+                            color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = TerminalFontFamily
                         ),
                         modifier = Modifier
                             .weight(1f)
@@ -159,14 +159,14 @@ private fun WorkspaceTreeItem(
             } else {
                 Text(
                     text = name, color = if (isActive) Color(0xFF00C853) else Color(0xFFAAAAAA),
-                    fontSize = 12.sp, fontFamily = FontFamily.Monospace,
+                    fontSize = 12.sp, fontFamily = TerminalFontFamily,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
                 )
             }
             // Menu trigger
             Text(
-                "⋮", color = Color(0xFF444444), fontSize = 14.sp, fontFamily = FontFamily.Monospace,
+                "⋮", color = Color(0xFF444444), fontSize = 14.sp, fontFamily = TerminalFontFamily,
                 modifier = Modifier.clickable { menuExpanded = true }.padding(start = 4.dp)
             )
         }

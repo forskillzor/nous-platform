@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.ui
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,7 +24,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -152,7 +152,7 @@ fun ChartTradingPanel(
                 text = text,
                 color = if (pnlUp) buyColor else sellColor,
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -168,7 +168,7 @@ fun ChartTradingPanel(
                 text = caption,
                 color = labelColor,
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
@@ -186,7 +186,7 @@ fun ChartTradingPanel(
                 text = "▼",
                 color = labelColor,
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 modifier = Modifier
                     .clickableNoIndication { onCollapsedChange(true) }
@@ -241,7 +241,7 @@ fun ChartTradingPanel(
                 text = info,
                 color = labelColor,
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -283,7 +283,7 @@ fun ChartTradingPanel(
                 text = "${pending.orderType.name} ${pending.side.name} ${trimZeros(pending.quantity)} $px",
                 color = sideColor,
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -361,7 +361,7 @@ private fun CompactHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Lvg", color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text("Lvg", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
             TerminalDropdown(
                 currentValue = leverage ?: 0,
                 items = listOf(0, 1, 2, 3, 5, 10, 20, 50, 100, 125),
@@ -375,7 +375,7 @@ private fun CompactHeader(
             text = "RO",
             color = if (reduceOnly) accent else labelColor,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             modifier = Modifier
@@ -395,7 +395,7 @@ private fun CompactHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Qty", color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            Text("Qty", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
             QtyInput(
                 qtyText = qtyText,
                 minQty = minQty,
@@ -409,7 +409,7 @@ private fun CompactHeader(
                 text = text,
                 color = if (pnlUp) buyColor else sellColor,
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
             )
@@ -427,7 +427,7 @@ private fun CompactHeader(
             text = "▲",
             color = accent,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             maxLines = 1,
             modifier = Modifier
                 .clickableNoIndication(onExpand)
@@ -447,7 +447,7 @@ private fun QtyInput(
         value = qtyText,
         onValueChange = onTextChanged,
         singleLine = true,
-        textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+        textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = TerminalFontFamily),
         cursorBrush = SolidColor(accent),
         modifier = modifier
             .height(24.dp)
@@ -461,7 +461,7 @@ private fun QtyInput(
                         text = trimZeros(minQty),
                         color = Color(0xFF5A6674),
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                     )
                 }
                 inner()
@@ -481,7 +481,7 @@ private fun SettingRow(label: String, content: @Composable RowScope.() -> Unit) 
             text = label,
             color = labelColor,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             maxLines = 1,
             modifier = Modifier.width(52.dp),
         )
@@ -501,7 +501,7 @@ private fun Chip(
         text = label,
         color = if (active) activeColor else labelColor,
         fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
@@ -539,7 +539,7 @@ private fun SideButton(
             text = label,
             color = color,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -568,7 +568,7 @@ private fun LimitButton(
             text = label,
             color = color.copy(alpha = if (ready) 1f else 0.4f),
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -591,7 +591,7 @@ private fun OptionalPriceField(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier,
     ) {
-        Text(label, color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        Text(label, color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
         BasicTextField(
             value = text,
             onValueChange = { t: String ->
@@ -599,7 +599,7 @@ private fun OptionalPriceField(
                 onChanged(t.toDoubleOrNull()?.takeIf { it > 0 })
             },
             singleLine = true,
-            textStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace),
+            textStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = TerminalFontFamily),
             cursorBrush = SolidColor(accent),
             modifier = Modifier
                 .weight(1f)
@@ -610,7 +610,7 @@ private fun OptionalPriceField(
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (text.isEmpty()) {
-                        Text("—", color = Color(0xFF555555), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("—", color = Color(0xFF555555), fontSize = 10.sp, fontFamily = TerminalFontFamily)
                     }
                     inner()
                 }

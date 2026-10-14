@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.dom.ui
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -21,7 +22,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -274,7 +274,7 @@ private fun DomNotificationItem(
                 text = notification.text,
                 color = Color(0xFFD5DBE1),
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -283,7 +283,7 @@ private fun DomNotificationItem(
                 text = "✕",
                 color = Color(0xFF8A97A5),
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 modifier = Modifier
                     .clickable {

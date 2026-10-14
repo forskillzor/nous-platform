@@ -34,9 +34,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous_platform.ui.components.TerminalButton
 import org.jetbrains.compose.resources.painterResource
 import nous_platform.composeapp.generated.resources.Res
@@ -137,7 +137,7 @@ if (ta.crossunder(fastMA, slowMA))
                 modifier = Modifier.Companion.fillMaxSize(),
                 textStyle = TextStyle(
                     color = Color(0xFFD4D4D4),
-                    fontFamily = FontFamily.Companion.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontSize = 12.sp,
                     lineHeight = 16.sp
                 ),

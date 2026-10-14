@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.core.ui.workspace
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -206,7 +206,7 @@ private fun TabItem(
             text = name,
             color = if (isActive) Color(0xFF00C853) else Color(0xFF888888),
             fontSize = 11.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 140.dp)
@@ -218,14 +218,14 @@ private fun TabItem(
                     text = "\u22EE",
                     color = if (isActive) Color(0xFF555555) else Color(0xFF333333),
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     modifier = Modifier
                         .clickable { menuExpanded = true }
                         .padding(horizontal = 2.dp)
                 )
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(
-                        text = { Text("Open in new window", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                        text = { Text("Open in new window", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
                         onClick = {
                             menuExpanded = false
                             onOpenInNewWindow()

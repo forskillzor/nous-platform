@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.rendering
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -12,7 +13,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.geometry.Offset
@@ -98,7 +98,7 @@ fun DrawScope.drawCurrentPriceBadge(
         color = Color.Green,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
-        fontFamily = FontFamily.Monospace
+        fontFamily = TerminalFontFamily
     )
 
     val textLayoutResult = textMeasurer.measure(
@@ -151,7 +151,7 @@ fun DrawScope.drawPriceLevel(
     val textStyle = TextStyle(
         color = config.axisTextColor,
         fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
         textAlign = TextAlign.Right
     )
 

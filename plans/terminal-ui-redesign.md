@@ -17,6 +17,14 @@
 
 Workspace shell, headers, содержимое панелей, пользовательский переключатель темы и окно настроек в первый этап не входят. Их планировать и проверять последовательно после стабилизации фундамента.
 
+## Текущий прогресс
+
+- [x] Этап 1. Фундамент темы, JetBrains Mono и общие компоненты — завершён; шрифт визуально проверен пользователем, JVM/JS compilation и `:platform-core:jvmTest` прошли.
+- [ ] Этап 2. Оболочка приложения и «островки» workspace — следующий в работе.
+- [ ] Этап 3. Заголовки основных панелей.
+- [ ] Этап 4. Содержимое панелей.
+- [ ] Этап 5. Переключение тем и окно настроек.
+
 ## Инварианты и ограничения
 
 - Не менять торговое поведение, default values, order flow, хранение per-panel state и настройки paper/live.
@@ -31,7 +39,7 @@ Workspace shell, headers, содержимое панелей, пользова�
 ## Текущая архитектура и точки входа
 
 - Тема: `platform-core/src/commonMain/kotlin/com/aandios/nous/core/ui/theme/Theme.kt`; сейчас содержит Material 3 color schemes, `Typography`, `Shapes`, `ChartColors` и `TradingTerminalTheme`.
-- Шрифт: `terminalFontFamily()` объявлен в `Fonts.kt`; JVM реализация в `Fonts.jvm.kt` сейчас возвращает системный `FontFamily.Monospace`. Файлы JetBrains Mono лежат в `composeApp/src/jvmMain/resources/fonts/`, поэтому необходимо отдельно определить корректный способ доставки шрифта без зависимости `platform-core` от `composeApp`.
+- Шрифт: `terminalFontFamily()` объявлен в `Fonts.kt`; JVM реализация в `Fonts.jvm.kt` загружает JetBrains Mono из `platform-core/src/jvmMain/resources/fonts/`. Общие и feature UI с явно указанным моноширинным семейством используют `TerminalFontFamily`.
 - Базовые общие компоненты находятся в `platform-core/src/commonMain/kotlin/com/aandios/nous/core/ui/component/`.
 - Похожие реализации компонентов есть в `composeApp/src/jvmMain/kotlin/com/aandios/nous_platform/ui/components/`. Нужно обследовать все call sites и определить единственную визуальную реализацию, сохранив совместимость вызывающего кода, где это необходимо.
 - Workspace grid/layout: `platform-core/.../ui/workspace/LayoutRenderer.kt`; композиция реальных панелей — `composeApp/.../ui/main/WorkspaceView.kt`.

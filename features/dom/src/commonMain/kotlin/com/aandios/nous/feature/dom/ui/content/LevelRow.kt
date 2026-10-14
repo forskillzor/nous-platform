@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.dom.ui.content
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -39,7 +40,6 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -164,7 +164,7 @@ fun LevelRow(
                         text = formatter.formatVolumeFull(bidQty),
                         color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFontFamily,
                             fontSize = 11.sp
                         ),
                         modifier = Modifier.align(Alignment.CenterStart)
@@ -183,7 +183,7 @@ fun LevelRow(
                     color = Color.White,
                     fontSize = 10.sp,
                     lineHeight = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     modifier = Modifier.align(Alignment.CenterStart)
@@ -210,7 +210,7 @@ fun LevelRow(
             text = formatter.formatPrice(price),
             color = priceColor,
             style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontSize = 11.sp,
                 fontWeight = if (isSelected || position != null || order != null) FontWeight.Bold else FontWeight.Normal
             ),
@@ -238,7 +238,7 @@ fun LevelRow(
                         text = formatter.formatVolumeFull(askQty),
                         color = MaterialTheme.colorScheme.secondary,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFontFamily,
                             fontSize = 11.sp
                         ),
                         modifier = Modifier.align(Alignment.CenterEnd)
@@ -258,7 +258,7 @@ fun LevelRow(
                         color = pnlColor,
                         fontSize = 10.sp,
                         lineHeight = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                     )
@@ -440,7 +440,7 @@ private fun OrderChip(
             color = Color.White,
             fontSize = 10.sp,
             lineHeight = 11.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
         )
         // Фиксированная часть: инпут qty
@@ -544,7 +544,7 @@ private fun QtyField(
         textStyle = TextStyle(
             color = Color(0xFF1A1A1A),
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
         ),

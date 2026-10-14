@@ -16,7 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 /**
  * Универсальный выпадающий список для терминального интерфейса.
@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.sp
  * @param items список доступных значений
  * @param onValueChanged callback при изменении значения
  * @param displayText функция для преобразования значения в отображаемый текст
- * @param menuWidth ширина выпадающего меню (по умолчанию 120.dp)
+ * @param menuWidth ширина выпадающего меню (по умолчанию из темы)
  * @param modifier Modifier для контейнера
  */
 @Composable
@@ -36,9 +36,10 @@ fun <T> TerminalDropdown(
     items: List<T>,
     onValueChanged: (T) -> Unit,
     displayText: (T) -> String,
-    menuWidth: Dp = 120.dp,
+    menuWidth: Dp? = null,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
 
     Box(
@@ -48,27 +49,27 @@ fun <T> TerminalDropdown(
         Surface(
             shape = MaterialTheme.shapes.small,
             color = MaterialTheme.colorScheme.surfaceVariant,
-            tonalElevation = 2.dp,
+            tonalElevation = tokens.spacing.xxs,
             modifier = Modifier.clickable { expanded = true }
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs)
             ) {
                 Text(
                     text = displayText(currentValue),
                     color = MaterialTheme.colorScheme.inverseOnSurface,
                     fontSize = MaterialTheme.typography.labelSmall.fontSize,
                     fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.2.sp,
+                    letterSpacing = tokens.typography.controlLetterSpacing,
                     maxLines = 1
                 )
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
                     contentDescription = "Раскрыть список",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(tokens.dimensions.dropdownIconSize)
                 )
             }
         }
@@ -77,14 +78,14 @@ fun <T> TerminalDropdown(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(menuWidth)
+            modifier = Modifier.width(menuWidth ?: tokens.dimensions.dropdownWidth)
         ) {
             items.forEach { item ->
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = displayText(item),
-                            fontSize = 12.sp,
+                            fontSize = tokens.typography.controlSize,
                             fontWeight = if (currentValue == item) FontWeight.Bold else FontWeight.Normal
                         )
                     },

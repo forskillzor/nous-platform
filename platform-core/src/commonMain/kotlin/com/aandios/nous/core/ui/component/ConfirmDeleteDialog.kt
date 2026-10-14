@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.core.ui.component
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,9 +47,9 @@ fun ConfirmDeleteDialog(
                 .background(Color(0xFF121212))
                 .padding(16.dp)
         ) {
-            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(8.dp))
-            Text(message, color = Color(0xFFAAAAAA), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
+            Text(message, color = Color(0xFFAAAAAA), fontSize = 12.sp, fontFamily = TerminalFontFamily, lineHeight = 18.sp)
             Spacer(Modifier.height(16.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -57,11 +57,11 @@ fun ConfirmDeleteDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = TerminalFontFamily)
                 }
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = onConfirm) {
-                    Text("Delete", color = Color(0xFFF44336), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("Delete", color = Color(0xFFF44336), fontSize = 12.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
                 }
             }
         }

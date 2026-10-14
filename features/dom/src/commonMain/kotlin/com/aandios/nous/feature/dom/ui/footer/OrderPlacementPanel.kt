@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.dom.ui.footer
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,7 +21,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -157,7 +157,7 @@ fun OrderPlacementPanel(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Qty:", color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Text("Qty:", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
                 BasicTextField(
                     value = orderQuantity,
                     onValueChange = onQuantityChanged,
@@ -170,7 +170,7 @@ fun OrderPlacementPanel(
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         textAlign = TextAlign.Center,
                     ),
                     singleLine = true,
@@ -182,7 +182,7 @@ fun OrderPlacementPanel(
                                     text = qtyPlaceholder,
                                     color = labelColor,
                                     fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = TerminalFontFamily,
                                     maxLines = 1,
                                 )
                             }
@@ -217,7 +217,7 @@ fun OrderPlacementPanel(
                         text = "Confirm $text",
                         color = accent,
                         fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         modifier = Modifier.weight(1f),
@@ -300,7 +300,7 @@ fun OrderPlacementPanel(
                     text = text,
                     color = labelColor,
                     fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     maxLines = 1,
                     softWrap = false,
                     modifier = Modifier.padding(top = 2.dp),
@@ -323,7 +323,7 @@ private fun PnlCell(
         text = text,
         color = color,
         fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Bold,
         maxLines = 1,
         softWrap = false,
@@ -344,7 +344,7 @@ private fun ToggleChip(
         text = label,
         color = if (active) activeColor else inactiveColor,
         fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
@@ -386,7 +386,7 @@ private fun SideButton(
             text = label,
             color = color,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )
@@ -414,7 +414,7 @@ private fun LimitButton(
             text = label,
             color = color.copy(alpha = if (ready) 1f else 0.4f),
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
         )

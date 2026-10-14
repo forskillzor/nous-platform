@@ -36,9 +36,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import kotlinx.coroutines.launch
 import org.jetbrains.compose.resources.painterResource
 import nous_platform.composeapp.generated.resources.Res
@@ -129,7 +129,7 @@ fun ConsolePanel(
                     text = line,
                     color = color,
                     style = MaterialTheme.typography.bodySmall.copy(
-                        fontFamily = FontFamily.Companion.Monospace,
+                        fontFamily = TerminalFontFamily,
                         fontSize = 11.sp
                     ),
                     modifier = Modifier.Companion.padding(vertical = 2.dp)
@@ -161,7 +161,7 @@ fun ConsolePanel(
                     .height(32.dp),
                 textStyle = TextStyle(
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontFamily = FontFamily.Companion.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontSize = 12.sp
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),

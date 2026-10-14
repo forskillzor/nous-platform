@@ -274,6 +274,12 @@ from the IDE and tests visually; agents verify via compilation and tests.
 
 ## UI conventions
 
+- Shared visual values belong in `TerminalDesignTokens` and
+  `TradingTerminalTheme`; use `TerminalFontFamily` for explicit text styles so
+  the active terminal font is respected. Desktop font resources live in
+  `platform-core/src/jvmMain/resources/fonts` and must stay on that module's
+  runtime classpath; do not replace explicit themed fonts with the platform's
+  generic `FontFamily.Monospace`.
 - Chart panel surfaces: DrawingToolPanel style — border `ChartColors.gridLine`,
   panel background, 8dp rounding.
 - Prices: always via `SymbolFormatter` (`formatPrice`, `roundPrice`).

@@ -14,16 +14,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 @Composable
 fun TerminalButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
-    height: Dp = 32.dp,
+    height: Dp? = null,
     content: @Composable () -> Unit
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     val containerColor = if (isActive) {
         MaterialTheme.colorScheme.primaryContainer
     } else {
@@ -38,14 +39,14 @@ fun TerminalButton(
 
     Button(
         onClick = onClick,
-        modifier = modifier.height(height),
+        modifier = modifier.height(height ?: tokens.dimensions.controlHeight),
         colors = ButtonDefaults.buttonColors(
             containerColor = containerColor,
             contentColor = contentColor
         ),
         shape = MaterialTheme.shapes.small,
         border = BorderStroke(
-            1.dp,
+            tokens.dimensions.borderWidth,
             if (isActive) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.outlineVariant
         )

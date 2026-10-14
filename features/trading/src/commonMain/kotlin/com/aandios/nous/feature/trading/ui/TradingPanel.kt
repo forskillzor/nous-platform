@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.trading.ui
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,7 +23,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -201,7 +201,7 @@ fun TradingPanel(
                     text = "Balance  ${primaryBalance?.let { "${fmtAmount(it.amount)} ${it.currency}" } ?: "-"}",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                 )
@@ -213,7 +213,7 @@ fun TradingPanel(
                         else -> Color(0xFFEF5350)
                     },
                     fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
                 )
@@ -222,14 +222,14 @@ fun TradingPanel(
                         text = "Equity ${fmtAmount(b.equity)} · Available ${fmtAmount(b.amount)}",
                         color = Color(0xFF8A97A5),
                         fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                     Text(
                         text = "In Position ${fmtAmount(b.margin)} · Frozen ${fmtAmount(b.frozen)} · Unrealized ${fmtSigned(b.unrealizedPnl.toDoubleOrNull() ?: 0.0)}",
                         color = Color(0xFF8A97A5),
                         fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                 }

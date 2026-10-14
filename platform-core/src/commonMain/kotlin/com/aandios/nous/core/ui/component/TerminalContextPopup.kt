@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
@@ -23,10 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 @Composable
 fun TerminalContextPopup(
@@ -41,27 +38,27 @@ fun TerminalContextPopup(
     placeholder: String = "",
     destructive: Boolean = false,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.width(280.dp).background(MaterialTheme.colorScheme.surface),
+        modifier = Modifier.width(tokens.dimensions.contextPopupWidth)
+            .background(MaterialTheme.colorScheme.surface),
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+        Column(Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md)) {
             Text(
                 title,
                 color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 13.sp,
-                fontFamily = FontFamily.Monospace,
+                fontSize = tokens.typography.bodySize,
                 fontWeight = FontWeight.Bold,
             )
             message?.let {
                 Text(
                     it,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = 16.sp,
-                    modifier = Modifier.padding(top = 8.dp),
+                    fontSize = tokens.typography.compactSize,
+                    lineHeight = tokens.typography.controlLineHeight,
+                    modifier = Modifier.padding(top = tokens.spacing.md),
                 )
             }
             if (value != null && onValueChange != null) {
@@ -71,23 +68,22 @@ fun TerminalContextPopup(
                     singleLine = true,
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontSize = tokens.typography.bodySize,
+                        fontFamily = MaterialTheme.typography.bodyMedium.fontFamily,
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = tokens.spacing.lg)
                         .background(
                             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                            RoundedCornerShape(4.dp),
+                            MaterialTheme.shapes.small,
                         )
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                        .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.md),
                     decorationBox = { inner ->
                         if (value.isEmpty()) {
                             Text(
                                 placeholder,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp,
-                                fontFamily = FontFamily.Monospace,
+                                fontSize = tokens.typography.controlSize,
                             )
                         }
                         inner()
@@ -95,7 +91,7 @@ fun TerminalContextPopup(
                 )
             }
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = tokens.spacing.md),
                 horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
             ) {

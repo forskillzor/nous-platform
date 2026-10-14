@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.tools
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -15,7 +16,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.core.ui.format.SymbolFormatter
@@ -216,7 +216,7 @@ object DrawingRenderer {
         val style = TextStyle(
             color = Color.White,
             fontSize = 10.sp,
-            fontFamily = FontFamily.Monospace
+            fontFamily = TerminalFontFamily
         )
         val layout = textMeasurer.measure(AnnotatedString(text), style)
         val labelX = if (alignRight) x - layout.size.width - 6f else x
@@ -318,7 +318,7 @@ fun DrawScope.drawProjectionPriceTags(
     fun tag(price: Float, y: Float, color: Color) {
         if (y < 0f || y > layout.chartMainArea.height) return
         val text = formatter.formatPrice(price)
-        val style = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+        val style = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = TerminalFontFamily)
         val textLayout = textMeasurer.measure(AnnotatedString(text), style)
         val labelW = textLayout.size.width + 6f
         val labelH = textLayout.size.height + 4f

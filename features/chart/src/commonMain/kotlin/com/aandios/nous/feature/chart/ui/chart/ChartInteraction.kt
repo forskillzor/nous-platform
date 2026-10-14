@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.ui.chart
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -40,7 +41,6 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -929,7 +929,7 @@ fun CandleStickChartInteraction(
                 text = "\u21E5",
                 color = if (isAtRightEdge) Color(0xFF6B7A88) else Color(0xFF5B9BD5),
                 fontSize = 14.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
             )
         }
         // Сброс превью при деактивации инструмента рисования
@@ -1066,7 +1066,7 @@ private fun TradingOrderBadge(
             color = Color.White,
             fontSize = 10.sp,
             lineHeight = 11.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             modifier = Modifier.padding(end = 4.dp),
@@ -1080,7 +1080,7 @@ private fun TradingOrderBadge(
                 fontSize = 10.sp,
                 lineHeight = 11.sp,
                 textAlign = TextAlign.Center,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Medium,
             ),
             cursorBrush = SolidColor(color),
@@ -1117,7 +1117,7 @@ private fun TradingOrderBadge(
             color = Color.White,
             fontSize = 11.sp,
             lineHeight = 12.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             maxLines = 1,
             modifier = Modifier
                 .clickable(
@@ -1193,7 +1193,7 @@ private fun TradingPositionBadge(
             color = Color.White,
             fontSize = 10.sp,
             lineHeight = 11.sp,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             modifier = Modifier.padding(start = 6.dp, end = if (pnlLabel != null) 3.dp else 6.dp),
@@ -1209,7 +1209,7 @@ private fun TradingPositionBadge(
                     color = pnlColor,
                     fontSize = 10.sp,
                     lineHeight = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                 )
@@ -1221,7 +1221,7 @@ private fun TradingPositionBadge(
                 color = Color.White,
                 fontSize = 11.sp,
                 lineHeight = 12.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 modifier = Modifier
                     .clickable(

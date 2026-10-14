@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.trades.ui.header
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -63,7 +64,7 @@ fun SizeFilterDropdown(
                 text = "Size",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 9.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
             )
             Spacer(Modifier.width(4.dp))
@@ -71,7 +72,7 @@ fun SizeFilterDropdown(
                 text = displayLabel,
                 color = MaterialTheme.colorScheme.inverseOnSurface,
                 fontSize = 11.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -81,7 +82,7 @@ fun SizeFilterDropdown(
                 text = "▾",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 9.sp,
-                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
             )
         }
 

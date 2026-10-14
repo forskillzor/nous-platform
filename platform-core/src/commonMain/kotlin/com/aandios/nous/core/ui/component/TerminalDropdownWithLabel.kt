@@ -21,8 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 /**
  * Обертка для dropdown-компонента с label слева и бордером.
@@ -37,10 +36,11 @@ fun TerminalDropdownWithLabel(
     modifier: Modifier = Modifier.Companion,
     content: @Composable () -> Unit
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Surface(
         shape = MaterialTheme.shapes.extraSmall,
         border = BorderStroke(
-            width = 1.dp,
+            width = tokens.dimensions.borderWidth,
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.8f)
         ),
         color = Color.Companion.Transparent,
@@ -48,7 +48,7 @@ fun TerminalDropdownWithLabel(
     ) {
         Row(
             verticalAlignment = Alignment.Companion.CenterVertically,
-            modifier = Modifier.Companion.padding(horizontal = 10.dp, vertical = 0.dp)
+            modifier = Modifier.Companion.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.none)
         ) {
             if (label.isNotEmpty()) {
                 // Label слева
@@ -57,22 +57,24 @@ fun TerminalDropdownWithLabel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = MaterialTheme.typography.labelSmall.fontSize,
                     fontWeight = FontWeight.Companion.Medium,
-                    letterSpacing = 0.1.sp,
-                    modifier = Modifier.Companion.padding(end = 8.dp)
+                    letterSpacing = tokens.typography.compactLetterSpacing,
+                    modifier = Modifier.Companion.padding(end = tokens.spacing.md)
                 )
 
                 // Вертикальный разделитель
                 Spacer(
                     modifier = Modifier.Companion
-                        .width(2.dp)
-                        .height(18.dp)
+                        .width(tokens.dimensions.dropdownLabelSeparatorWidth)
+                        .height(tokens.dimensions.dropdownLabelSeparatorHeight)
                         .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.8f))
                 )
             }
 
             // Dropdown справа
             Box(
-                modifier = Modifier.Companion.padding(start = if (label.isNotEmpty()) 8.dp else 0.dp)
+                modifier = Modifier.Companion.padding(
+                    start = if (label.isNotEmpty()) tokens.spacing.md else tokens.spacing.none
+                )
             ) {
                 content()
             }

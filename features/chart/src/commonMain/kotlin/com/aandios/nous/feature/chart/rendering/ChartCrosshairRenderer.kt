@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.rendering
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -13,7 +14,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.feature.chart.model.ChartLayout
@@ -132,7 +132,7 @@ private fun DrawScope.drawPriceBadgeOnScale(
     val textStyle = TextStyle(
         color = Color.White,
         fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
     )
 
     val textLayoutResult = textMeasurer.measure(
@@ -177,7 +177,7 @@ private fun DrawScope.drawTimeBadgeOnScale(
     val textStyle = TextStyle(
         color = Color.White,
         fontSize = 10.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
     )
 
     val textLayoutResult = textMeasurer.measure(

@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.core.ui.component
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,7 +25,6 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
@@ -95,7 +95,7 @@ fun SymbolSearchDropdown(
                         text = labelPrefix,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                     Spacer(Modifier.width(4.dp))
@@ -105,7 +105,7 @@ fun SymbolSearchDropdown(
                     color = MaterialTheme.colorScheme.inverseOnSurface,
                     fontSize = valueFontSize,
                     fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     letterSpacing = 0.2.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -159,13 +159,13 @@ fun SymbolSearchDropdown(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                    textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontFamily = TerminalFontFamily),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
                         .padding(horizontal = 8.dp, vertical = 5.dp),
                     decorationBox = { inner ->
-                        if (searchQuery.isEmpty()) Text("Search...", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                        if (searchQuery.isEmpty()) Text("Search...", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = TerminalFontFamily)
                         inner()
                     }
                 )
@@ -186,11 +186,11 @@ fun SymbolSearchDropdown(
                                         color = if (sym == currentSymbol) MaterialTheme.colorScheme.primary
                                                 else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                                         fontSize = 11.sp,
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = TerminalFontFamily,
                                     )
                                     if (sym in symbolsWithFootprint) {
                                         Spacer(Modifier.width(5.dp))
-                                        Text("md", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                                        Text("md", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
                                     }
                                 }
                             },
@@ -233,7 +233,7 @@ private fun TabChip(label: String, isActive: Boolean, onSelect: () -> Unit) {
         color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         fontSize = 10.sp,
         fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
         modifier = Modifier
             .clickable(onClick = onSelect)
             .background(if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f) else Color.Transparent, RoundedCornerShape(3.dp))

@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.ui
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -26,7 +27,6 @@ import androidx.compose.ui.awt.v2.SwingWindow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
@@ -355,7 +355,7 @@ private fun ChartWindowContent(
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
                     fontSize = 72.sp,
                     fontWeight = FontWeight.Light,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                 )
                 if (symbolInfo != null) {
                     Spacer(Modifier.width(10.dp))
@@ -365,7 +365,7 @@ private fun ChartWindowContent(
                             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFontFamily,
                         )
                         contractTypeLabel(symbolInfo)?.let { label ->
                             Text(
@@ -373,7 +373,7 @@ private fun ChartWindowContent(
                                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
                                 fontSize = 26.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = TerminalFontFamily,
                             )
                         }
                     }
@@ -664,7 +664,7 @@ private fun ChartNotificationItem(
                 text = notification.text,
                 color = Color(0xFFD5DBE1),
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f, fill = false),
@@ -673,7 +673,7 @@ private fun ChartNotificationItem(
                 text = "✕",
                 color = Color(0xFF8A97A5),
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 modifier = Modifier
                     .clickable {

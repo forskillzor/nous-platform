@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.ui
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -19,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -207,7 +207,7 @@ private fun <T> OptionChoiceRow(
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         fontWeight = if (value == selected) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         maxLines = 1,
                         modifier = Modifier
                             .clickable { onSelect(value) }
@@ -295,7 +295,7 @@ private fun ChartModeDropdown(mode: ChartMode, onModeChange: (ChartMode) -> Unit
                             color = if (m == mode) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                             fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFontFamily,
                         )
                     },
                     onClick = {
@@ -351,7 +351,7 @@ private fun TimeframeDropdown(currentTimeframe: String, onTimeframeChange: (Stri
                             color = if (tf == currentTimeframe) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                             fontSize = 12.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFontFamily,
                         )
                     },
                     onClick = {
@@ -382,7 +382,7 @@ private fun FpAggregationSelector(level: AggregationLevel, onChange: (Aggregatio
             Text(
                 text = label,
                 color = if (isActive) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 11.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal, fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal, fontFamily = TerminalFontFamily,
                 modifier = Modifier.clickable { onChange(ag) }.background(
                     if (isActive) accentColor.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(3.dp)
                 ).padding(horizontal = 5.dp, vertical = 3.dp),

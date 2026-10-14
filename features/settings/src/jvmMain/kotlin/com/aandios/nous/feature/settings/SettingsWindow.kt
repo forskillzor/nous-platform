@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.settings
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -16,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,7 +47,7 @@ fun SettingsWindow(
                     tabs.forEachIndexed { i, name ->
                         val active = selectedTab == i
                         Text(
-                            name, fontFamily = FontFamily.Monospace, fontSize = 11.sp,
+                            name, fontFamily = TerminalFontFamily, fontSize = 11.sp,
                             color = if (active) Color(0xFF5B9BD5) else Color(0xFF888888),
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                             modifier = Modifier
@@ -81,12 +81,12 @@ private fun StorageTab(storage: LocalStorage) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Header
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Local Storage", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-            Text(formatBytes(dbSize), color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text("Local Storage", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+            Text(formatBytes(dbSize), color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily)
         }
 
         if (stats.isEmpty()) {
-            Text("No cached data", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.padding(vertical = 20.dp))
+            Text("No cached data", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, modifier = Modifier.padding(vertical = 20.dp))
         }
 
         // Per-symbol stats
@@ -94,14 +94,14 @@ private fun StorageTab(storage: LocalStorage) {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF12171F)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(stat.key, color = Color(0xFF5B9BD5), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
-                        Text(formatBytes(stat.sizeBytes), color = Color(0xFF73D0A1), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                        Text(stat.key, color = Color(0xFF5B9BD5), fontSize = 11.sp, fontFamily = TerminalFontFamily)
+                        Text(formatBytes(stat.sizeBytes), color = Color(0xFF73D0A1), fontSize = 11.sp, fontFamily = TerminalFontFamily)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("${stat.count} rows · ${formatDuration(stat.durationMs)} · ${formatTs(stat.firstTs)} – ${formatTs(stat.lastTs)}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                        Text("${stat.count} rows · ${formatDuration(stat.durationMs)} · ${formatTs(stat.firstTs)} – ${formatTs(stat.lastTs)}", color = Color(0xFF888888), fontSize = 10.sp, fontFamily = TerminalFontFamily)
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { confirmAction = stat.key }, modifier = Modifier.height(24.dp)) {
-                            Text("Clear", color = Color(0xFFF07178), fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                            Text("Clear", color = Color(0xFFF07178), fontSize = 10.sp, fontFamily = TerminalFontFamily)
                         }
                     }
                 }
@@ -111,15 +111,15 @@ private fun StorageTab(storage: LocalStorage) {
         Spacer(Modifier.height(8.dp))
 
         // Period-based cleanup
-        Text("Delete older than", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+        Text("Delete older than", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily)
         Row(verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = deleteBeforeDays, onValueChange = { deleteBeforeDays = it.filter { c -> c.isDigit() } },
                 modifier = Modifier.width(60.dp), singleLine = true,
-                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace),
+                textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = TerminalFontFamily),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF5B9BD5))
             )
-            Text(" days ago", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text(" days ago", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily)
             Spacer(Modifier.width(8.dp))
             Button(
                 onClick = {
@@ -127,7 +127,7 @@ private fun StorageTab(storage: LocalStorage) {
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.8f)),
                 shape = RoundedCornerShape(4.dp), modifier = Modifier.height(32.dp)
-            ) { Text("Delete", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+            ) { Text("Delete", color = Color.White, fontSize = 11.sp, fontFamily = TerminalFontFamily) }
         }
 
         Spacer(Modifier.height(8.dp))
@@ -135,7 +135,7 @@ private fun StorageTab(storage: LocalStorage) {
             onClick = { confirmAction = "all" },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
             shape = RoundedCornerShape(4.dp), modifier = Modifier.fillMaxWidth()
-        ) { Text("Clear ALL Data", color = Color.White, fontSize = 12.sp, fontFamily = FontFamily.Monospace) }
+        ) { Text("Clear ALL Data", color = Color.White, fontSize = 12.sp, fontFamily = TerminalFontFamily) }
     }
 
     // Confirmation dialog
@@ -143,8 +143,8 @@ private fun StorageTab(storage: LocalStorage) {
         val msg = confirmAction!!
         AlertDialog(
             onDismissRequest = { confirmAction = null },
-            title = { Text("Confirm deletion", color = Color(0xFFF07178), fontSize = 14.sp, fontFamily = FontFamily.Monospace) },
-            text = { Text("Delete ${msg.replace("_", " ")}?\nThis cannot be undone.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+            title = { Text("Confirm deletion", color = Color(0xFFF07178), fontSize = 14.sp, fontFamily = TerminalFontFamily) },
+            text = { Text("Delete ${msg.replace("_", " ")}?\nThis cannot be undone.", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = TerminalFontFamily) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -193,22 +193,22 @@ private fun SettingsTab(storage: LocalStorage) {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Chart State", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+        Text("Chart State", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
         if (chartState != null) {
             SettingsRow("Symbol", chartState!!.symbol)
             SettingsRow("Timeframe", chartState!!.timeframe)
             SettingsRow("Mode", chartState!!.mode)
         } else {
-            Text("No saved chart state", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+            Text("No saved chart state", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily)
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("DOM Options", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Text(domOptions ?: "No saved DOM options", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 3)
+        Text("DOM Options", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+        Text(domOptions ?: "No saved DOM options", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, maxLines = 3)
 
         Spacer(Modifier.height(8.dp))
-        Text("Trades Options", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-        Text(tradesOptions ?: "No saved Trades options", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, maxLines = 3)
+        Text("Trades Options", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+        Text(tradesOptions ?: "No saved Trades options", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, maxLines = 3)
 
         Spacer(Modifier.height(12.dp))
         Button(
@@ -220,15 +220,15 @@ private fun SettingsTab(storage: LocalStorage) {
             },
             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F).copy(alpha = 0.6f)),
             shape = RoundedCornerShape(4.dp)
-        ) { Text("Clear Settings", color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace) }
+        ) { Text("Clear Settings", color = Color.White, fontSize = 11.sp, fontFamily = TerminalFontFamily) }
     }
 }
 
 @Composable
 private fun SettingsRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        Text(label, color = Color(0xFF888888), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
-        Text(value, color = Color(0xFF5B9BD5), fontFamily = FontFamily.Monospace, fontSize = 11.sp)
+        Text(label, color = Color(0xFF888888), fontFamily = TerminalFontFamily, fontSize = 11.sp)
+        Text(value, color = Color(0xFF5B9BD5), fontFamily = TerminalFontFamily, fontSize = 11.sp)
     }
 }
 

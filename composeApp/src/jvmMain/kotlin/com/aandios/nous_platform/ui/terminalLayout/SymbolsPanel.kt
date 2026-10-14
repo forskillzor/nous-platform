@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous_platform.ui.terminalLayout
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -44,7 +45,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -189,7 +189,7 @@ fun SymbolsPanel(
                 textStyle = TextStyle(
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier.weight(1f)
@@ -201,7 +201,7 @@ fun SymbolsPanel(
                             "Regex search…",
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                             fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = TerminalFontFamily,
                         )
                     }
                     inner()
@@ -214,7 +214,7 @@ fun SymbolsPanel(
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 9.sp,
                     fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     modifier = Modifier.clickable {
                         watchlistDialogName = selectedList?.name.orEmpty()
                         watchlistDialogMode = if (selectedList == null) {
@@ -290,7 +290,7 @@ fun SymbolsPanel(
                 text = if (marketState.loading) "SYNC" else "${sortedRows.size} SYMBOLS",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 9.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
                 MarketSort.entries.forEach { option ->
@@ -301,7 +301,7 @@ fun SymbolsPanel(
                         else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 8.sp,
                         fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         modifier = Modifier.clickable {
                             if (sort == option) descending = !descending
                             else {
@@ -458,7 +458,7 @@ private fun MarketWatchSymbolRow(
                         text = highlightedSymbol(row.symbol, matchRange),
                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
                         fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -467,7 +467,7 @@ private fun MarketWatchSymbolRow(
                         row.exchangeName,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 8.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                 }
@@ -476,14 +476,14 @@ private fun MarketWatchSymbolRow(
                         row.stats?.changePercent24h?.let { "%+.2f%%".format(it) } ?: "—",
                         color = changeColor,
                         fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         row.stats?.quoteVolume24h?.let(::formatMarketVolume) ?: "VOL —",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 8.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                     )
                 }
                 if (selectedList != null && inSelectedList) {
@@ -513,7 +513,7 @@ private fun MarketWatchSymbolRow(
                                         Text(
                                             "Add to ${list.name}",
                                             fontSize = 11.sp,
-                                            fontFamily = FontFamily.Monospace,
+                                            fontFamily = TerminalFontFamily,
                                         )
                                     },
                                     onClick = {
@@ -535,7 +535,7 @@ private fun MarketWatchSymbolRow(
                         "OPEN ${row.symbol} WITH",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = TerminalFontFamily,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
                     )
                     Row(
@@ -564,7 +564,7 @@ private fun MarketWatchSymbolRow(
                                     templateName,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 9.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = TerminalFontFamily,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.padding(top = 5.dp),

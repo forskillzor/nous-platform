@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.core.ui.workspace
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -33,7 +34,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
@@ -83,9 +83,9 @@ fun WelcomeScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Logo
-        Text("[Nous Platform]", color = Color(0xFF00C853), fontSize = 24.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+        Text("[Nous Platform]", color = Color(0xFF00C853), fontSize = 24.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Text("v0.1 — Professional Crypto Trading Terminal", color = Color(0xFF666666), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text("v0.1 — Professional Crypto Trading Terminal", color = Color(0xFF666666), fontSize = 12.sp, fontFamily = TerminalFontFamily)
         Spacer(Modifier.height(32.dp))
 
         // ── Quick Start (в самом верху) ────────────────────────────────────
@@ -101,7 +101,7 @@ fun WelcomeScreen(
                     "Drag a panel border — split panel into two",
                     "Left toolbar — workspaces, symbols, portfolio, console, editor"
                 ).forEach {
-                    Text(it, color = Color(0xFFAAAAAA), fontSize = 12.sp, fontFamily = FontFamily.Monospace, lineHeight = 20.sp)
+                    Text(it, color = Color(0xFFAAAAAA), fontSize = 12.sp, fontFamily = TerminalFontFamily, lineHeight = 20.sp)
                 }
             }
         }
@@ -186,7 +186,7 @@ fun WelcomeScreen(
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+    Text(text, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(12.dp))
 }
 
@@ -239,11 +239,11 @@ private fun WorkspaceCard(
         ) {
             WorkspaceLayoutThumbnail(config = config, modifier = Modifier.width(156.dp).height(90.dp))
             Spacer(Modifier.height(10.dp))
-            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold, maxLines = 1)
             Spacer(Modifier.height(4.dp))
-            Text(config.description.ifBlank { descOf(config) }, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = FontFamily.Monospace, lineHeight = 15.sp, maxLines = 2)
+            Text(config.description.ifBlank { descOf(config) }, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, lineHeight = 15.sp, maxLines = 2)
             Spacer(Modifier.height(4.dp))
-            Text(infoOf(config), color = Color(0xFF5B9BD5), fontSize = 10.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
+            Text(infoOf(config), color = Color(0xFF5B9BD5), fontSize = 10.sp, fontFamily = TerminalFontFamily, maxLines = 1)
         }
         if (hovered || menuExpanded) {
             Row(
@@ -258,7 +258,7 @@ private fun WorkspaceCard(
                         DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                             onRename?.let { fn ->
                                 DropdownMenuItem(
-                                    text = { Text("Rename", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                                    text = { Text("Rename", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
                                     onClick = {
                                         menuExpanded = false
                                         dialogText = title
@@ -268,7 +268,7 @@ private fun WorkspaceCard(
                             }
                             onDuplicate?.let { fn ->
                                 DropdownMenuItem(
-                                    text = { Text("Duplicate", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                                    text = { Text("Duplicate", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
                                     onClick = {
                                         menuExpanded = false
                                         fn()
@@ -277,7 +277,7 @@ private fun WorkspaceCard(
                             }
                             onChangeDescription?.let { fn ->
                                 DropdownMenuItem(
-                                    text = { Text("Change", fontSize = 12.sp, fontFamily = FontFamily.Monospace) },
+                                    text = { Text("Change", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
                                     onClick = {
                                         menuExpanded = false
                                         dialogText = config.description
@@ -337,7 +337,7 @@ private fun CardIconButton(icon: String, onClick: () -> Unit) {
             .size(20.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(icon, color = Color(0xFFB0B0B0), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+        Text(icon, color = Color(0xFFB0B0B0), fontSize = 12.sp, fontFamily = TerminalFontFamily)
     }
 }
 
@@ -361,13 +361,13 @@ private fun CardDialog(
                 .background(Color(0xFF121212))
                 .padding(16.dp)
         ) {
-            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
                 singleLine = true,
-                textStyle = TextStyle(color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = FontFamily.Monospace),
+                textStyle = TextStyle(color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily),
                 cursorBrush = SolidColor(Color(0xFF00C853)),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -381,11 +381,11 @@ private fun CardDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
+                    Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = TerminalFontFamily)
                 }
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { onConfirm(text) }) {
-                    Text("Save", color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("Save", color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -456,9 +456,9 @@ fun WorkspaceLayoutThumbnail(config: WorkspaceConfig, modifier: Modifier = Modif
     val panels = remember(config.panels) { config.panels.associateBy { it.id } }
     val textMeasurer = rememberTextMeasurer()
 
-    val tfStyle = TextStyle(color = Color(0xFF9EDBC0), fontSize = 9.sp, fontFamily = FontFamily.Monospace)
-    val labelStyle = TextStyle(color = Color(0xFF9AA7B4), fontSize = 8.sp, fontFamily = FontFamily.Monospace)
-    val smallStyle = TextStyle(color = Color(0xFF6FA58A), fontSize = 7.sp, fontFamily = FontFamily.Monospace)
+    val tfStyle = TextStyle(color = Color(0xFF9EDBC0), fontSize = 9.sp, fontFamily = TerminalFontFamily)
+    val labelStyle = TextStyle(color = Color(0xFF9AA7B4), fontSize = 8.sp, fontFamily = TerminalFontFamily)
+    val smallStyle = TextStyle(color = Color(0xFF6FA58A), fontSize = 7.sp, fontFamily = TerminalFontFamily)
 
     Canvas(modifier = modifier) {
         drawRect(color = Color(0xFF0D0D0D), size = size)

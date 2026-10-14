@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 @Composable
 fun TerminalInfoRow(
@@ -20,6 +21,7 @@ fun TerminalInfoRow(
     isPositive: Boolean? = null,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Row(
         modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
@@ -31,8 +33,8 @@ fun TerminalInfoRow(
         )
 
         val valueColor = when (isPositive) {
-            true -> MaterialTheme.colorScheme.primary
-            false -> MaterialTheme.colorScheme.secondary
+            true -> tokens.colors.profit
+            false -> tokens.colors.loss
             null -> MaterialTheme.colorScheme.onSurface
         }
 

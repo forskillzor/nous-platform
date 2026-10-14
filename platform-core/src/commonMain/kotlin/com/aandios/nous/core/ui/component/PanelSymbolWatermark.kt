@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.core.ui.component
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
@@ -11,7 +12,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
@@ -67,7 +67,7 @@ fun PanelTextWatermark(
             color = color,
             fontSize = bigFontSize,
             fontWeight = FontWeight.Light,
-            fontFamily = FontFamily.Monospace,
+            fontFamily = TerminalFontFamily,
             maxLines = 1,
         )
         subTexts.forEach { line ->
@@ -76,7 +76,7 @@ fun PanelTextWatermark(
                 color = color,
                 fontSize = subFontSize,
                 fontWeight = FontWeight.Bold,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
             )
         }

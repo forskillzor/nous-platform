@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.trades.ui.header
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,7 +21,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
@@ -173,7 +173,7 @@ private fun TradesSettingsGear(
                     text = "Width  ${current.roundToInt()} dp",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                 )
                 Spacer(Modifier.height(2.dp))
                 Slider(

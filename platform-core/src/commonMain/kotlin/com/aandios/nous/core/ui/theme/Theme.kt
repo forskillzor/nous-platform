@@ -9,28 +9,60 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
-// Глубокая темная цветовая схема в стиле Bloomberg/TradingView
+data class TerminalThemeDefinition(
+    val name: String,
+    val colorScheme: ColorScheme,
+    val typography: Typography,
+    val shapes: Shapes,
+    val tokens: TerminalDesignTokens,
+)
+
+val TerminalFontFamily = terminalFontFamily()
+
+private val TerminalTypography = Typography().let { defaults ->
+    Typography(
+        displayLarge = defaults.displayLarge.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Normal),
+        displayMedium = defaults.displayMedium.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Normal),
+        displaySmall = defaults.displaySmall.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Normal),
+        headlineLarge = defaults.headlineLarge.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        headlineMedium = defaults.headlineMedium.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        headlineSmall = defaults.headlineSmall.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        titleLarge = defaults.titleLarge.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        titleMedium = defaults.titleMedium.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        titleSmall = defaults.titleSmall.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        bodyLarge = defaults.bodyLarge.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Normal),
+        bodyMedium = defaults.bodyMedium.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Normal),
+        bodySmall = defaults.bodySmall.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Normal),
+        labelLarge = defaults.labelLarge.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        labelMedium = defaults.labelMedium.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+        labelSmall = defaults.labelSmall.copy(fontFamily = TerminalFontFamily, fontWeight = FontWeight.Medium),
+    )
+}
+
+private val TerminalShapes = Shapes(
+    extraSmall = RoundedCornerShape(2.dp),
+    small = RoundedCornerShape(4.dp),
+    medium = RoundedCornerShape(6.dp),
+    large = RoundedCornerShape(8.dp),
+    extraLarge = RoundedCornerShape(12.dp),
+)
+
 private val DarkTerminalColorScheme = darkColorScheme(
-    // Основные цвета
     primary = Color(0xFF00C853),
     secondary = Color(0xFFD32F2F),
     tertiary = Color(0xFF2196F3),
-
-    // Фоны
     background = Color(0xFF0A0A0A),
     surface = Color(0xFF121212),
     surfaceVariant = Color(0xFF1E1E1E),
-    // Без тонирования elevated Surface в primary (иначе панели зеленеют)
     surfaceTint = Color.Transparent,
-
-    // Текст
     onPrimary = Color.Black,
     onSecondary = Color.Black,
     onTertiary = Color.White,
@@ -38,14 +70,11 @@ private val DarkTerminalColorScheme = darkColorScheme(
     onSurface = Color(0xFFCCCCCC),
     onSurfaceVariant = Color(0xFF888888),
     inverseOnSurface = Color(0xFFFFEB00),
-
-    // Состояния
     error = Color(0xFFCF6679),
     outline = Color(0xFF333333),
     outlineVariant = Color(0xFF444444),
 )
 
-// Еще более темная схема для ночного режима
 private val NightTerminalColorScheme = darkColorScheme(
     primary = Color(0xFF4CAF50),
     secondary = Color(0xFFF44336),
@@ -59,144 +88,109 @@ private val NightTerminalColorScheme = darkColorScheme(
     outline = Color(0xFF222222),
 )
 
-// Определяем моноширинный шрифт
-private val TerminalFontFamily = terminalFontFamily()
+private fun terminalTokens(colorScheme: ColorScheme) = TerminalDesignTokens(
+    colors = TerminalSemanticColors(
+        bullish = colorScheme.primary,
+        bearish = colorScheme.secondary,
+        candleShadow = Color(0xFF666666),
+        dojiLine = Color(0xFFAAAAAA),
+        chartBackground = Color(0xFF050505),
+        gridLine = Color(0xFF222222),
+        gridLineMajor = Color(0xFF333333),
+        axisText = Color(0xFF888888),
+        volumeBullish = Color(0x4D00C853),
+        volumeBearish = Color(0x4DD32F2F),
+        selection = Color(0x33FFEB3B),
+        crosshair = Color(0x66FFFFFF),
+        cursorLine = Color(0x44FFFFFF),
+        orderBackground = Color(0x1AFFFFFF),
+        buyOrder = colorScheme.primary,
+        sellOrder = colorScheme.secondary,
+        profit = colorScheme.primary,
+        loss = colorScheme.secondary,
+        neutral = Color(0xFF757575),
+        sma = Color(0xFF2196F3),
+        ema = Color(0xFFFF9800),
+        ema2 = Color(0xFFFF5722),
+        bollinger = Color(0xFF9C27B0),
+        rsi = Color(0xFF00BCD4),
+        macd = Color(0xFFE91E63),
+        signal = Color(0xFF8BC34A),
+        supportLevel = Color(0xFF4CAF50),
+        resistanceLevel = Color(0xFFF44336),
+        warning = Color(0xFFE0A95B),
+        accent = Color(0xFF5B9BD5),
+        label = Color(0xFF8A97A5),
+        pnlPlate = Color(0xFF1B222B),
+        switchTrack = Color(0xFF00C853).copy(alpha = 0.65f),
+    ),
+)
 
-// Типографика для трейдингового терминала (исправленная)
-private val TerminalTypography = Typography(
-    displayLarge = Typography().displayLarge.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Normal
-    ),
-    displayMedium = Typography().displayMedium.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Normal
-    ),
-    displaySmall = Typography().displaySmall.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Normal
-    ),
-    headlineLarge = Typography().headlineLarge.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    headlineMedium = Typography().headlineMedium.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    headlineSmall = Typography().headlineSmall.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    titleLarge = Typography().titleLarge.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    titleMedium = Typography().titleMedium.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    titleSmall = Typography().titleSmall.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    bodyLarge = Typography().bodyLarge.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Normal
-    ),
-    bodyMedium = Typography().bodyMedium.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Normal
-    ),
-    bodySmall = Typography().bodySmall.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Normal
-    ),
-    labelLarge = Typography().labelLarge.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    labelMedium = Typography().labelMedium.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
-    ),
-    labelSmall = Typography().labelSmall.copy(
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Medium
+object TerminalThemes {
+    val Dark = TerminalThemeDefinition(
+        name = "Dark",
+        colorScheme = DarkTerminalColorScheme,
+        typography = TerminalTypography,
+        shapes = TerminalShapes,
+        tokens = terminalTokens(DarkTerminalColorScheme),
     )
-)
 
-// Формы (скругления) - исправляем для десктопа
-private val TerminalShapes = Shapes(
-    extraSmall = RoundedCornerShape(2.dp),
-    small = RoundedCornerShape(4.dp),
-    medium = RoundedCornerShape(6.dp),
-    large = RoundedCornerShape(8.dp),
-    extraLarge = RoundedCornerShape(12.dp)
-)
+    val Night = TerminalThemeDefinition(
+        name = "Night",
+        colorScheme = NightTerminalColorScheme,
+        typography = TerminalTypography,
+        shapes = TerminalShapes,
+        tokens = terminalTokens(NightTerminalColorScheme),
+    )
+}
 
-// Цвета специально для графиков
 object ChartColors {
-    // Свечи
-    val bullish = DarkTerminalColorScheme.primary
-    val bearish = DarkTerminalColorScheme.secondary
-    val candleShadow = Color(0xFF666666)
-    val dojiLine = Color(0xFFAAAAAA)
-
-    // Фон графика
-    val chartBackground = Color(0xFF050505) // Чуть темнее основного фона
-
-    // Сетка и оси
-    val gridLine = Color(0xFF222222)
-    val gridLineMajor = Color(0xFF333333)
-    val axisText = Color(0xFF888888)
-
-    // Объем
-    val volumeBullish = Color(0x4D00C853) // 30% прозрачности
-    val volumeBearish = Color(0x4DD32F2F)
-
-    // Индикаторы
-    val sma = Color(0xFF2196F3)
-    val ema = Color(0xFFFF9800)
-    val ema2 = Color(0xFFFF5722)
-    val bollingerUpper = Color(0xFF9C27B0)
-    val bollingerLower = Color(0xFF9C27B0)
-    val rsi = Color(0xFF00BCD4)
-    val macd = Color(0xFFE91E63)
-    val signal = Color(0xFF8BC34A)
-
-    // Уровни
-    val supportLevel = Color(0xFF4CAF50)
-    val resistanceLevel = Color(0xFFF44336)
-
-    // Выделение
-    val selection = Color(0x33FFEB3B) // 20% прозрачности
-    val crosshair = Color(0x66FFFFFF) // 40% прозрачности
-    val cursorLine = Color(0x44FFFFFF)
-
-    // Ордера
-    val buyOrder = Color(0xFF00C853)
-    val sellOrder = Color(0xFFD32F2F)
-    val orderBackground = Color(0x1AFFFFFF)
-
-    // Портфель
-    val profit = Color(0xFF00C853)
-    val loss = Color(0xFFD32F2F)
-    val neutral = Color(0xFF757575)
+    val bullish = TerminalThemes.Dark.tokens.colors.bullish
+    val bearish = TerminalThemes.Dark.tokens.colors.bearish
+    val candleShadow = TerminalThemes.Dark.tokens.colors.candleShadow
+    val dojiLine = TerminalThemes.Dark.tokens.colors.dojiLine
+    val chartBackground = TerminalThemes.Dark.tokens.colors.chartBackground
+    val gridLine = TerminalThemes.Dark.tokens.colors.gridLine
+    val gridLineMajor = TerminalThemes.Dark.tokens.colors.gridLineMajor
+    val axisText = TerminalThemes.Dark.tokens.colors.axisText
+    val volumeBullish = TerminalThemes.Dark.tokens.colors.volumeBullish
+    val volumeBearish = TerminalThemes.Dark.tokens.colors.volumeBearish
+    val sma = TerminalThemes.Dark.tokens.colors.sma
+    val ema = TerminalThemes.Dark.tokens.colors.ema
+    val ema2 = TerminalThemes.Dark.tokens.colors.ema2
+    val bollingerUpper = TerminalThemes.Dark.tokens.colors.bollinger
+    val bollingerLower = TerminalThemes.Dark.tokens.colors.bollinger
+    val rsi = TerminalThemes.Dark.tokens.colors.rsi
+    val macd = TerminalThemes.Dark.tokens.colors.macd
+    val signal = TerminalThemes.Dark.tokens.colors.signal
+    val supportLevel = TerminalThemes.Dark.tokens.colors.supportLevel
+    val resistanceLevel = TerminalThemes.Dark.tokens.colors.resistanceLevel
+    val selection = TerminalThemes.Dark.tokens.colors.selection
+    val crosshair = TerminalThemes.Dark.tokens.colors.crosshair
+    val cursorLine = TerminalThemes.Dark.tokens.colors.cursorLine
+    val buyOrder = TerminalThemes.Dark.tokens.colors.buyOrder
+    val sellOrder = TerminalThemes.Dark.tokens.colors.sellOrder
+    val orderBackground = TerminalThemes.Dark.tokens.colors.orderBackground
+    val profit = TerminalThemes.Dark.tokens.colors.profit
+    val loss = TerminalThemes.Dark.tokens.colors.loss
+    val neutral = TerminalThemes.Dark.tokens.colors.neutral
 }
 
 @Composable
 fun TradingTerminalTheme(
     darkTheme: Boolean = true, // Всегда темная тема
     nightMode: Boolean = false, // Дополнительный ночной режим
+    theme: TerminalThemeDefinition? = null,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (nightMode) NightTerminalColorScheme else DarkTerminalColorScheme
+    val selectedTheme = theme ?: if (nightMode) TerminalThemes.Night else TerminalThemes.Dark
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = TerminalTypography,
-        shapes = TerminalShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalTerminalDesignTokens provides selectedTheme.tokens) {
+        MaterialTheme(
+            colorScheme = selectedTheme.colorScheme,
+            typography = selectedTheme.typography,
+            shapes = selectedTheme.shapes,
+            content = content,
+        )
+    }
 }

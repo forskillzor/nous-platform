@@ -11,8 +11,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 // Темные карточки для панелей
 @Composable
@@ -20,14 +20,15 @@ fun TerminalCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        shape = RectangleShape
+        border = BorderStroke(tokens.dimensions.borderWidth, MaterialTheme.colorScheme.outline),
+        shape = RoundedCornerShape(tokens.cornerRadii.card)
     ) {
         content()
     }

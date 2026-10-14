@@ -14,8 +14,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 // Поле ввода терминала (исправленное для Compose Desktop)
 @Composable
@@ -25,12 +24,13 @@ fun TerminalTextField(
     modifier: Modifier = Modifier,
     label: @Composable (() -> Unit)? = null
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
-            .height(32.dp) // Фиксированная высота
-            .defaultMinSize(minHeight = 32.dp), // Минимальная высота
+            .height(tokens.dimensions.controlHeight)
+            .defaultMinSize(minHeight = tokens.dimensions.controlHeight),
         label = label,
         colors = OutlinedTextFieldDefaults.colors(
             focusedTextColor = MaterialTheme.colorScheme.onSurface,
@@ -43,11 +43,10 @@ fun TerminalTextField(
         ),
         singleLine = true,
         textStyle = LocalTextStyle.current.copy(
-            fontSize = 13.sp, // Оптимальный размер для десктопа
-            lineHeight = 16.sp
+            fontSize = tokens.typography.bodySize,
+            lineHeight = tokens.typography.controlLineHeight,
         ),
         shape = MaterialTheme.shapes.small,
-        // Важно: настраиваем внутренние отступы
         visualTransformation = VisualTransformation.None
     )
 }

@@ -11,7 +11,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 @Composable
 fun TerminalBadge(
@@ -19,6 +19,7 @@ fun TerminalBadge(
     isBullish: Boolean? = null,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     val backgroundColor = when (isBullish) {
         true -> MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
         false -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f)
@@ -40,7 +41,7 @@ fun TerminalBadge(
             text = text,
             color = textColor,
             style = MaterialTheme.typography.labelSmall,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs)
         )
     }
 }

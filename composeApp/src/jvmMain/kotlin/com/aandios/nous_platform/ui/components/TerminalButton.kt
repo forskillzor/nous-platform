@@ -5,49 +5,19 @@
 
 package com.aandios.nous_platform.ui.components
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.height
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.component.TerminalButton as SharedTerminalButton
 
-// Кнопка терминала (исправленная)
 @Composable
 fun TerminalButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
     content: @Composable () -> Unit
-) {
-    val containerColor = if (isActive) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
-    }
-
-    val contentColor = if (isActive) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    Button(
-        onClick = onClick,
-        modifier = modifier.height(32.dp),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = containerColor,
-            contentColor = contentColor
-        ),
-        shape = MaterialTheme.shapes.small,
-        border = BorderStroke(
-            1.dp,
-            if (isActive) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.outlineVariant
-        )
-    ) {
-        content()
-    }
-}
+) = SharedTerminalButton(
+    onClick = onClick,
+    modifier = modifier,
+    isActive = isActive,
+    content = content,
+)

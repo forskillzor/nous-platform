@@ -5,22 +5,12 @@
 
 package com.aandios.nous_platform.ui.components
 
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.component.TerminalPanelTitle as SharedTerminalPanelTitle
 
 @Composable
 fun TerminalPanelTitle(
     text: String,
     modifier: Modifier = Modifier
-) {
-    Text(
-        text = text,
-        modifier = modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        style = MaterialTheme.typography.titleSmall
-    )
-}
+) = SharedTerminalPanelTitle(text, modifier)

@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous_platform.ui.terminalLayout
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,7 +83,7 @@ fun PaperSettingsOverlay() {
                     text = "Paper trading settings",
                     color = Color(0xFFD5DBE1),
                     fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
                 )
@@ -91,7 +91,7 @@ fun PaperSettingsOverlay() {
                     text = "✕",
                     color = labelColor,
                     fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                     modifier = Modifier
                         .clickable { controller.close() }
                         .padding(horizontal = 4.dp),
@@ -102,19 +102,19 @@ fun PaperSettingsOverlay() {
                 text = "USDT  available ${usdt?.amount ?: "0"}   margin ${usdt?.margin ?: "0"}   equity ${usdt?.equity ?: "0"}",
                 color = labelColor,
                 fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
             )
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("Amount", color = labelColor, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                Text("Amount", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
                 BasicTextField(
                     value = amountText,
                     onValueChange = { amountText = it },
                     singleLine = true,
-                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = FontFamily.Monospace),
+                    textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = TerminalFontFamily),
                     cursorBrush = SolidColor(accent),
                     modifier = Modifier
                         .weight(1f)
@@ -180,7 +180,7 @@ fun PaperSettingsOverlay() {
                     text = it,
                     color = okColor,
                     fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = TerminalFontFamily,
                 )
             }
             Text(
@@ -188,7 +188,7 @@ fun PaperSettingsOverlay() {
                     "Fees come from the active exchange when available.",
                 color = Color(0xFF5A6674),
                 fontSize = 10.sp,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = TerminalFontFamily,
             )
         }
     }
@@ -205,7 +205,7 @@ private fun ActionChip(
         text = label,
         color = if (enabled) color else color.copy(alpha = 0.35f),
         fontSize = 11.sp,
-        fontFamily = FontFamily.Monospace,
+        fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier

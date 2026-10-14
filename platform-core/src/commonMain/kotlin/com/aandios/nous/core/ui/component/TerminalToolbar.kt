@@ -16,8 +16,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 // Панель инструментов
 @Composable
@@ -25,17 +25,18 @@ fun TerminalToolbar(
     modifier: Modifier = Modifier,
     content: @Composable RowScope.() -> Unit
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Surface(
         modifier = modifier,
         color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RectangleShape
+        shape = RoundedCornerShape(tokens.cornerRadii.toolbar)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .height(tokens.dimensions.toolbarHeight)
+                .padding(horizontal = tokens.spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
             content = content
         )

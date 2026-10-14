@@ -10,7 +10,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 @Composable
 fun TerminalSwitch(
@@ -18,6 +18,7 @@ fun TerminalSwitch(
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
@@ -25,7 +26,7 @@ fun TerminalSwitch(
         colors = SwitchDefaults.colors(
             // Активный: серый кружок на терминальном зелёном треке
             checkedThumbColor = MaterialTheme.colorScheme.outlineVariant,
-            checkedTrackColor = Color(0xFF00C853).copy(alpha = 0.65f),
+            checkedTrackColor = tokens.colors.switchTrack,
             // Неактивный — как раньше (серый)
             uncheckedThumbColor = MaterialTheme.colorScheme.outlineVariant,
             uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,

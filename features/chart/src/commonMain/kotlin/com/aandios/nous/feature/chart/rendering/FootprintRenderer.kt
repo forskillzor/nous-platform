@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.rendering
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -16,7 +17,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.FootprintLevel
@@ -191,17 +191,17 @@ fun DrawScope.drawFootprintPopup(
     val darkRed = Color(0xFF5D1A1A)
 
     val title = "Price       Ask    Bid"
-    val titleStyle = TextStyle(color = Color(0xFF5B9BD5), fontSize = fontSize, fontFamily = FontFamily.Monospace)
+    val titleStyle = TextStyle(color = Color(0xFF5B9BD5), fontSize = fontSize, fontFamily = TerminalFontFamily)
     val titleLayout = textMeasurer.measure(AnnotatedString(title), titleStyle)
 
     // Measure column positions: Price | Ask | Bid
     val priceX = 4f
-    val askX = priceX + textMeasurer.measure(AnnotatedString("  64321.12 "), TextStyle(fontSize = fontSize, fontFamily = FontFamily.Monospace)).size.width + 4f
-    val bidX = askX + textMeasurer.measure(AnnotatedString(" 12345 "), TextStyle(fontSize = fontSize, fontFamily = FontFamily.Monospace)).size.width + 4f
+    val askX = priceX + textMeasurer.measure(AnnotatedString("  64321.12 "), TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)).size.width + 4f
+    val bidX = askX + textMeasurer.measure(AnnotatedString(" 12345 "), TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)).size.width + 4f
 
     val fmt = config.priceFormatter
 
-    val panelW = textMeasurer.measure(AnnotatedString("  64321.12   12345   12345"), TextStyle(fontSize = fontSize, fontFamily = FontFamily.Monospace)).size.width + 50f
+    val panelW = textMeasurer.measure(AnnotatedString("  64321.12   12345   12345"), TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)).size.width + 50f
     val gapBetweenRows = 2f
     val rowH = 14f
     val panelH = titleLayout.size.height + viewLevels.size * rowH + (viewLevels.size - 1) * gapBetweenRows + 10f
@@ -232,14 +232,14 @@ fun DrawScope.drawFootprintPopup(
 
         // Price text
         val priceText = fmt.formatPrice(level.priceFloat)
-        val priceLayout = textMeasurer.measure(AnnotatedString(priceText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = FontFamily.Monospace))
+        val priceLayout = textMeasurer.measure(AnnotatedString(priceText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily))
         drawText(priceLayout, topLeft = Offset(panelX + priceX, yOff))
 
         // Ask volume bar + text (left column after price)
         val askVol = level.askVolumeFloat
         val askBarW = (askVol / maxVol * 30f).coerceAtLeast(if (askVol > 0f) 2f else 0f)
         val askText = fmt.formatVolume(askVol)
-        val askLayout = textMeasurer.measure(AnnotatedString(askText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = FontFamily.Monospace))
+        val askLayout = textMeasurer.measure(AnnotatedString(askText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily))
         val askTextX = panelX + askX
         if (askBarW > 0f) drawRect(color = darkRed, topLeft = Offset(askTextX + askLayout.size.width + 2f, yOff + 2f), size = Size(askBarW, maxOf(rowH - 4f, 1f)))
         drawText(askLayout, topLeft = Offset(askTextX, yOff))
@@ -248,7 +248,7 @@ fun DrawScope.drawFootprintPopup(
         val bidVol = level.bidVolumeFloat
         val bidBarW = (bidVol / maxVol * 30f).coerceAtLeast(if (bidVol > 0f) 2f else 0f)
         val bidText = fmt.formatVolume(bidVol)
-        val bidLayout = textMeasurer.measure(AnnotatedString(bidText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = FontFamily.Monospace))
+        val bidLayout = textMeasurer.measure(AnnotatedString(bidText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily))
         val bidTextX = panelX + bidX
         if (bidBarW > 0f) drawRect(color = darkGreen, topLeft = Offset(bidTextX + bidLayout.size.width + 2f, yOff + 2f), size = Size(bidBarW, maxOf(rowH - 4f, 1f)))
         drawText(bidLayout, topLeft = Offset(bidTextX, yOff))
