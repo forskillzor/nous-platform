@@ -32,6 +32,7 @@ import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
 import org.koin.core.qualifier.named
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
+import com.aandios.nous_platform.ui.terminalLayout.MarketWatchStore
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
 
@@ -65,6 +66,7 @@ val appModule = module {
     }
 
     single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
+    single { MarketWatchStore(get()) }
 
     // 3. Footprint API client (market-data-server)
     single<FootprintApiClient> {

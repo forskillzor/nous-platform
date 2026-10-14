@@ -32,7 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.flowOf
 
-enum class SymbolTab { ALL, FAVORITES, MD, WATCHLIST }
+enum class SymbolTab { ALL, MD, WATCHLIST }
 
 /**
  * Унифицированный дропдаун выбора символа с поиском и табами.
@@ -41,8 +41,6 @@ enum class SymbolTab { ALL, FAVORITES, MD, WATCHLIST }
  * @param symbols полный список символов
  * @param currentSymbol текущий выбранный символ
  * @param onSymbolSelected callback при выборе
- * @param favorites сет избранных символов
- * @param onToggleFavorite callback для добавления/удаления из избранного
  * @param symbolWithFootprint сет символов с агрегатами на market-data-server
  * @param modifier модификатор
  */
@@ -51,8 +49,6 @@ fun SymbolSearchDropdown(
     symbols: List<String>,
     currentSymbol: String,
     onSymbolSelected: (String) -> Unit,
-    favorites: Set<String> = emptySet(),
-    onToggleFavorite: ((String) -> Unit)? = null,
     symbolsWithFootprint: Set<String> = emptySet(),
     modifier: Modifier = Modifier,
     showLabel: Boolean = true,
@@ -72,17 +68,16 @@ fun SymbolSearchDropdown(
 
     if (!expanded) { searchQuery = "" }
 
-    val sortedSymbols = remember(symbols, activeTab, favorites, symbolsWithFootprint, watchlists, activeWatchlistId) {
+    val sortedSymbols = remember(symbols, activeTab, symbolsWithFootprint, watchlists, activeWatchlistId) {
         val base = when (activeTab) {
             SymbolTab.ALL -> symbols
-            SymbolTab.FAVORITES -> symbols.filter { it in favorites }
             SymbolTab.MD -> symbols.filter { it in symbolsWithFootprint }
             SymbolTab.WATCHLIST -> {
                 val selectedSymbols = watchlists.firstOrNull { it.id == activeWatchlistId }?.symbols.orEmpty()
                 symbols.filter { it in selectedSymbols }
             }
         }
-        base.sortedWith(compareBy({ it !in favorites }, { it }))
+        base.sorted()
     }
 
     val searchResult = remember(sortedSymbols, searchQuery) {
@@ -131,7 +126,7 @@ fun SymbolSearchDropdown(
                 modifier = Modifier.widthIn(min = 200.dp, max = 280.dp)
             ) {
                 // Tabs
-                if (symbolsWithFootprint.isNotEmpty() || favorites.isNotEmpty() || watchlists.isNotEmpty()) {
+                if (symbolsWithFootprint.isNotEmpty() || watchlists.isNotEmpty()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
                             .padding(horizontal = 8.dp, vertical = 2.dp),
@@ -139,10 +134,6 @@ fun SymbolSearchDropdown(
                     ) {
                         TabChip("All", activeTab == SymbolTab.ALL) {
                             activeTab = SymbolTab.ALL
-                            activeWatchlistId = null
-                        }
-                        TabChip("Fav", activeTab == SymbolTab.FAVORITES) {
-                            activeTab = SymbolTab.FAVORITES
                             activeWatchlistId = null
                         }
                         if (symbolsWithFootprint.isNotEmpty()) {
@@ -200,10 +191,6 @@ fun SymbolSearchDropdown(
                                     if (sym in symbolsWithFootprint) {
                                         Spacer(Modifier.width(5.dp))
                                         Text("md", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                                    }
-                                    if (sym in favorites) {
-                                        Spacer(Modifier.width(5.dp))
-                                        Text("★", color = MaterialTheme.colorScheme.inverseOnSurface, fontSize = 10.sp)
                                     }
                                 }
                             },

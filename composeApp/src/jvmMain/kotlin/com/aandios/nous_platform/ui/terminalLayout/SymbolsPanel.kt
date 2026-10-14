@@ -49,10 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.ProviderRegistry
-import com.aandios.nous.api.market.adapters.MarketOverviewAdapter
-import com.aandios.nous.api.market.model.MarketTickerStats
 import com.aandios.nous.core.ui.component.ExchangeDropdown
 import com.aandios.nous.core.ui.component.highlightedSymbol
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
@@ -64,8 +61,6 @@ import com.aandios.nous.core.ui.component.searchSymbols
 import com.aandios.nous.core.ui.workspace.WorkspaceLayoutThumbnail
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -75,13 +70,6 @@ private enum class MarketSort(val label: String) {
     VOLUME("VOL 24H"),
     PRICE("PRICE"),
 }
-
-private data class MarketWatchRow(
-    val exchangeId: String,
-    val exchangeName: String,
-    val symbol: String,
-    val stats: MarketTickerStats?,
-)
 
 private data class WatchlistChoice(val id: String?, val title: String)
 
@@ -105,13 +93,12 @@ fun SymbolsPanel(
     modifier: Modifier = Modifier,
 ) {
     val registry: ProviderRegistry = koinInject()
+    val marketWatchStore: MarketWatchStore = koinInject()
+    val marketState by marketWatchStore.state.collectAsState()
     val watchlistsRepository = LocalSymbolWatchlistRepository.current
     val watchlists by watchlistsRepository?.lists?.collectAsState()
         ?: remember { mutableStateOf(emptyList()) }
     val scope = rememberCoroutineScope()
-    var rows by remember { mutableStateOf<List<MarketWatchRow>>(emptyList()) }
-    var loading by remember { mutableStateOf(false) }
-    var loadError by remember { mutableStateOf<String?>(null) }
     var selectedExchange by remember { mutableStateOf(ALL_EXCHANGES) }
     var selectedListId by remember { mutableStateOf<String?>(null) }
     var search by remember { mutableStateOf("") }
@@ -121,28 +108,6 @@ fun SymbolsPanel(
     var sort by remember { mutableStateOf(MarketSort.SYMBOL) }
     var descending by remember { mutableStateOf(false) }
 
-    LaunchedEffect(registry) {
-        while (isActive) {
-            loading = true
-            val failures = mutableListOf<String>()
-            val refreshed = buildList {
-                registry.providers.forEach { provider ->
-                    try {
-                        addAll(provider.toMarketWatchRows())
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        failures += "${provider.config.displayName}: ${e.message ?: "market data unavailable"}"
-                    }
-                }
-            }
-            rows = refreshed
-            loadError = failures.takeIf { it.isNotEmpty() }?.joinToString("\n")
-            loading = false
-            delay(30_000)
-        }
-    }
-
     val selectedList = watchlists.firstOrNull { it.id == selectedListId }
     val listChoices = remember(watchlists) {
         listOf(WatchlistChoice(null, MARKET_LIST_LABEL)) +
@@ -150,8 +115,9 @@ fun SymbolsPanel(
     }
     val selectedListChoice = listChoices.firstOrNull { it.id == selectedListId }
         ?: listChoices.first()
-    val exchangeRows = remember(rows, selectedExchange) {
-        if (selectedExchange == ALL_EXCHANGES) rows else rows.filter { it.exchangeId == selectedExchange }
+    val exchangeRows = remember(marketState.rows, selectedExchange) {
+        if (selectedExchange == ALL_EXCHANGES) marketState.rows
+        else marketState.rows.filter { it.exchangeId == selectedExchange }
     }
     val listRows = remember(exchangeRows, selectedList) {
         selectedList?.let { list -> exchangeRows.filter { it.symbol in list.symbols } } ?: exchangeRows
@@ -321,7 +287,7 @@ fun SymbolsPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(
-                text = if (loading) "SYNC" else "${sortedRows.size} SYMBOLS",
+                text = if (marketState.loading) "SYNC" else "${sortedRows.size} SYMBOLS",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 9.sp,
                 fontFamily = FontFamily.Monospace,
@@ -365,16 +331,16 @@ fun SymbolsPanel(
             )
         }
 
-        if (loadError != null) {
+        if (marketState.error != null) {
             Text(
-                loadError.orEmpty(),
+                marketState.error.orEmpty(),
                 color = MaterialTheme.colorScheme.error,
                 fontSize = 9.sp,
                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             )
         }
 
-        if (loading && rows.isEmpty()) {
+        if (marketState.loading && marketState.rows.isEmpty()) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(12.dp),
                 strokeWidth = 2.dp,
@@ -609,24 +575,6 @@ private fun MarketWatchSymbolRow(
                 }
             }
         }
-    }
-}
-
-private suspend fun Provider.toMarketWatchRows(): List<MarketWatchRow> {
-    val symbols = symbolInfo?.getAllSymbolsInfo()
-        ?.filter { it.status == "TRADING" }
-        ?.map { it.symbol }
-        .orEmpty()
-    val stats = (bookTicker as? MarketOverviewAdapter)?.getMarketOverview().orEmpty()
-        .associateBy { it.symbol }
-    val marketSymbols = (symbols + stats.keys).distinct()
-    return marketSymbols.map { symbol ->
-        MarketWatchRow(
-            exchangeId = providerId,
-            exchangeName = config.displayName,
-            symbol = symbol,
-            stats = stats[symbol],
-        )
     }
 }
 

@@ -25,6 +25,7 @@ import com.aandios.nous.core.workspace.viewmodel.WindowManager
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
+import com.aandios.nous_platform.ui.terminalLayout.MarketWatchStore
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -52,6 +53,8 @@ fun TerminalWindowContent(
     val density = LocalDensity.current
     val symbolWatchlists: SymbolWatchlistRepository = koinInject()
     LaunchedEffect(symbolWatchlists) { symbolWatchlists.load() }
+    val marketWatchStore: MarketWatchStore = koinInject()
+    LaunchedEffect(marketWatchStore) { marketWatchStore.start() }
 
     // Публикуем границы окна (px) для hit-test переноса вкладок + персистим геометрию
     LaunchedEffect(session.id, windowState) {
