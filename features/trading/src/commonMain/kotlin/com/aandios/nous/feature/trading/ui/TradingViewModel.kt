@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 class TradingViewModel(
     private val providerRegistry: ProviderRegistry,
     private val stateStore: StateStore? = null,
+    private val paperModeState: PaperModeState? = null,
 ) : Disposable {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -115,8 +116,10 @@ class TradingViewModel(
 
     init {
         scope.launch {
-            // Paper-режим панели переживает перезапуск (общий ключ панели)
-            _paperEnabled.value = stateStore?.getString(PaperTrading.STORE_KEY) == "1"
+            // Paper-режим панели переживает перезапуск (общий ключ панели);
+            // при наличии общего PaperModeState — берём значение оттуда
+            _paperEnabled.value = paperModeState?.enabled?.value
+                ?: (stateStore?.getString(PaperTrading.STORE_KEY) == "1")
             // Биржа панели тоже переживает перезапуск (как paper-режим)
             stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
                 if (providerRegistry.get(saved) != null) _providerId.value = saved
@@ -126,6 +129,17 @@ class TradingViewModel(
                 runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
             }
             restart()
+        }
+        // Внешние переключения Paper (например, свич в TopBar) — перечитываем
+        paperModeState?.let { state ->
+            scope.launch {
+                state.enabled.collect { enabled ->
+                    if (enabled != _paperEnabled.value) {
+                        _paperEnabled.value = enabled
+                        reload()
+                    }
+                }
+            }
         }
     }
 
@@ -157,8 +171,14 @@ class TradingViewModel(
     fun setPaperEnabled(enabled: Boolean) {
         if (_paperEnabled.value == enabled) return
         _paperEnabled.value = enabled
-        scope.launch {
-            stateStore?.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
+        val shared = paperModeState
+        if (shared != null) {
+            // Общий флаг: TopBar обновится; свой коллектор увидит equal — без двойного reload
+            shared.set(enabled)
+        } else {
+            scope.launch {
+                stateStore?.putString(PaperTrading.STORE_KEY, if (enabled) "1" else "0")
+            }
         }
         reload()
     }

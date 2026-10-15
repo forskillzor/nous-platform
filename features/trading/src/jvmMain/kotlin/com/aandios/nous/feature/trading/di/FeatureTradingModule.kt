@@ -39,8 +39,9 @@ val featureTradingModule = module {
     }
     single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
 
-    factory { TradingViewModel(providerRegistry = get(), stateStore = getOrNull()) }
+    factory { TradingViewModel(providerRegistry = get(), stateStore = getOrNull(), paperModeState = getOrNull()) }
 
-    // Paper: контроллер окна настроек (оверлей рендерится на корне приложения)
+    // Paper: общий флаг + контроллер окна настроек (оверлей рендерится на корне приложения)
+    single { com.aandios.nous.feature.trading.ui.PaperModeState(stateStore = getOrNull()) }
     single { com.aandios.nous.feature.trading.ui.PaperSettingsController() }
 }

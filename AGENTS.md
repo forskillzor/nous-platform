@@ -63,7 +63,10 @@ Mind this when writing paths.
   persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
   `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId).
 - Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`),
-  `trading_provider`, `trading_contract_type` (global keys).
+  `trading_provider`, `trading_contract_type` (global keys). The window top bar
+  Paper switch writes the same `paper_enabled` flag through the shared
+  `PaperModeState` singleton (`features/trading`), so header and docked panel
+  stay in sync; `TradingViewModel` observes it for external changes.
 - Trades panel: `trades_provider` (global key).
 - Chart: provider/contract-type state is global (`chart_provider_id`,
   `chart_contract_type`).

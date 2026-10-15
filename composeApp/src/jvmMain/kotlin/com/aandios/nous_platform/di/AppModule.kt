@@ -19,6 +19,7 @@ import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.dom.ui.DomViewModel
 import com.aandios.nous.feature.trades.ui.TradesViewModel
+import com.aandios.nous.feature.trading.ui.PaperModeState
 import com.aandios.nous.feature.trading.ui.TradingViewModel
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import com.aandios.nous.provider.bybit.BybitProviderFactory
@@ -111,10 +112,11 @@ val appModule = module {
     }
 
     factory {
-        TradingViewModel(providerRegistry = get(), stateStore = get())
+        TradingViewModel(providerRegistry = get(), stateStore = get(), paperModeState = get())
     }
 
-    // Paper: окно настроек + персист состояния между запусками
+    // Paper: общий флаг (TopBar + docked trading panel) + окно настроек
+    single { PaperModeState(stateStore = get()) }
     single(createdAtStart = true) {
         com.aandios.nous.feature.trading.paper.PaperPersistenceService(get())
             .also { it.start() }
