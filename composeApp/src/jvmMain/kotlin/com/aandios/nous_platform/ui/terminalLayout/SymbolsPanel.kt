@@ -49,7 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -202,7 +202,7 @@ fun SymbolsPanel(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
             ) {
                 TerminalGripDots(
                     orientation = TerminalGripOrientation.VERTICAL,
@@ -313,7 +313,7 @@ fun SymbolsPanel(
         // ── Строка LIST: подпись, выпадающий список, rename, new ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.md,
+                horizontal = tokens.spacing.lg,
                 vertical = tokens.spacing.xs,
             ),
             verticalAlignment = Alignment.CenterVertically,
@@ -450,7 +450,7 @@ fun SymbolsPanel(
         // ── Поиск ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.md,
+                horizontal = tokens.spacing.lg,
                 vertical = tokens.spacing.xs,
             ),
         ) {
@@ -505,7 +505,7 @@ fun SymbolsPanel(
         // ── Подписи колонок ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.md,
+                horizontal = tokens.spacing.lg,
                 vertical = tokens.spacing.xxs,
             ),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -531,7 +531,7 @@ fun SymbolsPanel(
                 it,
                 color = tokens.colors.loss,
                 fontSize = tokens.typography.smallSize,
-                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+                modifier = Modifier.padding(horizontal = tokens.spacing.lg),
             )
         }
 
@@ -540,7 +540,7 @@ fun SymbolsPanel(
                 "REGEX: $it",
                 color = tokens.colors.loss,
                 fontSize = tokens.typography.microSize,
-                modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
+                modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
             )
         }
 
@@ -549,7 +549,7 @@ fun SymbolsPanel(
                 marketState.error.orEmpty(),
                 color = tokens.colors.loss,
                 fontSize = tokens.typography.microSize,
-                modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
+                modifier = Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
             )
         }
 
@@ -562,6 +562,7 @@ fun SymbolsPanel(
 
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
             items(sortedRows, key = { "${it.row.exchangeId}:${it.row.symbol}" }) { item ->
                 MarketWatchSymbolRow(
@@ -752,7 +753,8 @@ private fun MarketWatchSymbolRow(
     }
     Surface(
         modifier = Modifier.fillMaxWidth()
-            .drawBehind {
+            .drawWithContent {
+                drawContent()
                 if (selected) {
                     drawRect(
                         color = tokens.colors.accent,
@@ -782,13 +784,16 @@ private fun MarketWatchSymbolRow(
         Box {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(
-                    horizontal = tokens.spacing.md,
-                    vertical = tokens.spacing.sm,
+                    horizontal = tokens.spacing.lg,
+                    vertical = tokens.spacing.md,
                 ),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                ) {
                     Text(
                         text = highlightedSymbol(row.symbol, matchRange),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -806,7 +811,10 @@ private fun MarketWatchSymbolRow(
                         maxLines = 1,
                     )
                 }
-                Column(horizontalAlignment = Alignment.End) {
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                ) {
                     Text(
                         row.stats?.changePercent24h?.let { "%+.2f%%".format(it) } ?: "—",
                         color = changeColor,
