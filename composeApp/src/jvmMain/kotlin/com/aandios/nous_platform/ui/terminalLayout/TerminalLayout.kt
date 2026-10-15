@@ -83,6 +83,7 @@ fun TerminalLayout(
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
     onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)? = null,
+    onApplyToCurrentWorkspace: ((String, String, String) -> Unit)? = null,
     onOpenThemeSettings: () -> Unit,
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
@@ -287,6 +288,7 @@ fun TerminalLayout(
                             onClose = { topPanelState = topPanelState.copy(isExpanded = false) },
                             marketWatchTemplates = marketWatchTemplates,
                             onOpenMarketWatchTemplate = onOpenMarketWatchTemplate,
+                            onApplyToCurrentWorkspace = onApplyToCurrentWorkspace,
                             modifier = Modifier.fillMaxHeight()
                         )
                     }

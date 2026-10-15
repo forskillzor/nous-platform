@@ -5,15 +5,21 @@
 
 package com.aandios.nous_platform.ui.main
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.v2.WindowState
@@ -24,10 +30,14 @@ import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
+import com.aandios.nous.feature.trading.ui.PaperModeState
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
 import com.aandios.nous_platform.ui.terminalLayout.MarketWatchStore
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsOverlay
+import com.aandios.nous_platform.ui.terminalLayout.WorkspaceTemplatePicker
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
@@ -59,6 +69,8 @@ fun TerminalWindowContent(
     LaunchedEffect(symbolWatchlists) { symbolWatchlists.load() }
     val marketWatchStore: MarketWatchStore = koinInject()
     LaunchedEffect(marketWatchStore) { marketWatchStore.start() }
+    val paperModeState: PaperModeState = koinInject()
+    val paperEnabled by paperModeState.enabled.collectAsState()
 
     // Публикуем границы окна (px) для hit-test переноса вкладок + персистим геометрию
     LaunchedEffect(session.id, windowState) {
@@ -118,11 +130,13 @@ fun TerminalWindowContent(
     var themeSettingsOpen by remember { mutableStateOf(false) }
 
     var currentMode by remember { mutableStateOf(TerminalMode.ACTIVE_FLOW) }
+    var addMenuExpanded by remember { mutableStateOf(false) }
+    val tokens = LocalTerminalDesignTokens.current
 
     CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
         Box(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
-                // ── TopBar с TabBar ──
+                // ── TopBar с TabBar и кнопкой «+» ──
                 TerminalTopBar(
                     tabsSlot = {
                         TabBar(
@@ -135,13 +149,83 @@ fun TerminalWindowContent(
                                 dragPayload = TabDragBus.Payload(session.id, wsId)
                                 dragBus.start(dragPayload!!)
                             },
-                            onDragEndResolve = { /* как было */ },
-                            onOpenInNewWindow = { wsId -> /* как было */ },
+                            onDragEndResolve = {
+                                dragBus.end()
+                                val payload = dragPayload
+                                dragPayload = null
+                                if (payload != null) {
+                                    val cursor = WindowBoundsRegistry.cursorLocation()
+                                    if (cursor != null) {
+                                        val targetId = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
+                                        val sourceBounds = WindowBoundsRegistry.bounds.value[payload.sourceWindowId]
+                                        val outsideSource = sourceBounds == null ||
+                                                !sourceBounds.contains(cursor.first, cursor.second)
+                                        when {
+                                            targetId != null && targetId != payload.sourceWindowId ->
+                                                windowManager.moveWorkspace(
+                                                    payload.workspaceId,
+                                                    payload.sourceWindowId,
+                                                    targetId,
+                                                    Int.MAX_VALUE
+                                                )
+
+                                            targetId == null && outsideSource ->
+                                                // Отпустили вне всех окон — detach в новое окно у курсора
+                                                windowManager.detachWorkspace(
+                                                    payload.workspaceId,
+                                                    payload.sourceWindowId,
+                                                    cursor.first,
+                                                    cursor.second
+                                                )
+                                        }
+                                    }
+                                }
+                            },
+                            onOpenInNewWindow = { wsId ->
+                                val cursor = WindowBoundsRegistry.cursorLocation()
+                                windowManager.detachWorkspace(wsId, session.id, cursor?.first, cursor?.second)
+                            },
                             externalDragActive = externalDragActive,
+                            trailing = {
+                                Box {
+                                    Text(
+                                        text = "+",
+                                        color = tokens.colors.label,
+                                        fontSize = tokens.typography.compactActionSize,
+                                        fontFamily = TerminalFontFamily,
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
+                                            .clickable { addMenuExpanded = true }
+                                            .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                                    )
+                                    DropdownMenu(
+                                        expanded = addMenuExpanded,
+                                        onDismissRequest = { addMenuExpanded = false },
+                                    ) {
+                                        WorkspaceTemplatePicker(
+                                            title = "NEW WORKSPACE",
+                                            templates = marketWatchTemplates,
+                                            onPick = { _, template ->
+                                                addMenuExpanded = false
+                                                scope.launch {
+                                                    val fresh = template.copy(
+                                                        id = generateId(),
+                                                        createdAt = currentTime(),
+                                                        updatedAt = currentTime(),
+                                                    )
+                                                    workspaceRepo.create(fresh)
+                                                    windowManager.openWorkspaceIn(session.id, fresh)
+                                                    workspaceBus.workspaceChanged()
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            },
                         )
                     },
-                    paperEnabled = false, // TODO: подключить к реальному состоянию
-                    onPaperToggle = { /* TODO */ },
+                    paperEnabled = paperEnabled,
+                    onPaperToggle = { paperModeState.set(it) },
                     onThemeClick = { themeSettingsOpen = true },
                     onSettingsClick = { /* TODO: окно настроек */ },
                 )
@@ -178,6 +262,21 @@ fun TerminalWindowContent(
                             windowManager.openWorkspaceIn(session.id, fresh)
                             workspaceBus.workspaceChanged()
                         }
+                    },
+                    onApplyToCurrentWorkspace = activeWorkspace?.let { ws ->
+                        val apply: (String, String, String) -> Unit = { symbol, providerId, providerName ->
+                            scope.launch {
+                                val updated = ws.config.withMarketWatchSymbol(
+                                    symbol = symbol,
+                                    providerId = providerId,
+                                    providerName = providerName,
+                                )
+                                ws.updateConfig(updated)
+                                workspaceRepo.update(updated)
+                                workspaceBus.workspaceChanged()
+                            }
+                        }
+                        apply
                     },
                 ) {
                     if (windowWorkspaces.isEmpty()) {
@@ -243,68 +342,13 @@ fun TerminalWindowContent(
                             modifier = Modifier.fillMaxWidth().weight(1f),
                         )
                     } else {
-                        Column(Modifier.fillMaxWidth().weight(1f)) {
-                            TabBar(
-                                workspaces = windowWorkspaces,
-                                activeIndex = activeIdx,
-                                onTabClick = { i -> windowManager.activate(session.id, windowWorkspaces[i].config.id) },
-                                onTabClose = { id -> windowManager.closeWorkspaceIn(session.id, id) },
-                                onTabReorder = { from, to -> windowManager.reorderWorkspace(session.id, from, to) },
-                                onDragStart = { wsId ->
-                                    dragPayload = TabDragBus.Payload(session.id, wsId)
-                                    dragBus.start(dragPayload!!)
-                                },
-                                onDragEndResolve = {
-                                    dragBus.end()
-                                    val payload = dragPayload
-                                    dragPayload = null
-                                    if (payload != null) {
-                                        val cursor = WindowBoundsRegistry.cursorLocation()
-                                        if (cursor != null) {
-                                            val targetId = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
-                                            val sourceBounds = WindowBoundsRegistry.bounds.value[payload.sourceWindowId]
-                                            val outsideSource = sourceBounds == null ||
-                                                    !sourceBounds.contains(cursor.first, cursor.second)
-                                            when {
-                                                targetId != null && targetId != payload.sourceWindowId ->
-                                                    windowManager.moveWorkspace(
-                                                        payload.workspaceId,
-                                                        payload.sourceWindowId,
-                                                        targetId,
-                                                        Int.MAX_VALUE
-                                                    )
-
-                                                targetId == null && outsideSource ->
-                                                    // Отпустили вне всех окон — detach в новое окно у курсора
-                                                    windowManager.detachWorkspace(
-                                                        payload.workspaceId,
-                                                        payload.sourceWindowId,
-                                                        cursor.first,
-                                                        cursor.second
-                                                    )
-                                            }
-                                        }
-                                    }
-                                },
-                                onOpenInNewWindow = { wsId ->
-                                    val cursor = WindowBoundsRegistry.cursorLocation()
-                                    windowManager.detachWorkspace(
-                                        wsId,
-                                        session.id,
-                                        cursor?.first,
-                                        cursor?.second
-                                    )
-                                },
-                                externalDragActive = externalDragActive,
-                            )
-                            Box(Modifier.fillMaxSize()) {
-                                activeWorkspace?.let { ws ->
-                                    WorkspaceView(
-                                        ws = ws,
-                                        workspaceRepo = workspaceRepo,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                }
+                        Box(Modifier.fillMaxWidth().weight(1f)) {
+                            activeWorkspace?.let { ws ->
+                                WorkspaceView(
+                                    ws = ws,
+                                    workspaceRepo = workspaceRepo,
+                                    modifier = Modifier.fillMaxSize()
+                                )
                             }
                         }
                     }

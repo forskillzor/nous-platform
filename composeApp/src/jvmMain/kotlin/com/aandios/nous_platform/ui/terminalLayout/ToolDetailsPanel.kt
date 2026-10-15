@@ -44,6 +44,7 @@ fun ToolDetailsPanel(
     onClose: () -> Unit,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>>,
     onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)?,
+    onApplyToCurrentWorkspace: ((String, String, String) -> Unit)? = null,
     modifier: Modifier = Modifier.Companion
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -104,6 +105,7 @@ fun ToolDetailsPanel(
                         onSymbolSelected = onSymbolSelected,
                         workspaceTemplates = marketWatchTemplates,
                         onOpenWorkspaceTemplate = onOpenMarketWatchTemplate,
+                        onApplyToCurrentWorkspace = onApplyToCurrentWorkspace,
                         modifier = Modifier.Companion.weight(1f)
                     )
                 }

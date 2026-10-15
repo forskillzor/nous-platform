@@ -17,10 +17,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,7 +57,6 @@ import com.aandios.nous.core.ui.component.SymbolWatchlist
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.ui.component.searchSymbols
-import com.aandios.nous.core.ui.workspace.WorkspaceLayoutThumbnail
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -91,6 +88,7 @@ fun SymbolsPanel(
     onSymbolSelected: (String) -> Unit,
     workspaceTemplates: List<Pair<String, WorkspaceConfig>>,
     onOpenWorkspaceTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)?,
+    onApplyToCurrentWorkspace: ((String, String, String) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val registry: ProviderRegistry = koinInject()
@@ -418,6 +416,9 @@ fun SymbolsPanel(
                             item.row.exchangeName,
                         )
                     },
+                    onApplyToCurrentWorkspace = onApplyToCurrentWorkspace?.let { apply ->
+                        { apply(item.row.symbol, item.row.exchangeId, item.row.exchangeName) }
+                    },
                 )
             }
         }
@@ -438,6 +439,7 @@ private fun MarketWatchSymbolRow(
     onAddToList: (String) -> Unit,
     onRemoveFromList: () -> Unit,
     onOpenWithTemplate: (String, WorkspaceConfig) -> Unit,
+    onApplyToCurrentWorkspace: (() -> Unit)? = null,
 ) {
     val tokens = LocalTerminalDesignTokens.current
     var addMenuExpanded by remember(row.exchangeId, row.symbol) { mutableStateOf(false) }
@@ -465,7 +467,7 @@ private fun MarketWatchSymbolRow(
                         if (
                             event.type == PointerEventType.Press &&
                             event.buttons.isSecondaryPressed &&
-                            workspaceTemplates.isNotEmpty()
+                            (workspaceTemplates.isNotEmpty() || onApplyToCurrentWorkspace != null)
                         ) {
                             openWithExpanded = true
                             event.changes.forEach { it.consume() }
@@ -564,55 +566,31 @@ private fun MarketWatchSymbolRow(
                 expanded = openWithExpanded,
                 onDismissRequest = { openWithExpanded = false },
             ) {
-                Column(
-                    Modifier.width(tokens.dimensions.marketWatchTemplateMenuWidth)
-                        .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-                ) {
-                    Text(
-                        "OPEN ${row.symbol} WITH",
-                        color = tokens.colors.label,
-                        fontSize = tokens.typography.microSize,
-                        fontFamily = TerminalFontFamily,
-                        modifier = Modifier.padding(
-                            horizontal = tokens.spacing.xs,
-                            vertical = tokens.spacing.xs,
-                        ),
-                    )
-                    Row(
-                        modifier = Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
-                    ) {
-                        workspaceTemplates.forEach { (templateName, template) ->
-                            Column(
-                                modifier = Modifier.width(tokens.dimensions.marketWatchTemplateCardWidth)
-                                    .clickable {
-                                        openWithExpanded = false
-                                        onOpenWithTemplate(templateName, template)
-                                    }
-                                    .background(
-                                        tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
-                                        RoundedCornerShape(tokens.cornerRadii.smallCard),
-                                    )
-                                    .padding(tokens.spacing.sm),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                            ) {
-                                WorkspaceLayoutThumbnail(
-                                    config = template,
-                                    modifier = Modifier.fillMaxWidth()
-                                        .height(tokens.dimensions.marketWatchTemplatePreviewHeight),
-                                )
+                Column(Modifier.padding(vertical = tokens.spacing.xs)) {
+                    onApplyToCurrentWorkspace?.let { apply ->
+                        DropdownMenuItem(
+                            text = {
                                 Text(
-                                    templateName,
+                                    "Apply to current workspace",
                                     color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = tokens.typography.microSize,
+                                    fontSize = tokens.typography.compactSize,
                                     fontFamily = TerminalFontFamily,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = tokens.spacing.sm),
                                 )
-                            }
-                        }
+                            },
+                            onClick = {
+                                openWithExpanded = false
+                                apply()
+                            },
+                        )
                     }
+                    WorkspaceTemplatePicker(
+                        title = "OPEN ${row.symbol} WITH",
+                        templates = workspaceTemplates,
+                        onPick = { name, template ->
+                            openWithExpanded = false
+                            onOpenWithTemplate(name, template)
+                        },
+                    )
                 }
             }
         }
