@@ -7,8 +7,12 @@ package com.aandios.nous.core.ui.workspace
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +23,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -37,7 +42,8 @@ import kotlin.math.roundToInt
  *  - начало межоконного переноса ([onDragStart]/[onDragEndResolve] — резолвится
  *    в окне-источнике по глобальной позиции курсора);
  *  - подсветку приёма при активном переносе из другого окна ([externalDragActive]);
- *  - меню вкладки «Open in new window».
+ *  - меню вкладки «Open in new window»;
+ *  - [trailing]-слот для действий после вкладок (кнопка «+»).
  */
 @Composable
 fun TabBar(
@@ -50,6 +56,7 @@ fun TabBar(
     onDragEndResolve: (() -> Unit)? = null,
     onOpenInNewWindow: ((String) -> Unit)? = null,
     externalDragActive: Boolean = false,
+    trailing: @Composable RowScope.() -> Unit = {},
 ) {
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
@@ -73,7 +80,6 @@ fun TabBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(tokens.dimensions.workspaceTabBarHeight)
-            .background(tokens.colors.workspaceBackground)
     ) {
         Row(
             modifier = Modifier
@@ -164,6 +170,9 @@ fun TabBar(
                         .background(MaterialTheme.colorScheme.primary)
                 )
             }
+
+            // Действия после вкладок (кнопка «+» с меню шаблонов)
+            trailing()
         }
 
         // Highlight приёма при переносе вкладки из другого окна
@@ -194,27 +203,36 @@ private fun TabItem(
     onOpenInNewWindow: (() -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val shape = RoundedCornerShape(tokens.cornerRadii.workspaceTab)
 
     Row(
         modifier = Modifier
-            .padding(end = tokens.dimensions.borderWidth)
+            .padding(end = tokens.spacing.xs)
             .height(tokens.dimensions.workspaceTabHeight)
-            .clip(RoundedCornerShape(
-                topStart = tokens.cornerRadii.workspaceTab,
-                topEnd = tokens.cornerRadii.workspaceTab,
-            ))
+            .clip(shape)
             .background(
-                if (isActive) MaterialTheme.colorScheme.surfaceVariant
-                else tokens.colors.inactiveTabSurface
+                when {
+                    isActive -> tokens.colors.selection
+                    hovered -> tokens.colors.panelHeaderSurface
+                    else -> Color.Transparent
+                }
             )
+            .border(
+                tokens.dimensions.borderWidth,
+                if (isActive) tokens.colors.panelBorder else Color.Transparent,
+                shape,
+            )
+            .hoverable(interaction)
             .clickable { onClick() }
             .padding(horizontal = tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = name,
-            color = if (isActive) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (isActive) MaterialTheme.colorScheme.onSurface
+            else tokens.colors.label,
             fontSize = tokens.typography.compactSize,
             fontFamily = TerminalFontFamily,
             maxLines = 1,
@@ -226,7 +244,7 @@ private fun TabItem(
             Box {
                 Text(
                     text = "\u22EE",
-                    color = MaterialTheme.colorScheme.outlineVariant,
+                    color = tokens.colors.label,
                     fontSize = tokens.typography.controlSize,
                     fontFamily = TerminalFontFamily,
                     modifier = Modifier
@@ -253,7 +271,7 @@ private fun TabItem(
         }
         Text(
             text = "×",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = tokens.colors.label,
             fontSize = tokens.typography.bodySize,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.clickable { onClose() }
