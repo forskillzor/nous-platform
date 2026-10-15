@@ -84,7 +84,6 @@ fun OrderPlacementPanel(
     val tokens = LocalTerminalDesignTokens.current
     val buyColor = tokens.colors.bullish
     val sellColor = tokens.colors.bearish
-    val okColor = tokens.colors.profit
     val warnColor = tokens.colors.warning
     val accent = tokens.colors.accent
     val labelColor = tokens.colors.label
@@ -137,7 +136,7 @@ fun OrderPlacementPanel(
                 ToggleChip(
                     label = "Trading",
                     active = isTradingEnabled,
-                    activeColor = okColor,
+                    activeColor = accent,
                     inactiveColor = sellColor,
                 ) { onOrderIntent(OrderIntent.ToggleTrading) }
                 ToggleChip(

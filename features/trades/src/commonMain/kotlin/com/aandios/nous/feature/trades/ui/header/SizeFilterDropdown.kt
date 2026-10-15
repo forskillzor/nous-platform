@@ -71,7 +71,7 @@ fun SizeFilterDropdown(
             Spacer(Modifier.width(tokens.spacing.xs))
             Text(
                 text = displayLabel,
-                color = MaterialTheme.colorScheme.inverseOnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = tokens.typography.compactSize,
                 fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Medium,
@@ -124,7 +124,7 @@ fun SizeFilterDropdown(
                     onValueChange = { customText = it },
                     singleLine = true,
                     textStyle = TextStyle(
-                        color = MaterialTheme.colorScheme.inverseOnSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = tokens.typography.controlSize,
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -272,7 +272,7 @@ private fun EditablePresetRow(
                 singleLine = true,
                 textStyle = TextStyle(
                     fontSize = tokens.typography.controlSize,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                 ),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),

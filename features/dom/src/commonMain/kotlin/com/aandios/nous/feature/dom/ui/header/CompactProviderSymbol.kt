@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -19,8 +20,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 
 /**
@@ -33,48 +34,50 @@ fun CompactProviderSymbol(
     tradingSymbol: TradingSymbol,
     modifier: Modifier = Modifier.Companion
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Surface(
-        shape = MaterialTheme.shapes.small,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(tokens.cornerRadii.card),
+        color = tokens.colors.panelHeaderSurface,
         modifier = modifier
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
+            modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs)
         ) {
             // Provider
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)
             ) {
                 Text(
                     text = providerDisplayName,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = tokens.typography.controlSize,
+                    fontFamily = TerminalFontFamily,
+                    fontWeight = FontWeight.Medium
                 )
             }
 
             // Разделитель
             Spacer(
                 modifier = Modifier
-                    .width(1.dp)
-                    .height(12.dp)
-                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                    .width(tokens.dimensions.dividerThickness)
+                    .height(tokens.spacing.xl)
+                    .background(tokens.colors.panelBorder)
             )
 
             // Symbol
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)
             ) {
                 Text(
                     text = tradingSymbol.displayName,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = tokens.typography.controlSize,
+                    fontFamily = TerminalFontFamily,
+                    fontWeight = FontWeight.Medium
                 )
             }
         }

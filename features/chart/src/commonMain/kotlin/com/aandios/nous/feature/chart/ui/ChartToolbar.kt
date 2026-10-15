@@ -148,7 +148,7 @@ private fun ChartOptionsDropdown(
         ) {
             Text(
                 text = "Options",
-                color = MaterialTheme.colorScheme.inverseOnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = MaterialTheme.typography.labelSmall.fontSize,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -268,7 +268,7 @@ private fun ChartModeDropdown(mode: ChartMode, onModeChange: (ChartMode) -> Unit
         ) {
             Text(
                 text = currentLabel,
-                color = MaterialTheme.colorScheme.inverseOnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = MaterialTheme.typography.labelSmall.fontSize,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -324,7 +324,7 @@ private fun TimeframeDropdown(currentTimeframe: String, onTimeframeChange: (Stri
         ) {
             Text(
                 text = currentTimeframe,
-                color = MaterialTheme.colorScheme.inverseOnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = MaterialTheme.typography.labelSmall.fontSize,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -380,7 +380,7 @@ private fun FpAggregationSelector(level: AggregationLevel, onChange: (Aggregatio
             }
             Text(
                 text = label,
-                color = if (isActive) MaterialTheme.colorScheme.inverseOnSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 11.sp, fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal, fontFamily = TerminalFontFamily,
                 modifier = Modifier.clickable { onChange(ag) }.background(
                     if (isActive) accentColor.copy(alpha = 0.25f) else Color.Transparent, RoundedCornerShape(3.dp)

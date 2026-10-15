@@ -31,15 +31,12 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
-import com.aandios.nous.core.ui.theme.ChartColors
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalDesignTokens
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
-
-private val panelBg = Color.Black.copy(alpha = 0.9f)
-private val accentColor = Color(0xFF5B9BD5)
-private val iconColor = Color(0xFF8A97A5)
 
 private data class ToolEntry(
     val tool: DrawingToolType,
@@ -68,10 +65,15 @@ fun DrawingToolPanel(
     onRedo: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     Column(
         modifier = modifier
-            .border(1.dp, ChartColors.gridLine, RoundedCornerShape(8.dp))
-            .background(panelBg, RoundedCornerShape(8.dp))
+            .border(
+                tokens.dimensions.borderWidth,
+                tokens.colors.panelBorder,
+                RoundedCornerShape(tokens.cornerRadii.workspacePanel),
+            )
+            .background(tokens.colors.panelSurface, RoundedCornerShape(tokens.cornerRadii.workspacePanel))
             .padding(2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -80,6 +82,7 @@ fun DrawingToolPanel(
                 active = activeTool == entry.tool,
                 onClick = { onToolChange(if (activeTool == entry.tool) DrawingToolType.NONE else entry.tool) },
                 icon = entry.icon,
+                tokens = tokens,
             )
         }
 
@@ -88,7 +91,7 @@ fun DrawingToolPanel(
             modifier = Modifier
                 .width(26.dp)
                 .height(1.dp)
-                .background(Color(0xFF3A4550))
+                .background(tokens.colors.panelBorder)
         )
         Spacer(Modifier.height(6.dp))
 
@@ -97,12 +100,14 @@ fun DrawingToolPanel(
             enabled = canUndo,
             onClick = onUndo,
             icon = { c, s -> iconUndo(c, s) },
+            tokens = tokens,
         )
         PanelIconButton(
             active = false,
             enabled = canRedo,
             onClick = onRedo,
             icon = { c, s -> iconRedo(c, s) },
+            tokens = tokens,
         )
     }
 }
@@ -113,12 +118,13 @@ private fun PanelIconButton(
     enabled: Boolean = true,
     onClick: () -> Unit,
     icon: DrawScope.(Color, Float) -> Unit,
+    tokens: TerminalDesignTokens,
 ) {
-    val tint = if (active) Color.White else iconColor
+    val tint = if (active) MaterialTheme.colorScheme.onPrimary else tokens.colors.label
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(4.dp))
-            .background(if (active) accentColor.copy(alpha = 0.35f) else Color.Transparent)
+            .background(if (active) tokens.colors.accent else Color.Transparent)
             .clickable(enabled = enabled, onClick = onClick)
             .padding(5.dp)
             .size(16.dp)

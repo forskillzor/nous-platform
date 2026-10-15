@@ -40,7 +40,6 @@ import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.format.plainDecimalString
-import com.aandios.nous.core.ui.theme.ChartColors
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.api.market.ProviderRegistry
@@ -615,8 +614,12 @@ private fun ChartWindowContent(
                         .padding(start = 8.dp, bottom = 28.dp)
                         .blockChartPointerInput()
                         .clickable { chartViewModel.setTradingEnabled(true) }
-                        .background(Color(0xFF14181F).copy(alpha = 0.9f), RoundedCornerShape(8.dp))
-                        .border(1.dp, ChartColors.gridLine, RoundedCornerShape(8.dp))
+                        .background(designTokens.colors.panelSurface.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+                        .border(
+                            designTokens.dimensions.borderWidth,
+                            designTokens.colors.panelBorder,
+                            RoundedCornerShape(8.dp),
+                        )
                         .padding(horizontal = 6.dp, vertical = 3.dp),
                 )
             }
@@ -652,6 +655,7 @@ private fun ChartNotificationItem(
     notification: ChartNotification,
     onDismiss: (Long) -> Unit,
 ) {
+    val designTokens = LocalTerminalDesignTokens.current
     var visible by remember(notification.id) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     LaunchedEffect(notification.id) {
@@ -669,13 +673,25 @@ private fun ChartNotificationItem(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
-                .background(Color(0xFF14181F).copy(alpha = 0.95f), RoundedCornerShape(4.dp))
-                .border(1.dp, Color(0xFF3A4550), RoundedCornerShape(4.dp))
-                .padding(start = 8.dp, end = 2.dp, top = 3.dp, bottom = 3.dp),
+                .background(
+                    designTokens.colors.panelHeaderSurface.copy(alpha = 0.95f),
+                    RoundedCornerShape(designTokens.cornerRadii.card),
+                )
+                .border(
+                    designTokens.dimensions.borderWidth,
+                    designTokens.colors.panelBorder,
+                    RoundedCornerShape(designTokens.cornerRadii.card),
+                )
+                .padding(
+                    start = designTokens.spacing.md,
+                    end = designTokens.spacing.xxs,
+                    top = designTokens.spacing.xs,
+                    bottom = designTokens.spacing.xs,
+                ),
         ) {
             Text(
                 text = notification.text,
-                color = Color(0xFFD5DBE1),
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 11.sp,
                 fontFamily = TerminalFontFamily,
                 maxLines = 2,
@@ -684,7 +700,7 @@ private fun ChartNotificationItem(
             )
             Text(
                 text = "✕",
-                color = Color(0xFF8A97A5),
+                color = designTokens.colors.label,
                 fontSize = 11.sp,
                 fontFamily = TerminalFontFamily,
                 maxLines = 1,

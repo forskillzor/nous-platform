@@ -14,8 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.feature.dom.domain.model.DepthLimit
 
 /**
@@ -32,6 +32,7 @@ fun DepthLimitSelector(
     onLimitChanged: (DepthLimit) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
     val standardValues = DepthLimit.standardValues
 
@@ -41,28 +42,28 @@ fun DepthLimitSelector(
         // Кнопка-триггер с текущей глубиной и стрелкой
         Surface(
             shape = MaterialTheme.shapes.small,
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            tonalElevation = 2.dp,
+            color = tokens.colors.panelHeaderSurface,
             modifier = Modifier.clickable { expanded = true }
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier.padding(horizontal = 0.dp, vertical = 0.dp)
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+                modifier = Modifier.padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs)
             ) {
                 Text(
                     text = "${currentLimit.value}",
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    fontSize = MaterialTheme.typography.labelSmall.fontSize,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = tokens.typography.inlineSelectValueSize,
+                    fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
-                    letterSpacing = 0.2.sp,
+                    letterSpacing = tokens.typography.controlLetterSpacing,
                     maxLines = 1
                 )
                 Icon(
                     imageVector = Icons.Default.ArrowDropDown,
                     contentDescription = "Раскрыть список глубин",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(16.dp)
+                    tint = tokens.colors.label,
+                    modifier = Modifier.size(tokens.dimensions.dropdownIconSize)
                 )
             }
         }
@@ -71,14 +72,15 @@ fun DepthLimitSelector(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.width(100.dp)
+            modifier = Modifier.width(tokens.dimensions.dropdownWidth)
         ) {
             standardValues.forEach { value ->
                 DropdownMenuItem(
                     text = {
                         Text(
                             text = "$value",
-                            fontSize = 12.sp,
+                            fontSize = tokens.typography.controlSize,
+                            fontFamily = TerminalFontFamily,
                             fontWeight = if (currentLimit.value == value) FontWeight.Bold else FontWeight.Normal
                         )
                     },
@@ -94,7 +96,8 @@ fun DepthLimitSelector(
                 text = {
                     Text(
                         text = "Custom...",
-                        fontSize = 12.sp,
+                        fontSize = tokens.typography.controlSize,
+                        fontFamily = TerminalFontFamily,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                     )
                 },

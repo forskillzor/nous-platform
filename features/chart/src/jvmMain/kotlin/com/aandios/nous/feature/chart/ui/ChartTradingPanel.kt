@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,17 +33,7 @@ import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.format.SymbolFormatter
-import com.aandios.nous.core.ui.theme.ChartColors
-
-// Стиль как у DrawingToolPanel — единый вид вертикальных панелей графика
-private val panelBg = Color.Black.copy(alpha = 0.9f)
-private val labelColor = Color(0xFF8A97A5)
-private val fieldBg = Color(0xFF14181F)
-private val fieldBorder = Color(0xFF3A4550)
-private val accent = Color(0xFF5B9BD5)
-private val buyColor = Color(0xFF26A69A)
-private val sellColor = Color(0xFFEF5350)
-private val warnColor = Color(0xFFE0A95B)
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 /**
  * Поглощает pointer-события: клики/драги по панели (в т.ч. по пустым местам
@@ -106,6 +97,7 @@ fun ChartTradingPanel(
     onLock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     // Локальный текст поля: ввод «0.05» не затирается валидацией
     var qtyText by remember(quantity) {
         mutableStateOf(quantity?.let { trimZeros(it) } ?: "")
@@ -115,8 +107,12 @@ fun ChartTradingPanel(
         modifier = modifier
             // Клики по панели (в т.ч. мимо кнопок) не проваливаются в чарт
             .blockChartPointerInput()
-            .border(1.dp, ChartColors.gridLine, RoundedCornerShape(8.dp))
-            .background(panelBg, RoundedCornerShape(8.dp))
+            .border(
+                tokens.dimensions.borderWidth,
+                tokens.colors.panelBorder,
+                RoundedCornerShape(tokens.cornerRadii.workspacePanel),
+            )
+            .background(tokens.colors.panelSurface, RoundedCornerShape(tokens.cornerRadii.workspacePanel))
             .padding(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
         horizontalAlignment = Alignment.Start,
@@ -150,7 +146,7 @@ fun ChartTradingPanel(
         pnlText?.let { text ->
             Text(
                 text = text,
-                color = if (pnlUp) buyColor else sellColor,
+                color = if (pnlUp) tokens.colors.profit else tokens.colors.loss,
                 fontSize = 11.sp,
                 fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold,
@@ -166,7 +162,7 @@ fun ChartTradingPanel(
         ) {
             Text(
                 text = caption,
-                color = labelColor,
+                color = tokens.colors.label,
                 fontSize = 10.sp,
                 fontFamily = TerminalFontFamily,
                 maxLines = 1,
@@ -184,7 +180,7 @@ fun ChartTradingPanel(
             )
             Text(
                 text = "▼",
-                color = labelColor,
+                color = tokens.colors.label,
                 fontSize = 10.sp,
                 fontFamily = TerminalFontFamily,
                 maxLines = 1,
@@ -239,7 +235,7 @@ fun ChartTradingPanel(
         marginInfo?.let { info ->
             Text(
                 text = info,
-                color = labelColor,
+                color = tokens.colors.label,
                 fontSize = 10.sp,
                 fontFamily = TerminalFontFamily,
                 maxLines = 1,
@@ -257,7 +253,7 @@ fun ChartTradingPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(fieldBorder)
+                .background(tokens.colors.panelBorder)
         )
 
         // Флаги: reduce-only + подтверждение ордеров
@@ -269,14 +265,14 @@ fun ChartTradingPanel(
             Chip(
                 if (confirmOrders) "Confirm: ON" else "Confirm: OFF",
                 active = confirmOrders,
-                activeColor = accent,
+                activeColor = tokens.colors.accent,
             ) { onConfirmChanged(!confirmOrders) }
         }
 
         val pending = pendingOrder
         if (pending != null) {
             // Подтверждение отложенного ордера (Confirm: ON) — прямо в панели
-            val sideColor = if (pending.side.name == "BUY") buyColor else sellColor
+            val sideColor = if (pending.side.name == "BUY") tokens.colors.buyOrder else tokens.colors.sellOrder
             val px = if (pending.orderType == OrderType.MARKET) "market"
             else "@ ${formatter.formatPrice(pending.price)}"
             Text(
@@ -290,25 +286,25 @@ fun ChartTradingPanel(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                 SideButton("Confirm", sideColor, onConfirmPending, Modifier.weight(1f))
-                SideButton("Cancel", Color(0xFF888888), onCancelPending, Modifier.weight(1f))
+                SideButton("Cancel", tokens.colors.label, onCancelPending, Modifier.weight(1f))
             }
         } else {
             // Market
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                SideButton("Buy", buyColor, onBuy, Modifier.weight(1f))
-                SideButton("Sell", sellColor, onSell, Modifier.weight(1f))
+                SideButton("Buy", tokens.colors.buyOrder, onBuy, Modifier.weight(1f))
+                SideButton("Sell", tokens.colors.sellOrder, onSell, Modifier.weight(1f))
             }
             // Лимитки по лучшим ценам (bid/ask)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                LimitButton("Buy Limit", buyColor, bestBid, onBuyLimit, Modifier.weight(1f))
-                LimitButton("Sell Limit", sellColor, bestAsk, onSellLimit, Modifier.weight(1f))
+                LimitButton("Buy Limit", tokens.colors.buyOrder, bestBid, onBuyLimit, Modifier.weight(1f))
+                LimitButton("Sell Limit", tokens.colors.sellOrder, bestAsk, onSellLimit, Modifier.weight(1f))
             }
         }
 
         // Управление ордерами/позициями по exchange+symbol
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-            SideButton("Cancel All", warnColor, onCancelAll, Modifier.weight(1f), outlined = true)
-            SideButton("Close All", sellColor, onCloseAll, Modifier.weight(1f), outlined = true)
+            SideButton("Cancel All", tokens.colors.warning, onCancelAll, Modifier.weight(1f), outlined = true)
+            SideButton("Close All", tokens.colors.loss, onCloseAll, Modifier.weight(1f), outlined = true)
         }
     }
 }
@@ -338,6 +334,7 @@ private fun CompactHeader(
     onExpand: () -> Unit,
     onLock: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     FlowRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -361,7 +358,7 @@ private fun CompactHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Lvg", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
+            Text("Lvg", color = tokens.colors.label, fontSize = 10.sp, fontFamily = TerminalFontFamily)
             TerminalDropdown(
                 currentValue = leverage ?: 0,
                 items = listOf(0, 1, 2, 3, 5, 10, 20, 50, 100, 125),
@@ -373,19 +370,19 @@ private fun CompactHeader(
         // Reduce-only
         Text(
             text = "RO",
-            color = if (reduceOnly) accent else labelColor,
+            color = if (reduceOnly) tokens.colors.accent else tokens.colors.label,
             fontSize = 10.sp,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Medium,
             maxLines = 1,
             modifier = Modifier
                 .background(
-                    if (reduceOnly) accent.copy(alpha = 0.2f) else Color.Transparent,
+                    if (reduceOnly) tokens.colors.accent.copy(alpha = 0.2f) else Color.Transparent,
                     RoundedCornerShape(3.dp),
                 )
                 .border(
                     1.dp,
-                    if (reduceOnly) accent.copy(alpha = 0.5f) else fieldBorder,
+                    if (reduceOnly) tokens.colors.accent.copy(alpha = 0.5f) else tokens.colors.panelBorder,
                     RoundedCornerShape(3.dp),
                 )
                 .clickableNoIndication { onReduceOnlyChanged(!reduceOnly) }
@@ -395,7 +392,7 @@ private fun CompactHeader(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Qty", color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
+            Text("Qty", color = tokens.colors.label, fontSize = 10.sp, fontFamily = TerminalFontFamily)
             QtyInput(
                 qtyText = qtyText,
                 minQty = minQty,
@@ -407,7 +404,7 @@ private fun CompactHeader(
         pnlText?.let { text ->
             Text(
                 text = text,
-                color = if (pnlUp) buyColor else sellColor,
+                color = if (pnlUp) tokens.colors.profit else tokens.colors.loss,
                 fontSize = 10.sp,
                 fontFamily = TerminalFontFamily,
                 fontWeight = FontWeight.Bold,
@@ -425,7 +422,7 @@ private fun CompactHeader(
         )
         Text(
             text = "▲",
-            color = accent,
+            color = tokens.colors.accent,
             fontSize = 10.sp,
             fontFamily = TerminalFontFamily,
             maxLines = 1,
@@ -443,23 +440,24 @@ private fun QtyInput(
     onTextChanged: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     BasicTextField(
         value = qtyText,
         onValueChange = onTextChanged,
         singleLine = true,
-        textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = TerminalFontFamily),
-        cursorBrush = SolidColor(accent),
+        textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontFamily = TerminalFontFamily),
+        cursorBrush = SolidColor(tokens.colors.accent),
         modifier = modifier
             .height(24.dp)
-            .background(fieldBg, RoundedCornerShape(3.dp))
-            .border(1.dp, fieldBorder, RoundedCornerShape(3.dp))
+            .background(tokens.colors.panelHeaderSurface, RoundedCornerShape(3.dp))
+            .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, RoundedCornerShape(3.dp))
             .padding(horizontal = 6.dp, vertical = 4.dp),
         decorationBox = { inner ->
             Box(contentAlignment = Alignment.CenterStart) {
                 if (qtyText.isEmpty() && minQty != null && minQty > 0) {
                     Text(
                         text = trimZeros(minQty),
-                        color = Color(0xFF5A6674),
+                        color = tokens.colors.label.copy(alpha = 0.65f),
                         fontSize = 11.sp,
                         fontFamily = TerminalFontFamily,
                     )
@@ -472,14 +470,16 @@ private fun QtyInput(
 
 /** Строка настройки: label фиксированной ширины + контрол. */
 @Composable
-private fun SettingRow(label: String, content: @Composable RowScope.() -> Unit) {    Row(
+private fun SettingRow(label: String, content: @Composable RowScope.() -> Unit) {
+    val tokens = LocalTerminalDesignTokens.current
+    Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
             text = label,
-            color = labelColor,
+            color = tokens.colors.label,
             fontSize = 10.sp,
             fontFamily = TerminalFontFamily,
             maxLines = 1,
@@ -494,22 +494,28 @@ private fun SettingRow(label: String, content: @Composable RowScope.() -> Unit) 
 private fun Chip(
     label: String,
     active: Boolean,
-    activeColor: Color = accent,
+    activeColor: Color? = null,
     onClick: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
+    val resolvedActiveColor = activeColor ?: tokens.colors.accent
     Text(
         text = label,
-        color = if (active) activeColor else labelColor,
+        color = if (active) resolvedActiveColor else tokens.colors.label,
         fontSize = 10.sp,
         fontFamily = TerminalFontFamily,
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         modifier = Modifier
             .background(
-                if (active) activeColor.copy(alpha = 0.2f) else Color.Transparent,
+                if (active) resolvedActiveColor.copy(alpha = 0.2f) else Color.Transparent,
                 RoundedCornerShape(3.dp),
             )
-            .border(1.dp, if (active) activeColor.copy(alpha = 0.5f) else fieldBorder, RoundedCornerShape(3.dp))
+            .border(
+                tokens.dimensions.borderWidth,
+                if (active) resolvedActiveColor.copy(alpha = 0.5f) else tokens.colors.panelBorder,
+                RoundedCornerShape(3.dp),
+            )
             .clickableNoIndication(onClick)
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
@@ -583,6 +589,7 @@ private fun OptionalPriceField(
     onChanged: (Double?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var text by remember(value) {
         mutableStateOf(value?.let { trimZeros(it) } ?: "")
     }
@@ -591,7 +598,7 @@ private fun OptionalPriceField(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         modifier = modifier,
     ) {
-        Text(label, color = labelColor, fontSize = 10.sp, fontFamily = TerminalFontFamily)
+        Text(label, color = tokens.colors.label, fontSize = 10.sp, fontFamily = TerminalFontFamily)
         BasicTextField(
             value = text,
             onValueChange = { t: String ->
@@ -599,18 +606,27 @@ private fun OptionalPriceField(
                 onChanged(t.toDoubleOrNull()?.takeIf { it > 0 })
             },
             singleLine = true,
-            textStyle = TextStyle(color = Color.White, fontSize = 10.sp, fontFamily = TerminalFontFamily),
-            cursorBrush = SolidColor(accent),
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 10.sp,
+                fontFamily = TerminalFontFamily,
+            ),
+            cursorBrush = SolidColor(tokens.colors.accent),
             modifier = Modifier
                 .weight(1f)
                 .height(22.dp)
-                .background(fieldBg, RoundedCornerShape(3.dp))
-                .border(1.dp, fieldBorder, RoundedCornerShape(3.dp))
+                .background(tokens.colors.panelHeaderSurface, RoundedCornerShape(3.dp))
+                .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, RoundedCornerShape(3.dp))
                 .padding(horizontal = 4.dp, vertical = 3.dp),
             decorationBox = { inner ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (text.isEmpty()) {
-                        Text("—", color = Color(0xFF555555), fontSize = 10.sp, fontFamily = TerminalFontFamily)
+                        Text(
+                            "—",
+                            color = tokens.colors.label.copy(alpha = 0.65f),
+                            fontSize = 10.sp,
+                            fontFamily = TerminalFontFamily,
+                        )
                     }
                     inner()
                 }

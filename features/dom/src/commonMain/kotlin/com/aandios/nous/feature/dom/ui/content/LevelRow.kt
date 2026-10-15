@@ -114,7 +114,7 @@ fun LevelRow(
         // Весь уровень с лимитным ордером подсвечен цветом ордера
         order != null -> orderColor.copy(alpha = 0.35f)
         isSelected -> tokens.colors.selection
-        isLastPrice -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)
+        isLastPrice -> tokens.colors.accent.copy(alpha = 0.14f)
         isHovered -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         else -> Color.Transparent
     }
@@ -122,7 +122,7 @@ fun LevelRow(
     val priceColor = when {
         position != null -> Color.White
         isSelected -> MaterialTheme.colorScheme.onSurface
-        isLastPrice -> MaterialTheme.colorScheme.tertiary
+        isLastPrice -> tokens.colors.accent
         level == null -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
         else -> Color.White
     }
@@ -156,13 +156,13 @@ fun LevelRow(
                         modifier = Modifier
                             .fillMaxHeight()
                             .fillMaxWidth(volumeWidth)
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                            .background(tokens.colors.bullish.copy(alpha = 0.3f))
                     )
                 }
                 if (bidSteps > 0 && bidQty != null) {
                     Text(
                         text = formatter.formatVolumeFull(bidQty),
-                        color = MaterialTheme.colorScheme.primary,
+                        color = tokens.colors.bullish,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = TerminalFontFamily,
                             fontSize = tokens.typography.compactSize
@@ -230,13 +230,13 @@ fun LevelRow(
                             .fillMaxHeight()
                             .fillMaxWidth(volumeWidth)
                             .align(Alignment.CenterEnd)
-                            .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f))
+                            .background(tokens.colors.bearish.copy(alpha = 0.3f))
                     )
                 }
                 if (askSteps > 0 && askQty != null) {
                     Text(
                         text = formatter.formatVolumeFull(askQty),
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = tokens.colors.bearish,
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontFamily = TerminalFontFamily,
                             fontSize = tokens.typography.compactSize
