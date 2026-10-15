@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.aandios.nous.core.ui.component.ConfirmDeleteDialog
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelState
 import com.aandios.nous.core.workspace.PanelType
@@ -455,31 +456,33 @@ private fun infoOf(config: WorkspaceConfig): String {
 fun WorkspaceLayoutThumbnail(config: WorkspaceConfig, modifier: Modifier = Modifier) {
     val panels = remember(config.panels) { config.panels.associateBy { it.id } }
     val textMeasurer = rememberTextMeasurer()
+    val tokens = LocalTerminalDesignTokens.current
 
-    val tfStyle = TextStyle(color = Color(0xFF9EDBC0), fontSize = 9.sp, fontFamily = TerminalFontFamily)
-    val labelStyle = TextStyle(color = Color(0xFF9AA7B4), fontSize = 8.sp, fontFamily = TerminalFontFamily)
-    val smallStyle = TextStyle(color = Color(0xFF6FA58A), fontSize = 7.sp, fontFamily = TerminalFontFamily)
+    // Семантические цвета панелей из активной темы (chart/dom/trades/trading)
+    val typeColor = mapOf(
+        PanelType.CHART to tokens.colors.bullish,
+        PanelType.DOM to tokens.colors.sma,
+        PanelType.TRADES to tokens.colors.warning,
+        PanelType.TRADING to tokens.colors.bollinger,
+    )
+
+    val tfStyle = TextStyle(color = tokens.colors.bullish, fontSize = 9.sp, fontFamily = TerminalFontFamily)
+    val labelStyle = TextStyle(color = tokens.colors.label, fontSize = 8.sp, fontFamily = TerminalFontFamily)
+    val smallStyle = TextStyle(
+        color = tokens.colors.bullish.copy(alpha = 0.75f),
+        fontSize = 7.sp,
+        fontFamily = TerminalFontFamily,
+    )
 
     Canvas(modifier = modifier) {
-        drawRect(color = Color(0xFF0D0D0D), size = size)
+        drawRect(color = tokens.colors.workspaceBackground, size = size)
         val gap = 3.dp.toPx()
         collectRects(config.layout, 0f, 0f, size.width, size.height, gap).forEach { (rect, panelId) ->
             val pc = panels[panelId]
             val type = pc?.type
-            val fill = when (type) {
-                PanelType.CHART -> Color(0xFF14302A)
-                PanelType.DOM -> Color(0xFF14202E)
-                PanelType.TRADES -> Color(0xFF2A2414)
-                PanelType.TRADING -> Color(0xFF241A2E)
-                null -> Color(0xFF1A1A1A)
-            }
-            val border = when (type) {
-                PanelType.CHART -> Color(0xFF2E7D57)
-                PanelType.DOM -> Color(0xFF2E5F7D)
-                PanelType.TRADES -> Color(0xFF7D6B2E)
-                PanelType.TRADING -> Color(0xFF6B2E7D)
-                null -> Color(0xFF444444)
-            }
+            val color = type?.let { typeColor[it] } ?: tokens.colors.neutral
+            val fill = color.copy(alpha = 0.18f)
+            val border = color.copy(alpha = 0.7f)
             drawRect(color = fill, topLeft = Offset(rect.left, rect.top), size = Size(rect.width, rect.height))
             drawRect(color = border, topLeft = Offset(rect.left, rect.top), size = Size(rect.width, rect.height), style = Stroke(width = 1.dp.toPx()))
 
