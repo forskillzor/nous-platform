@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Edit
@@ -49,11 +48,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
@@ -162,7 +163,6 @@ fun SymbolsPanel(
         matchingRows.sortedWith(if (descending) comparator.reversed() else comparator)
     }
     val tokens = LocalTerminalDesignTokens.current
-    val favoriteActive = selectedList?.symbols?.contains(selectedSymbol) == true
     val favoriteEnabled = selectedList != null && selectedSymbol.isNotBlank()
 
     fun toggleFavorite() {
@@ -217,11 +217,8 @@ fun SymbolsPanel(
                     Icon(
                         imageVector = Icons.Default.Star,
                         contentDescription = null,
-                        tint = when {
-                            !favoriteEnabled -> tokens.colors.label.copy(alpha = 0.35f)
-                            favoriteActive -> tokens.colors.accent
-                            else -> tokens.colors.label
-                        },
+                        tint = if (favoriteEnabled) tokens.colors.accent
+                        else tokens.colors.label.copy(alpha = 0.35f),
                         modifier = Modifier.size(14.dp),
                     )
                 }
@@ -235,26 +232,12 @@ fun SymbolsPanel(
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                MiniAction(
-                    contentDescription = "New list",
-                    onClick = {
-                        watchlistDialogName = ""
-                        watchlistDialogMode = WatchlistDialogMode.CREATE
-                    },
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddCircle,
-                        contentDescription = null,
-                        tint = tokens.colors.accent,
-                        modifier = Modifier.size(15.dp),
-                    )
-                }
                 Box {
                     MiniAction(
-                        contentDescription = "More",
+                        contentDescription = "Panel settings",
                         onClick = { moreMenuExpanded = true },
                     ) {
-                        MoreDotsGlyph(color = tokens.colors.label)
+                        SlidersGlyph(color = tokens.colors.label)
                     }
                     DropdownMenu(
                         expanded = moreMenuExpanded,
@@ -453,12 +436,13 @@ fun SymbolsPanel(
                     watchlistDialogName = ""
                     watchlistDialogMode = WatchlistDialogMode.CREATE
                 },
+                bordered = true,
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = null,
                     tint = tokens.colors.accent,
-                    modifier = Modifier.size(15.dp),
+                    modifier = Modifier.size(13.dp),
                 )
             }
         }
@@ -641,11 +625,23 @@ private fun MiniAction(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    bordered: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
+    val shape = RoundedCornerShape(tokens.cornerRadii.smallCard)
     Box(
         modifier = modifier
-            .size(18.dp)
+            .then(
+                if (bordered) {
+                    Modifier
+                        .size(20.dp)
+                        .clip(shape)
+                        .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, shape)
+                } else {
+                    Modifier.size(18.dp)
+                }
+            )
             .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -654,17 +650,23 @@ private fun MiniAction(
 }
 
 @Composable
-private fun MoreDotsGlyph(color: Color) {
+private fun SlidersGlyph(color: Color) {
     Canvas(modifier = Modifier.size(14.dp)) {
-        val radius = size.minDimension * 0.085f
-        val centerY = size.height / 2f
-        listOf(0.16f, 0.5f, 0.84f).forEach { fraction ->
-            drawCircle(
-                color = color,
-                radius = radius,
-                center = Offset(size.width * fraction, centerY),
-            )
-        }
+        val stroke = 1.2.dp.toPx()
+        val knobRadius = size.minDimension * 0.155f
+        val topY = size.height * 0.27f
+        val bottomY = size.height * 0.73f
+        val topKnobX = size.width * 0.36f
+        val bottomKnobX = size.width * 0.64f
+        val edge = size.width * 0.04f
+
+        drawLine(color, Offset(edge, topY), Offset(topKnobX - knobRadius, topY), strokeWidth = stroke)
+        drawLine(color, Offset(topKnobX + knobRadius, topY), Offset(size.width - edge, topY), strokeWidth = stroke)
+        drawCircle(color, radius = knobRadius, center = Offset(topKnobX, topY), style = Stroke(stroke))
+
+        drawLine(color, Offset(edge, bottomY), Offset(bottomKnobX - knobRadius, bottomY), strokeWidth = stroke)
+        drawLine(color, Offset(bottomKnobX + knobRadius, bottomY), Offset(size.width - edge, bottomY), strokeWidth = stroke)
+        drawCircle(color, radius = knobRadius, center = Offset(bottomKnobX, bottomY), style = Stroke(stroke))
     }
 }
 
@@ -789,7 +791,7 @@ private fun MarketWatchSymbolRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = highlightedSymbol(row.symbol, matchRange),
-                        color = if (selected) tokens.colors.accent else MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontSize = tokens.typography.controlSize,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Medium,

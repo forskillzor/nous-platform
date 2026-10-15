@@ -37,11 +37,6 @@ fun DrawScope.drawChart(
         translate(left = chartArea.left, top = chartArea.top)
         clipRect(0f, 0f, chartArea.width, chartArea.height)
     }) {
-        drawRect(
-            color = config.backgroundColor,
-            size = androidx.compose.ui.geometry.Size(chartArea.width, chartArea.height),
-        )
-
         // Сначала сетка
         drawGrid(config, chartArea.width, chartArea.height)
 

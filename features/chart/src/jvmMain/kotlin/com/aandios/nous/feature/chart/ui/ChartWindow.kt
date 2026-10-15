@@ -352,7 +352,12 @@ private fun ChartWindowContent(
         // Панель рисования и водяной знак видны всегда.
         // BoxWithConstraints: ширина нужна, чтобы панель chart trading
         // не вылезала за тайл (в узких тайлах режется соседней панелью).
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(chartConfig.backgroundColor)
+        ) {
             // Водяной знак символа — самый нижний слой, ничего не перекрывает:
             // крупный тикер монеты + биржа и тип контракта (как в TradingView)
             val symbolInfo = uiState.currentSymbolInfo
