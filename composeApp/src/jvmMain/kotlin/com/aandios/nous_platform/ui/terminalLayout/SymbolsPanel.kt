@@ -202,7 +202,7 @@ fun SymbolsPanel(
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
             ) {
                 TerminalGripDots(
                     orientation = TerminalGripOrientation.VERTICAL,
@@ -314,7 +314,7 @@ fun SymbolsPanel(
         Row(
             modifier = Modifier.fillMaxWidth().padding(
                 horizontal = tokens.spacing.lg,
-                vertical = tokens.spacing.xs,
+                vertical = tokens.spacing.sm,
             ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
@@ -451,7 +451,7 @@ fun SymbolsPanel(
         Row(
             modifier = Modifier.fillMaxWidth().padding(
                 horizontal = tokens.spacing.lg,
-                vertical = tokens.spacing.xs,
+                vertical = tokens.spacing.sm,
             ),
         ) {
             Row(
@@ -506,7 +506,7 @@ fun SymbolsPanel(
         Row(
             modifier = Modifier.fillMaxWidth().padding(
                 horizontal = tokens.spacing.lg,
-                vertical = tokens.spacing.xxs,
+                vertical = tokens.spacing.xs,
             ),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -562,7 +562,7 @@ fun SymbolsPanel(
 
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            verticalArrangement = Arrangement.spacedBy(tokens.spacing.md),
         ) {
             items(sortedRows, key = { "${it.row.exchangeId}:${it.row.symbol}" }) { item ->
                 MarketWatchSymbolRow(
@@ -790,10 +790,7 @@ private fun MarketWatchSymbolRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-                ) {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = highlightedSymbol(row.symbol, matchRange),
                         color = MaterialTheme.colorScheme.onSurface,
@@ -811,10 +808,7 @@ private fun MarketWatchSymbolRow(
                         maxLines = 1,
                     )
                 }
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-                ) {
+                Column(horizontalAlignment = Alignment.End) {
                     Text(
                         row.stats?.changePercent24h?.let { "%+.2f%%".format(it) } ?: "—",
                         color = changeColor,

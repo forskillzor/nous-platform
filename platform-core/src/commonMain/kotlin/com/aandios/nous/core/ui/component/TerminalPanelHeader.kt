@@ -33,7 +33,7 @@ fun TerminalPanelHeader(
                     .fillMaxWidth()
                     .padding(
                         horizontal = tokens.spacing.sm,
-                        vertical = tokens.spacing.xs,
+                        vertical = tokens.spacing.sm,
                     ),
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 content = content,
