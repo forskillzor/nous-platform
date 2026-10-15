@@ -102,7 +102,7 @@ fun SymbolSearchDropdown(
                 }
                 Text(
                     text = currentSymbol,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = valueFontSize,
                     fontWeight = FontWeight.Medium,
                     fontFamily = TerminalFontFamily,

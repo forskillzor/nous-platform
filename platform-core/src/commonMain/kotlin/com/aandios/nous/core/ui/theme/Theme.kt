@@ -88,6 +88,32 @@ private val NightTerminalColorScheme = darkColorScheme(
     outline = Color(0xFF222222),
 )
 
+private val NousTerminalColorScheme = darkColorScheme(
+    primary = Color(0xFFF28C18),
+    onPrimary = Color(0xFF101722),
+    primaryContainer = Color(0xFF4B2D10),
+    onPrimaryContainer = Color(0xFFFFD7A6),
+    secondary = Color(0xFFD45155),
+    onSecondary = Color(0xFF160B0D),
+    secondaryContainer = Color(0xFF492126),
+    onSecondaryContainer = Color(0xFFFFDADA),
+    tertiary = Color(0xFF5E91C7),
+    onTertiary = Color(0xFF0B1420),
+    background = Color(0xFF0A111C),
+    onBackground = Color(0xFFD8E1EE),
+    surface = Color(0xFF0F1825),
+    onSurface = Color(0xFFD8E1EE),
+    surfaceVariant = Color(0xFF172233),
+    onSurfaceVariant = Color(0xFF879AB3),
+    surfaceTint = Color.Transparent,
+    inverseSurface = Color(0xFFD8E1EE),
+    inverseOnSurface = Color(0xFF172233),
+    error = Color(0xFFD45155),
+    onError = Color(0xFF160B0D),
+    outline = Color(0xFF29384C),
+    outlineVariant = Color(0xFF202E41),
+)
+
 private fun terminalTokens(colorScheme: ColorScheme) = TerminalDesignTokens(
     colors = TerminalSemanticColors(
         bullish = colorScheme.primary,
@@ -149,7 +175,54 @@ object TerminalThemes {
         tokens = terminalTokens(NightTerminalColorScheme),
     )
 
-    val available = listOf(Dark, Night)
+    val Nous = TerminalThemeDefinition(
+        name = "Nous",
+        colorScheme = NousTerminalColorScheme,
+        typography = TerminalTypography,
+        shapes = TerminalShapes,
+        tokens = terminalTokens(NousTerminalColorScheme).let { base ->
+            base.copy(
+                colors = base.colors.copy(
+                    bullish = Color(0xFF168B72),
+                    bearish = Color(0xFFD45155),
+                    candleShadow = Color(0xFF8A9AAF),
+                    chartBackground = Color(0xFF0E1724),
+                    gridLine = Color(0xFF223147),
+                    gridLineMajor = Color(0xFF2B3B50),
+                    axisText = Color(0xFF8295AE),
+                    volumeBullish = Color(0x66168B72),
+                    volumeBearish = Color(0x66D45155),
+                    selection = Color(0xFF1A2940),
+                    crosshair = Color(0x80A9BCD0),
+                    cursorLine = Color(0x66A9BCD0),
+                    orderBackground = Color(0xAA172233),
+                    buyOrder = Color(0xFF168B72),
+                    sellOrder = Color(0xFFD45155),
+                    profit = Color(0xFF168B72),
+                    loss = Color(0xFFD45155),
+                    neutral = Color(0xFF8295AE),
+                    workspaceBackground = Color(0xFF0A111C),
+                    panelSurface = Color(0xFF0F1825),
+                    panelHeaderSurface = Color(0xFF141F2E),
+                    panelBorder = Color(0xFF29384C),
+                    inactiveTabSurface = Color(0xFF111A27),
+                    splitHandle = Color(0xFF304158),
+                    warning = Color(0xFFF28C18),
+                    accent = Color(0xFFF28C18),
+                    label = Color(0xFF8295AE),
+                    pnlPlate = Color(0xFF151F2D),
+                    switchTrack = Color(0xA6F28C18),
+                ),
+                cornerRadii = base.cornerRadii.copy(
+                    card = 4.dp,
+                    toolbar = 6.dp,
+                    workspacePanel = 6.dp,
+                ),
+            )
+        },
+    )
+
+    val available = listOf(Nous, Dark, Night)
 }
 
 object ChartColors {

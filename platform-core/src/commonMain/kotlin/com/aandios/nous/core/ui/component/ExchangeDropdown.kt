@@ -46,7 +46,7 @@ fun ExchangeDropdown(
             ) {
                 Text(
                     text = current,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = MaterialTheme.typography.labelSmall.fontSize,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,

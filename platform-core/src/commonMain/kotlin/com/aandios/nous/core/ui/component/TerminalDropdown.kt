@@ -59,7 +59,7 @@ fun <T> TerminalDropdown(
             ) {
                 Text(
                     text = displayText(currentValue),
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    color = MaterialTheme.colorScheme.onSurface,
                     fontSize = MaterialTheme.typography.labelSmall.fontSize,
                     fontWeight = FontWeight.Medium,
                     letterSpacing = tokens.typography.controlLetterSpacing,

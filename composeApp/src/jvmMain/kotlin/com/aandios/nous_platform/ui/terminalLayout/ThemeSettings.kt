@@ -45,7 +45,7 @@ import kotlinx.coroutines.sync.withLock
 import org.koin.compose.koinInject
 
 data class ThemeSettingsState(
-    val theme: TerminalThemeDefinition = TerminalThemes.Dark,
+    val theme: TerminalThemeDefinition = TerminalThemes.Nous,
     val loading: Boolean = true,
     val saving: Boolean = false,
     val error: String? = null,
@@ -71,7 +71,7 @@ class ThemeSettingsController(
                 val theme = savedName?.let { name ->
                     TerminalThemes.available.firstOrNull { it.name == name }
                         ?: throw IllegalStateException("Saved theme '$name' is not available")
-                } ?: TerminalThemes.Dark
+                } ?: TerminalThemes.Nous
                 _state.value = ThemeSettingsState(theme = theme, loading = false)
             } catch (e: CancellationException) {
                 throw e

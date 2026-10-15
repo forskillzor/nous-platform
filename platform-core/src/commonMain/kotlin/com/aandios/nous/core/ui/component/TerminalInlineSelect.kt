@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 /**
  * Компактный inline-селект хедеров панелей: `label value ▾` одной строкой,
@@ -61,17 +62,19 @@ fun <T> TerminalInlineSelect(
             Spacer(Modifier.width(tokens.spacing.xs))
             Text(
                 text = display(current),
-                color = MaterialTheme.colorScheme.inverseOnSurface,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = tokens.typography.inlineSelectValueSize,
                 fontWeight = FontWeight.Medium,
+                fontFamily = TerminalFontFamily,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Spacer(Modifier.width(tokens.spacing.xxs))
             Text(
                 text = "▾",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = tokens.colors.label,
                 fontSize = tokens.typography.microSize,
+                fontFamily = TerminalFontFamily,
             )
         }
 

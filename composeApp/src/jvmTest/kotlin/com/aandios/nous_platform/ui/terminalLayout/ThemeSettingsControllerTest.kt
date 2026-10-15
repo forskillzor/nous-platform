@@ -31,7 +31,8 @@ class ThemeSettingsControllerTest {
         val store = MemoryStateStore()
         val controller = ThemeSettingsController(store)
         controller.start()
-        controller.state.first { !it.loading }
+        val initialState = controller.state.first { !it.loading }
+        assertEquals(TerminalThemes.Nous, initialState.theme)
 
         controller.select(TerminalThemes.Night)
         val state = controller.state.first { it.theme == TerminalThemes.Night && !it.saving }
@@ -48,7 +49,7 @@ class ThemeSettingsControllerTest {
         controller.start()
         val state = controller.state.first { !it.loading }
 
-        assertEquals(TerminalThemes.Dark, state.theme)
+        assertEquals(TerminalThemes.Nous, state.theme)
         assertNotNull(state.error)
         Unit
     }
