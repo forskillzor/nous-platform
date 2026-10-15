@@ -28,7 +28,10 @@ fun DomHeaderCompact(
     onToggleExpand: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    TerminalPanelHeader(modifier = modifier) {
+    TerminalPanelHeader(
+        modifier = modifier,
+        containerColor = MaterialTheme.colorScheme.surface,
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,

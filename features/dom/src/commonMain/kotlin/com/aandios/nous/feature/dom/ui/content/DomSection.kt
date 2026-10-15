@@ -150,7 +150,6 @@ fun DomSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(tokens.colors.panelHeaderSurface)
                 .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {

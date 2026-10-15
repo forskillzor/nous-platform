@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.dom.ui.header
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -23,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
-import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.dom.domain.*
@@ -78,18 +78,20 @@ private fun ExpandedDomHeader(
 ) {
     val tokens = LocalTerminalDesignTokens.current
 
-    TerminalPanelHeader(modifier = modifier) {
+    // Единый фон с контентом DOM (один цвет панели) + полоски между строками
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface),
+    ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         // Узкие панели: агрегация переезжает в третью тонкую строку
         val narrow = maxWidth < 360.dp
-        Column(
-            modifier = Modifier
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             // Строка 1: биржа · тип контрактов · сворачивание
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -128,9 +130,15 @@ private fun ExpandedDomHeader(
                 }
             }
 
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+            )
+
             // Строка 2: символ (сжимается, клип) · глубина · агрегация
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -160,9 +168,14 @@ private fun ExpandedDomHeader(
                 }
             }
             if (narrow) {
+                HorizontalDivider(
+                    color = tokens.colors.panelBorder,
+                    thickness = tokens.dimensions.dividerThickness,
+                )
                 // Узкая панель: агрегация в третьей строке
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     AggTerminalInlineSelect(
@@ -173,6 +186,10 @@ private fun ExpandedDomHeader(
                     Spacer(Modifier.weight(1f))
                 }
             }
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+            )
         }
         }
     }

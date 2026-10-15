@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -60,11 +61,12 @@ fun PanelHeader(
     // (рекомпозиция), из-за чего pointerInput с ключом onDrag обрывал бы жест
     val currentOnDrag by rememberUpdatedState(onDrag)
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(tokens.dimensions.workspacePanelHeaderHeight)
-            .background(tokens.colors.panelHeaderSurface)
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(tokens.dimensions.workspacePanelHeaderHeight)
+                .background(tokens.colors.panelSurface)
             .onGloballyPositioned { headerOrigin = it.positionInWindow() }
             .then(
                 if (onDrag != null) {
@@ -181,6 +183,12 @@ fun PanelHeader(
                 modifier = Modifier.clickable { onClose() }.padding(start = tokens.spacing.sm),
             )
         }
+        }
+
+        HorizontalDivider(
+            color = tokens.colors.panelBorder,
+            thickness = tokens.dimensions.dividerThickness,
+        )
     }
 }
 

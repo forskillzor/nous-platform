@@ -14,18 +14,20 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 @Composable
 fun TerminalPanelHeader(
     modifier: Modifier = Modifier,
+    containerColor: Color = LocalTerminalDesignTokens.current.colors.panelHeaderSurface,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
 
     Column(modifier = modifier.fillMaxWidth()) {
         Surface(
-            color = tokens.colors.panelHeaderSurface,
+            color = containerColor,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(
