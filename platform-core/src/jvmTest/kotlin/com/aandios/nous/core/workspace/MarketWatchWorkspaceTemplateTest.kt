@@ -8,6 +8,32 @@ import kotlin.test.assertTrue
 class MarketWatchWorkspaceTemplateTest {
 
     @Test
+    fun `nous template matches the target single chart and right-side panels layout`() {
+        val template = Templates.nous()
+        val root = template.layout as LayoutNode.Split
+        val chartAndPositions = root.children[0] as LayoutNode.Split
+
+        assertEquals("Nous", template.group)
+        assertEquals(LayoutNode.Direction.HORIZONTAL, root.direction)
+        assertEquals(LayoutNode.Direction.VERTICAL, chartAndPositions.direction)
+        assertEquals(0.72f, chartAndPositions.ratio)
+        assertEquals(
+            listOf(LayoutNode.Leaf("chart"), LayoutNode.Leaf("trading")),
+            chartAndPositions.children,
+        )
+        assertEquals(
+            listOf(LayoutNode.Leaf("dom"), LayoutNode.Leaf("trades")),
+            root.children.drop(1),
+        )
+        assertEquals(
+            listOf(PanelType.CHART, PanelType.TRADING, PanelType.DOM, PanelType.TRADES),
+            template.panels.map { it.type },
+        )
+        assertEquals(PanelState.Trading(), template.panels.single { it.id == "trading" }.state)
+        assertTrue(builtinWorkspaceTemplates().any { it.id == "builtin-nous" })
+    }
+
+    @Test
     fun `applies selected market symbol and exchange to a fresh template workspace`() {
         val template = Templates.multiChart()
 

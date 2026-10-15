@@ -4,12 +4,12 @@
  */
 
 package com.aandios.nous.core.ui.workspace
-import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -25,7 +24,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.workspace.PanelConfig
 import com.aandios.nous.core.workspace.PanelType
 
@@ -48,14 +48,14 @@ fun PanelHeader(
     onDrag: PanelDragHandlers? = null,
     modifier: Modifier = Modifier
 ) {
+    val tokens = LocalTerminalDesignTokens.current
     var splitMenuExpanded by remember { mutableStateOf(false) }
     var splitDirection by remember { mutableStateOf(false) } // false=H, true=V
-    var menuX by remember { mutableFloatStateOf(0f) }
     var headerOrigin by remember { mutableStateOf(Offset.Zero) }
     val density = LocalDensity.current
     // Порог, после которого «нажатие» превращается в перетаскивание
     // (сплит срабатывает только когда панель реально тащат, а не при клике)
-    val dragThresholdPx = with(density) { 12.dp.toPx() }
+    val dragThresholdPx = with(density) { tokens.spacing.xl.toPx() }
     // Стабильная ссылка на обработчики: dragState обновляется на каждое движение
     // (рекомпозиция), из-за чего pointerInput с ключом onDrag обрывал бы жест
     val currentOnDrag by rememberUpdatedState(onDrag)
@@ -63,8 +63,8 @@ fun PanelHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(22.dp)
-            .background(Color(0xFF1A1A1A))
+            .height(tokens.dimensions.workspacePanelHeaderHeight)
+            .background(tokens.colors.panelHeaderSurface)
             .onGloballyPositioned { headerOrigin = it.positionInWindow() }
             .then(
                 if (onDrag != null) {
@@ -101,17 +101,24 @@ fun PanelHeader(
                     }
                 } else Modifier
             )
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val prefix = when (config.type) {
             PanelType.CHART -> "▤"; PanelType.DOM -> "▥"; PanelType.TRADES -> "▦"; PanelType.TRADING -> "▧"
         }
-        Text(prefix, color = Color(0xFF00C853), fontSize = 10.sp, fontFamily = TerminalFontFamily)
-        Spacer(Modifier.width(4.dp))
+        Text(
+            prefix,
+            color = tokens.colors.accent,
+            fontSize = tokens.typography.smallSize,
+            fontFamily = TerminalFontFamily,
+        )
+        Spacer(Modifier.width(tokens.spacing.sm))
         Text(
             text = "${config.symbol} · ${panelStateLabel(config)}",
-            color = Color(0xFFAAAAAA), fontSize = 10.sp, fontFamily = TerminalFontFamily,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = tokens.typography.smallSize,
+            fontFamily = TerminalFontFamily,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f)
@@ -119,14 +126,22 @@ fun PanelHeader(
 
         // Split buttons — each opens a menu to choose panel type
         if (onSplitV != null || onSplitH != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)) {
                 if (onSplitV != null) {
                     Box {
-                        Text("┃", color = Color(0xFF555555), fontSize = 12.sp, fontFamily = TerminalFontFamily,
-                            modifier = Modifier.clickable { splitDirection = true; splitMenuExpanded = true }.padding(horizontal = 2.dp))
+                        Text(
+                            "┃",
+                            color = tokens.colors.label,
+                            fontSize = tokens.typography.controlSize,
+                            fontFamily = TerminalFontFamily,
+                            modifier = Modifier.clickable {
+                                splitDirection = true
+                                splitMenuExpanded = true
+                            }.padding(horizontal = tokens.spacing.xxs),
+                        )
                         DropdownMenu(expanded = splitMenuExpanded && splitDirection, onDismissRequest = { splitMenuExpanded = false }) {
                             listOf(PanelType.CHART to "Chart", PanelType.DOM to "DOM", PanelType.TRADES to "Trades", PanelType.TRADING to "Trading").forEach { (t, label) ->
-                                DropdownMenuItem(text = { Text(label, fontSize = 12.sp, fontFamily = TerminalFontFamily) }, onClick = {
+                                DropdownMenuItem(text = { Text(label, fontSize = tokens.typography.controlSize, fontFamily = TerminalFontFamily) }, onClick = {
                                     splitMenuExpanded = false; onSplitV(t)
                                 })
                             }
@@ -135,11 +150,19 @@ fun PanelHeader(
                 }
                 if (onSplitH != null) {
                     Box {
-                        Text("━", color = Color(0xFF555555), fontSize = 12.sp, fontFamily = TerminalFontFamily,
-                            modifier = Modifier.clickable { splitDirection = false; splitMenuExpanded = true }.padding(horizontal = 2.dp))
+                        Text(
+                            "━",
+                            color = tokens.colors.label,
+                            fontSize = tokens.typography.controlSize,
+                            fontFamily = TerminalFontFamily,
+                            modifier = Modifier.clickable {
+                                splitDirection = false
+                                splitMenuExpanded = true
+                            }.padding(horizontal = tokens.spacing.xxs),
+                        )
                         DropdownMenu(expanded = splitMenuExpanded && !splitDirection, onDismissRequest = { splitMenuExpanded = false }) {
                             listOf(PanelType.CHART to "Chart", PanelType.DOM to "DOM", PanelType.TRADES to "Trades", PanelType.TRADING to "Trading").forEach { (t, label) ->
-                                DropdownMenuItem(text = { Text(label, fontSize = 12.sp, fontFamily = TerminalFontFamily) }, onClick = {
+                                DropdownMenuItem(text = { Text(label, fontSize = tokens.typography.controlSize, fontFamily = TerminalFontFamily) }, onClick = {
                                     splitMenuExpanded = false; onSplitH(t)
                                 })
                             }
@@ -150,8 +173,13 @@ fun PanelHeader(
         }
 
         if (onClose != null) {
-            Text("×", color = Color(0xFF555555), fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                modifier = Modifier.clickable { onClose() }.padding(start = 4.dp))
+            Text(
+                "×",
+                color = tokens.colors.label,
+                fontSize = tokens.typography.compactActionSize,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.clickable { onClose() }.padding(start = tokens.spacing.sm),
+            )
         }
     }
 }

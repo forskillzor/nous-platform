@@ -10,6 +10,36 @@ package com.aandios.nous.core.workspace
  */
 object Templates {
 
+    fun nous(symbol: String = "BTCUSDT", provider: String = "Binance"): WorkspaceConfig {
+        return WorkspaceConfig(
+            id = generateId(),
+            name = "$symbol Nous",
+            group = "Nous",
+            providers = listOf(ProviderRef(id = "main", name = provider, symbols = listOf(symbol))),
+            layout = LayoutNode.Split(
+                direction = LayoutNode.Direction.HORIZONTAL,
+                children = listOf(
+                    LayoutNode.Split(
+                        direction = LayoutNode.Direction.VERTICAL,
+                        ratio = 0.72f,
+                        children = listOf(
+                            LayoutNode.Leaf("chart"),
+                            LayoutNode.Leaf("trading"),
+                        ),
+                    ),
+                    LayoutNode.Leaf("dom"),
+                    LayoutNode.Leaf("trades"),
+                ),
+            ),
+            panels = listOf(
+                PanelConfig("chart", PanelType.CHART, "main", symbol, PanelState.Chart(timeframe = "1m")),
+                PanelConfig("trading", PanelType.TRADING, "main", symbol, PanelState.Trading()),
+                PanelConfig("dom", PanelType.DOM, "main", symbol, PanelState.Dom(depth = 20, aggregation = "1x")),
+                PanelConfig("trades", PanelType.TRADES, "main", symbol, PanelState.Trades()),
+            ),
+        )
+    }
+
     fun scalping(symbol: String = "BTCUSDT", provider: String = "Binance"): WorkspaceConfig {
         return WorkspaceConfig(
             id = generateId(),
@@ -166,6 +196,7 @@ fun builtinWorkspaceTemplates(): List<BuiltinWorkspaceTemplate> {
         "ADAUSDT", "LINKUSDT", "AVAXUSDT", "DOTUSDT", "TRXUSDT", "LTCUSDT",
     )
     return listOf(
+        BuiltinWorkspaceTemplate("builtin-nous", "Nous", Templates.nous()) { Templates.nous() },
         BuiltinWorkspaceTemplate("builtin-scalping", "Scalping", Templates.scalping()) { Templates.scalping() },
         BuiltinWorkspaceTemplate("builtin-classic", "Classic", Templates.classic()) { Templates.classic() },
         BuiltinWorkspaceTemplate("builtin-orderflow", "Order Flow", Templates.orderFlow()) { Templates.orderFlow() },

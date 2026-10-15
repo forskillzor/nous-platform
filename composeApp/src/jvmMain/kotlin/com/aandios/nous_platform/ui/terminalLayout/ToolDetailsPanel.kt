@@ -5,13 +5,16 @@
 
 package com.aandios.nous_platform.ui.terminalLayout
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -20,9 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.component.TerminalPanelHeader
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import org.jetbrains.compose.resources.painterResource
 import nous_platform.composeapp.generated.resources.Res
@@ -41,9 +46,15 @@ fun ToolDetailsPanel(
     onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)?,
     modifier: Modifier = Modifier.Companion
 ) {
+    val tokens = LocalTerminalDesignTokens.current
+    val shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel)
     Surface(
-        modifier = modifier.width(width),
-        color = MaterialTheme.colorScheme.surface
+        modifier = modifier
+            .padding(tokens.dimensions.workspacePanelGap / 2)
+            .width(width)
+            .clip(shape)
+            .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, shape),
+        color = tokens.colors.panelSurface,
     ) {
         Column(
             modifier = Modifier.Companion.fillMaxSize()
@@ -64,16 +75,19 @@ fun ToolDetailsPanel(
                             ToolPanelType.STRATEGIES -> "Strategies"
                             ToolPanelType.WORKSPACES -> "Workspaces"
                         },
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface
+                        fontSize = tokens.typography.controlSize,
+                        fontFamily = com.aandios.nous.core.ui.theme.TerminalFontFamily,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
                     )
 
                     IconButton(
                         onClick = onClose,
-                        modifier = Modifier.Companion.size(24.dp)
+                        modifier = Modifier.Companion.size(tokens.dimensions.compactControlHeight)
                     ) {
                         Icon(
-                            painter = painterResource(Res.drawable.close), // Замени на свою иконку
+                            painter = painterResource(Res.drawable.close),
                             contentDescription = "Close",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.Companion.size(16.dp)

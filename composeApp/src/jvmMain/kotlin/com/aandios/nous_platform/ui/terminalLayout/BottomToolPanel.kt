@@ -42,12 +42,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.feature.trading.ui.TradingViewModel
+import com.aandios.nous.core.ui.component.TerminalGripDots
+import com.aandios.nous.core.ui.component.TerminalGripOrientation
 import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
 import nous_platform.composeapp.generated.resources.Res
 import nous_platform.composeapp.generated.resources.close
-
-private val accentColor = Color(0xFF00C853)
 
 /**
  * Ручка изменения высоты нижней панели: вертикальный drag.
@@ -59,16 +59,21 @@ fun BottomResizeHandle(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
+    val tokens = com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens.current
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(4.dp)
-            .background(if (hovered) accentColor.copy(alpha = 0.4f) else Color(0xFF333333))
+            .height(tokens.dimensions.splitHandleSize)
             .hoverable(interaction)
             .pointerInput(Unit) {
                 detectVerticalDragGestures { _, dragAmount -> onDrag(dragAmount) }
             }
-    )
+    ) {
+        TerminalGripDots(
+            orientation = TerminalGripOrientation.HORIZONTAL,
+            color = if (hovered) tokens.colors.accent else tokens.colors.label.copy(alpha = 0.75f),
+        )
+    }
 }
 
 @Composable

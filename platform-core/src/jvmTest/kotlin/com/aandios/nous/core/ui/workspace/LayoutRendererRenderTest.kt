@@ -12,7 +12,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -22,6 +25,7 @@ import androidx.compose.ui.test.runDesktopComposeUiTest
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
@@ -84,6 +88,43 @@ class LayoutRendererRenderTest {
     }
 
     @Test
+    fun panelsRenderAsSeparatedIslands() = runDesktopComposeUiTest {
+        val sizes = mutableMapOf<String, IntSize>()
+        val positions = mutableMapOf<String, Offset>()
+        var expectedGapPx = 0f
+        val tree = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL,
+            0.5f,
+            listOf(LayoutNode.Leaf("left"), LayoutNode.Leaf("right")),
+        )
+        val panels = mapOf("left" to panel("left"), "right" to panel("right"))
+
+        setContent {
+            val density = LocalDensity.current
+            val gap = LocalTerminalDesignTokens.current.dimensions.workspacePanelGap
+            expectedGapPx = with(density) { gap.toPx() }
+            LayoutRenderer(
+                node = tree,
+                panels = panels,
+                modifier = Modifier.fillMaxSize(),
+            ) { panelId ->
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { sizes[panelId] = it }
+                        .onGloballyPositioned { positions[panelId] = it.positionInRoot() }
+                )
+            }
+        }
+        waitForIdle()
+
+        val left = positions.getValue("left")
+        val right = positions.getValue("right")
+        val gap = right.x - left.x - sizes.getValue("left").width
+        assertTrue(gap >= expectedGapPx, "между островками должен быть токенизированный зазор, получено $gap px")
+    }
+
+    @Test
     fun rendersAfterSplitEditAndTransition() = runDesktopComposeUiTest {
         val rendered = mutableSetOf<String>()
         var tree by mutableStateOf<LayoutNode>(
@@ -118,10 +159,12 @@ class LayoutRendererRenderTest {
     }
 
     @Test
-    fun fixedPanelsKeepWidthAndLeaveNoGaps() = runDesktopComposeUiTest {
-        // [chart | dom(240) | trades(240)] — dom/trades фиксированные,
-        // chart забирает остаток; дыр нет (сумма = ширине окна).
+    fun fixedPanelsKeepWidthAndReserveIslandGaps() = runDesktopComposeUiTest {
+        // [chart | dom(240) | trades(240)] — DOM/Trades сохраняют ширину,
+        // а между панелями и краями остаются токенизированные зазоры.
         val sizes = mutableMapOf<String, IntSize>()
+        var layoutSize = IntSize.Zero
+        var expectedGapPx = 0f
         var tree by mutableStateOf<LayoutNode>(
             LayoutNode.Split(
                 LayoutNode.Direction.HORIZONTAL, 0.5f,
@@ -133,10 +176,13 @@ class LayoutRendererRenderTest {
         )
 
         setContent {
+            val density = LocalDensity.current
+            val gap = LocalTerminalDesignTokens.current.dimensions.workspacePanelGap
+            expectedGapPx = with(density) { gap.toPx() }
             LayoutRenderer(
                 node = tree,
                 panels = panels,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().onSizeChanged { layoutSize = it },
                 fixedPanelWidths = mapOf("dom" to 240.dp, "trades" to 240.dp),
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
@@ -151,8 +197,8 @@ class LayoutRendererRenderTest {
         assertTrue(wTrades in 235..245, "trades должен быть ~240, а не $wTrades")
         assertTrue(wChart > 400, "chart должен занять остаток, а не $wChart")
         assertTrue(
-            wChart + wDom + wTrades in 1015..1024,
-            "дыр быть не должно: сумма=${wChart + wDom + wTrades}"
+            layoutSize.width - (wChart + wDom + wTrades) >= 3 * expectedGapPx,
+            "наружные и межпанельные зазоры должны занимать место из layout",
         )
     }
 
@@ -262,9 +308,9 @@ class LayoutRendererRenderTest {
     @Test
     fun chartAbsorbsFreeWidthOfFixedChain() = runDesktopComposeUiTest(width = 1600, height = 900) {
         // Сплит у ПРЕДПОСЛЕДНЕГО trades: [chart, [dom1, [[dom2, trades2], dom3]]].
-        // Цепочка без chart — fixed 4×240=960, chart забирает весь остаток:
-        // без пустоты, без ручек между фикс-панелями.
+        // Цепочка без chart — fixed 4×240=960; зазор островков выделяется отдельно.
         val sizes = mutableMapOf<String, IntSize>()
+        var expectedGapPx = 0f
         val tree = LayoutNode.Split(
             LayoutNode.Direction.HORIZONTAL, 0.5f,
             listOf(
@@ -296,6 +342,9 @@ class LayoutRendererRenderTest {
         )
 
         setContent {
+            val density = LocalDensity.current
+            val gap = LocalTerminalDesignTokens.current.dimensions.workspacePanelGap
+            expectedGapPx = with(density) { gap.toPx() }
             LayoutRenderer(
                 node = tree,
                 panels = panels,
@@ -321,10 +370,11 @@ class LayoutRendererRenderTest {
         assertTrue(wDom2 in 235..245, "dom2 должен быть 240, а не $wDom2")
         assertTrue(wTrades2 in 235..245, "trades2 должен быть 240, а не $wTrades2")
         assertTrue(wDom3 in 235..245, "dom3 должен быть 240, а не $wDom3")
-        assertTrue(wChart > 600, "chart должен забрать остаток, а не $wChart")
+        assertTrue(wChart > 550, "chart должен забрать остаток, а не $wChart")
+        val panelWidth = wChart + wDom1 + wDom2 + wTrades2 + wDom3
         assertTrue(
-            wChart + wDom1 + wDom2 + wTrades2 + wDom3 in 1592..1600,
-            "пустоты быть не должно: сумма=${wChart + wDom1 + wDom2 + wTrades2 + wDom3}"
+            kotlin.math.abs(panelWidth - (1600 - expectedGapPx * (panels.size + 1))) < 4,
+            "ширины должны учитывать наружный и межпанельные зазоры: сумма=$panelWidth",
         )
         val hHandles = onAllNodesWithTag("split-handle-h", useUnmergedTree = true)
             .fetchSemanticsNodes().size
@@ -334,8 +384,9 @@ class LayoutRendererRenderTest {
     @Test
     fun splitInMiddleOfFixedChainKeepsPanelsTight() = runDesktopComposeUiTest(width = 1600, height = 900) {
         // Сплит у ПЕРВОГО dom: [chart, [[dom1, trades1], [dom2, dom3]]].
-        // Обе группы без chart — fixed: цепочка впритык, chart поглощает остаток.
+        // Обе группы без chart — fixed; chart поглощает остаток и сохраняет зазоры.
         val sizes = mutableMapOf<String, IntSize>()
+        var expectedGapPx = 0f
         val tree = LayoutNode.Split(
             LayoutNode.Direction.HORIZONTAL, 0.5f,
             listOf(
@@ -364,6 +415,9 @@ class LayoutRendererRenderTest {
         )
 
         setContent {
+            val density = LocalDensity.current
+            val gap = LocalTerminalDesignTokens.current.dimensions.workspacePanelGap
+            expectedGapPx = with(density) { gap.toPx() }
             LayoutRenderer(
                 node = tree,
                 panels = panels,
@@ -385,10 +439,11 @@ class LayoutRendererRenderTest {
         widths.forEach { w ->
             assertTrue(w in 235..245, "панели цепочки должны быть по 240: $widths")
         }
-        assertTrue(wChart > 600, "chart должен забрать остаток, а не $wChart")
+        assertTrue(wChart > 550, "chart должен забрать остаток, а не $wChart")
+        val panelWidth = wChart + widths.sum()
         assertTrue(
-            wChart + widths.sum() in 1592..1600,
-            "пустоты быть не должно: сумма=${wChart + widths.sum()}"
+            kotlin.math.abs(panelWidth - (1600 - expectedGapPx * (panels.size + 1))) < 4,
+            "ширины должны учитывать наружный и межпанельные зазоры: сумма=$panelWidth",
         )
         val hHandles = onAllNodesWithTag("split-handle-h", useUnmergedTree = true)
             .fetchSemanticsNodes().size
@@ -510,19 +565,26 @@ class LayoutRendererRenderTest {
     }
 
     @Test
-    fun sequentialSplitsNeverLeaveGapsAndKeepFixedWidths() = runDesktopComposeUiTest(width = 2200, height = 900) {
+    fun sequentialSplitsReserveIslandGapsAndKeepFixedWidths() = runDesktopComposeUiTest(width = 2200, height = 900) {
         // Сценарий пользователя: экран с chart, затем сплиты dom/trades в разном
         // порядке — от последнего элемента, от предпоследнего, от первого dom,
         // плюс случайные. Инварианты после каждого шага:
-        //  * chart забирает ВЕСЬ свободный остаток (дыр нет);
+        //  * chart забирает остаток с учётом зазоров островков;
         //  * фикс-панели одинаковой ширины и по 240, пока сумма помещается;
         //  * ручек между фикс-панелями нет.
         val sizes = mutableMapOf<String, IntSize>()
         var tree by mutableStateOf<LayoutNode>(LayoutNode.Leaf("chart0"))
         var panels by mutableStateOf(mapOf("chart0" to panel("chart0")))
         var fixedWidths by mutableStateOf(mapOf<String, Dp>())
+        var expectedGapPx = 0f
+        var expectedHandlePx = 0f
 
         setContent {
+            val density = LocalDensity.current
+            val dimensions = LocalTerminalDesignTokens.current.dimensions
+            val gap = dimensions.workspacePanelGap
+            expectedGapPx = with(density) { gap.toPx() }
+            expectedHandlePx = with(density) { dimensions.splitHandleSize.toPx() }
             LayoutRenderer(
                 node = tree,
                 panels = panels,
@@ -563,19 +625,25 @@ class LayoutRendererRenderTest {
                 .fetchSemanticsNodes().size
 
             fixedWs.forEach { w ->
-                assertTrue(w > 150, "$label: фикс-панель схлопнулась до $w")
+                assertTrue(w > 100, "$label: фикс-панель схлопнулась до $w")
             }
             val chartCount = panels.values.count { it.type == PanelType.CHART }
-            if (fixedWs.size * 240 + chartCount * 200 <= 2200) {
+            val minimumWidth =
+                fixedWs.size * 240 + chartCount * 200 + (panels.size + 1) * expectedGapPx
+            if (minimumWidth <= 2200) {
                 fixedWs.forEach { w ->
                     assertTrue(w in 235..245, "$label: ожидали 240, получили $w (все: $allWs)")
                 }
             }
             // Ручки — только между двумя flex-поддеревьями
             assertEquals(expectedHandles, handles, "$label: ручки: $handles")
-            // Дыр нет: сумма панелей + ручки (4px) == ширине окна
-            val total = allWs.sumOf { it.second } + handles * 4
-            assertTrue(total in 2190..2200, "$label: дыра/переполнение: total=$total, панели=$allWs")
+            // Панели и ручки занимают ширину за вычетом внешних и межпанельных зазоров.
+            val total = allWs.sumOf { it.second } + handles * expectedHandlePx
+            val expectedTotal = 2200 - expectedGapPx * (allWs.size + 1)
+            assertTrue(
+                kotlin.math.abs(total - expectedTotal) < 4,
+                "$label: ширина с учётом зазоров: total=$total, expected=$expectedTotal, панели=$allWs",
+            )
         }
 
         // 1) [chart0, dom]
@@ -624,6 +692,7 @@ class LayoutRendererRenderTest {
         // оборачивается по контенту (дефолтный parentSizePx 800) и панели
         // сжимаются до 200 при достаточном месте.
         val sizes = mutableMapOf<String, IntSize>()
+        var expectedGapPx = 0f
         val tree = LayoutNode.Split(
             LayoutNode.Direction.HORIZONTAL, 0.5f,
             listOf(
@@ -662,6 +731,9 @@ class LayoutRendererRenderTest {
         )
 
         setContent {
+            val density = LocalDensity.current
+            val gap = LocalTerminalDesignTokens.current.dimensions.workspacePanelGap
+            expectedGapPx = with(density) { gap.toPx() }
             LayoutRenderer(
                 node = tree,
                 panels = panels,
@@ -688,8 +760,12 @@ class LayoutRendererRenderTest {
         assertTrue(wChart >= 960, "chart должен тянуться по ширине цепочки, а не $wChart")
         // Цепочка плотная: 4×240 = 960
         assertEquals(960, chainIds.sumOf { sizes.getValue(it).width }, "цепочка должна быть 4×240")
-        // Дыр нет: chart/цепочка (V-слот 1960) + tradesRight (240) = 2200
+        // Chart/цепочка и tradesRight оставляют только наружный и межпанельный зазор.
         val total = wChart + wRight
-        assertTrue(total in 2192..2200, "дыра/переполнение: total=$total")
+        val expectedTotal = 2200 - expectedGapPx * 3
+        assertTrue(
+            kotlin.math.abs(total - expectedTotal) < 4,
+            "ширина с учётом зазоров: total=$total, expected=$expectedTotal",
+        )
     }
 }

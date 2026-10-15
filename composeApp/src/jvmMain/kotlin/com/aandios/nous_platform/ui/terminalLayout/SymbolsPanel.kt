@@ -39,7 +39,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
@@ -448,6 +450,14 @@ private fun MarketWatchSymbolRow(
     }
     Surface(
         modifier = Modifier.fillMaxWidth()
+            .drawBehind {
+                if (selected) {
+                    drawRect(
+                        color = tokens.colors.accent,
+                        size = Size(tokens.spacing.xxs.toPx(), size.height),
+                    )
+                }
+            }
             .pointerInput(row.exchangeId, row.symbol) {
                 awaitPointerEventScope {
                     while (true) {

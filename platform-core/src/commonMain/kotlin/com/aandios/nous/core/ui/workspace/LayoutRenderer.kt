@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.component.TerminalGripDots
+import com.aandios.nous.core.ui.component.TerminalGripOrientation
 import com.aandios.nous.core.workspace.LayoutEngine
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelConfig
@@ -181,7 +183,7 @@ fun LayoutRenderer(
     ) {
         RenderNode(
             node = node,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().padding(tokens.dimensions.workspacePanelGap / 2),
             panels = panels,
             onClosePanel = onClosePanel,
             onSplitPanel = onSplitPanel,
@@ -203,6 +205,7 @@ fun LayoutRenderer(
         val landingWindow = when {
             dragState.rootZone != null ->
                 rootLandingRect(wsRectWindow, dragState.rootZone!!, rootStripPx)
+
             else -> dragState.targetId
                 ?.let { id -> panelRects.value[id] }
                 ?.let { r -> dragState.zone?.let { z -> landingRect(r, z) } }
@@ -244,6 +247,7 @@ private fun RenderNode(
             val panelId = node.panelId
             Column(
                 modifier = modifier
+                    .padding(tokens.dimensions.workspacePanelGap / 2)
                     .clip(RoundedCornerShape(tokens.cornerRadii.workspacePanel))
                     .background(tokens.colors.panelSurface)
                     .border(
@@ -260,8 +264,24 @@ private fun RenderNode(
                     PanelHeader(
                         config = config,
                         onClose = onClosePanel?.let { { it(panelId) } },
-                        onSplitH = onSplitPanel?.let { fn -> { type -> fn(panelId, LayoutNode.Direction.HORIZONTAL, type) } },
-                        onSplitV = onSplitPanel?.let { fn -> { type -> fn(panelId, LayoutNode.Direction.VERTICAL, type) } },
+                        onSplitH = onSplitPanel?.let { fn ->
+                            { type ->
+                                fn(
+                                    panelId,
+                                    LayoutNode.Direction.HORIZONTAL,
+                                    type
+                                )
+                            }
+                        },
+                        onSplitV = onSplitPanel?.let { fn ->
+                            { type ->
+                                fn(
+                                    panelId,
+                                    LayoutNode.Direction.VERTICAL,
+                                    type
+                                )
+                            }
+                        },
                         onDrag = if (onMovePanel != null || onMovePanelToRoot != null) {
                             PanelDragHandlers(
                                 onDragStart = {
@@ -295,6 +315,7 @@ private fun RenderNode(
                                         when {
                                             rootZone != null && onMovePanelToRoot != null ->
                                                 onMovePanelToRoot(panelId, rootZone)
+
                                             target != null && zone != null && onMovePanel != null ->
                                                 onMovePanel(panelId, target, zone)
                                         }
@@ -315,6 +336,7 @@ private fun RenderNode(
                 }
             }
         }
+
         is LayoutNode.Split -> {
             // Без AnimatedContent: перелёт панелей делается на уровне листьев
             // (graphicsLayer + PanelFlyContext) — анимируются движение и ресайз
@@ -323,6 +345,8 @@ private fun RenderNode(
             val numChildren = node.children.size
             var parentSizePx by remember { mutableFloatStateOf(800f) }
             val density = LocalDensity.current
+            val panelGapPx = with(density) { tokens.dimensions.workspacePanelGap.toPx() }
+            val splitHandlePx = with(density) { tokens.dimensions.splitHandleSize.toPx() }
 
             // Sync mutable ratio to node for persistence.
             // Ключ node: при пересборке дерева эффект пишет в АКТУАЛЬНЫЙ инстанс
@@ -348,51 +372,78 @@ private fun RenderNode(
                         is LayoutNode.Split -> child.children.any { containsChart(it) }
                     }
 
-                    // Минимальная ширина поддерева: fixed-leaf → preferred,
-                    // chart-leaf → CHART_MIN, H-сплит → сумма детей,
-                    // V-сплит → максимум детей (ширина = широчайшей строки).
-                    fun minWidthPxOf(child: LayoutNode): Float = when (child) {
+                    // Зазор остаётся постоянным даже при сжатии; масштабируется
+                    // только полезная ширина панелей.
+                    fun minContentWidthPxOf(child: LayoutNode): Float = when (child) {
                         is LayoutNode.Leaf -> fixedWidthOf(child) ?: chartMinPx
                         is LayoutNode.Split -> when (child.direction) {
                             LayoutNode.Direction.HORIZONTAL ->
-                                child.children.fold(0f) { acc, c -> acc + minWidthPxOf(c) }
+                                child.children.fold(0f) { acc, c -> acc + minContentWidthPxOf(c) }
+
                             LayoutNode.Direction.VERTICAL ->
-                                child.children.maxOfOrNull { minWidthPxOf(it) } ?: chartMinPx
+                                child.children.maxOfOrNull { minContentWidthPxOf(it) } ?: chartMinPx
+                        }
+                    }
+
+                    fun gapWidthPxOf(child: LayoutNode): Float = when (child) {
+                        is LayoutNode.Leaf -> panelGapPx
+                        is LayoutNode.Split -> when (child.direction) {
+                            LayoutNode.Direction.HORIZONTAL -> {
+                                val childFlex = child.children.map { containsChart(it) }
+                                val internalHandleCount = childFlex.indices.count { index ->
+                                    index < childFlex.lastIndex && childFlex[index] && childFlex[index + 1]
+                                }
+                                child.children.fold(0f) { acc, nested -> acc + gapWidthPxOf(nested) } +
+                                        internalHandleCount * splitHandlePx
+                            }
+
+                            LayoutNode.Direction.VERTICAL ->
+                                child.children.maxOfOrNull { gapWidthPxOf(it) } ?: panelGapPx
                         }
                     }
 
                     val isFlex = node.children.map { containsChart(it) }
                     val flexIndices = node.children.indices.filter { isFlex[it] }
                     val flexCount = flexIndices.size
-                    val fixedWidthsPx = node.children.mapIndexed { index, child ->
-                        if (isFlex[index]) null else fixedWidthOf(child) ?: minWidthPxOf(child)
+                    val handleCount = isFlex.indices.count { index ->
+                        index < isFlex.lastIndex && isFlex[index] && isFlex[index + 1]
                     }
-                    val fixedSumPx = fixedWidthsPx.fold(0f) { acc, p -> acc + (p ?: 0f) }
+                    val outerHandleWidthPx = handleCount * splitHandlePx
+                    val fixedContentWidthsPx = node.children.mapIndexed { index, child ->
+                        if (isFlex[index]) null else fixedWidthOf(child) ?: minContentWidthPxOf(child)
+                    }
+                    val fixedGapsPx = node.children.mapIndexed { index, child ->
+                        if (isFlex[index]) 0f else gapWidthPxOf(child)
+                    }
+                    val flexContentMins = flexIndices.map { minContentWidthPxOf(node.children[it]) }
+                    val flexGaps = flexIndices.map { gapWidthPxOf(node.children[it]) }
+                    val fixedContentSumPx = fixedContentWidthsPx.fold(0f) { acc, p -> acc + (p ?: 0f) }
+                    val fixedGapSumPx = fixedGapsPx.sum()
+                    val flexContentSumPx = flexContentMins.sum()
+                    val flexGapSumPx = flexGaps.sum()
 
-                    val flexMins = flexIndices.map { minWidthPxOf(node.children[it]) }
-                    val flexMinsTotal = flexMins.sum()
+                    // При нехватке места сжимаются сами панели, но не gutter.
+                    val totalContentMinPx = fixedContentSumPx + flexContentSumPx
+                    val totalGapPx = fixedGapSumPx + flexGapSumPx + outerHandleWidthPx
+                    val scaleK = if (totalContentMinPx > 0f) {
+                        ((parentSizePx - totalGapPx).coerceAtLeast(0f) / totalContentMinPx).coerceAtMost(1f)
+                    } else 1f
+                    val effectiveFixedSumPx = fixedContentSumPx * scaleK + fixedGapSumPx
+                    val flexMins = flexContentMins.mapIndexed { index, width ->
+                        width * scaleK + flexGaps[index]
+                    }
                     val firstFlexMin = flexMins.firstOrNull() ?: 0f
                     val restMinsSum = flexMins.drop(1).sum()
 
-                    // Глобальный масштаб при нехватке места: пропорционально
-                    // сжимаются и фикс-панели, и flex-минимумы — никто не
-                    // схлопывается в ноль. Когда места хватает — scaleK = 1,
-                    // фикс стоят по preferred, chart забирает остаток.
-                    val totalMinPx = fixedSumPx + flexMinsTotal
-                    val scaleK = if (totalMinPx > 0f) {
-                        (parentSizePx / totalMinPx).coerceAtMost(1f)
-                    } else 1f
-                    val effectiveFixedSumPx = fixedSumPx * scaleK
-
                     // Границы ratio (пиксельные минимумы flex-детей)
                     val spanPx = if (flexCount > 0) {
-                        (parentSizePx - effectiveFixedSumPx).coerceAtLeast(1f)
+                        (parentSizePx - effectiveFixedSumPx - outerHandleWidthPx).coerceAtLeast(1f)
                     } else {
                         parentSizePx.coerceAtLeast(1f)
                     }
                     val (minRatio, maxRatio) = if (flexCount >= 2) {
-                        firstFlexMin * scaleK / spanPx to
-                            1f - restMinsSum * scaleK / spanPx
+                        firstFlexMin / spanPx to
+                                1f - restMinsSum / spanPx
                     } else 0.15f to 0.85f
                     val clampMin = if (minRatio > maxRatio) 0.15f else minRatio
                     val clampMax = if (minRatio > maxRatio) 0.85f else maxRatio
@@ -400,12 +451,15 @@ private fun RenderNode(
 
                     Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
                         node.children.forEachIndexed { index, child ->
-                            val fixedPx = fixedWidthsPx[index]
+                            val fixedContentPx = fixedContentWidthsPx[index]
                             val childModifier = when {
                                 // Фиксированное поддерево (масштаб при нехватке)
-                                fixedPx != null -> Modifier.width(
-                                    with(density) { (fixedPx * scaleK).toDp() }
+                                fixedContentPx != null -> Modifier.width(
+                                    with(density) {
+                                        (fixedContentPx * scaleK + fixedGapsPx[index]).toDp()
+                                    }
                                 )
+
                                 flexCount == 1 -> Modifier.weight(1f)
                                 else -> {
                                     val flexIndex = flexIndices.indexOf(index)
@@ -413,13 +467,30 @@ private fun RenderNode(
                                         flexIndex == 0 -> effectiveRatio
                                         restMinsSum > 0f ->
                                             (1f - effectiveRatio) * flexMins[flexIndex] / restMinsSum
+
                                         else -> (1f - effectiveRatio) / (flexCount - 1).coerceAtLeast(1)
                                     }
                                     Modifier.weight(weight)
                                 }
                             }
                             key(layoutSignature(child)) {
-                                RenderNode(node = child, modifier = childModifier, panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
+                                RenderNode(
+                                    node = child,
+                                    modifier = childModifier,
+                                    panels = panels,
+                                    onClosePanel = onClosePanel,
+                                    onSplitPanel = onSplitPanel,
+                                    onRatioChange = onRatioChange,
+                                    onRatioChangeStart = onRatioChangeStart,
+                                    onMovePanel = onMovePanel,
+                                    onMovePanelToRoot = onMovePanelToRoot,
+                                    wsRect = wsRect,
+                                    rootBandPx = rootBandPx,
+                                    dragState = dragState,
+                                    fly = fly,
+                                    fixedPanelWidthsPx = fixedPanelWidthsPx,
+                                    panelContent = panelContent
+                                )
                             }
                             // Ручка только между двумя FLEX-поддеревьями:
                             // dom/trades не ресайзятся никогда.
@@ -450,7 +521,23 @@ private fun RenderNode(
                                 // слота — иначе фикс-цепочка (без chart) оборачивается
                                 // по контенту и сжимает панели через дефолтный
                                 // parentSizePx, хотя места достаточно.
-                                RenderNode(node = child, modifier = Modifier.weight(weight).fillMaxWidth(), panels = panels, onClosePanel = onClosePanel, onSplitPanel = onSplitPanel, onRatioChange = onRatioChange, onRatioChangeStart = onRatioChangeStart, onMovePanel = onMovePanel, onMovePanelToRoot = onMovePanelToRoot, wsRect = wsRect, rootBandPx = rootBandPx, dragState = dragState, fly = fly, fixedPanelWidthsPx = fixedPanelWidthsPx, panelContent = panelContent)
+                                RenderNode(
+                                    node = child,
+                                    modifier = Modifier.weight(weight).fillMaxWidth(),
+                                    panels = panels,
+                                    onClosePanel = onClosePanel,
+                                    onSplitPanel = onSplitPanel,
+                                    onRatioChange = onRatioChange,
+                                    onRatioChangeStart = onRatioChangeStart,
+                                    onMovePanel = onMovePanel,
+                                    onMovePanelToRoot = onMovePanelToRoot,
+                                    wsRect = wsRect,
+                                    rootBandPx = rootBandPx,
+                                    dragState = dragState,
+                                    fly = fly,
+                                    fixedPanelWidthsPx = fixedPanelWidthsPx,
+                                    panelContent = panelContent
+                                )
                             }
                             if (index < node.children.lastIndex) {
                                 SplitHandle(
@@ -632,7 +719,7 @@ private fun SplitHandle(
     val tokens = LocalTerminalDesignTokens.current
     val interactionSource = remember { MutableInteractionSource() }
     val isHovered by interactionSource.collectIsHoveredAsState()
-    val bgColor = if (isHovered) tokens.colors.buyOrder.copy(alpha = 0.4f) else tokens.colors.splitHandle
+    val gripColor = if (isHovered) tokens.colors.accent else tokens.colors.label.copy(alpha = 0.75f)
 
     // Свежие ссылки: pointerInput(Unit) создаётся один раз, и без
     // rememberUpdatedState он навсегда держал бы СТАРЫЕ onResize/onResizeStart
@@ -649,7 +736,6 @@ private fun SplitHandle(
                     Modifier.width(tokens.dimensions.splitHandleSize).fillMaxHeight()
                 else Modifier.height(tokens.dimensions.splitHandleSize).fillMaxWidth()
             )
-            .background(bgColor)
             .hoverable(interactionSource)
             .testTag("split-handle-${if (direction == LayoutNode.Direction.HORIZONTAL) "h" else "v"}")
             .pointerInput(Unit) {
@@ -670,5 +756,13 @@ private fun SplitHandle(
                     )
                 }
             }
-    )
+    ) {
+        TerminalGripDots(
+            orientation = if (direction == LayoutNode.Direction.HORIZONTAL)
+                TerminalGripOrientation.VERTICAL
+            else
+                TerminalGripOrientation.HORIZONTAL,
+            color = gripColor,
+        )
+    }
 }

@@ -5,22 +5,26 @@
 
 package com.aandios.nous_platform.ui.terminalLayout
 
-import androidx.compose.foundation.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.core.ui.component.TerminalGripDots
+import com.aandios.nous.core.ui.component.TerminalGripOrientation
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.workspace.ProjectTree
 import com.aandios.nous.core.workspace.TemplateRepository
@@ -84,7 +88,13 @@ fun TerminalLayout(
 ) {
     val designTokens = LocalTerminalDesignTokens.current
     var topPanelState by remember {
-        mutableStateOf(ToolPanelState(width = designTokens.dimensions.workspaceToolPanelWidth))
+        mutableStateOf(
+            ToolPanelState(
+                isExpanded = true,
+                type = ToolPanelType.SYMBOLS,
+                width = designTokens.dimensions.workspaceToolPanelWidth,
+            )
+        )
     }
     var bottomPanelState by remember { mutableStateOf<BottomToolType?>(null) }
     var portfolioTab by remember { mutableStateOf(PortfolioTab.POSITIONS) }
@@ -127,9 +137,16 @@ fun TerminalLayout(
             // Основная панель с иконками (всегда видима)
             Column(
                 modifier = Modifier
+                    .padding(designTokens.dimensions.workspacePanelGap / 2)
                     .width(designTokens.dimensions.workspaceSidebarWidth)
                     .fillMaxHeight()
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clip(RoundedCornerShape(designTokens.cornerRadii.workspacePanel))
+                    .background(designTokens.colors.panelSurface)
+                    .border(
+                        designTokens.dimensions.borderWidth,
+                        designTokens.colors.panelBorder,
+                        RoundedCornerShape(designTokens.cornerRadii.workspacePanel),
+                    )
             ) {
                 // Верхняя группа иконок
                 Column(
@@ -165,7 +182,7 @@ fun TerminalLayout(
                         .padding(horizontal = designTokens.spacing.md)
                         .fillMaxWidth()
                         .height(designTokens.dimensions.dividerThickness)
-                        .background(MaterialTheme.colorScheme.outline)
+                        .background(designTokens.colors.panelBorder)
                 )
 
                 // Нижняя группа иконок
@@ -205,46 +222,60 @@ fun TerminalLayout(
                 val sidebarHovered by sidebarInteractionSource.collectIsHoveredAsState()
                 Row {
                     if (topPanelState.type == ToolPanelType.WORKSPACES && useWorkspaces) {
-                        ProjectTree(
-                            workspaces = allWorkspaceConfigs,
-                            activeId = activeWorkspaceId,
-                            onWorkspaceClick = { config -> onOpenWorkspace?.invoke(config) },
-                            onNewWorkspace = {
-                                scope.launch {
-                                    val config = com.aandios.nous.core.workspace.Templates.scalping()
-                                    workspaceRepo!!.create(config)
-                                    onOpenWorkspace?.invoke(config)
-                                    refreshWorkspaces()
-                                }
-                            },
-                            onRename = { ws, newName ->
-                                scope.launch { workspaceRepo?.update(ws.copy(name = newName)); refreshWorkspaces() }
-                            },
-                            onDelete = { ws ->
-                                scope.launch { tabManager?.closeWorkspace(ws.id); workspaceRepo?.delete(ws.id); refreshWorkspaces() }
-                            },
-                            onExport = { ws ->
-                                scope.launch {
-                                    val json = workspaceRepo?.exportJson(ws) ?: ""
-                                    println("=== Workspace Export: ${ws.name} ===\n$json\n=== END ===")
-                                }
-                            },
-                            onDuplicate = { ws ->
-                                scope.launch {
-                                    val copy = ws.copy(id = com.aandios.nous.core.workspace.generateId(), name = "${ws.name} (copy)")
-                                    workspaceRepo?.create(copy); refreshWorkspaces()
-                                }
-                            },
-                            onSaveAsTemplate = templateRepo?.let { repo ->
-                                { ws ->
+                        Box(
+                            modifier = Modifier
+                                .padding(designTokens.dimensions.workspacePanelGap / 2)
+                                .width(topPanelState.width)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(designTokens.cornerRadii.workspacePanel))
+                                .background(designTokens.colors.panelSurface)
+                                .border(
+                                    designTokens.dimensions.borderWidth,
+                                    designTokens.colors.panelBorder,
+                                    RoundedCornerShape(designTokens.cornerRadii.workspacePanel),
+                                )
+                        ) {
+                            ProjectTree(
+                                workspaces = allWorkspaceConfigs,
+                                activeId = activeWorkspaceId,
+                                onWorkspaceClick = { config -> onOpenWorkspace?.invoke(config) },
+                                onNewWorkspace = {
                                     scope.launch {
-                                        repo.create(ws.copy(id = com.aandios.nous.core.workspace.generateId()))
-                                        workspaceBus?.workspaceChanged()
+                                        val config = com.aandios.nous.core.workspace.Templates.nous()
+                                        workspaceRepo!!.create(config)
+                                        onOpenWorkspace?.invoke(config)
+                                        refreshWorkspaces()
                                     }
-                                }
-                            },
-                            modifier = Modifier.width(topPanelState.width).fillMaxHeight()
-                        )
+                                },
+                                onRename = { ws, newName ->
+                                    scope.launch { workspaceRepo?.update(ws.copy(name = newName)); refreshWorkspaces() }
+                                },
+                                onDelete = { ws ->
+                                    scope.launch { tabManager?.closeWorkspace(ws.id); workspaceRepo?.delete(ws.id); refreshWorkspaces() }
+                                },
+                                onExport = { ws ->
+                                    scope.launch {
+                                        val json = workspaceRepo?.exportJson(ws) ?: ""
+                                        println("=== Workspace Export: ${ws.name} ===\n$json\n=== END ===")
+                                    }
+                                },
+                                onDuplicate = { ws ->
+                                    scope.launch {
+                                        val copy = ws.copy(id = com.aandios.nous.core.workspace.generateId(), name = "${ws.name} (copy)")
+                                        workspaceRepo?.create(copy); refreshWorkspaces()
+                                    }
+                                },
+                                onSaveAsTemplate = templateRepo?.let { repo ->
+                                    { ws ->
+                                        scope.launch {
+                                            repo.create(ws.copy(id = com.aandios.nous.core.workspace.generateId()))
+                                            workspaceBus?.workspaceChanged()
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     } else {
                         ToolDetailsPanel(
                             type = topPanelState.type ?: ToolPanelType.SYMBOLS,
@@ -263,11 +294,8 @@ fun TerminalLayout(
                     Box(
                         modifier = Modifier
                             .width(designTokens.dimensions.splitHandleSize).fillMaxHeight()
-                            .background(
-                                if (sidebarHovered) designTokens.colors.buyOrder.copy(alpha = 0.4f)
-                                else designTokens.colors.splitHandle
-                            )
                             .hoverable(sidebarInteractionSource)
+                            .testTag("sidebar-resize-handle")
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     topPanelState = topPanelState.copy(
@@ -278,7 +306,13 @@ fun TerminalLayout(
                                     )
                                 }
                             }
-                    )
+                    ) {
+                        TerminalGripDots(
+                            orientation = TerminalGripOrientation.VERTICAL,
+                            color = if (sidebarHovered) designTokens.colors.accent
+                            else designTokens.colors.label.copy(alpha = 0.75f),
+                        )
+                    }
                 }
             }
 
