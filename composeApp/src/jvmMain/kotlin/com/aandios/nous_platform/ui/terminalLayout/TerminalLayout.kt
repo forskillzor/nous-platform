@@ -152,7 +152,8 @@ fun TerminalLayout(
                         designTokens.dimensions.borderWidth,
                         designTokens.colors.panelBorder,
                         RoundedCornerShape(designTokens.cornerRadii.workspacePanel),
-                    )
+                    ),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // Верхняя группа иконок
                 Column(
