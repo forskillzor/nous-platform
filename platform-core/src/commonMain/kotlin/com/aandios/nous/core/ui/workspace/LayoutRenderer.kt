@@ -441,12 +441,26 @@ private fun RenderNode(
                     } else {
                         parentSizePx.coerceAtLeast(1f)
                     }
-                    val (minRatio, maxRatio) = if (flexCount >= 2) {
-                        firstFlexMin / spanPx to
-                                1f - restMinsSum / spanPx
+                    val (clampMin, clampMax) = if (flexCount >= 2) {
+                        val minR = firstFlexMin / spanPx
+                        val maxR = 1f - restMinsSum / spanPx
+                        when {
+                            // Пространства ровно впритык: равенство границ с точностью
+                            // до float-шума — клампим к этой пропорции, а не к fallback
+                            kotlin.math.abs(minR - maxR) <= 1e-3f -> {
+                                val mid = (minR + maxR) / 2f
+                                mid to mid
+                            }
+                            // Минимумы не помещаются: делим пропорционально нуждам
+                            // (единый масштаб для flex-детей), а не по fallback-диапазону
+                            minR > maxR -> {
+                                val total = firstFlexMin + restMinsSum
+                                val proportional = if (total > 0f) firstFlexMin / total else 0.5f
+                                proportional to proportional
+                            }
+                            else -> minR to maxR
+                        }
                     } else 0.15f to 0.85f
-                    val clampMin = if (minRatio > maxRatio) 0.15f else minRatio
-                    val clampMax = if (minRatio > maxRatio) 0.85f else maxRatio
                     val effectiveRatio = ratio.coerceIn(clampMin, clampMax)
 
                     Row(modifier.onSizeChanged { parentSizePx = it.width.toFloat() }) {
