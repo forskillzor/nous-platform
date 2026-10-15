@@ -11,9 +11,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -48,7 +45,7 @@ fun ToolBarIcon(
             .clip(RoundedCornerShape(tokens.cornerRadii.workspaceTab))
             .background(
                 color = when {
-                    isSelected -> tokens.colors.selection
+                    isSelected -> tokens.colors.accent
                     isHovered -> tokens.colors.panelHeaderSurface
                     else -> Color.Companion.Transparent
                 }
@@ -64,18 +61,8 @@ fun ToolBarIcon(
             painter = painterResource(icon),
             contentDescription = description,
             modifier = Modifier.Companion.size(tokens.dimensions.workspaceToolIconSize),
-            tint = if (isSelected) tokens.colors.accent else MaterialTheme.colorScheme.onSurfaceVariant
+            tint = if (isSelected) tokens.colors.workspaceBackground
+            else MaterialTheme.colorScheme.onSurfaceVariant
         )
-        if (isSelected) {
-            Box(
-                Modifier.align(Alignment.CenterStart)
-                    .width(tokens.dimensions.borderWidth * 2)
-                    .height(16.dp)
-                    .background(
-                        tokens.colors.accent,
-                        RoundedCornerShape(tokens.cornerRadii.workspaceTab),
-                    )
-            )
-        }
     }
 }

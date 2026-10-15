@@ -6,7 +6,9 @@
 package com.aandios.nous_platform.ui.terminalLayout
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,19 +18,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,8 +50,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
@@ -47,16 +60,19 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.ProviderRegistry
-import com.aandios.nous.core.ui.component.ExchangeDropdown
-import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
-import com.aandios.nous.core.ui.component.highlightedSymbol
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolSearchMatch
 import com.aandios.nous.core.ui.component.SymbolWatchlist
-import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalContextPopup
+import com.aandios.nous.core.ui.component.TerminalGripDots
+import com.aandios.nous.core.ui.component.TerminalGripOrientation
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
+import com.aandios.nous.core.ui.component.highlightedSymbol
 import com.aandios.nous.core.ui.component.searchSymbols
+import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -89,6 +105,7 @@ fun SymbolsPanel(
     workspaceTemplates: List<Pair<String, WorkspaceConfig>>,
     onOpenWorkspaceTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)?,
     onApplyToCurrentWorkspace: ((String, String, String) -> Unit)? = null,
+    onClose: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val registry: ProviderRegistry = koinInject()
@@ -106,6 +123,8 @@ fun SymbolsPanel(
     var listActionError by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(MarketSort.SYMBOL) }
     var descending by remember { mutableStateOf(false) }
+    var listMenuExpanded by remember { mutableStateOf(false) }
+    var moreMenuExpanded by remember { mutableStateOf(false) }
 
     val selectedList = watchlists.firstOrNull { it.id == selectedListId }
     val listChoices = remember(watchlists) {
@@ -143,106 +162,255 @@ fun SymbolsPanel(
         matchingRows.sortedWith(if (descending) comparator.reversed() else comparator)
     }
     val tokens = LocalTerminalDesignTokens.current
+    val favoriteActive = selectedList?.symbols?.contains(selectedSymbol) == true
+    val favoriteEnabled = selectedList != null && selectedSymbol.isNotBlank()
+
+    fun toggleFavorite() {
+        val list = selectedList ?: return
+        val repository = watchlistsRepository ?: return
+        scope.launch {
+            try {
+                repository.toggleSymbol(list.id, selectedSymbol)
+                listActionError = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                listActionError = e.message
+            }
+        }
+    }
+
+    fun deleteSelectedList() {
+        val list = selectedList ?: return
+        val repository = watchlistsRepository ?: return
+        scope.launch {
+            try {
+                repository.delete(list.id)
+                selectedListId = null
+                listActionError = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                listActionError = e.message
+            }
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize().background(tokens.colors.panelSurface)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.sm,
-                vertical = tokens.spacing.xs,
-            ),
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val exchangeOptions = remember(registry) {
-                listOf(ALL_EXCHANGES_LABEL) + registry.providers.map { it.config.displayName }
+        // ── Заголовок: grip, star, title, new list, overflow ──
+        TerminalPanelHeader {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            ) {
+                TerminalGripDots(
+                    orientation = TerminalGripOrientation.VERTICAL,
+                    color = tokens.colors.label.copy(alpha = 0.55f),
+                    modifier = Modifier.width(8.dp).height(14.dp),
+                )
+                MiniAction(
+                    contentDescription = "Toggle in list",
+                    enabled = favoriteEnabled,
+                    onClick = { toggleFavorite() },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Star,
+                        contentDescription = null,
+                        tint = when {
+                            !favoriteEnabled -> tokens.colors.label.copy(alpha = 0.35f)
+                            favoriteActive -> tokens.colors.accent
+                            else -> tokens.colors.label
+                        },
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+                Text(
+                    text = "Market Watch",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = tokens.typography.controlSize,
+                    fontFamily = TerminalFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                MiniAction(
+                    contentDescription = "New list",
+                    onClick = {
+                        watchlistDialogName = ""
+                        watchlistDialogMode = WatchlistDialogMode.CREATE
+                    },
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddCircle,
+                        contentDescription = null,
+                        tint = tokens.colors.accent,
+                        modifier = Modifier.size(15.dp),
+                    )
+                }
+                Box {
+                    MiniAction(
+                        contentDescription = "More",
+                        onClick = { moreMenuExpanded = true },
+                    ) {
+                        MoreDotsGlyph(color = tokens.colors.label)
+                    }
+                    DropdownMenu(
+                        expanded = moreMenuExpanded,
+                        onDismissRequest = { moreMenuExpanded = false },
+                        modifier = Modifier.width(tokens.dimensions.tradeFilterMenuWidth),
+                    ) {
+                        MenuCaption("SORT")
+                        MarketSort.entries.forEach { option ->
+                            DropdownMenuItem(
+                                text = { MenuCheckRow(text = option.label, checked = sort == option) },
+                                onClick = {
+                                    if (sort == option) descending = !descending
+                                    else {
+                                        sort = option
+                                        descending = option != MarketSort.SYMBOL
+                                    }
+                                    moreMenuExpanded = false
+                                },
+                            )
+                        }
+                        HorizontalDivider(
+                            color = tokens.colors.panelBorder,
+                            thickness = tokens.dimensions.dividerThickness,
+                        )
+                        MenuCaption("EXCHANGE")
+                        DropdownMenuItem(
+                            text = { MenuCheckRow(text = ALL_EXCHANGES_LABEL, checked = selectedExchange == ALL_EXCHANGES) },
+                            onClick = {
+                                selectedExchange = ALL_EXCHANGES
+                                moreMenuExpanded = false
+                            },
+                        )
+                        registry.providers.forEach { provider ->
+                            DropdownMenuItem(
+                                text = {
+                                    MenuCheckRow(
+                                        text = provider.config.displayName,
+                                        checked = selectedExchange == provider.providerId,
+                                    )
+                                },
+                                onClick = {
+                                    selectedExchange = provider.providerId
+                                    moreMenuExpanded = false
+                                },
+                            )
+                        }
+                        HorizontalDivider(
+                            color = tokens.colors.panelBorder,
+                            thickness = tokens.dimensions.dividerThickness,
+                        )
+                        DropdownMenuItem(
+                            text = { MenuRowText("Delete list") },
+                            enabled = selectedList != null,
+                            onClick = {
+                                moreMenuExpanded = false
+                                deleteSelectedList()
+                            },
+                        )
+                        if (onClose != null) {
+                            DropdownMenuItem(
+                                text = { MenuRowText("Close panel") },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    onClose()
+                                },
+                            )
+                        }
+                    }
+                }
             }
-            val currentExchangeLabel = if (selectedExchange == ALL_EXCHANGES) {
-                ALL_EXCHANGES_LABEL
-            } else {
-                registry.get(selectedExchange)?.config?.displayName ?: ALL_EXCHANGES_LABEL
-            }
-            ExchangeDropdown(
-                current = currentExchangeLabel,
-                exchanges = exchangeOptions,
-                onChange = { label ->
-                    selectedExchange = registry.providers.firstOrNull {
-                        it.config.displayName == label
-                    }?.providerId ?: ALL_EXCHANGES
-                },
-                modifier = Modifier.weight(1f),
-            )
-            TerminalDropdown(
-                currentValue = selectedListChoice,
-                items = listChoices,
-                onValueChanged = { selectedListId = it.id },
-                displayText = { it.title },
-                menuWidth = tokens.dimensions.marketWatchListMenuWidth,
-            )
         }
 
+        // ── Строка LIST: подпись, выпадающий список, rename, new ──
         Row(
             modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.sm,
-                vertical = tokens.spacing.xxs,
+                horizontal = tokens.spacing.md,
+                vertical = tokens.spacing.xs,
             ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
         ) {
-            BasicTextField(
-                value = search,
-                onValueChange = { search = it },
-                singleLine = true,
-                textStyle = TextStyle(
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = tokens.typography.controlSize,
-                    fontFamily = TerminalFontFamily,
-                ),
-                cursorBrush = SolidColor(tokens.colors.accent),
-                modifier = Modifier.weight(1f)
-                    .background(
-                        tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
-                        RoundedCornerShape(tokens.cornerRadii.card),
-                    )
-                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-                decorationBox = { inner ->
-                    if (search.isEmpty()) {
+            Text(
+                text = "LIST",
+                color = tokens.colors.label,
+                fontSize = tokens.typography.microSize,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = tokens.typography.compactLetterSpacing,
+            )
+            Box(modifier = Modifier.weight(1f)) {
+                Surface(
+                    shape = RoundedCornerShape(tokens.cornerRadii.smallCard),
+                    color = tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(
+                            tokens.dimensions.borderWidth,
+                            tokens.colors.panelBorder,
+                            RoundedCornerShape(tokens.cornerRadii.smallCard),
+                        )
+                        .clickable { listMenuExpanded = true },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(
+                            horizontal = tokens.spacing.sm,
+                            vertical = tokens.spacing.xs,
+                        ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Text(
-                            "Regex search…",
-                            color = tokens.colors.label.copy(alpha = 0.65f),
-                            fontSize = tokens.typography.compactSize,
+                            text = selectedListChoice.title,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = tokens.typography.controlSize,
                             fontFamily = TerminalFontFamily,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = tokens.colors.label,
+                            modifier = Modifier.size(tokens.dimensions.dropdownIconSize),
                         )
                     }
-                    inner()
-                },
-            )
-            Box {
-                val mode = watchlistDialogMode
-                Text(
-                    text = if (selectedList == null) "+ LIST" else "RENAME",
-                    color = tokens.colors.accent,
-                    fontSize = tokens.typography.microSize,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = TerminalFontFamily,
-                    modifier = Modifier.clickable {
-                        watchlistDialogName = selectedList?.name.orEmpty()
-                        watchlistDialogMode = if (selectedList == null) {
-                            WatchlistDialogMode.CREATE
-                        } else {
-                            WatchlistDialogMode.RENAME
-                        }
-                    }.padding(tokens.spacing.xs),
-                )
+                }
+                DropdownMenu(
+                    expanded = listMenuExpanded,
+                    onDismissRequest = { listMenuExpanded = false },
+                    modifier = Modifier.width(tokens.dimensions.marketWatchListMenuWidth),
+                ) {
+                    listChoices.forEach { choice ->
+                        DropdownMenuItem(
+                            text = {
+                                MenuCheckRow(
+                                    text = choice.title,
+                                    checked = choice.id == selectedListChoice.id,
+                                )
+                            },
+                            onClick = {
+                                selectedListId = choice.id
+                                listMenuExpanded = false
+                            },
+                        )
+                    }
+                }
                 TerminalContextPopup(
                     expanded = watchlistDialogMode != null,
                     onDismiss = { watchlistDialogMode = null },
-                    title = if (mode == WatchlistDialogMode.CREATE) "Create watchlist" else "Rename watchlist",
+                    title = if (watchlistDialogMode == WatchlistDialogMode.CREATE) "Create watchlist" else "Rename watchlist",
                     value = watchlistDialogName,
                     onValueChange = { watchlistDialogName = it },
                     placeholder = "List name",
-                    confirmText = if (mode == WatchlistDialogMode.CREATE) "Create" else "Save",
+                    confirmText = if (watchlistDialogMode == WatchlistDialogMode.CREATE) "Create" else "Save",
                     onConfirm = {
                         val repository = watchlistsRepository ?: return@TerminalContextPopup
+                        val mode = watchlistDialogMode
                         val listToRename = selectedList
                         val name = watchlistDialogName
                         watchlistDialogMode = null
@@ -263,27 +431,115 @@ fun SymbolsPanel(
                     },
                 )
             }
-            if (selectedList != null) {
-                Text(
-                    "DELETE",
-                    color = tokens.colors.loss,
-                    fontSize = tokens.typography.microSize,
-                    modifier = Modifier.clickable {
-                        val repository = watchlistsRepository ?: return@clickable
-                        scope.launch {
-                            try {
-                                repository.delete(selectedList.id)
-                                selectedListId = null
-                                listActionError = null
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                listActionError = e.message
-                            }
-                        }
-                    }.padding(horizontal = tokens.spacing.sm),
+            MiniAction(
+                contentDescription = "Rename list",
+                enabled = selectedList != null,
+                onClick = {
+                    watchlistDialogName = selectedList?.name.orEmpty()
+                    watchlistDialogMode = WatchlistDialogMode.RENAME
+                },
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = if (selectedList != null) tokens.colors.label
+                    else tokens.colors.label.copy(alpha = 0.35f),
+                    modifier = Modifier.size(14.dp),
                 )
             }
+            MiniAction(
+                contentDescription = "New list",
+                onClick = {
+                    watchlistDialogName = ""
+                    watchlistDialogMode = WatchlistDialogMode.CREATE
+                },
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    tint = tokens.colors.accent,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
+        }
+
+        // ── Поиск ──
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = tokens.spacing.md,
+                vertical = tokens.spacing.xs,
+            ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(
+                        tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
+                        RoundedCornerShape(tokens.cornerRadii.smallCard),
+                    )
+                    .border(
+                        tokens.dimensions.borderWidth,
+                        tokens.colors.panelBorder,
+                        RoundedCornerShape(tokens.cornerRadii.smallCard),
+                    )
+                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = tokens.colors.label,
+                    modifier = Modifier.size(14.dp),
+                )
+                BasicTextField(
+                    value = search,
+                    onValueChange = { search = it },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = tokens.typography.controlSize,
+                        fontFamily = TerminalFontFamily,
+                    ),
+                    cursorBrush = SolidColor(tokens.colors.accent),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        if (search.isEmpty()) {
+                            Text(
+                                "Filter contracts",
+                                color = tokens.colors.label.copy(alpha = 0.65f),
+                                fontSize = tokens.typography.compactSize,
+                                fontFamily = TerminalFontFamily,
+                            )
+                        }
+                        inner()
+                    },
+                )
+            }
+        }
+
+        // ── Подписи колонок ──
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(
+                horizontal = tokens.spacing.md,
+                vertical = tokens.spacing.xxs,
+            ),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                "INSTRUMENT",
+                color = tokens.colors.label,
+                fontSize = tokens.typography.microSize,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = tokens.typography.compactLetterSpacing,
+            )
+            Text(
+                "LAST / CHG",
+                color = tokens.colors.label,
+                fontSize = tokens.typography.microSize,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = tokens.typography.compactLetterSpacing,
+            )
         }
 
         listActionError?.let {
@@ -293,52 +549,6 @@ fun SymbolsPanel(
                 fontSize = tokens.typography.smallSize,
                 modifier = Modifier.padding(horizontal = tokens.spacing.md),
             )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.sm,
-                vertical = tokens.spacing.xs,
-            ),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = if (marketState.loading) "SYNC" else "${sortedRows.size} SYMBOLS",
-                color = tokens.colors.label,
-                fontSize = tokens.typography.microSize,
-                fontFamily = TerminalFontFamily,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm)) {
-                MarketSort.entries.forEach { option ->
-                    val active = sort == option
-                    Text(
-                        option.label,
-                        color = if (active) tokens.colors.accent else tokens.colors.label,
-                        fontSize = tokens.typography.microSize,
-                        fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = TerminalFontFamily,
-                        modifier = Modifier.clickable {
-                            if (sort == option) descending = !descending
-                            else {
-                                sort = option
-                                descending = option != MarketSort.SYMBOL
-                            }
-                        },
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(
-                horizontal = tokens.spacing.sm,
-                vertical = tokens.spacing.xxs,
-            ),
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text("SYMBOL", color = tokens.colors.label, fontSize = tokens.typography.nanoSize)
-            Text("24H %", color = tokens.colors.label, fontSize = tokens.typography.nanoSize)
         }
 
         symbolSearch.error?.let {
@@ -426,6 +636,94 @@ fun SymbolsPanel(
 }
 
 @Composable
+private fun MiniAction(
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .size(18.dp)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun MoreDotsGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(14.dp)) {
+        val radius = size.minDimension * 0.085f
+        val centerY = size.height / 2f
+        listOf(0.16f, 0.5f, 0.84f).forEach { fraction ->
+            drawCircle(
+                color = color,
+                radius = radius,
+                center = Offset(size.width * fraction, centerY),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MenuCaption(text: String) {
+    val tokens = LocalTerminalDesignTokens.current
+    Text(
+        text = text,
+        color = tokens.colors.label,
+        fontSize = tokens.typography.nanoSize,
+        fontFamily = TerminalFontFamily,
+        letterSpacing = tokens.typography.compactLetterSpacing,
+        modifier = Modifier.padding(
+            start = tokens.spacing.lg,
+            end = tokens.spacing.lg,
+            top = tokens.spacing.xs,
+            bottom = tokens.spacing.xxs,
+        ),
+    )
+}
+
+@Composable
+private fun MenuCheckRow(text: String, checked: Boolean) {
+    val tokens = LocalTerminalDesignTokens.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+    ) {
+        Box(modifier = Modifier.size(12.dp), contentAlignment = Alignment.Center) {
+            if (checked) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = tokens.colors.accent,
+                    modifier = Modifier.size(12.dp),
+                )
+            }
+        }
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = tokens.typography.controlSize,
+            fontFamily = TerminalFontFamily,
+        )
+    }
+}
+
+@Composable
+private fun MenuRowText(text: String) {
+    val tokens = LocalTerminalDesignTokens.current
+    Text(
+        text = text,
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = tokens.typography.controlSize,
+        fontFamily = TerminalFontFamily,
+    )
+}
+
+@Composable
 private fun MarketWatchSymbolRow(
     row: MarketWatchRow,
     matchRange: IntRange?,
@@ -492,7 +790,7 @@ private fun MarketWatchSymbolRow(
                     Text(
                         text = highlightedSymbol(row.symbol, matchRange),
                         color = if (selected) tokens.colors.accent else MaterialTheme.colorScheme.onSurface,
-                        fontSize = tokens.typography.compactSize,
+                        fontSize = tokens.typography.controlSize,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Medium,
                         maxLines = 1,
@@ -501,7 +799,7 @@ private fun MarketWatchSymbolRow(
                     Text(
                         row.exchangeName,
                         color = tokens.colors.label,
-                        fontSize = tokens.typography.nanoSize,
+                        fontSize = tokens.typography.smallSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
@@ -515,9 +813,9 @@ private fun MarketWatchSymbolRow(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        row.stats?.quoteVolume24h?.let(::formatMarketVolume) ?: "VOL —",
-                        color = tokens.colors.label,
-                        fontSize = tokens.typography.nanoSize,
+                        row.stats?.lastPrice?.let { SymbolFormatter.DEFAULT.formatVolumeFull(it) } ?: "—",
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = tokens.typography.compactSize,
                         fontFamily = TerminalFontFamily,
                     )
                 }
@@ -595,13 +893,6 @@ private fun MarketWatchSymbolRow(
             }
         }
     }
-}
-
-private fun formatMarketVolume(value: Double): String = when {
-    value >= 1_000_000_000 -> "VOL ${"%.2f".format(value / 1_000_000_000)}B"
-    value >= 1_000_000 -> "VOL ${"%.2f".format(value / 1_000_000)}M"
-    value >= 1_000 -> "VOL ${"%.1f".format(value / 1_000)}K"
-    else -> "VOL ${"%.0f".format(value)}"
 }
 
 private const val ALL_EXCHANGES = "ALL"

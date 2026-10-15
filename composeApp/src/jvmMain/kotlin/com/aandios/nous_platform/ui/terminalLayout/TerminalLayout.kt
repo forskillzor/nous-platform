@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -138,7 +139,11 @@ fun TerminalLayout(
             // Основная панель с иконками (всегда видима)
             Column(
                 modifier = Modifier
-                    .padding(designTokens.dimensions.workspacePanelGap / 2)
+                    .padding(
+                        start = designTokens.dimensions.workspacePanelGap,
+                        top = designTokens.dimensions.workspacePanelGap,
+                        bottom = designTokens.dimensions.workspacePanelGap,
+                    )
                     .width(designTokens.dimensions.workspaceSidebarWidth)
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(designTokens.cornerRadii.workspacePanel))
@@ -177,15 +182,6 @@ fun TerminalLayout(
                     }
                 }
 
-                // Разделитель
-                Box(
-                    modifier = Modifier
-                        .padding(horizontal = designTokens.spacing.md)
-                        .fillMaxWidth()
-                        .height(designTokens.dimensions.dividerThickness)
-                        .background(designTokens.colors.panelBorder)
-                )
-
                 // Нижняя группа иконок
                 Column(
                     modifier = Modifier.padding(vertical = designTokens.spacing.md),
@@ -221,11 +217,15 @@ fun TerminalLayout(
                 // Draggable handle state
                 val sidebarInteractionSource = remember { MutableInteractionSource() }
                 val sidebarHovered by sidebarInteractionSource.collectIsHoveredAsState()
-                Row {
+                Box(modifier = Modifier.fillMaxHeight()) {
                     if (topPanelState.type == ToolPanelType.WORKSPACES && useWorkspaces) {
                         Box(
                             modifier = Modifier
-                                .padding(designTokens.dimensions.workspacePanelGap / 2)
+                                .padding(
+                                    start = designTokens.dimensions.workspacePanelGap,
+                                    top = designTokens.dimensions.workspacePanelGap,
+                                    bottom = designTokens.dimensions.workspacePanelGap,
+                                )
                                 .width(topPanelState.width)
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(designTokens.cornerRadii.workspacePanel))
@@ -289,12 +289,28 @@ fun TerminalLayout(
                             marketWatchTemplates = marketWatchTemplates,
                             onOpenMarketWatchTemplate = onOpenMarketWatchTemplate,
                             onApplyToCurrentWorkspace = onApplyToCurrentWorkspace,
+                            onWidthDelta = { dragAmount ->
+                                topPanelState = topPanelState.copy(
+                                    width = (topPanelState.width + dragAmount.dp).coerceIn(
+                                        designTokens.dimensions.workspaceToolPanelMinWidth,
+                                        designTokens.dimensions.workspaceToolPanelMaxWidth
+                                    )
+                                )
+                            },
                             modifier = Modifier.fillMaxHeight()
                         )
                     }
-                    // Draggable right border
+                    // Ручка ширины панели: оверлей в зазоре (не занимает layout-ширину,
+                    // чтобы зазор до workspace-островков оставался равным везде)
                     Box(
                         modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .offset(
+                                x = (
+                                    designTokens.dimensions.workspacePanelGap -
+                                        designTokens.dimensions.splitHandleSize
+                                    ) / 2
+                            )
                             .width(designTokens.dimensions.splitHandleSize).fillMaxHeight()
                             .hoverable(sidebarInteractionSource)
                             .testTag("sidebar-resize-handle")
@@ -312,7 +328,7 @@ fun TerminalLayout(
                         TerminalGripDots(
                             orientation = TerminalGripOrientation.VERTICAL,
                             color = if (sidebarHovered) designTokens.colors.accent
-                            else designTokens.colors.label.copy(alpha = 0.75f),
+                            else Color.Transparent,
                         )
                     }
                 }
@@ -347,6 +363,11 @@ fun TerminalLayout(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(bottomPanelHeight)
+                            .padding(
+                                start = designTokens.dimensions.workspacePanelGap,
+                                end = designTokens.dimensions.workspacePanelGap,
+                                bottom = designTokens.dimensions.workspacePanelGap,
+                            )
                     )
                 }
             }

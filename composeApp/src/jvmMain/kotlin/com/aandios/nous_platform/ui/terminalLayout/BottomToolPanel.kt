@@ -6,6 +6,7 @@
 package com.aandios.nous_platform.ui.terminalLayout
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.horizontalScroll
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
@@ -88,9 +90,14 @@ fun BottomToolPanel(
     val tradingViewModel: TradingViewModel? =
         if (type == BottomToolType.PORTFOLIO) koinInject() else null
 
+    val designTokens = com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens.current
+    val islandShape = RoundedCornerShape(designTokens.cornerRadii.workspacePanel)
+
     Surface(
-        modifier = modifier,
-        color = MaterialTheme.colorScheme.surface
+        modifier = modifier
+            .clip(islandShape)
+            .border(designTokens.dimensions.borderWidth, designTokens.colors.panelBorder, islandShape),
+        color = designTokens.colors.panelSurface
     ) {
         Column(
             modifier = Modifier.Companion.fillMaxSize()
