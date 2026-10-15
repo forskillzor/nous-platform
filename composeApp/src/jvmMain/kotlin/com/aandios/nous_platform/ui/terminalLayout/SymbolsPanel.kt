@@ -21,7 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -526,6 +526,11 @@ fun SymbolsPanel(
             )
         }
 
+        HorizontalDivider(
+            color = tokens.colors.panelBorder,
+            thickness = tokens.dimensions.dividerThickness,
+        )
+
         listActionError?.let {
             Text(
                 it,
@@ -562,59 +567,69 @@ fun SymbolsPanel(
 
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.md),
         ) {
-            items(sortedRows, key = { "${it.row.exchangeId}:${it.row.symbol}" }) { item ->
-                MarketWatchSymbolRow(
-                    row = item.row,
-                    matchRange = item.match.matchRange,
-                    selected = item.row.symbol == selectedSymbol,
-                    inSelectedList = item.row.symbol in (selectedList?.symbols ?: emptyList()),
-                    selectedList = selectedList,
-                    availableLists = watchlists,
-                    workspaceTemplates = workspaceTemplates,
-                    canAddToLists = selectedList == null && watchlists.isNotEmpty(),
-                    onSelect = { onSymbolSelected(item.row.symbol) },
-                    onAddToList = { listId ->
-                        val repository = watchlistsRepository ?: return@MarketWatchSymbolRow
-                        scope.launch {
-                            try {
-                                repository.toggleSymbol(listId, item.row.symbol)
-                                listActionError = null
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                listActionError = e.message
-                            }
-                        }
-                    },
-                    onRemoveFromList = {
-                        val list = selectedList ?: return@MarketWatchSymbolRow
-                        val repository = watchlistsRepository ?: return@MarketWatchSymbolRow
-                        scope.launch {
-                            try {
-                                repository.toggleSymbol(list.id, item.row.symbol)
-                                listActionError = null
-                            } catch (e: CancellationException) {
-                                throw e
-                            } catch (e: Exception) {
-                                listActionError = e.message
-                            }
-                        }
-                    },
-                    onOpenWithTemplate = { templateName, template ->
-                        onOpenWorkspaceTemplate?.invoke(
-                            template,
-                            templateName,
-                            item.row.symbol,
-                            item.row.exchangeId,
-                            item.row.exchangeName,
+            itemsIndexed(
+                items = sortedRows,
+                key = { _, item -> "${item.row.exchangeId}:${item.row.symbol}" },
+            ) { index, item ->
+                Column {
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = tokens.colors.panelBorder,
+                            thickness = tokens.dimensions.dividerThickness,
                         )
-                    },
-                    onApplyToCurrentWorkspace = onApplyToCurrentWorkspace?.let { apply ->
-                        { apply(item.row.symbol, item.row.exchangeId, item.row.exchangeName) }
-                    },
-                )
+                    }
+                    MarketWatchSymbolRow(
+                        row = item.row,
+                        matchRange = item.match.matchRange,
+                        selected = item.row.symbol == selectedSymbol,
+                        inSelectedList = item.row.symbol in (selectedList?.symbols ?: emptyList()),
+                        selectedList = selectedList,
+                        availableLists = watchlists,
+                        workspaceTemplates = workspaceTemplates,
+                        canAddToLists = selectedList == null && watchlists.isNotEmpty(),
+                        onSelect = { onSymbolSelected(item.row.symbol) },
+                        onAddToList = { listId ->
+                            val repository = watchlistsRepository ?: return@MarketWatchSymbolRow
+                            scope.launch {
+                                try {
+                                    repository.toggleSymbol(listId, item.row.symbol)
+                                    listActionError = null
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    listActionError = e.message
+                                }
+                            }
+                        },
+                        onRemoveFromList = {
+                            val list = selectedList ?: return@MarketWatchSymbolRow
+                            val repository = watchlistsRepository ?: return@MarketWatchSymbolRow
+                            scope.launch {
+                                try {
+                                    repository.toggleSymbol(list.id, item.row.symbol)
+                                    listActionError = null
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    listActionError = e.message
+                                }
+                            }
+                        },
+                        onOpenWithTemplate = { templateName, template ->
+                            onOpenWorkspaceTemplate?.invoke(
+                                template,
+                                templateName,
+                                item.row.symbol,
+                                item.row.exchangeId,
+                                item.row.exchangeName,
+                            )
+                        },
+                        onApplyToCurrentWorkspace = onApplyToCurrentWorkspace?.let { apply ->
+                            { apply(item.row.symbol, item.row.exchangeId, item.row.exchangeName) }
+                        },
+                    )
+                }
             }
         }
     }
@@ -785,7 +800,7 @@ private fun MarketWatchSymbolRow(
             Row(
                 modifier = Modifier.fillMaxWidth().padding(
                     horizontal = tokens.spacing.lg,
-                    vertical = tokens.spacing.md,
+                    vertical = tokens.spacing.sm,
                 ),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
