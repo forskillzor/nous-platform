@@ -31,6 +31,9 @@ import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsOverlay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
+import com.aandios.nous_platform.ui.terminalLayout.TerminalMode
+import com.aandios.nous_platform.ui.terminalLayout.TerminalModeBar
+import com.aandios.nous_platform.ui.terminalLayout.TerminalTopBar
 import org.koin.compose.koinInject
 
 /**
@@ -105,7 +108,7 @@ fun TerminalWindowContent(
         builtinWorkspaceTemplates()
             .filter { it.id !in hiddenBuiltins }
             .map { it.title to it.preview } +
-            userTemplates.map { it.name to it }
+                userTemplates.map { it.name to it }
     }
 
     // Перенос вкладки между окнами
@@ -114,163 +117,199 @@ fun TerminalWindowContent(
     val externalDragActive = externalDrag?.let { it.sourceWindowId != session.id } == true
     var themeSettingsOpen by remember { mutableStateOf(false) }
 
+    var currentMode by remember { mutableStateOf(TerminalMode.ACTIVE_FLOW) }
+
     CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
         Box(Modifier.fillMaxSize()) {
-            TerminalLayout(
-                modifier = Modifier.fillMaxSize(),
-                terminalState = terminalStateViewModel,
-                tabManager = tabManager,
-                workspaceRepo = workspaceRepo,
-                templateRepo = templateRepo,
-                workspaceBus = workspaceBus,
-                activeWorkspaceId = session.activeWorkspaceId,
-                onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
-                onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
-                onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
-                marketWatchTemplates = marketWatchTemplates,
-                onOpenThemeSettings = { themeSettingsOpen = true },
-                onOpenMarketWatchTemplate = { template, templateName, symbol, providerId, providerName ->
-                    scope.launch {
-                        val fresh = template.forMarketWatchSymbol(
-                            symbol = symbol,
-                            providerId = providerId,
-                            providerName = providerName,
-                            templateName = templateName,
+            Column(Modifier.fillMaxSize()) {
+                // ── TopBar с TabBar ──
+                TerminalTopBar(
+                    tabsSlot = {
+                        TabBar(
+                            workspaces = windowWorkspaces,
+                            activeIndex = activeIdx,
+                            onTabClick = { i -> windowManager.activate(session.id, windowWorkspaces[i].config.id) },
+                            onTabClose = { id -> windowManager.closeWorkspaceIn(session.id, id) },
+                            onTabReorder = { from, to -> windowManager.reorderWorkspace(session.id, from, to) },
+                            onDragStart = { wsId ->
+                                dragPayload = TabDragBus.Payload(session.id, wsId)
+                                dragBus.start(dragPayload!!)
+                            },
+                            onDragEndResolve = { /* как было */ },
+                            onOpenInNewWindow = { wsId -> /* как было */ },
+                            externalDragActive = externalDragActive,
                         )
-                        workspaceRepo.create(fresh)
-                        windowManager.openWorkspaceIn(session.id, fresh)
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-            ) {
-            if (windowWorkspaces.isEmpty()) {
-            WelcomeScreen(
-                recentWorkspaces = recentConfigs,
-                userTemplates = userTemplates,
-                hiddenBuiltinTemplates = hiddenBuiltins,
-                onSelectTemplate = { config ->
-                    scope.launch {
-                        val fresh = config.copy(
-                            id = generateId(),
-                            createdAt = currentTime(),
-                            updatedAt = currentTime()
-                        )
-                        workspaceRepo.create(fresh)
-                        windowManager.openWorkspaceIn(session.id, fresh)
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                onOpenRecent = { config -> windowManager.openWorkspaceInSession(session.id, config.id) },
-                onDeleteTemplate = { template ->
-                    scope.launch {
-                        templateRepo.delete(template.id)
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                onRenameTemplate = { template, newName ->
-                    scope.launch {
-                        templateRepo.create(template.copy(name = newName.ifBlank { template.name }))
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                onDuplicateTemplate = { template ->
-                    scope.launch {
-                        templateRepo.create(
-                            template.copy(
-                                id = generateId(),
-                                name = "${template.name} (copy)"
-                            )
-                        )
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                onChangeTemplateDescription = { template, description ->
-                    scope.launch {
-                        templateRepo.create(template.copy(description = description))
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                onHideBuiltinTemplate = { builtinId ->
-                    scope.launch {
-                        templateRepo.hideBuiltin(builtinId)
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                onDeleteRecent = { config ->
-                    scope.launch {
-                        tabManager.closeWorkspace(config.id)
-                        workspaceRepo.delete(config.id)
-                        workspaceBus.workspaceChanged()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().weight(1f),
-            )
-            } else {
-                Column(Modifier.fillMaxWidth().weight(1f)) {
-                TabBar(
-                    workspaces = windowWorkspaces,
-                    activeIndex = activeIdx,
-                    onTabClick = { i -> windowManager.activate(session.id, windowWorkspaces[i].config.id) },
-                    onTabClose = { id -> windowManager.closeWorkspaceIn(session.id, id) },
-                    onTabReorder = { from, to -> windowManager.reorderWorkspace(session.id, from, to) },
-                    onDragStart = { wsId ->
-                        dragPayload = TabDragBus.Payload(session.id, wsId)
-                        dragBus.start(dragPayload!!)
                     },
-                    onDragEndResolve = {
-                        dragBus.end()
-                        val payload = dragPayload
-                        dragPayload = null
-                        if (payload != null) {
-                            val cursor = WindowBoundsRegistry.cursorLocation()
-                            if (cursor != null) {
-                                val targetId = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
-                                val sourceBounds = WindowBoundsRegistry.bounds.value[payload.sourceWindowId]
-                                val outsideSource = sourceBounds == null ||
-                                    !sourceBounds.contains(cursor.first, cursor.second)
-                                when {
-                                    targetId != null && targetId != payload.sourceWindowId ->
-                                        windowManager.moveWorkspace(
-                                            payload.workspaceId,
-                                            payload.sourceWindowId,
-                                            targetId,
-                                            Int.MAX_VALUE
-                                        )
-                                    targetId == null && outsideSource ->
-                                        // Отпустили вне всех окон — detach в новое окно у курсора
-                                        windowManager.detachWorkspace(
-                                            payload.workspaceId,
-                                            payload.sourceWindowId,
-                                            cursor.first,
-                                            cursor.second
-                                        )
-                                }
-                            }
+                    paperEnabled = false, // TODO: подключить к реальному состоянию
+                    onPaperToggle = { /* TODO */ },
+                    onThemeClick = { themeSettingsOpen = true },
+                    onSettingsClick = { /* TODO: окно настроек */ },
+                )
+
+                // ── ModeBar ──
+                TerminalModeBar(
+                    currentMode = currentMode,
+                    onModeChange = { currentMode = it },
+                )
+
+                TerminalLayout(
+                    modifier = Modifier.fillMaxWidth()
+                        .weight(1f),
+                    terminalState = terminalStateViewModel,
+                    tabManager = tabManager,
+                    workspaceRepo = workspaceRepo,
+                    templateRepo = templateRepo,
+                    workspaceBus = workspaceBus,
+                    activeWorkspaceId = session.activeWorkspaceId,
+                    onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
+                    onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
+                    onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
+                    marketWatchTemplates = marketWatchTemplates,
+                    onOpenThemeSettings = { themeSettingsOpen = true },
+                    onOpenMarketWatchTemplate = { template, templateName, symbol, providerId, providerName ->
+                        scope.launch {
+                            val fresh = template.forMarketWatchSymbol(
+                                symbol = symbol,
+                                providerId = providerId,
+                                providerName = providerName,
+                                templateName = templateName,
+                            )
+                            workspaceRepo.create(fresh)
+                            windowManager.openWorkspaceIn(session.id, fresh)
+                            workspaceBus.workspaceChanged()
                         }
                     },
-                    onOpenInNewWindow = { wsId ->
-                        val cursor = WindowBoundsRegistry.cursorLocation()
-                        windowManager.detachWorkspace(
-                            wsId,
-                            session.id,
-                            cursor?.first,
-                            cursor?.second
+                ) {
+                    if (windowWorkspaces.isEmpty()) {
+                        WelcomeScreen(
+                            recentWorkspaces = recentConfigs,
+                            userTemplates = userTemplates,
+                            hiddenBuiltinTemplates = hiddenBuiltins,
+                            onSelectTemplate = { config ->
+                                scope.launch {
+                                    val fresh = config.copy(
+                                        id = generateId(),
+                                        createdAt = currentTime(),
+                                        updatedAt = currentTime()
+                                    )
+                                    workspaceRepo.create(fresh)
+                                    windowManager.openWorkspaceIn(session.id, fresh)
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            onOpenRecent = { config -> windowManager.openWorkspaceInSession(session.id, config.id) },
+                            onDeleteTemplate = { template ->
+                                scope.launch {
+                                    templateRepo.delete(template.id)
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            onRenameTemplate = { template, newName ->
+                                scope.launch {
+                                    templateRepo.create(template.copy(name = newName.ifBlank { template.name }))
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            onDuplicateTemplate = { template ->
+                                scope.launch {
+                                    templateRepo.create(
+                                        template.copy(
+                                            id = generateId(),
+                                            name = "${template.name} (copy)"
+                                        )
+                                    )
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            onChangeTemplateDescription = { template, description ->
+                                scope.launch {
+                                    templateRepo.create(template.copy(description = description))
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            onHideBuiltinTemplate = { builtinId ->
+                                scope.launch {
+                                    templateRepo.hideBuiltin(builtinId)
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            onDeleteRecent = { config ->
+                                scope.launch {
+                                    tabManager.closeWorkspace(config.id)
+                                    workspaceRepo.delete(config.id)
+                                    workspaceBus.workspaceChanged()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().weight(1f),
                         )
-                    },
-                    externalDragActive = externalDragActive,
-                )
-                Box(Modifier.fillMaxSize()) {
-                    activeWorkspace?.let { ws ->
-                        WorkspaceView(
-                            ws = ws,
-                            workspaceRepo = workspaceRepo,
-                            modifier = Modifier.fillMaxSize()
-                        )
+                    } else {
+                        Column(Modifier.fillMaxWidth().weight(1f)) {
+                            TabBar(
+                                workspaces = windowWorkspaces,
+                                activeIndex = activeIdx,
+                                onTabClick = { i -> windowManager.activate(session.id, windowWorkspaces[i].config.id) },
+                                onTabClose = { id -> windowManager.closeWorkspaceIn(session.id, id) },
+                                onTabReorder = { from, to -> windowManager.reorderWorkspace(session.id, from, to) },
+                                onDragStart = { wsId ->
+                                    dragPayload = TabDragBus.Payload(session.id, wsId)
+                                    dragBus.start(dragPayload!!)
+                                },
+                                onDragEndResolve = {
+                                    dragBus.end()
+                                    val payload = dragPayload
+                                    dragPayload = null
+                                    if (payload != null) {
+                                        val cursor = WindowBoundsRegistry.cursorLocation()
+                                        if (cursor != null) {
+                                            val targetId = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
+                                            val sourceBounds = WindowBoundsRegistry.bounds.value[payload.sourceWindowId]
+                                            val outsideSource = sourceBounds == null ||
+                                                    !sourceBounds.contains(cursor.first, cursor.second)
+                                            when {
+                                                targetId != null && targetId != payload.sourceWindowId ->
+                                                    windowManager.moveWorkspace(
+                                                        payload.workspaceId,
+                                                        payload.sourceWindowId,
+                                                        targetId,
+                                                        Int.MAX_VALUE
+                                                    )
+
+                                                targetId == null && outsideSource ->
+                                                    // Отпустили вне всех окон — detach в новое окно у курсора
+                                                    windowManager.detachWorkspace(
+                                                        payload.workspaceId,
+                                                        payload.sourceWindowId,
+                                                        cursor.first,
+                                                        cursor.second
+                                                    )
+                                            }
+                                        }
+                                    }
+                                },
+                                onOpenInNewWindow = { wsId ->
+                                    val cursor = WindowBoundsRegistry.cursorLocation()
+                                    windowManager.detachWorkspace(
+                                        wsId,
+                                        session.id,
+                                        cursor?.first,
+                                        cursor?.second
+                                    )
+                                },
+                                externalDragActive = externalDragActive,
+                            )
+                            Box(Modifier.fillMaxSize()) {
+                                activeWorkspace?.let { ws ->
+                                    WorkspaceView(
+                                        ws = ws,
+                                        workspaceRepo = workspaceRepo,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
-        }
             if (themeSettingsOpen) {
                 ThemeSettingsOverlay(onClose = { themeSettingsOpen = false })
             }
