@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -89,6 +88,7 @@ fun TerminalLayout(
     mainContent: @Composable ColumnScope.() -> Unit,
 ) {
     val designTokens = LocalTerminalDesignTokens.current
+    val density = LocalDensity.current
     var topPanelState by remember {
         mutableStateOf(
             ToolPanelState(
@@ -290,9 +290,9 @@ fun TerminalLayout(
                             marketWatchTemplates = marketWatchTemplates,
                             onOpenMarketWatchTemplate = onOpenMarketWatchTemplate,
                             onApplyToCurrentWorkspace = onApplyToCurrentWorkspace,
-                            onWidthDelta = { dragAmount ->
+                            onWidthDelta = { dragAmountPx ->
                                 topPanelState = topPanelState.copy(
-                                    width = (topPanelState.width + dragAmount.dp).coerceIn(
+                                    width = (topPanelState.width + with(density) { dragAmountPx.toDp() }).coerceIn(
                                         designTokens.dimensions.workspaceToolPanelMinWidth,
                                         designTokens.dimensions.workspaceToolPanelMaxWidth
                                     )
@@ -301,24 +301,21 @@ fun TerminalLayout(
                             modifier = Modifier.fillMaxHeight()
                         )
                     }
-                    // Ручка ширины панели: оверлей в зазоре (не занимает layout-ширину,
-                    // чтобы зазор до workspace-островков оставался равным везде)
+                    // Ручка ширины панели: оверлей НА краю островка (не занимает
+                    // layout-ширину, чтобы зазоры оставались равными везде).
+                    // Зона захвата — 8dp вокруг края, грип-точки по центру.
                     Box(
                         modifier = Modifier
                             .align(Alignment.CenterEnd)
-                            .offset(
-                                x = (
-                                    designTokens.dimensions.workspacePanelGap -
-                                        designTokens.dimensions.splitHandleSize
-                                    ) / 2
-                            )
-                            .width(designTokens.dimensions.splitHandleSize).fillMaxHeight()
+                            .offset(x = designTokens.dimensions.workspacePanelGap / 2)
+                            .width(designTokens.dimensions.workspacePanelGap)
+                            .fillMaxHeight()
                             .hoverable(sidebarInteractionSource)
                             .testTag("sidebar-resize-handle")
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
                                     topPanelState = topPanelState.copy(
-                                        width = (topPanelState.width + dragAmount.dp).coerceIn(
+                                        width = (topPanelState.width + with(density) { dragAmount.toDp() }).coerceIn(
                                             designTokens.dimensions.workspaceToolPanelMinWidth,
                                             designTokens.dimensions.workspaceToolPanelMaxWidth
                                         )
@@ -329,7 +326,7 @@ fun TerminalLayout(
                         TerminalGripDots(
                             orientation = TerminalGripOrientation.VERTICAL,
                             color = if (sidebarHovered) designTokens.colors.accent
-                            else Color.Transparent,
+                            else designTokens.colors.label.copy(alpha = 0.5f),
                         )
                     }
                 }
@@ -344,7 +341,6 @@ fun TerminalLayout(
             ) {
                 mainContent()
                 if (bottomPanelState != null) {
-                    val density = LocalDensity.current
                     val minHeight = designTokens.dimensions.workspaceBottomPanelMinHeight
                     val maxHeight = with(density) {
                         (contentAreaHeightPx * 0.75f).toDp()
