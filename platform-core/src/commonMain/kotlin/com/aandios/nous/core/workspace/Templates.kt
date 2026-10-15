@@ -227,3 +227,21 @@ fun WorkspaceConfig.forMarketWatchSymbol(
         order = 0,
     )
 }
+
+/**
+ * Применяет символ/провайдера Market Watch к текущему workspace:
+ * id/имя/лейаут/история сохраняются, меняются только провайдеры и символы панелей.
+ */
+fun WorkspaceConfig.withMarketWatchSymbol(
+    symbol: String,
+    providerId: String,
+    providerName: String,
+): WorkspaceConfig {
+    return copy(
+        providers = providers.map {
+            it.copy(name = providerName, providerId = providerId, symbols = listOf(symbol))
+        },
+        panels = panels.map { it.copy(symbol = symbol) },
+        updatedAt = currentTime(),
+    )
+}

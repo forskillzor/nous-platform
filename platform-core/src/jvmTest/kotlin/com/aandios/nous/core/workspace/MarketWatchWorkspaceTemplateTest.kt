@@ -53,4 +53,25 @@ class MarketWatchWorkspaceTemplateTest {
         assertEquals("bybit-nous-0.0.1", opened.providers.single().providerId)
         assertEquals(template.layout, opened.layout)
     }
+
+    @Test
+    fun `applying a market symbol to the current workspace preserves id, name and layout`() {
+        val workspace = Templates.nous(symbol = "BTCUSDT")
+
+        val applied = workspace.withMarketWatchSymbol(
+            symbol = "SOLUSDT",
+            providerId = "mexc-nous-0.0.1",
+            providerName = "MEXC",
+        )
+
+        assertEquals(workspace.id, applied.id)
+        assertEquals(workspace.name, applied.name)
+        assertEquals(workspace.layout, applied.layout)
+        assertEquals(workspace.createdAt, applied.createdAt)
+        assertTrue(applied.panels.all { it.symbol == "SOLUSDT" })
+        assertEquals(listOf("SOLUSDT"), applied.providers.single().symbols)
+        assertEquals("MEXC", applied.providers.single().name)
+        assertEquals("mexc-nous-0.0.1", applied.providers.single().providerId)
+        assertTrue(applied.updatedAt >= workspace.updatedAt)
+    }
 }

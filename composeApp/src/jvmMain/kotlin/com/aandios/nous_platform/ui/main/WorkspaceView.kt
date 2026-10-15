@@ -90,6 +90,26 @@ fun WorkspaceView(
         persistConfig()
     }
 
+    // Внешние обновления конфига («Apply symbol to current workspace»): символы и
+    // провайдеры панелей меняются вне WorkspaceView — подтягиваем их в локальный
+    // state; layout и panel-настройки остаются локальными.
+    LaunchedEffect(ws.config.id) {
+        snapshotFlow { ws.config }.collect { cfg ->
+            val incoming = cfg.panels.associateBy { it.id }
+            var next = panelConfigs
+            incoming.forEach { (id, remote) ->
+                val local = next[id] ?: return@forEach
+                if (local.symbol != remote.symbol || local.providerRef != remote.providerRef) {
+                    next = next + (id to local.copy(symbol = remote.symbol, providerRef = remote.providerRef))
+                }
+            }
+            if (next !== panelConfigs) {
+                panelConfigs = next
+                persistConfig()
+            }
+        }
+    }
+
     fun disposePanelVm(pc: PanelConfig) {
         val suffix = when (pc.type) {
             PanelType.CHART -> "_chart"
