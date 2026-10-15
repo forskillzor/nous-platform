@@ -68,8 +68,8 @@ Mind this when writing paths.
 - Chart: provider/contract-type state is global (`chart_provider_id`,
   `chart_contract_type`).
 - Theme selection is global (`terminal_theme`) and is managed by
-  `ThemeSettingsController`; keep persisted names aligned with
-  `TerminalThemes.available`, and surface load/save errors in the theme UI.
+  `ThemeSettingsController`; Nous is the default, persisted names must align
+  with `TerminalThemes.available`, and load/save errors are surfaced in the theme UI.
 
 ### Safety invariants (learned the hard way — keep them)
 - Trading is **OFF by default** on both chart and DOM panels.
@@ -218,6 +218,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   current logical step.
 - The repo owner edits files between agent turns — never commit their
   uncommitted changes silently. Commit them separately only when asked.
+- Existing workspace layouts are user data and must not be migrated implicitly.
+  The built-in Nous template is the target Chart/Trading + DOM/Trades layout for
+  new workspaces; keep existing saved layouts unchanged.
 - Commit style: one long single-line English message per logical step,
   subject plus “what and why”. One commit per coherent change; split unrelated
   changes into separate commits.
@@ -295,6 +298,13 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
 - Internal panel headers use `TerminalPanelHeader` for the shared surface,
   spacing and bottom divider; keep panel-specific controls and actions inside it.
+- Workspace panel island spacing is controlled by
+  `TerminalDesignTokens.dimensions.workspacePanelGap`; `LayoutRenderer` must
+  reserve it around leaves and include it in fixed-panel width calculations so
+  DOM/Trades retain their configured content widths.
+- Split, sidebar, and bottom-panel resize affordances use the shared
+  `TerminalGripDots` component. Keep its vertical/horizontal dot orientation
+  and token-sized hit region in sync with `splitHandleSize` layout accounting.
 - DOM ladder and order-entry colors should come from
   `LocalTerminalDesignTokens.current`; preserve strong white-on-side-color and
   dark-on-quantity-input contrast.
