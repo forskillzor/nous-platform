@@ -27,13 +27,15 @@ private interface DwmApi : Library {
 }
 
 /**
- * Тёмный фон AWT-окна. Вызывать в `init`-блоке [androidx.compose.ui.awt.v2.SwingWindow]
- * — ДО того, как окно станет displayable: тогда нативный background brush
- * создаётся уже тёмным, и при живом ресайзе AWT заливает вновь открытую
- * область тёмным цветом, а не белым (работает и на Windows, и на Linux).
+ * Фон AWT-окна под текущую тему. Вызывать в `init`-блоке
+ * [androidx.compose.ui.awt.v2.SwingWindow] — ДО того, как окно станет
+ * displayable: тогда нативный background brush создаётся уже нужного цвета,
+ * и при живом ресайзе AWT заливает вновь открытую область цветом темы,
+ * а не белым (работает и на Windows, и на Linux). Цвет можно поменять
+ * позже — при смене темы в рантайме.
  */
-fun applyWindowDarkBackground(window: ComposeWindow, darkRgb: Int = 0x0A0A0A) {
-    val awtColor = Color(darkRgb)
+fun applyWindowBackground(window: ComposeWindow, rgb: Int = 0x0A0A0A) {
+    val awtColor = Color(rgb)
     window.background = awtColor
     window.rootPane.background = awtColor
     window.contentPane.background = awtColor
@@ -54,15 +56,15 @@ fun applyWindowIcon(window: ComposeWindow, resourcePath: String) {
 }
 
 /**
- * Тёмный заголовок окна на Windows (DWM immersive dark mode).
+ * Заголовок окна на Windows (DWM immersive dark mode), светлый при `dark = false`.
  * На остальных ОС — no-op: на macOS заголовок управляется JVM-флагом
  * `apple.awt.application.appearance`, на Linux — темой оконного менеджера.
  *
  * Вызывать после показа окна (LaunchedEffect): нужен валидный windowHandle.
  * Нюанс: при смене темы Windows в рантайме DWM может сбросить атрибут —
- * применяем при старте окна.
+ * применяем при старте окна и при каждой смене темы приложения.
  */
-fun applyWindowsDarkTitleBar(window: ComposeWindow) {
+fun applyWindowsDarkTitleBar(window: ComposeWindow, dark: Boolean = true) {
     if (!isWindows) return
 
     // DWMWA_USE_IMMERSIVE_DARK_MODE: 20 на Win10 20H1+ / Win11, 19 на более старых.
@@ -70,7 +72,7 @@ fun applyWindowsDarkTitleBar(window: ComposeWindow) {
     val fallbackAttribute = 19
     try {
         val handle = Pointer(window.windowHandle)
-        val value = IntByReference(1)
+        val value = IntByReference(if (dark) 1 else 0)
         val cbAttribute = 4 // sizeof(BOOL)
         val applied = DwmApi.INSTANCE.DwmSetWindowAttribute(handle, attribute, value.pointer, cbAttribute)
         if (applied != 0) {

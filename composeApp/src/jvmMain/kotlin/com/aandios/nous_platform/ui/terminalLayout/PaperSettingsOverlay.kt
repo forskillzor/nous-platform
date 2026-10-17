@@ -29,11 +29,7 @@ import com.aandios.nous.feature.trading.ui.PaperSettingsController
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
-private val cardBg = Color(0xFF12181F)
-private val borderColor = Color(0xFF3A4550)
-private val labelColor = Color(0xFF8A97A5)
-private val okColor = Color(0xFF26A69A)
-private val dangerColor = Color(0xFFEF5350)
+
 
 /**
  * Окно настроек paper trading (оверлей на корне приложения — Dialog в
@@ -46,6 +42,11 @@ fun PaperSettingsOverlay() {
     val visible by controller.visible.collectAsState()
     if (!visible) return
     val tokens = LocalTerminalDesignTokens.current
+    val cardBg = tokens.colors.panelSurface
+    val borderColor = tokens.colors.panelBorder
+    val labelColor = tokens.colors.label
+    val okColor = tokens.colors.profit
+    val dangerColor = tokens.colors.loss
 
     val adapter = PaperTrading.adapter
     val balances by adapter.balancesFlow.collectAsState()

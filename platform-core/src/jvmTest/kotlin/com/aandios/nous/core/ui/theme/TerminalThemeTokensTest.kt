@@ -44,6 +44,7 @@ class TerminalThemeTokensTest {
             "Dark" to Color(0xFF262626),
             "Night" to Color(0xFF1B1B1B),
             "Nous" to Color(0xFF1A2940),
+            "Light" to Color(0xFFDCE4EF),
         )
 
         TerminalThemes.available.forEach { theme ->

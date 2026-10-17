@@ -94,7 +94,7 @@ fun ProjectTree(
 @Composable
 private fun GroupHeader(name: String) {
     Text(
-        "▸ $name", color = Color(0xFF666666), fontSize = 11.sp, fontFamily = TerminalFontFamily,
+        "▸ $name", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontFamily = TerminalFontFamily,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
     )
 }
@@ -133,15 +133,15 @@ private fun WorkspaceTreeItem(
                         onValueChange = { editName = it },
                         singleLine = true,
                         textStyle = androidx.compose.ui.text.TextStyle(
-                            color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = TerminalFontFamily
+                            color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontFamily = TerminalFontFamily
                         ),
                         modifier = Modifier
                             .weight(1f)
                             .height(28.dp)
-                            .background(Color(0xFF1A1A1A), RoundedCornerShape(4.dp))
-                            .border(1.dp, Color(0xFF00C853), RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp),
-                        cursorBrush = SolidColor(Color(0xFF00C853)),
+                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         decorationBox = { innerTextField ->
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
                                 innerTextField()
@@ -150,18 +150,18 @@ private fun WorkspaceTreeItem(
 
                     )
                     Text(
-                        "✓", color = Color(0xFF00C853), fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        "✓", color = MaterialTheme.colorScheme.primary, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable { onRename?.invoke(editName); editing = false }
                             .padding(horizontal = 4.dp)
                     )
                     Text(
-                        "✗", color = Color(0xFF666666), fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                        "✗", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 18.sp, fontWeight = FontWeight.Bold,
                         modifier = Modifier.clickable { editing = false; editName = name }.padding(start = 2.dp)
                     )
                 }
             } else {
                 Text(
-                    text = name, color = if (isActive) Color(0xFF00C853) else Color(0xFFAAAAAA),
+                    text = name, color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 12.sp, fontFamily = TerminalFontFamily,
                     maxLines = 1, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false)
@@ -169,7 +169,7 @@ private fun WorkspaceTreeItem(
             }
             // Menu trigger
             Text(
-                "⋮", color = Color(0xFF444444), fontSize = 14.sp, fontFamily = TerminalFontFamily,
+                "⋮", color = MaterialTheme.colorScheme.outline, fontSize = 14.sp, fontFamily = TerminalFontFamily,
                 modifier = Modifier.clickable { menuExpanded = true }.padding(start = 4.dp)
             )
         }
@@ -201,7 +201,7 @@ private fun WorkspaceTreeItem(
                 })
             }
             onDelete?.let { fn ->
-                DropdownMenuItem(text = { Text("Delete", color = Color(0xFFF44336), fontSize = 12.sp) }, onClick = {
+                DropdownMenuItem(text = { Text("Delete", color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }, onClick = {
                     menuExpanded = false
                     confirmDelete = true
                 })

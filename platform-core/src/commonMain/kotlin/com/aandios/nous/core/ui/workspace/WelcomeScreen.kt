@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -74,25 +75,26 @@ fun WelcomeScreen(
     val visibleBuiltins = remember(builtinTemplates, hiddenBuiltinTemplates) {
         builtinTemplates.filter { it.id !in hiddenBuiltinTemplates }
     }
+    val tokens = LocalTerminalDesignTokens.current
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF0A0A0A))
+            .background(tokens.colors.workspaceBackground)
             .verticalScroll(rememberScrollState())
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Logo
-        Text("[Nous Platform]", color = Color(0xFF00C853), fontSize = 24.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
+        Text("[Nous Platform]", color = MaterialTheme.colorScheme.primary, fontSize = 24.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(8.dp))
-        Text("v0.1 — Professional Crypto Trading Terminal", color = Color(0xFF666666), fontSize = 12.sp, fontFamily = TerminalFontFamily)
+        Text("v0.1 — Professional Crypto Trading Terminal", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontFamily = TerminalFontFamily)
         Spacer(Modifier.height(32.dp))
 
         // ── Quick Start (в самом верху) ────────────────────────────────────
         SectionTitle("QUICK START")
         Box(
-            modifier = Modifier.width(900.dp).clip(RoundedCornerShape(4.dp)).background(Color(0xFF121212)).padding(16.dp)
+            modifier = Modifier.width(900.dp).clip(RoundedCornerShape(4.dp)).background(MaterialTheme.colorScheme.surface).padding(16.dp)
         ) {
             Column {
                 listOf(
@@ -102,7 +104,7 @@ fun WelcomeScreen(
                     "Drag a panel border — split panel into two",
                     "Left toolbar — workspaces, symbols, portfolio, console, editor"
                 ).forEach {
-                    Text(it, color = Color(0xFFAAAAAA), fontSize = 12.sp, fontFamily = TerminalFontFamily, lineHeight = 20.sp)
+                    Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontFamily = TerminalFontFamily, lineHeight = 20.sp)
                 }
             }
         }
@@ -187,7 +189,7 @@ fun WelcomeScreen(
 
 @Composable
 private fun SectionTitle(text: String) {
-    Text(text, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
+    Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
     Spacer(Modifier.height(12.dp))
 }
 
@@ -234,16 +236,16 @@ private fun WorkspaceCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF121212))
+                .background(MaterialTheme.colorScheme.surface)
                 .clickable(onClick = onClick)
                 .padding(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             WorkspaceLayoutThumbnail(config = config, modifier = Modifier.width(156.dp).height(90.dp))
             Spacer(Modifier.height(10.dp))
-            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold, maxLines = 1)
             Spacer(Modifier.height(4.dp))
-            Text(config.description.ifBlank { descOf(config) }, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, lineHeight = 15.sp, maxLines = 2)
+            Text(config.description.ifBlank { descOf(config) }, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, fontFamily = TerminalFontFamily, lineHeight = 15.sp, maxLines = 2)
             Spacer(Modifier.height(4.dp))
             Text(infoOf(config), color = tokens.colors.accent, fontSize = 10.sp, fontFamily = TerminalFontFamily, maxLines = 1)
         }
@@ -334,12 +336,12 @@ private fun CardIconButton(icon: String, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(3.dp))
-            .background(Color(0xFF1E1E1E))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
             .size(20.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(icon, color = Color(0xFFB0B0B0), fontSize = 12.sp, fontFamily = TerminalFontFamily)
+        Text(icon, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontFamily = TerminalFontFamily)
     }
 }
 
@@ -360,20 +362,20 @@ private fun CardDialog(
             modifier = Modifier
                 .width(320.dp)
                 .clip(RoundedCornerShape(6.dp))
-                .background(Color(0xFF121212))
+                .background(MaterialTheme.colorScheme.surface)
                 .padding(16.dp)
         ) {
-            Text(title, color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
+            Text(title, color = MaterialTheme.colorScheme.onBackground, fontSize = 13.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(10.dp))
             BasicTextField(
                 value = text,
                 onValueChange = { text = it },
                 singleLine = true,
-                textStyle = TextStyle(color = Color(0xFFE0E0E0), fontSize = 13.sp, fontFamily = TerminalFontFamily),
-                cursorBrush = SolidColor(Color(0xFF00C853)),
+                textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp, fontFamily = TerminalFontFamily),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF1A1A1A), RoundedCornerShape(4.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(4.dp))
                     .padding(horizontal = 8.dp, vertical = 8.dp)
             )
             Spacer(Modifier.height(12.dp))
@@ -383,11 +385,11 @@ private fun CardDialog(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 TextButton(onClick = onDismiss) {
-                    Text("Cancel", color = Color(0xFF888888), fontSize = 12.sp, fontFamily = TerminalFontFamily)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp, fontFamily = TerminalFontFamily)
                 }
                 Spacer(Modifier.width(8.dp))
                 TextButton(onClick = { onConfirm(text) }) {
-                    Text("Save", color = Color(0xFF00C853), fontSize = 12.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
+                    Text("Save", color = MaterialTheme.colorScheme.primary, fontSize = 12.sp, fontFamily = TerminalFontFamily, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -402,15 +404,15 @@ private fun TrashIconButton(onClick: () -> Unit, modifier: Modifier = Modifier) 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(3.dp))
-            .background(Color(0xFF1E1E1E))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             .clickable(onClick = onClick)
             .size(20.dp),
         contentAlignment = Alignment.Center
     ) {
+        val stroke = MaterialTheme.colorScheme.onSurfaceVariant
         Canvas(Modifier.size(12.dp)) {
             val w = size.width
             val h = size.height
-            val stroke = Color(0xFFB0B0B0)
             // Крышка и ручка
             drawLine(stroke, Offset(w * 0.1f, h * 0.3f), Offset(w * 0.9f, h * 0.3f), strokeWidth = 1.2f)
             drawLine(stroke, Offset(w * 0.4f, h * 0.3f), Offset(w * 0.4f, h * 0.12f), strokeWidth = 1.2f)

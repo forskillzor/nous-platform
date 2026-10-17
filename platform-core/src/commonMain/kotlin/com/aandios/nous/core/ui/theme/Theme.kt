@@ -11,6 +11,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
@@ -111,6 +112,40 @@ private val NousTerminalColorScheme = darkColorScheme(
     onError = Color(0xFF160B0D),
     outline = Color(0xFF29384C),
     outlineVariant = Color(0xFF202E41),
+)
+
+/**
+ * Светлая тема: белые панели на холодном светло-сером workspace,
+ * синий accent (primary) и классические зелёный/красный для buy/sell.
+ * Схема — единственный источник accent/selection; точечные поля токенов
+ * переопределяются в [TerminalThemes.Light].
+ */
+private val LightTerminalColorScheme = lightColorScheme(
+    primary = Color(0xFF2563EB),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFDBEAFE),
+    onPrimaryContainer = Color(0xFF1E3A8A),
+    secondary = Color(0xFFDC2626),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFFEE2E2),
+    onSecondaryContainer = Color(0xFF7F1D1D),
+    tertiary = Color(0xFF0891B2),
+    onTertiary = Color(0xFFFFFFFF),
+    background = Color(0xFFF2F4F8),
+    onBackground = Color(0xFF1B2430),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF1F2937),
+    surfaceVariant = Color(0xFFEDF0F5),
+    onSurfaceVariant = Color(0xFF5B6675),
+    surfaceTint = Color.Transparent,
+    inverseSurface = Color(0xFF1F2937),
+    inverseOnSurface = Color(0xFFF9FAFB),
+    error = Color(0xFFDC2626),
+    onError = Color(0xFFFFFFFF),
+    errorContainer = Color(0xFFFEE2E2),
+    onErrorContainer = Color(0xFF7F1D1D),
+    outline = Color(0xFFC9D2DD),
+    outlineVariant = Color(0xFFDCE2EA),
 )
 
 private fun terminalTokens(colorScheme: ColorScheme, selection: Color) = TerminalDesignTokens(
@@ -218,7 +253,58 @@ object TerminalThemes {
         },
     )
 
-    val available = listOf(Nous, Dark, Night)
+    val Light = TerminalThemeDefinition(
+        name = "Light",
+        colorScheme = LightTerminalColorScheme,
+        typography = TerminalTypography,
+        shapes = TerminalShapes,
+        tokens = terminalTokens(LightTerminalColorScheme, selection = Color(0xFFDCE4EF)).let { base ->
+            base.copy(
+                colors = base.colors.copy(
+                    bullish = Color(0xFF16A34A),
+                    bearish = Color(0xFFDC2626),
+                    candleShadow = Color(0xFF8E9AAB),
+                    dojiLine = Color(0xFF6B7280),
+                    chartBackground = Color(0xFFFFFFFF),
+                    gridLine = Color(0xFFEEF1F5),
+                    gridLineMajor = Color(0xFFE1E6ED),
+                    axisText = Color(0xFF64748B),
+                    volumeBullish = Color(0x4016A34A),
+                    volumeBearish = Color(0x40DC2626),
+                    crosshair = Color(0x801F2937),
+                    cursorLine = Color(0x401F2937),
+                    orderBackground = Color(0x141F2937),
+                    buyOrder = Color(0xFF16A34A),
+                    sellOrder = Color(0xFFDC2626),
+                    profit = Color(0xFF16A34A),
+                    loss = Color(0xFFDC2626),
+                    neutral = Color(0xFF6B7280),
+                    sma = Color(0xFF2563EB),
+                    ema = Color(0xFFF59E0B),
+                    ema2 = Color(0xFFEA580C),
+                    bollinger = Color(0xFF7C3AED),
+                    rsi = Color(0xFF0891B2),
+                    macd = Color(0xFFDB2777),
+                    signal = Color(0xFF65A30D),
+                    supportLevel = Color(0xFF16A34A),
+                    resistanceLevel = Color(0xFFDC2626),
+                    panelBorder = Color(0xFFDFE4EB),
+                    inactiveTabSurface = Color(0xFFE7EBF1),
+                    splitHandle = Color(0xFFCBD3DD),
+                    warning = Color(0xFFB45309),
+                    label = Color(0xFF5B6675),
+                    pnlPlate = Color(0xFFE9EEF5),
+                ),
+                cornerRadii = base.cornerRadii.copy(
+                    card = 4.dp,
+                    toolbar = 6.dp,
+                    workspacePanel = 6.dp,
+                ),
+            )
+        },
+    )
+
+    val available = listOf(Nous, Dark, Night, Light)
 }
 
 object ChartColors {

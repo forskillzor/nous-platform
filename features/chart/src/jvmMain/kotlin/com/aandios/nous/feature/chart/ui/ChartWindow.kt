@@ -44,7 +44,7 @@ import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
 import com.aandios.nous.api.market.ProviderRegistry
-import com.aandios.nous.core.ui.window.applyWindowDarkBackground
+import com.aandios.nous.core.ui.window.applyWindowBackground
 import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
@@ -712,8 +712,8 @@ fun main() = application {
         onCloseRequest = ::exitApplication,
         title = "Nous Platform • Chart Preview",
         state = rememberWindowStateWithBounds(initialSize = DpSize(800.dp, 600.dp)),
-        // До показа окна: тёмный фон AWT-фрейма — без белых вспышек при ресайзе.
-        init = { w -> applyWindowDarkBackground(w) },
+        // До показа окна: фон AWT-фрейма — без белых вспышек при ресайзе.
+        init = { w -> applyWindowBackground(w) },
     ) {
         // Тёмный заголовок окна (Windows, DWM); no-op на других ОС.
         LaunchedEffect(Unit) { applyWindowsDarkTitleBar(window) }
