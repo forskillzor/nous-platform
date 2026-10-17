@@ -147,7 +147,7 @@ fun TradingPanel(
     val formatter = remember { SymbolFormatter.DEFAULT }
     val tokens = LocalTerminalDesignTokens.current
 
-    Column(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
+    Column(modifier = modifier.background(tokens.colors.panelSurface)) {
         TerminalPanelHeader {
         // ── Верхняя строка: exchange · USDT-M/COIN-M · режим позиций · Paper + шестерёнка ──
         Row(

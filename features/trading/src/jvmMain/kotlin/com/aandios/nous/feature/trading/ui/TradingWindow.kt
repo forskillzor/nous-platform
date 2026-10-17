@@ -45,7 +45,7 @@ fun TradingWindow(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         TradingPanel(viewModel = viewModel, registry = registry, modifier = Modifier.fillMaxSize())
     }
