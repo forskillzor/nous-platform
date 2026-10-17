@@ -6,9 +6,11 @@
 package com.aandios.nous.feature.trades.ui.header
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -26,13 +28,13 @@ import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
-import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.SizeFilter
 import kotlin.math.roundToInt
 
 /**
- * Заголовок Trades в компактном стиле DOM-хедера: две тонкие строки
+ * Заголовок Trades в стиле DOM-хедера: две тонкие строки на едином с контентом
+ * фоне, разделённые полосками-спейсерами:
  *  1) биржа · тип контрактов
  *  2) символ (с поиском) · фильтр размера
  * Без live-индикатора и без «двойных» рамок.
@@ -63,70 +65,83 @@ fun TradesHeaderBar(
 ) {
     val tokens = LocalTerminalDesignTokens.current
 
-    TerminalPanelHeader {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(tokens.spacing.xxs)
+    // Единый фон с контентом Trades (один цвет панели) + полоски между строками,
+    // как в переделанном DOM-хедере
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface),
+    ) {
+        // Строка 1: биржа · USDT-M/COIN-M
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            // Строка 1: биржа · USDT-M/COIN-M
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                TerminalInlineSelect(
-                    label = "Ex",
-                    current = currentProviderId,
-                    items = providers.map { it.providerId },
-                    display = { id ->
-                        providers.firstOrNull { it.providerId == id }?.config?.displayName ?: id
-                    },
-                    onSelect = onProviderChanged,
-                    menuWidth = 150.dp,
-                )
-                TerminalInlineSelect(
-                    label = "Type",
-                    current = contractType,
-                    items = ContractType.entries.toList(),
-                    display = { it.label },
-                    onSelect = onContractTypeChanged,
-                    menuWidth = 120.dp,
-                )
-                Spacer(Modifier.weight(1f))
-                // Шестерёнка настроек: пока только ширина панели (ползунок)
-                TradesSettingsGear(
-                    panelWidthDp = panelWidthDp,
-                    minPanelWidthDp = minPanelWidthDp,
-                    maxPanelWidthDp = maxPanelWidthDp,
-                    onPanelWidthDpChanged = onPanelWidthDpChanged,
-                    onPanelWidthDpChangeFinished = onPanelWidthDpChangeFinished,
-                )
-            }
-
-            // Строка 2: символ (сжимается) · фильтр размера
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.weight(1f).clipToBounds()) {
-                    TradesSymbolDropdown(
-                        currentSymbol = currentSymbol,
-                        availableSymbols = availableSymbols,
-                        onSymbolChanged = onSymbolChanged,
-                    )
-                }
-                SizeFilterDropdown(
-                    currentFilter = selectedSizeFilter,
-                    minQty = currentSymbolInfo?.minQty,
-                    customPresets = customPresets,
-                    onFilterChanged = onFilterChanged,
-                    onPresetAdd = onPresetAdd,
-                    onPresetEdit = onPresetEdit,
-                    onPresetDelete = onPresetDelete,
-                )
-            }
+            TerminalInlineSelect(
+                label = "Ex",
+                current = currentProviderId,
+                items = providers.map { it.providerId },
+                display = { id ->
+                    providers.firstOrNull { it.providerId == id }?.config?.displayName ?: id
+                },
+                onSelect = onProviderChanged,
+                menuWidth = 150.dp,
+            )
+            TerminalInlineSelect(
+                label = "Type",
+                current = contractType,
+                items = ContractType.entries.toList(),
+                display = { it.label },
+                onSelect = onContractTypeChanged,
+                menuWidth = 120.dp,
+            )
+            Spacer(Modifier.weight(1f))
+            // Шестерёнка настроек: пока только ширина панели (ползунок)
+            TradesSettingsGear(
+                panelWidthDp = panelWidthDp,
+                minPanelWidthDp = minPanelWidthDp,
+                maxPanelWidthDp = maxPanelWidthDp,
+                onPanelWidthDpChanged = onPanelWidthDpChanged,
+                onPanelWidthDpChangeFinished = onPanelWidthDpChangeFinished,
+            )
         }
+
+        HorizontalDivider(
+            color = tokens.colors.panelBorder,
+            thickness = tokens.dimensions.dividerThickness,
+        )
+
+        // Строка 2: символ (сжимается) · фильтр размера
+        Row(
+            modifier = Modifier.fillMaxWidth()
+                .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(modifier = Modifier.weight(1f).clipToBounds()) {
+                TradesSymbolDropdown(
+                    currentSymbol = currentSymbol,
+                    availableSymbols = availableSymbols,
+                    onSymbolChanged = onSymbolChanged,
+                )
+            }
+            SizeFilterDropdown(
+                currentFilter = selectedSizeFilter,
+                minQty = currentSymbolInfo?.minQty,
+                customPresets = customPresets,
+                onFilterChanged = onFilterChanged,
+                onPresetAdd = onPresetAdd,
+                onPresetEdit = onPresetEdit,
+                onPresetDelete = onPresetDelete,
+            )
+        }
+
+        HorizontalDivider(
+            color = tokens.colors.panelBorder,
+            thickness = tokens.dimensions.dividerThickness,
+        )
     }
 }
 

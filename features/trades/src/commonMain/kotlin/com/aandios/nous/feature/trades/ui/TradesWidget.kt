@@ -8,7 +8,7 @@ package com.aandios.nous.feature.trades.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -23,7 +23,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -78,7 +77,7 @@ fun TradesWidget(
             }
     }
 
-    Column(modifier = modifier.background(MaterialTheme.colorScheme.background)) {
+    Column(modifier = modifier.background(MaterialTheme.colorScheme.surface)) {
         // Header bar с dropdowns (как в feature-dom)
         TradesHeaderBar(
             currentSymbol = currentSymbol,
@@ -199,12 +198,11 @@ fun TradesWidget(
                         state = lazyListState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        itemsIndexed(visibleTrades, key = { _, trade -> trade.id }) { index, trade ->
+                        items(visibleTrades, key = { trade -> trade.id }) { trade ->
                             TradeRow(
                                 trade = trade,
                                 viewModel = viewModel,
                                 maxQuantity = maxQuantity,
-                                index = index
                             )
                         }
                     }
@@ -224,7 +222,6 @@ private fun ColumnHeaderRow() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(tokens.colors.panelHeaderSurface)
             .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs)
     ) {
         Text(
@@ -254,47 +251,44 @@ private fun ColumnHeaderRow() {
 }
 
 /**
- * Строка одной сделки.
- * Цвета: buy = MaterialTheme.colorScheme.primary, sell = MaterialTheme.colorScheme.secondary.
+ * Строка одной сделки. Фон однотонный (без чередования): время — приглушённое,
+ * цена — белая, объём покрашен по стороне bid/ask (bearish — продажа,
+ * bullish — покупка) вместе с гистограммой объёма.
  */
 @Composable
 private fun TradeRow(
     trade: Trade,
     viewModel: TradesViewModel,
-    maxQuantity: Double,
-    index: Int
+    maxQuantity: Double
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    val bgColor = if (index % 2 == 0) Color.Transparent
-    else tokens.colors.panelHeaderSurface.copy(alpha = 0.35f)
-    val priceColor = if (trade.isBuyerMaker) tokens.colors.bearish else tokens.colors.bullish
+    val sideColor = if (trade.isBuyerMaker) tokens.colors.bearish else tokens.colors.bullish
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(bgColor)
             .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.none),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Время
+        // Время — чуть темнее цены
         Text(
             text = viewModel.formatTime(trade.timestamp),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = tokens.colors.label,
             fontSize = tokens.typography.compactSize,
             modifier = Modifier.weight(1f)
         )
 
-        // Цена
+        // Цена — одного цвета (белая)
         Text(
             text = viewModel.formatPrice(trade.price),
-            color = priceColor,
+            color = MaterialTheme.colorScheme.onSurface,
             fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1f)
         )
 
-        // Количество с горизонтальной гистограммой объема
+        // Количество с горизонтальной гистограммой объема — цветом стороны
         Box(
             modifier = Modifier
                 .weight(1.4f)
@@ -307,12 +301,12 @@ private fun TradeRow(
                     .fillMaxHeight()
                     .fillMaxWidth(volumeWidth.toFloat())
                     .align(Alignment.CenterEnd)
-                    .background(priceColor.copy(alpha = 0.25f))
+                    .background(sideColor.copy(alpha = 0.25f))
             )
             // Текст количества поверх бара
             Text(
                 text = viewModel.formatQuantity(trade.quantity),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = sideColor,
                 fontSize = tokens.typography.compactSize,
                 textAlign = TextAlign.End,
                 modifier = Modifier.align(Alignment.CenterEnd)

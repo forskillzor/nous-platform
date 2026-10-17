@@ -50,7 +50,7 @@ fun TradesWindow(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(MaterialTheme.colorScheme.surface)
     ) {
         TradesWidget(
             viewModel = tradesViewModel,
