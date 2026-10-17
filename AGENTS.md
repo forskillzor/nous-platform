@@ -161,6 +161,9 @@ Mind this when writing paths.
 - Prices: always `SymbolFormatter` (`formatPrice`, `roundPrice`).
 - Exchange payloads and qty inputs must be plain decimal (never `1.0E-4`):
   use `plainDecimalString` (platform-core) — `SymbolFormatter` is built on it.
+- Volume stats in symbol lists: `SymbolFormatter.formatCompactVolume`
+  (K/M/B, three significant digits: `3.84B`, `486M`, `94.0M`; suffix promoted
+  on the rounding boundary, `999.6e6 → 1.00B`).
 - Color/face constants used across trading UI: buy `0xFF26A69A`,
   sell `0xFFEF5350`, ok `0xFF00C853`, warn `0xFFE0A95B`,
   label `0xFF8A97A5`, dark PnL plate `0xFF1B222B`; accent is not a fixed
@@ -323,14 +326,32 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `outlineVariant` ring + accent plus drawn in Canvas; split menu; SPLIT RIGHT →
   `onSplitH` → Row, SPLIT DOWN → `onSplitV` → Column) and a large × close. The
   chart title hosts `ChartTitleToolbar`: provider/mode rounded box dropdowns
-  (`TerminalBoxStyle.ACCENT` — `surfaceVariant` fill, accent text), normal
-  symbol box, solid-accent timeframe chip (`TerminalBoxStyle.SELECTED`, dark
+  (`TerminalBoxStyle.ACCENT` — `surfaceVariant` fill, accent text), symbol
+  explorer box (see below), solid-accent timeframe chip
+  (`TerminalBoxStyle.SELECTED`, dark
   text, no chevron), Trading on/off button and AI mock; chart options (Type,
   aggregation, Paper, Show orders/positions) live in the ⚙ menu
   (`ChartSettingsMenu`). DOM/Trades/Trading titles are plain
   `PanelTitleLabel`s (DOM shows a `STREAM` dot; the Trades glyph is accent);
   their ⚙ menu closes the panel. In workspace tiles `ChartWindow` hides its own
   toolbar (standalone previews keep `TerminalPanelHeader`-wrapped version).
+- Chart title symbol control is `SymbolExplorerDropdown` (platform-core):
+  tabs ALL + watchlist names uppercased (stars write into an auto-created
+  `Favourites` list), search field with hit highlight and ⌘K / Ctrl+K focus,
+  chips PERPETUALS / quote / exchange, funnel sort (VOLUME / 24H % / PRICE /
+  SYMBOL, active direction ↓/↑), 5-row scroll list (star, `SYMBOL.P` for
+  perpetuals, `EXCHANGE · PERP · VOL $3.84B`, last price, 24h %), footer
+  `N CONTRACTS · SORTED BY <sort>` + MANAGE WATCHLIST, which opens the Market
+  Watch tool panel (`ToolPanelState` is hoisted in `TerminalWindowContent`;
+  standalone `ChartWindow` passes null and hides the action). Rows come from
+  `ChartExplorerRows` (per provider: `symbolInfo` + `bookTicker` as
+  `MarketOverviewAdapter`, across ALL exchanges; one failed source never hides
+  the other) behind the 30s throttle of `ChartViewModel.refreshExplorerRows`.
+  A pick from another exchange switches the chart provider (Trading OFF by
+  invariant) only after that provider's symbols load (`pendingExplorerSymbol`
+  in `applyPendingExplorerSymbol`); same-exchange picks sync `contractType`
+  from the row's `SymbolInfo` without a double chart load.
+  `SymbolSearchDropdown` stays in place for DOM/Trades.
 - The shared rounded dropdown shell is `TerminalBoxDropdown` (platform-core,
   compact MW-LIST style: 11sp mono text, smallCard radius, 2dp/6dp padding,
   12dp chevron; styles `NORMAL` (45% `panelHeaderSurface` fill, white text),

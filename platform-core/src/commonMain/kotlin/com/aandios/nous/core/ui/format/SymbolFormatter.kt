@@ -89,5 +89,47 @@ class SymbolFormatter(
     companion object {
         /** Default formatter for BTCUSDT (tickSize=0.01, minQty=0.001) */
         val DEFAULT = SymbolFormatter()
+
+        /**
+         * Компактный объём котируемой валюты для списков символов
+         * (статистика 24ч): до трёх значащих цифр с суффиксом K/M/B.
+         * 3.84e9 → «3.84B», 4.862e8 → «486M», 9.4e7 → «94M», 984.2 → «984»,
+         * на границе округления 999.6e6 → «1.00B».
+         */
+        fun formatCompactVolume(volume: Double): String {
+            val sign = if (volume < 0) "-" else ""
+            val v = abs(volume)
+            var scaled = v
+            var suffixIdx = if (v >= 1_000_000_000) 2 else if (v >= 1_000_000) 1 else if (v >= 1_000) 0 else -1
+            if (suffixIdx == 2) scaled = v / 1_000_000_000
+            else if (suffixIdx == 1) scaled = v / 1_000_000
+            else if (suffixIdx == 0) scaled = v / 1_000
+            while (true) {
+                val decimals = compactDecimals(scaled)
+                val rounded = roundTo(scaled, decimals)
+                if (rounded < 1_000 || suffixIdx >= 2) {
+                    val suffix = when (suffixIdx) {
+                        0 -> "K"
+                        1 -> "M"
+                        2 -> "B"
+                        else -> ""
+                    }
+                    return sign + plainDecimalFixed(rounded, decimals) + suffix
+                }
+                scaled = rounded / 1_000
+                suffixIdx++
+            }
+        }
+
+        private fun compactDecimals(value: Double): Int = when {
+            value >= 100 -> 0
+            value >= 10 -> 1
+            else -> 2
+        }
+
+        private fun roundTo(value: Double, decimals: Int): Double {
+            val factor = 10.0.pow(decimals)
+            return kotlin.math.round(value * factor) / factor
+        }
     }
 }

@@ -73,6 +73,8 @@ private fun ToolPanelState.toggle(type: ToolPanelType): ToolPanelState =
 fun TerminalLayout(
     modifier: Modifier = Modifier,
     terminalState: TerminalStateViewModel,
+    topPanelState: ToolPanelState,
+    onTopPanelStateChange: (ToolPanelState) -> Unit,
     onSymbolSelected: (String) -> Unit,
     onTimeframeSelected: (String) -> Unit,
     tabManager: TabManager? = null,
@@ -89,15 +91,6 @@ fun TerminalLayout(
 ) {
     val designTokens = LocalTerminalDesignTokens.current
     val density = LocalDensity.current
-    var topPanelState by remember {
-        mutableStateOf(
-            ToolPanelState(
-                isExpanded = true,
-                type = ToolPanelType.SYMBOLS,
-                width = designTokens.dimensions.workspaceToolPanelWidth,
-            )
-        )
-    }
     var bottomPanelState by remember { mutableStateOf<BottomToolType?>(null) }
     var portfolioTab by remember { mutableStateOf(PortfolioTab.POSITIONS) }
     // Высота нижней панели запоминается на время сессии
@@ -178,7 +171,7 @@ fun TerminalLayout(
                             icon = icon,
                             description = description,
                             isSelected = topPanelState.type == type && topPanelState.isExpanded,
-                            onClick = { topPanelState = topPanelState.toggle(type) }
+                            onClick = { onTopPanelStateChange(topPanelState.toggle(type)) }
                         )
                     }
                 }
@@ -286,15 +279,17 @@ fun TerminalLayout(
                             onSymbolSelected = onSymbolSelected,
                             selectedTimeframe = selectedTimeframe,
                             onTimeframeSelected = onTimeframeSelected,
-                            onClose = { topPanelState = topPanelState.copy(isExpanded = false) },
+                            onClose = { onTopPanelStateChange(topPanelState.copy(isExpanded = false)) },
                             marketWatchTemplates = marketWatchTemplates,
                             onOpenMarketWatchTemplate = onOpenMarketWatchTemplate,
                             onApplyToCurrentWorkspace = onApplyToCurrentWorkspace,
                             onWidthDelta = { dragAmountPx ->
-                                topPanelState = topPanelState.copy(
-                                    width = (topPanelState.width + with(density) { dragAmountPx.toDp() }).coerceIn(
-                                        designTokens.dimensions.workspaceToolPanelMinWidth,
-                                        designTokens.dimensions.workspaceToolPanelMaxWidth
+                                onTopPanelStateChange(
+                                    topPanelState.copy(
+                                        width = (topPanelState.width + with(density) { dragAmountPx.toDp() }).coerceIn(
+                                            designTokens.dimensions.workspaceToolPanelMinWidth,
+                                            designTokens.dimensions.workspaceToolPanelMaxWidth
+                                        )
                                     )
                                 )
                             },
@@ -314,10 +309,12 @@ fun TerminalLayout(
                             .testTag("sidebar-resize-handle")
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { _, dragAmount ->
-                                    topPanelState = topPanelState.copy(
-                                        width = (topPanelState.width + with(density) { dragAmount.toDp() }).coerceIn(
-                                            designTokens.dimensions.workspaceToolPanelMinWidth,
-                                            designTokens.dimensions.workspaceToolPanelMaxWidth
+                                    onTopPanelStateChange(
+                                        topPanelState.copy(
+                                            width = (topPanelState.width + with(density) { dragAmount.toDp() }).coerceIn(
+                                                designTokens.dimensions.workspaceToolPanelMinWidth,
+                                                designTokens.dimensions.workspaceToolPanelMaxWidth
+                                            )
                                         )
                                     )
                                 }

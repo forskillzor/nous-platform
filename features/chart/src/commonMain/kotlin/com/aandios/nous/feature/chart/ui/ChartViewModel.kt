@@ -30,6 +30,7 @@ import com.aandios.nous.core.domain.timeseries.Timeframes
 import com.aandios.nous.core.currentTimeMillis
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.footprint.FootprintController
@@ -57,6 +58,18 @@ class ChartViewModel(
     val state: StateFlow<ChartUiState> = _state.asStateFlow()
 
     private val _symbolInfoMap = MutableStateFlow<Map<String, SymbolInfo>>(emptyMap())
+
+    // ── Расширенный список символов (explorer dropdown в тайтле) ──
+
+    /** Строки всех бирж: спеки + статистика 24ч (ленивая подгрузка). */
+    private val _explorerRows = MutableStateFlow<List<SymbolExplorerRow>>(emptyList())
+    val explorerRows: StateFlow<List<SymbolExplorerRow>> = _explorerRows.asStateFlow()
+
+    private var explorerLoading = false
+    private var lastExplorerRefreshMs = 0L
+
+    /** Символ, выбранный в explorer у ДРУГОЙ биржи: применяется после loadSymbols. */
+    private var pendingExplorerSymbol: String? = null
 
     // ── Chart trading (вкл/выкл) ──
 
@@ -220,7 +233,11 @@ class ChartViewModel(
         _state.update { it.copy(currentProviderId = providerId, symbols = emptyList()) }
         saveState()
         loadSymbols()
-        loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
+        // Выбор из explorer: символ применится после загрузки списка (тут
+        // промежуточная загрузка старого символа на новой бирже не нужна)
+        if (pendingExplorerSymbol == null) {
+            loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
+        }
         refreshOpenOrders()
     }
 
@@ -273,8 +290,15 @@ class ChartViewModel(
                     )
                 }
                 ensurePaperCompatibility()
+                applyPendingExplorerSymbol()
             } catch (e: Exception) {
                 println("Failed to load symbols: ${e.message}")
+                // Список не загрузился — не оставляем chart пустым после
+                // переключения биржи из explorer
+                if (pendingExplorerSymbol != null) {
+                    pendingExplorerSymbol = null
+                    loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
+                }
             }
         }
     }
@@ -300,6 +324,74 @@ class ChartViewModel(
         }
         saveState()
         loadChart(ticker = symbol, timeframe = _state.value.currentTimeframe)
+    }
+
+    // ── Explorer (расширенный список символов) ──
+
+    /**
+     * Подгрузка строк extended-дропдауна (все биржи). Вызывается при
+     * открытии меню; троттлится [EXPLORER_REFRESH_THROTTLE_MS],
+     * [force] — явный рефреш.
+     */
+    fun refreshExplorerRows(force: Boolean = false) {
+        if (explorerLoading) return
+        val now = currentTimeMillis()
+        if (!force && now - lastExplorerRefreshMs < EXPLORER_REFRESH_THROTTLE_MS) return
+        explorerLoading = true
+        lastExplorerRefreshMs = now
+        viewModelScope.launch {
+            try {
+                val rows = buildExplorerRows(providerRegistry)
+                if (rows.isNotEmpty()) _explorerRows.value = rows
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Список не критичен: показываем прошлые данные
+            } finally {
+                explorerLoading = false
+            }
+        }
+    }
+
+    /**
+     * Выбор строки из explorer: биржа (смена = Trading OFF, инвариант
+     * безопасности), тип контракта по SymbolInfo и символ графика.
+     */
+    fun selectExplorerRow(row: SymbolExplorerRow) {
+        if (row.exchangeId != activeProviderId) {
+            pendingExplorerSymbol = row.symbol
+            selectProvider(row.exchangeId)
+            return
+        }
+        val info = _symbolInfoMap.value[row.symbol]
+        if (info != null) {
+            val type = ContractType.of(info)
+            if (_state.value.contractType != type) {
+                _state.update { it.copy(contractType = type) }
+                saveState()
+                applyContractTypeFilter()
+            }
+        }
+        selectSymbol(row.symbol)
+    }
+
+    /** Применить отложенный выбор из explorer после загрузки символов. */
+    private fun applyPendingExplorerSymbol() {
+        val symbol = pendingExplorerSymbol ?: return
+        pendingExplorerSymbol = null
+        val info = _symbolInfoMap.value[symbol]
+        if (info == null) {
+            // Символа нет на новой бирже — открываем первый доступный
+            _state.value.symbols.firstOrNull()?.let { selectSymbol(it) }
+                ?: loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
+            return
+        }
+        val type = ContractType.of(info)
+        if (_state.value.contractType != type) {
+            _state.update { it.copy(contractType = type) }
+            applyContractTypeFilter()
+        }
+        selectSymbol(symbol)
     }
 
     private fun selectTimeframe(timeframe: String) {
@@ -1067,5 +1159,6 @@ class ChartViewModel(
     companion object {
         private const val CACHE_LIMIT = 5500
         private const val CACHE_WRITE_INTERVAL_MS = 30_000L
+        private const val EXPLORER_REFRESH_THROTTLE_MS = 30_000L
     }
 }

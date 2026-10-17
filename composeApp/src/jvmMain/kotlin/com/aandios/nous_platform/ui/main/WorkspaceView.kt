@@ -68,6 +68,7 @@ fun WorkspaceView(
     ws: WorkspaceViewModel,
     workspaceRepo: WorkspaceRepository,
     modifier: Modifier = Modifier,
+    onManageWatchlist: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val providerRegistry: ProviderRegistry = koinInject()
@@ -238,7 +239,11 @@ fun WorkspaceView(
                             val vm = ws.liveViewModels.getOrPut(panelVmKey(pc)) {
                                 koinInject<ChartViewModel>()
                             } as ChartViewModel
-                            ChartTitleToolbar(chartViewModel = vm, registry = providerRegistry)
+                            ChartTitleToolbar(
+                                chartViewModel = vm,
+                                registry = providerRegistry,
+                                onManageWatchlist = onManageWatchlist,
+                            )
                         }
 
                         PanelType.DOM -> PanelTitleLabel(text = "DOM", stream = true)

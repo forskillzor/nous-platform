@@ -48,4 +48,21 @@ class SymbolFormatterTest {
         assertEquals("85578.7", btc.formatPrice(85578.66))
         assertEquals(85578.7, btc.roundPrice(85578.66))
     }
+
+    @Test
+    fun `compact volume keeps three significant digits`() {
+        assertEquals("3.84B", SymbolFormatter.formatCompactVolume(3_840_000_000.0))
+        assertEquals("77.6B", SymbolFormatter.formatCompactVolume(77_640_000_000.0))
+        assertEquals("486M", SymbolFormatter.formatCompactVolume(486_000_000.0))
+        assertEquals("94.0M", SymbolFormatter.formatCompactVolume(94_000_000.0))
+        assertEquals("12.3K", SymbolFormatter.formatCompactVolume(12_345.0))
+        assertEquals("984", SymbolFormatter.formatCompactVolume(984.2))
+        assertEquals("9.84", SymbolFormatter.formatCompactVolume(9.84))
+    }
+
+    @Test
+    fun `compact volume promotes suffix on rounding boundary`() {
+        assertEquals("1.00B", SymbolFormatter.formatCompactVolume(999_600_000.0))
+        assertEquals("1.00K", SymbolFormatter.formatCompactVolume(999.6))
+    }
 }

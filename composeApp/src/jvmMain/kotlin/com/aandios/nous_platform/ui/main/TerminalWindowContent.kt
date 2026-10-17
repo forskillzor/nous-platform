@@ -37,6 +37,8 @@ import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
 import com.aandios.nous_platform.ui.terminalLayout.MarketWatchStore
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsOverlay
+import com.aandios.nous_platform.ui.terminalLayout.ToolPanelState
+import com.aandios.nous_platform.ui.terminalLayout.ToolPanelType
 import com.aandios.nous_platform.ui.terminalLayout.WorkspaceTemplatePicker
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -132,6 +134,18 @@ fun TerminalWindowContent(
     var currentMode by remember { mutableStateOf(TerminalMode.ACTIVE_FLOW) }
     var addMenuExpanded by remember { mutableStateOf(false) }
     val tokens = LocalTerminalDesignTokens.current
+
+    // Верхняя выдвижная панель (Market Watch и т.д.): состояние поднято из
+    // TerminalLayout, чтобы «MANAGE WATCHLIST» из explorer могла её открыть
+    var topPanelState by remember {
+        mutableStateOf(
+            ToolPanelState(
+                isExpanded = true,
+                type = ToolPanelType.SYMBOLS,
+                width = tokens.dimensions.workspaceToolPanelWidth,
+            )
+        )
+    }
 
     CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
         Box(Modifier.fillMaxSize()) {
@@ -240,6 +254,8 @@ fun TerminalWindowContent(
                     modifier = Modifier.fillMaxWidth()
                         .weight(1f),
                     terminalState = terminalStateViewModel,
+                    topPanelState = topPanelState,
+                    onTopPanelStateChange = { topPanelState = it },
                     tabManager = tabManager,
                     workspaceRepo = workspaceRepo,
                     templateRepo = templateRepo,
@@ -347,6 +363,17 @@ fun TerminalWindowContent(
                                 WorkspaceView(
                                     ws = ws,
                                     workspaceRepo = workspaceRepo,
+                                    onManageWatchlist = {
+                                        // Уже открыт — не сворачиваем, это «manage»-действие
+                                        if (!(topPanelState.type == ToolPanelType.SYMBOLS &&
+                                                topPanelState.isExpanded)
+                                        ) {
+                                            topPanelState = topPanelState.copy(
+                                                isExpanded = true,
+                                                type = ToolPanelType.SYMBOLS,
+                                            )
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxSize()
                                 )
                             }
