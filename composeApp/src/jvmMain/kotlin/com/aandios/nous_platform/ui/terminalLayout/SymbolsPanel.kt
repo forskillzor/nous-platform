@@ -772,8 +772,9 @@ private fun MarketWatchSymbolRow(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = highlightedSymbol(row.symbol, matchRange),
-                        color = MaterialTheme.colorScheme.onSurface,
+                        text = highlightedSymbol(row.symbol, matchRange, tokens.colors.accent),
+                        color = if (selected) tokens.colors.accent
+                        else MaterialTheme.colorScheme.onSurface,
                         fontSize = tokens.typography.controlSize,
                         fontFamily = TerminalFontFamily,
                         fontWeight = FontWeight.Medium,

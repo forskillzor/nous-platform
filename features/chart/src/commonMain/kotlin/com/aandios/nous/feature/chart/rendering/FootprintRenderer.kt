@@ -190,7 +190,7 @@ fun DrawScope.drawFootprintPopup(
     val darkRed = Color(0xFF5D1A1A)
 
     val title = "Price       Ask    Bid"
-    val titleStyle = TextStyle(color = Color(0xFF5B9BD5), fontSize = fontSize, fontFamily = TerminalFontFamily)
+    val titleStyle = TextStyle(color = config.accentColor, fontSize = fontSize, fontFamily = TerminalFontFamily)
     val titleLayout = textMeasurer.measure(AnnotatedString(title), titleStyle)
 
     // Measure column positions: Price | Ask | Bid
@@ -212,7 +212,7 @@ fun DrawScope.drawFootprintPopup(
 
     // Background
     drawRect(color = popupBg, topLeft = Offset(panelX, panelY), size = Size(panelW, panelH))
-    drawRect(color = Color(0xFF5B9BD5).copy(alpha = 0.3f), topLeft = Offset(panelX, panelY), size = Size(panelW, panelH), style = Stroke(1f))
+    drawRect(color = config.accentColor.copy(alpha = 0.3f), topLeft = Offset(panelX, panelY), size = Size(panelW, panelH), style = Stroke(1f))
 
     // Title
     drawText(titleLayout, topLeft = Offset(panelX + 4f, panelY + 3f))

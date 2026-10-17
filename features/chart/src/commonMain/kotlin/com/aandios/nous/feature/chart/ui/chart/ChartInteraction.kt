@@ -720,6 +720,7 @@ fun CandleStickChartInteraction(
                     drawing = trend,
                     priceRange = priceRange,
                     layout = layout,
+                    projectionColor = config.accentColor,
                 )
             }
 
@@ -750,6 +751,7 @@ fun CandleStickChartInteraction(
                         layout = layout,
                         textMeasurer = textMeasurer,
                         formatter = config.priceFormatter,
+                        startTagColor = config.accentColor,
                     )
                 }
             }
@@ -805,6 +807,7 @@ fun CandleStickChartInteraction(
                     scrollOffset = clampedOffset,
                     candleWidth = candleMetrics.width,
                     candleSpacing = candleMetrics.spacing,
+                    handleColor = config.accentColor,
                 )
             }
             /** 9. Crosshair: всегда включён (hover), единый для свечей и footprint.

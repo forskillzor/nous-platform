@@ -73,6 +73,15 @@ Mind this when writing paths.
 - Theme selection is global (`terminal_theme`) and is managed by
   `ThemeSettingsController`; Nous is the default, persisted names must align
   with `TerminalThemes.available`, and load/save errors are surfaced in the theme UI.
+- Theme color invariants (guarded by `TerminalThemeTokensTest`): `accent` is
+  always the theme's `colorScheme.primary` and `switchTrack` is `primary` at
+  65% alpha (both derived in `terminalTokens()`, never overridden per theme);
+  `selection` is an opaque neutral elevation per theme (Nous `#1A2940`, Dark
+  `#262626`, Night `#1B1B1B`). Panels take colors from
+  `LocalTerminalDesignTokens` / `MaterialTheme.colorScheme.primary`; chart
+  renderers take them from `ChartConfig` (`accentColor`, `currentPriceColor`,
+  ...). Do not reintroduce literal blue `0xFF5B9BD5` / translucent yellow
+  selection values.
 
 ### Safety invariants (learned the hard way — keep them)
 - Trading is **OFF by default** on both chart and DOM panels.
@@ -148,7 +157,8 @@ Mind this when writing paths.
   use `plainDecimalString` (platform-core) — `SymbolFormatter` is built on it.
 - Color/face constants used across trading UI: buy `0xFF26A69A`,
   sell `0xFFEF5350`, ok `0xFF00C853`, warn `0xFFE0A95B`,
-  accent `0xFF5B9BD5`, label `0xFF8A97A5`, dark PnL plate `0xFF1B222B`.
+  label `0xFF8A97A5`, dark PnL plate `0xFF1B222B`; accent is not a fixed
+  color — it is the active theme's `colorScheme.primary`.
 
 ## Build / test commands (Windows, PowerShell)
 

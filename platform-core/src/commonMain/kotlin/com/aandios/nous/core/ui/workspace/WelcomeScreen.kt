@@ -221,6 +221,7 @@ private fun WorkspaceCard(
     var dialogMode by remember { mutableStateOf<CardDialogMode?>(null) }
     var dialogText by remember { mutableStateOf("") }
     var confirmDelete by remember { mutableStateOf(false) }
+    val tokens = LocalTerminalDesignTokens.current
 
     val hasMenu = onRename != null || onDuplicate != null || onChangeDescription != null
 
@@ -244,7 +245,7 @@ private fun WorkspaceCard(
             Spacer(Modifier.height(4.dp))
             Text(config.description.ifBlank { descOf(config) }, color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, lineHeight = 15.sp, maxLines = 2)
             Spacer(Modifier.height(4.dp))
-            Text(infoOf(config), color = Color(0xFF5B9BD5), fontSize = 10.sp, fontFamily = TerminalFontFamily, maxLines = 1)
+            Text(infoOf(config), color = tokens.colors.accent, fontSize = 10.sp, fontFamily = TerminalFontFamily, maxLines = 1)
         }
         if (hovered || menuExpanded) {
             Row(

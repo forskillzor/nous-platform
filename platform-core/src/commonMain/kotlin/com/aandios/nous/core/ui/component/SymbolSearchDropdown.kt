@@ -258,7 +258,7 @@ private fun SymbolMenuContent(
                 text = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = highlightedSymbol(sym, match.matchRange),
+                            text = highlightedSymbol(sym, match.matchRange, MaterialTheme.colorScheme.primary),
                             color = if (sym == currentSymbol) MaterialTheme.colorScheme.primary
                                     else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
                             fontSize = 11.sp,
@@ -344,7 +344,7 @@ fun searchSymbols(symbols: List<String>, query: String): SymbolSearchResult {
 fun rankSymbolMatches(symbols: List<String>, query: String): List<String> =
     searchSymbols(symbols, query).matches.map { it.symbol }
 
-fun highlightedSymbol(symbol: String, matchRange: IntRange?) = buildAnnotatedString {
+fun highlightedSymbol(symbol: String, matchRange: IntRange?, highlightColor: Color) = buildAnnotatedString {
     val range = matchRange
     if (range == null || range.isEmpty() || range.first !in symbol.indices) {
         append(symbol)
@@ -355,8 +355,8 @@ fun highlightedSymbol(symbol: String, matchRange: IntRange?) = buildAnnotatedStr
     append(symbol.substring(0, start))
     pushStyle(
         SpanStyle(
-            background = androidx.compose.ui.graphics.Color(0xFF00C853).copy(alpha = 0.24f),
-            color = androidx.compose.ui.graphics.Color(0xFF00C853),
+            background = highlightColor.copy(alpha = 0.24f),
+            color = highlightColor,
             fontWeight = FontWeight.Bold,
         )
     )

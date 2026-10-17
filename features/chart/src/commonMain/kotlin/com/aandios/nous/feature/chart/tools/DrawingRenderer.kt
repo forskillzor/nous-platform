@@ -242,12 +242,12 @@ fun DrawScope.drawDrawingSelection(
     scrollOffset: Float,
     candleWidth: Float,
     candleSpacing: Float,
+    handleColor: Color,
 ) {
     if (candles.isEmpty()) return
     val totalW = candleWidth + candleSpacing
     val firstTime = candles.first().timestamp
     val timeRange = (candles.last().timestamp - firstTime).coerceAtLeast(1L)
-    val handleColor = Color(0xFF5B9BD5)
 
     fun handleX(timeMs: Long) = timeToX(timeMs, firstTime, timeRange, candles.size, totalW, scrollOffset)
     fun handleY(price: Float) = priceToY(price, priceRange, chartHeight)
@@ -281,6 +281,7 @@ fun DrawScope.drawDrawingProjections(
     drawing: Drawing.TrendLine,
     priceRange: PriceRange,
     layout: ChartLayout,
+    projectionColor: Color,
 ) {
     val startY = priceToY(drawing.startPrice, priceRange, layout.chartMainArea.height)
     val endY = priceToY(drawing.endPrice, priceRange, layout.chartMainArea.height)
@@ -289,7 +290,7 @@ fun DrawScope.drawDrawingProjections(
     fun project(y: Float) {
         if (y < 0f || y > layout.chartMainArea.height) return
         drawLine(
-            color = Color(0xFF5B9BD5).copy(alpha = 0.35f),
+            color = projectionColor.copy(alpha = 0.35f),
             start = Offset(layout.chartMainArea.left, y),
             end = Offset(layout.priceScaleArea.right, y),
             strokeWidth = 1f,
@@ -302,7 +303,7 @@ fun DrawScope.drawDrawingProjections(
 }
 
 /**
- * Ценовые теги проекций на шкале цен: start — синий, end — цвет линии.
+ * Ценовые теги проекций на шкале цен: start — accent темы, end — цвет линии.
  * Рисуется ПОСЛЕ drawPriceScale (поверх тиков).
  */
 fun DrawScope.drawProjectionPriceTags(
@@ -311,6 +312,7 @@ fun DrawScope.drawProjectionPriceTags(
     layout: ChartLayout,
     textMeasurer: TextMeasurer,
     formatter: SymbolFormatter,
+    startTagColor: Color,
 ) {
     val startY = priceToY(drawing.startPrice, priceRange, layout.chartMainArea.height)
     val endY = priceToY(drawing.endPrice, priceRange, layout.chartMainArea.height)
@@ -332,6 +334,6 @@ fun DrawScope.drawProjectionPriceTags(
         drawText(textLayout, topLeft = Offset(left + 3f, top + 2f))
     }
 
-    tag(drawing.startPrice, startY, Color(0xFF2196F3))
+    tag(drawing.startPrice, startY, startTagColor)
     tag(drawing.endPrice, endY, drawing.color)
 }

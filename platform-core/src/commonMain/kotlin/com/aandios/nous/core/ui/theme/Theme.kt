@@ -69,7 +69,6 @@ private val DarkTerminalColorScheme = darkColorScheme(
     onBackground = Color(0xFFE0E0E0),
     onSurface = Color(0xFFCCCCCC),
     onSurfaceVariant = Color(0xFF888888),
-    inverseOnSurface = Color(0xFFFFEB00),
     error = Color(0xFFCF6679),
     outline = Color(0xFF333333),
     outlineVariant = Color(0xFF444444),
@@ -114,7 +113,7 @@ private val NousTerminalColorScheme = darkColorScheme(
     outlineVariant = Color(0xFF202E41),
 )
 
-private fun terminalTokens(colorScheme: ColorScheme) = TerminalDesignTokens(
+private fun terminalTokens(colorScheme: ColorScheme, selection: Color) = TerminalDesignTokens(
     colors = TerminalSemanticColors(
         bullish = colorScheme.primary,
         bearish = colorScheme.secondary,
@@ -126,7 +125,7 @@ private fun terminalTokens(colorScheme: ColorScheme) = TerminalDesignTokens(
         axisText = Color(0xFF888888),
         volumeBullish = Color(0x4D00C853),
         volumeBearish = Color(0x4DD32F2F),
-        selection = Color(0x33FFEB3B),
+        selection = selection,
         crosshair = Color(0x66FFFFFF),
         cursorLine = Color(0x44FFFFFF),
         orderBackground = Color(0x1AFFFFFF),
@@ -151,10 +150,10 @@ private fun terminalTokens(colorScheme: ColorScheme) = TerminalDesignTokens(
         inactiveTabSurface = Color(0xFF111111),
         splitHandle = Color(0xFF333333),
         warning = Color(0xFFE0A95B),
-        accent = Color(0xFF5B9BD5),
+        accent = colorScheme.primary,
         label = Color(0xFF8A97A5),
         pnlPlate = Color(0xFF1B222B),
-        switchTrack = Color(0xFF00C853).copy(alpha = 0.65f),
+        switchTrack = colorScheme.primary.copy(alpha = 0.65f),
     ),
 )
 
@@ -164,7 +163,7 @@ object TerminalThemes {
         colorScheme = DarkTerminalColorScheme,
         typography = TerminalTypography,
         shapes = TerminalShapes,
-        tokens = terminalTokens(DarkTerminalColorScheme),
+        tokens = terminalTokens(DarkTerminalColorScheme, selection = Color(0xFF262626)),
     )
 
     val Night = TerminalThemeDefinition(
@@ -172,7 +171,7 @@ object TerminalThemes {
         colorScheme = NightTerminalColorScheme,
         typography = TerminalTypography,
         shapes = TerminalShapes,
-        tokens = terminalTokens(NightTerminalColorScheme),
+        tokens = terminalTokens(NightTerminalColorScheme, selection = Color(0xFF1B1B1B)),
     )
 
     val Nous = TerminalThemeDefinition(
@@ -180,7 +179,7 @@ object TerminalThemes {
         colorScheme = NousTerminalColorScheme,
         typography = TerminalTypography,
         shapes = TerminalShapes,
-        tokens = terminalTokens(NousTerminalColorScheme).let { base ->
+        tokens = terminalTokens(NousTerminalColorScheme, selection = Color(0xFF1A2940)).let { base ->
             base.copy(
                 colors = base.colors.copy(
                     bullish = Color(0xFF168B72),
@@ -192,7 +191,6 @@ object TerminalThemes {
                     axisText = Color(0xFF8295AE),
                     volumeBullish = Color(0x66168B72),
                     volumeBearish = Color(0x66D45155),
-                    selection = Color(0xFF1A2940),
                     crosshair = Color(0x80A9BCD0),
                     cursorLine = Color(0x66A9BCD0),
                     orderBackground = Color(0xAA172233),
@@ -208,10 +206,8 @@ object TerminalThemes {
                     inactiveTabSurface = Color(0xFF111A27),
                     splitHandle = Color(0xFF304158),
                     warning = Color(0xFFF28C18),
-                    accent = Color(0xFFF28C18),
                     label = Color(0xFF8295AE),
                     pnlPlate = Color(0xFF151F2D),
-                    switchTrack = Color(0xA6F28C18),
                 ),
                 cornerRadii = base.cornerRadii.copy(
                     card = 4.dp,

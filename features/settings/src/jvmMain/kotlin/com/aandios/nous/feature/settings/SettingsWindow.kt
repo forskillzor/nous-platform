@@ -48,7 +48,7 @@ fun SettingsWindow(
                         val active = selectedTab == i
                         Text(
                             name, fontFamily = TerminalFontFamily, fontSize = 11.sp,
-                            color = if (active) Color(0xFF5B9BD5) else Color(0xFF888888),
+                            color = if (active) MaterialTheme.colorScheme.primary else Color(0xFF888888),
                             fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
                             modifier = Modifier
                                 .background(if (active) Color(0xFF1E2733) else Color.Transparent, RoundedCornerShape(4.dp))
@@ -81,7 +81,7 @@ private fun StorageTab(storage: LocalStorage) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         // Header
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Local Storage", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+            Text("Local Storage", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
             Text(formatBytes(dbSize), color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily)
         }
 
@@ -94,7 +94,7 @@ private fun StorageTab(storage: LocalStorage) {
             Card(colors = CardDefaults.cardColors(containerColor = Color(0xFF12171F)), modifier = Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(10.dp)) {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text(stat.key, color = Color(0xFF5B9BD5), fontSize = 11.sp, fontFamily = TerminalFontFamily)
+                        Text(stat.key, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, fontFamily = TerminalFontFamily)
                         Text(formatBytes(stat.sizeBytes), color = Color(0xFF73D0A1), fontSize = 11.sp, fontFamily = TerminalFontFamily)
                     }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -117,7 +117,7 @@ private fun StorageTab(storage: LocalStorage) {
                 value = deleteBeforeDays, onValueChange = { deleteBeforeDays = it.filter { c -> c.isDigit() } },
                 modifier = Modifier.width(60.dp), singleLine = true,
                 textStyle = androidx.compose.ui.text.TextStyle(color = Color.White, fontSize = 12.sp, fontFamily = TerminalFontFamily),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF5B9BD5))
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
             )
             Text(" days ago", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily)
             Spacer(Modifier.width(8.dp))
@@ -193,7 +193,7 @@ private fun SettingsTab(storage: LocalStorage) {
     }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("Chart State", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+        Text("Chart State", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
         if (chartState != null) {
             SettingsRow("Symbol", chartState!!.symbol)
             SettingsRow("Timeframe", chartState!!.timeframe)
@@ -203,11 +203,11 @@ private fun SettingsTab(storage: LocalStorage) {
         }
 
         Spacer(Modifier.height(8.dp))
-        Text("DOM Options", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+        Text("DOM Options", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
         Text(domOptions ?: "No saved DOM options", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, maxLines = 3)
 
         Spacer(Modifier.height(8.dp))
-        Text("Trades Options", color = Color(0xFF5B9BD5), fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+        Text("Trades Options", color = MaterialTheme.colorScheme.primary, fontSize = 13.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
         Text(tradesOptions ?: "No saved Trades options", color = Color(0xFF888888), fontSize = 11.sp, fontFamily = TerminalFontFamily, maxLines = 3)
 
         Spacer(Modifier.height(12.dp))
@@ -228,7 +228,7 @@ private fun SettingsTab(storage: LocalStorage) {
 private fun SettingsRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         Text(label, color = Color(0xFF888888), fontFamily = TerminalFontFamily, fontSize = 11.sp)
-        Text(value, color = Color(0xFF5B9BD5), fontFamily = TerminalFontFamily, fontSize = 11.sp)
+        Text(value, color = MaterialTheme.colorScheme.primary, fontFamily = TerminalFontFamily, fontSize = 11.sp)
     }
 }
 

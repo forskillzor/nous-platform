@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous_platform.ui.terminalLayout
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
@@ -31,9 +32,7 @@ import org.koin.compose.koinInject
 private val cardBg = Color(0xFF12181F)
 private val borderColor = Color(0xFF3A4550)
 private val labelColor = Color(0xFF8A97A5)
-private val accent = Color(0xFF5B9BD5)
 private val okColor = Color(0xFF26A69A)
-private val warnColor = Color(0xFFE0A95B)
 private val dangerColor = Color(0xFFEF5350)
 
 /**
@@ -46,6 +45,7 @@ fun PaperSettingsOverlay() {
     val controller: PaperSettingsController = koinInject()
     val visible by controller.visible.collectAsState()
     if (!visible) return
+    val tokens = LocalTerminalDesignTokens.current
 
     val adapter = PaperTrading.adapter
     val balances by adapter.balancesFlow.collectAsState()
@@ -115,7 +115,7 @@ fun PaperSettingsOverlay() {
                     onValueChange = { amountText = it },
                     singleLine = true,
                     textStyle = TextStyle(color = Color.White, fontSize = 11.sp, fontFamily = TerminalFontFamily),
-                    cursorBrush = SolidColor(accent),
+                    cursorBrush = SolidColor(tokens.colors.accent),
                     modifier = Modifier
                         .weight(1f)
                         .height(24.dp)
@@ -134,7 +134,7 @@ fun PaperSettingsOverlay() {
                         }
                     }
                 }
-                ActionChip("Set balance", accent, enabled = amount != null) {
+                ActionChip("Set balance", tokens.colors.accent, enabled = amount != null) {
                     amount?.let {
                         scope.launch {
                             adapter.setBalance("USDT", it)
@@ -142,7 +142,7 @@ fun PaperSettingsOverlay() {
                         }
                     }
                 }
-                ActionChip("Withdraw", warnColor, enabled = amount != null) {
+                ActionChip("Withdraw", tokens.colors.warning, enabled = amount != null) {
                     amount?.let {
                         scope.launch {
                             adapter.topUp("USDT", -it)
@@ -155,13 +155,13 @@ fun PaperSettingsOverlay() {
             Box(Modifier.fillMaxWidth().height(1.dp).background(borderColor))
 
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                ActionChip("Reset balance", warnColor, enabled = true) {
+                ActionChip("Reset balance", tokens.colors.warning, enabled = true) {
                     scope.launch {
                         adapter.resetBalance(10_000.0)
                         status = "Balance reset (10000 USDT), positions closed"
                     }
                 }
-                ActionChip("Reset history", warnColor, enabled = true) {
+                ActionChip("Reset history", tokens.colors.warning, enabled = true) {
                     scope.launch {
                         adapter.resetHistory()
                         status = "Trade history cleared"
