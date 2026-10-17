@@ -77,7 +77,9 @@ Mind this when writing paths.
   always the theme's `colorScheme.primary` and `switchTrack` is `primary` at
   65% alpha (both derived in `terminalTokens()`, never overridden per theme);
   `selection` is an opaque neutral elevation per theme (Nous `#1A2940`, Dark
-  `#262626`, Night `#1B1B1B`, Light `#DCE4EF`). Light is the light scheme:
+  `#262626`, Night `#1B1B1B`, Light `#DCE4EF`); `watermark` is the faint
+  panel-ticker tint (`onBackground` at 7%, Light overrides to `#1B2430` at
+  14%); `borderWidth` is 0.5dp except Light (1dp). Light is the light scheme:
   blue accent `#2563EB`, white chart/surfaces on a cool gray workspace;
   window frame background and DWM title bar follow the active theme
   (`applyWindowBackground` / `applyWindowsDarkTitleBar(dark=...)`). Panels

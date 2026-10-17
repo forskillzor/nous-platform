@@ -52,6 +52,7 @@ data class TerminalSemanticColors(
     val label: Color,
     val pnlPlate: Color,
     val switchTrack: Color,
+    val watermark: Color,
 )
 
 data class TerminalSpacing(

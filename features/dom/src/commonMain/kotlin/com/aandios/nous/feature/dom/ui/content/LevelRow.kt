@@ -124,7 +124,7 @@ fun LevelRow(
         isSelected -> MaterialTheme.colorScheme.onSurface
         isLastPrice -> tokens.colors.accent
         level == null -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f)
-        else -> Color.White
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     Row(

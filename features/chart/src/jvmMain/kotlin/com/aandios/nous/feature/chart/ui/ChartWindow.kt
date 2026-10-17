@@ -349,7 +349,7 @@ private fun ChartWindowContent(
             ) {
                 Text(
                     text = symbolInfo?.baseAsset ?: uiState.currentSymbol,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                    color = designTokens.colors.watermark,
                     fontSize = 72.sp,
                     fontWeight = FontWeight.Light,
                     fontFamily = TerminalFontFamily,
@@ -359,7 +359,7 @@ private fun ChartWindowContent(
                     Column(verticalArrangement = Arrangement.Center) {
                         Text(
                             text = currentExchange,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                            color = designTokens.colors.watermark,
                             fontSize = 26.sp,
                             fontWeight = FontWeight.Bold,
                             fontFamily = TerminalFontFamily,
@@ -367,7 +367,7 @@ private fun ChartWindowContent(
                         contractTypeLabel(symbolInfo)?.let { label ->
                             Text(
                                 text = label,
-                                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f),
+                                color = designTokens.colors.watermark,
                                 fontSize = 26.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = TerminalFontFamily,

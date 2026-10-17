@@ -4,10 +4,10 @@
  */
 
 package com.aandios.nous.core.ui.component
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -46,8 +46,8 @@ fun PanelSymbolWatermark(
 
 /**
  * Водяной знак из строк: крупное имя + подписи под ним (столбиком),
- * альфа 7%, нижний слой. Вызывающий центрует блок (align(Alignment.Center)).
- * Для Trading panel: «MEXC» + «USDT-M».
+ * цвет — тусклый токен темы `watermark`, нижний слой. Вызывающий центрует
+ * блок (align(Alignment.Center)). Для Trading panel: «MEXC» + «USDT-M».
  */
 @Composable
 fun PanelTextWatermark(
@@ -57,7 +57,7 @@ fun PanelTextWatermark(
     bigFontSize: TextUnit = 72.sp,
     subFontSize: TextUnit = 26.sp,
 ) {
-    val color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.07f)
+    val color = LocalTerminalDesignTokens.current.colors.watermark
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,

@@ -6,6 +6,7 @@
 package com.aandios.nous.core.ui.theme
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -51,6 +52,37 @@ class TerminalThemeTokensTest {
             val selection = theme.tokens.colors.selection
             assertEquals(expected.getValue(theme.name), selection, "selection in ${theme.name}")
             assertTrue(selection.alpha == 1f, "selection must be opaque in ${theme.name}")
+        }
+    }
+
+    @Test
+    fun `watermark is a faint tint, stronger in Light`() {
+        val expectedAlpha = mapOf(
+            "Dark" to 0.07f,
+            "Night" to 0.07f,
+            "Nous" to 0.07f,
+            "Light" to 0.14f,
+        )
+
+        TerminalThemes.available.forEach { theme ->
+            val expected = expectedAlpha.getValue(theme.name)
+            val actual = theme.tokens.colors.watermark.alpha
+            assertTrue(
+                kotlin.math.abs(actual - expected) < 0.01f,
+                "watermark alpha in ${theme.name}: expected ~$expected but was $actual",
+            )
+        }
+    }
+
+    @Test
+    fun `Light uses 1dp borders, dark themes keep half-dp`() {
+        TerminalThemes.available.forEach { theme ->
+            val expected = if (theme.name == "Light") 1.dp else 0.5.dp
+            assertEquals(
+                expected,
+                theme.tokens.dimensions.borderWidth,
+                "borderWidth in ${theme.name}",
+            )
         }
     }
 }

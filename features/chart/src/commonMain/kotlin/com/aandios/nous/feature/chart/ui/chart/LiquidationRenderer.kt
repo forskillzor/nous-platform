@@ -50,9 +50,6 @@ fun DrawScope.drawLiquidationHistogram(
     val maxVol = bars.values.maxOfOrNull { maxOf(it.longVol, it.shortVol) } ?: 1f
     val midY = area.top + area.height / 2
 
-    // Background
-    drawRect(Color.Black.copy(alpha = 0.3f), area.topLeft, Size(area.width, area.height))
-
     for ((candleStart, bar) in bars) {
         val slot = ((candleStart - minTs).toFloat() / candleMs.toFloat())
         val x = slot * totalW - scrollOffset + metrics.width / 2

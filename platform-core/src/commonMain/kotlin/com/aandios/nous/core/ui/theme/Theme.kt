@@ -189,6 +189,7 @@ private fun terminalTokens(colorScheme: ColorScheme, selection: Color) = Termina
         label = Color(0xFF8A97A5),
         pnlPlate = Color(0xFF1B222B),
         switchTrack = colorScheme.primary.copy(alpha = 0.65f),
+        watermark = colorScheme.onBackground.copy(alpha = 0.07f),
     ),
 )
 
@@ -294,12 +295,14 @@ object TerminalThemes {
                     warning = Color(0xFFB45309),
                     label = Color(0xFF5B6675),
                     pnlPlate = Color(0xFFE9EEF5),
+                    watermark = Color(0xFF1B2430).copy(alpha = 0.14f),
                 ),
                 cornerRadii = base.cornerRadii.copy(
                     card = 4.dp,
                     toolbar = 6.dp,
                     workspacePanel = 6.dp,
                 ),
+                dimensions = base.dimensions.copy(borderWidth = 1.dp),
             )
         },
     )
