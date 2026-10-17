@@ -191,10 +191,13 @@ fun TradingPanel(
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
+        }
 
         // ── Счёт: баланс/дневной PnL/маржа слева, Cancel All / Close All справа (стек) ──
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(
@@ -249,7 +252,9 @@ fun TradingPanel(
 
         // ── Табы ──
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs)
         ) {
             TradingTab.entries.forEach { t ->
@@ -263,7 +268,6 @@ fun TradingPanel(
                         .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs),
                 )
             }
-        }
         }
 
         lastMessage?.let { msg ->
