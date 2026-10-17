@@ -565,6 +565,57 @@ class LayoutRendererRenderTest {
     }
 
     @Test
+    fun splitHandleHitRegionSpansWholeGap() = runDesktopComposeUiTest {
+        // Регрессия: хит-зона ручки была 2dp-полоской по центру 10dp-зазора —
+        // попасть мышью почти невозможно. Теперь зона = падинги островов
+        // (workspacePanelGap) + сама ручка, layout-размер не меняется.
+        val sizes = mutableMapOf<String, IntSize>()
+        val tree = LayoutNode.Split(
+            LayoutNode.Direction.HORIZONTAL, 0.5f,
+            listOf(LayoutNode.Leaf("a"), LayoutNode.Leaf("b")),
+        )
+        var gapPx = 0f
+        var handlePx = 0f
+        setContent {
+            val density = LocalDensity.current
+            val dimensions = LocalTerminalDesignTokens.current.dimensions
+            gapPx = with(density) { dimensions.workspacePanelGap.toPx() }
+            handlePx = with(density) { dimensions.splitHandleSize.toPx() }
+            LayoutRenderer(
+                node = tree,
+                panels = mapOf("a" to panel("a"), "b" to panel("b")),
+                modifier = Modifier.fillMaxSize(),
+            ) { panelId ->
+                Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
+            }
+        }
+        waitForIdle()
+
+        val bounds = onNodeWithTag("split-handle-h", useUnmergedTree = true)
+            .fetchSemanticsNode().boundsInRoot
+        assertEquals(
+            gapPx + handlePx, bounds.width, 0.6f,
+            "хит-зона ручки должна покрывать весь зазор между панелями",
+        )
+
+        val widthBefore = sizes.getValue("a").width
+        val centerX = (bounds.left + bounds.right) / 2f
+        // Старт у самого края зоны захвата: в старом 2dp-варианте это промах.
+        val startX = centerX + gapPx / 2f + handlePx / 2f - 1f
+        onRoot().performMouseInput {
+            moveTo(Offset(startX, 300f))
+            press()
+            moveBy(Offset(120f, 0f))
+            release()
+        }
+        waitForIdle()
+        assertTrue(
+            sizes.getValue("a").width > widthBefore + 20,
+            "drag из края хит-зоны должен ресайзить: $widthBefore -> ${sizes.getValue("a").width}",
+        )
+    }
+
+    @Test
     fun sequentialSplitsReserveIslandGapsAndKeepFixedWidths() = runDesktopComposeUiTest(width = 2200, height = 900) {
         // Сценарий пользователя: экран с chart, затем сплиты dom/trades в разном
         // порядке — от последнего элемента, от предпоследнего, от первого dom,

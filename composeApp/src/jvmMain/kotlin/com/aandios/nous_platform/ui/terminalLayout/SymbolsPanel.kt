@@ -66,6 +66,7 @@ import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolSearchMatch
 import com.aandios.nous.core.ui.component.SymbolWatchlist
+import com.aandios.nous.core.ui.component.TerminalBoxDropdown
 import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.ui.component.TerminalGripDots
 import com.aandios.nous.core.ui.component.TerminalGripOrientation
@@ -124,7 +125,6 @@ fun SymbolsPanel(
     var listActionError by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(MarketSort.SYMBOL) }
     var descending by remember { mutableStateOf(false) }
-    var listMenuExpanded by remember { mutableStateOf(false) }
     var moreMenuExpanded by remember { mutableStateOf(false) }
 
     val selectedList = watchlists.firstOrNull { it.id == selectedListId }
@@ -226,6 +226,7 @@ fun SymbolsPanel(
                     text = "Market Watch",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = tokens.typography.controlSize,
+                    lineHeight = tokens.typography.controlLineHeight,
                     fontFamily = TerminalFontFamily,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
@@ -327,47 +328,11 @@ fun SymbolsPanel(
                 letterSpacing = tokens.typography.compactLetterSpacing,
             )
             Box(modifier = Modifier.weight(1f)) {
-                Surface(
-                    shape = RoundedCornerShape(tokens.cornerRadii.smallCard),
-                    color = tokens.colors.panelHeaderSurface.copy(alpha = 0.45f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(
-                            tokens.dimensions.borderWidth,
-                            tokens.colors.panelBorder,
-                            RoundedCornerShape(tokens.cornerRadii.smallCard),
-                        )
-                        .clickable { listMenuExpanded = true },
-                ) {
-                    Row(
-                        modifier = Modifier.padding(
-                            horizontal = tokens.spacing.sm,
-                            vertical = tokens.spacing.xs,
-                        ),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = selectedListChoice.title,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = tokens.typography.controlSize,
-                            fontFamily = TerminalFontFamily,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                            tint = tokens.colors.label,
-                            modifier = Modifier.size(tokens.dimensions.dropdownIconSize),
-                        )
-                    }
-                }
-                DropdownMenu(
-                    expanded = listMenuExpanded,
-                    onDismissRequest = { listMenuExpanded = false },
-                    modifier = Modifier.width(tokens.dimensions.marketWatchListMenuWidth),
-                ) {
+                TerminalBoxDropdown(
+                    text = selectedListChoice.title,
+                    modifier = Modifier.fillMaxWidth(),
+                    menuWidth = tokens.dimensions.marketWatchListMenuWidth,
+                ) { dismiss ->
                     listChoices.forEach { choice ->
                         DropdownMenuItem(
                             text = {
@@ -378,7 +343,7 @@ fun SymbolsPanel(
                             },
                             onClick = {
                                 selectedListId = choice.id
-                                listMenuExpanded = false
+                                dismiss()
                             },
                         )
                     }

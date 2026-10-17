@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -62,19 +63,29 @@ fun BottomResizeHandle(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val tokens = com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens.current
+    // Хит-зона — зазор острова + ручка (грип-точки по центру), layout остаётся
+    // splitHandleSize: попасть в 2dp-полоску мышью почти невозможно.
+    val hitHeight = tokens.dimensions.workspacePanelGap + tokens.dimensions.splitHandleSize
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(tokens.dimensions.splitHandleSize)
-            .hoverable(interaction)
-            .pointerInput(Unit) {
-                detectVerticalDragGestures { _, dragAmount -> onDrag(dragAmount) }
-            }
+            .height(tokens.dimensions.splitHandleSize),
+        contentAlignment = Alignment.Center,
     ) {
-        TerminalGripDots(
-            orientation = TerminalGripOrientation.HORIZONTAL,
-            color = if (hovered) tokens.colors.accent else tokens.colors.label.copy(alpha = 0.75f),
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .requiredHeight(hitHeight)
+                .hoverable(interaction)
+                .pointerInput(Unit) {
+                    detectVerticalDragGestures { _, dragAmount -> onDrag(dragAmount) }
+                }
+        ) {
+            TerminalGripDots(
+                orientation = TerminalGripOrientation.HORIZONTAL,
+                color = if (hovered) tokens.colors.accent else tokens.colors.label.copy(alpha = 0.75f),
+            )
+        }
     }
 }
 

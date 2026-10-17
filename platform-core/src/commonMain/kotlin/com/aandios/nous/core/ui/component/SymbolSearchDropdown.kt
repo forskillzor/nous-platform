@@ -56,6 +56,8 @@ fun SymbolSearchDropdown(
     labelPrefix: String = "",
     /** Размер тикера в триггере (компактные хедеры могут сделать крупнее). */
     valueFontSize: androidx.compose.ui.unit.TextUnit = MaterialTheme.typography.labelSmall.fontSize,
+    /** Триггер в виде скруглённой «коробки» (тайтлы панелей). */
+    boxStyle: Boolean = false,
 ) {
     var expanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -82,6 +84,45 @@ fun SymbolSearchDropdown(
 
     val searchResult = remember(sortedSymbols, searchQuery) {
         searchSymbols(sortedSymbols, searchQuery)
+    }
+
+    if (boxStyle) {
+        TerminalBoxDropdown(
+            text = currentSymbol,
+            modifier = modifier,
+            menuWidth = 240.dp,
+            leading = if (labelPrefix.isNotEmpty()) {
+                {
+                    Text(
+                        text = labelPrefix,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 9.sp,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
+            } else {
+                null
+            },
+            onExpandedChange = { if (!it) searchQuery = "" },
+        ) { dismiss ->
+            SymbolMenuContent(
+                watchlists = watchlists,
+                symbolsWithFootprint = symbolsWithFootprint,
+                activeTab = activeTab,
+                activeWatchlistId = activeWatchlistId,
+                onTabSelected = { tab, wlId ->
+                    activeTab = tab
+                    activeWatchlistId = wlId
+                },
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                searchResult = searchResult,
+                currentSymbol = currentSymbol,
+                onSymbolSelected = { onSymbolSelected(it); dismiss() },
+            )
+        }
+        return
     }
 
     val dropdownContent: @Composable () -> Unit = {
@@ -125,92 +166,21 @@ fun SymbolSearchDropdown(
                 offset = DpOffset(0.dp, 4.dp),
                 modifier = Modifier.widthIn(min = 200.dp, max = 280.dp)
             ) {
-                // Tabs
-                if (symbolsWithFootprint.isNotEmpty() || watchlists.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        TabChip("All", activeTab == SymbolTab.ALL) {
-                            activeTab = SymbolTab.ALL
-                            activeWatchlistId = null
-                        }
-                        if (symbolsWithFootprint.isNotEmpty()) {
-                            TabChip("md", activeTab == SymbolTab.MD) {
-                                activeTab = SymbolTab.MD
-                                activeWatchlistId = null
-                            }
-                        }
-                        watchlists.forEach { list ->
-                            TabChip(
-                                list.name.take(8),
-                                activeTab == SymbolTab.WATCHLIST && activeWatchlistId == list.id,
-                            ) {
-                                activeTab = SymbolTab.WATCHLIST
-                                activeWatchlistId = list.id
-                            }
-                        }
-                    }
-                }
-
-                // Search
-                BasicTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontFamily = TerminalFontFamily),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 8.dp, vertical = 5.dp),
-                    decorationBox = { inner ->
-                        if (searchQuery.isEmpty()) Text("Search...", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = TerminalFontFamily)
-                        inner()
-                    }
+                SymbolMenuContent(
+                    watchlists = watchlists,
+                    symbolsWithFootprint = symbolsWithFootprint,
+                    activeTab = activeTab,
+                    activeWatchlistId = activeWatchlistId,
+                    onTabSelected = { tab, wlId ->
+                        activeTab = tab
+                        activeWatchlistId = wlId
+                    },
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    searchResult = searchResult,
+                    currentSymbol = currentSymbol,
+                    onSymbolSelected = { onSymbolSelected(it); expanded = false },
                 )
-
-                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-                // List
-                Column(
-                    modifier = Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())
-                ) {
-                    searchResult.matches.forEach { match ->
-                        val sym = match.symbol
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = highlightedSymbol(sym, match.matchRange),
-                                        color = if (sym == currentSymbol) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                                        fontSize = 11.sp,
-                                        fontFamily = TerminalFontFamily,
-                                    )
-                                    if (sym in symbolsWithFootprint) {
-                                        Spacer(Modifier.width(5.dp))
-                                        Text("md", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onSymbolSelected(sym)
-                                expanded = false
-                            },
-                            modifier = Modifier.background(if (sym == currentSymbol) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
-                        )
-                    }
-                    if (searchResult.matches.isEmpty()) {
-                        Text(
-                            searchResult.error ?: "No symbols",
-                            color = if (searchResult.error != null) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(12.dp),
-                        )
-                    }
-                }
             }
         }
     }
@@ -222,6 +192,96 @@ fun SymbolSearchDropdown(
     } else {
         TerminalDropdownWithLabel(label = "", modifier = modifier) {
             dropdownContent()
+        }
+    }
+}
+
+/** Содержимое меню символа: табы (all/md/watchlists), поиск и список. */
+@Composable
+private fun SymbolMenuContent(
+    watchlists: List<SymbolWatchlist>,
+    symbolsWithFootprint: Set<String>,
+    activeTab: SymbolTab,
+    activeWatchlistId: String?,
+    onTabSelected: (SymbolTab, String?) -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    searchResult: SymbolSearchResult,
+    currentSymbol: String,
+    onSymbolSelected: (String) -> Unit,
+) {
+    // Tabs
+    if (symbolsWithFootprint.isNotEmpty() || watchlists.isNotEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            TabChip("All", activeTab == SymbolTab.ALL) { onTabSelected(SymbolTab.ALL, null) }
+            if (symbolsWithFootprint.isNotEmpty()) {
+                TabChip("md", activeTab == SymbolTab.MD) { onTabSelected(SymbolTab.MD, null) }
+            }
+            watchlists.forEach { list ->
+                TabChip(
+                    list.name.take(8),
+                    activeTab == SymbolTab.WATCHLIST && activeWatchlistId == list.id,
+                ) { onTabSelected(SymbolTab.WATCHLIST, list.id) }
+            }
+        }
+    }
+
+    // Search
+    BasicTextField(
+        value = searchQuery,
+        onValueChange = onSearchQueryChange,
+        singleLine = true,
+        textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 12.sp, fontFamily = TerminalFontFamily),
+        cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        decorationBox = { inner ->
+            if (searchQuery.isEmpty()) Text("Search...", color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f), fontSize = 12.sp, fontFamily = TerminalFontFamily)
+            inner()
+        }
+    )
+
+    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+    // List
+    Column(
+        modifier = Modifier.heightIn(max = 260.dp).verticalScroll(rememberScrollState())
+    ) {
+        searchResult.matches.forEach { match ->
+            val sym = match.symbol
+            DropdownMenuItem(
+                text = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = highlightedSymbol(sym, match.matchRange),
+                            color = if (sym == currentSymbol) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
+                            fontSize = 11.sp,
+                            fontFamily = TerminalFontFamily,
+                        )
+                        if (sym in symbolsWithFootprint) {
+                            Spacer(Modifier.width(5.dp))
+                            Text("md", color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f), fontSize = 9.sp, fontWeight = FontWeight.Bold, fontFamily = TerminalFontFamily)
+                        }
+                    }
+                },
+                onClick = { onSymbolSelected(sym) },
+                modifier = Modifier.background(if (sym == currentSymbol) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+            )
+        }
+        if (searchResult.matches.isEmpty()) {
+            Text(
+                searchResult.error ?: "No symbols",
+                color = if (searchResult.error != null) MaterialTheme.colorScheme.error
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                fontSize = 11.sp,
+                modifier = Modifier.padding(12.dp),
+            )
         }
     }
 }

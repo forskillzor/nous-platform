@@ -301,6 +301,27 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
 - Internal panel headers use `TerminalPanelHeader` for the shared surface,
   spacing and bottom divider; keep panel-specific controls and actions inside it.
+- Panel top titles are `PanelHeader` (platform-core): drag grip, per-panel
+  controls (`LayoutRenderer.panelTitleContent` slot), then ⚙ (menu via
+  `panelSettingsContent`), + (dark 20dp circle, `surfaceVariant` fill +
+  `outlineVariant` ring + accent plus drawn in Canvas; split menu; SPLIT RIGHT →
+  `onSplitH` → Row, SPLIT DOWN → `onSplitV` → Column) and a large × close. The
+  chart title hosts `ChartTitleToolbar`: provider/mode rounded box dropdowns
+  (`TerminalBoxStyle.ACCENT` — `surfaceVariant` fill, accent text), normal
+  symbol box, solid-accent timeframe chip (`TerminalBoxStyle.SELECTED`, dark
+  text, no chevron), Trading on/off button and AI mock; chart options (Type,
+  aggregation, Paper, Show orders/positions) live in the ⚙ menu
+  (`ChartSettingsMenu`). DOM/Trades/Trading titles are plain
+  `PanelTitleLabel`s (DOM shows a `STREAM` dot; the Trades glyph is accent);
+  their ⚙ menu closes the panel. In workspace tiles `ChartWindow` hides its own
+  toolbar (standalone previews keep `TerminalPanelHeader`-wrapped version).
+- The shared rounded dropdown shell is `TerminalBoxDropdown` (platform-core,
+  compact MW-LIST style: 11sp mono text, smallCard radius, 2dp/6dp padding,
+  12dp chevron; styles `NORMAL` (45% `panelHeaderSurface` fill, white text),
+  `ACCENT` (`surfaceVariant` fill, accent text — provider/mode) and `SELECTED`
+  (solid accent fill, dark text, no chevron — timeframe)); the Market Watch
+  LIST dropdown and `SymbolSearchDropdown(boxStyle = true)` render through it —
+  keep new title dropdowns on it instead of hand-rolled boxes.
 - Workspace panel island spacing is controlled by
   `TerminalDesignTokens.dimensions.workspacePanelGap`; `LayoutRenderer` must
   reserve it around leaves and include it in fixed-panel width calculations so
@@ -308,6 +329,11 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - Split, sidebar, and bottom-panel resize affordances use the shared
   `TerminalGripDots` component. Keep its vertical/horizontal dot orientation
   and token-sized hit region in sync with `splitHandleSize` layout accounting.
+  Workspace split handles and the bottom-panel handle keep a `splitHandleSize`
+  (2dp) layout slot but their hover/drag hit box spans the whole visual gap
+  (`workspacePanelGap + splitHandleSize`) via a centered
+  `requiredWidth`/`requiredHeight` overflow child (dots stay centered) —
+  never shrink the hit region back to the 2dp strip.
 - DOM ladder and order-entry colors should come from
   `LocalTerminalDesignTokens.current`; preserve strong white-on-side-color and
   dark-on-quantity-input contrast.

@@ -39,6 +39,7 @@ import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TradingTerminalTheme
@@ -303,50 +304,29 @@ private fun ChartWindowContent(
             .collect { repository.save(workspaceId, panelId, it) }
     }
 
+    // Имя биржи для водяного знака (только реально зарегистрированные
+    // провайдеры — ProviderRegistry)
+    val currentExchange = registry.displayName(uiState.currentProviderId)
+        .ifEmpty { registry.first()?.config?.displayName.orEmpty() }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Верхняя панель — всегда видна, не зависит от состояния загрузки графика:
-        // символ/ТФ/режим/агрегацию можно менять даже при Loading/Error.
-        // Список бирж — только реально зарегистрированные провайдеры (ProviderRegistry).
-        val exchanges = registry.providers.map { it.config.displayName }
-        val currentExchange = registry.displayName(uiState.currentProviderId)
-            .ifEmpty { registry.first()?.config?.displayName.orEmpty() }
-
-        ChartToolbar(
-            currentSymbol = uiState.currentSymbol,
-            currentTimeframe = uiState.currentTimeframe,
-            availableSymbols = uiState.symbols,
-            onSymbolChange = { chartViewModel.dispatch(ChartIntent.SelectSymbol(it)) },
-            onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
-            exchanges = exchanges,
-            currentExchange = currentExchange,
-            onExchangeChange = { name ->
-                registry.idByDisplayName(name)?.let { id ->
-                    chartViewModel.dispatch(ChartIntent.SelectProvider(id))
-                }
-            },
-            contractType = uiState.contractType,
-            onContractTypeChange = { type ->
-                chartViewModel.dispatch(ChartIntent.SelectContractType(type))
-            },
-            chartMode = uiState.chartMode,
-            onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
-            symbolsWithFootprint = uiState.symbolsWithFootprint,
-            fpAggregation = uiState.fpAggregation,
-            onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
-            tradingEnabled = tradingEnabled,
-            onTradingToggle = { chartViewModel.setTradingEnabled(it) },
-            paperEnabled = paperEnabled,
-            onPaperToggle = { chartViewModel.setPaperEnabled(it) },
-            showOrders = showOrders,
-            onShowOrdersToggle = { chartViewModel.setShowOrders(it) },
-            showPositions = showPositions,
-            onShowPositionsToggle = { chartViewModel.setShowPositions(it) },
-            modifier = Modifier
-        )
+        // Верхняя панель — только для standalone-графика (без тайтла панели):
+        // в воркспейсе эти контролы переехали в верхний тайтл (PanelHeader).
+        // Не зависит от состояния загрузки графика: символ/ТФ/режим можно
+        // менять даже при Loading/Error.
+        if (workspaceId == null) {
+            TerminalPanelHeader {
+                ChartTitleToolbar(
+                    chartViewModel = chartViewModel,
+                    registry = registry,
+                    settingsMenu = { dismiss -> ChartSettingsMenu(chartViewModel, dismiss) },
+                )
+            }
+        }
 
         // Область графика: Loading/Error — только внутри неё.
         // Панель рисования и водяной знак видны всегда.

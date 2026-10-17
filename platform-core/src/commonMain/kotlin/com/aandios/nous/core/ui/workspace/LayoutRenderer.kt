@@ -114,6 +114,8 @@ fun LayoutRenderer(
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)? = null,
     onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
     fixedPanelWidths: Map<String, Dp> = emptyMap(),
+    panelTitleContent: (@Composable (panelId: String) -> Unit)? = null,
+    panelSettingsContent: (@Composable (panelId: String, dismiss: () -> Unit) -> Unit)? = null,
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -197,6 +199,8 @@ fun LayoutRenderer(
             fly = fly,
             fixedPanelWidthsPx = fixedPanelWidthsPx,
             panelContent = panelContent,
+            panelTitleContent = panelTitleContent,
+            panelSettingsContent = panelSettingsContent,
         )
 
         // Анимированный «призрак» панели: показывает, куда и какого размера
@@ -238,6 +242,8 @@ private fun RenderNode(
     dragState: PanelDragState,
     fly: PanelFlyContext,
     fixedPanelWidthsPx: Map<String, Float> = emptyMap(),
+    panelTitleContent: (@Composable (panelId: String) -> Unit)? = null,
+    panelSettingsContent: (@Composable (panelId: String, dismiss: () -> Unit) -> Unit)? = null,
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -329,6 +335,10 @@ private fun RenderNode(
                                 },
                             )
                         } else null,
+                        titleContent = panelTitleContent?.let { fn -> { fn(panelId) } },
+                        settingsContent = panelSettingsContent?.let { fn ->
+                            { dismiss: () -> Unit -> fn(panelId, dismiss) }
+                        },
                     )
                 }
                 Box(modifier = Modifier.fillMaxSize().weight(1f)) {
@@ -503,7 +513,9 @@ private fun RenderNode(
                                     dragState = dragState,
                                     fly = fly,
                                     fixedPanelWidthsPx = fixedPanelWidthsPx,
-                                    panelContent = panelContent
+                                    panelContent = panelContent,
+                                    panelTitleContent = panelTitleContent,
+                                    panelSettingsContent = panelSettingsContent,
                                 )
                             }
                             // Ручка только между двумя FLEX-поддеревьями:
@@ -550,7 +562,9 @@ private fun RenderNode(
                                     dragState = dragState,
                                     fly = fly,
                                     fixedPanelWidthsPx = fixedPanelWidthsPx,
-                                    panelContent = panelContent
+                                    panelContent = panelContent,
+                                    panelTitleContent = panelTitleContent,
+                                    panelSettingsContent = panelSettingsContent,
                                 )
                             }
                             if (index < node.children.lastIndex) {
@@ -743,40 +757,56 @@ private fun SplitHandle(
     val currentOnResize by rememberUpdatedState(onResize)
     val currentParentSize by rememberUpdatedState(parentSize)
 
+    // Зона захвата — весь визуальный зазор между панелями (падинг-острова
+    // с каждой стороны + сама ручка), а не только 2dp-полоска: хитбокс-оверфлоу
+    // шире layout-размера, layout остаётся splitHandleSize (математика раскладки
+    // не меняется). Грип-точки остаются по центру.
+    val hitSize = tokens.dimensions.workspacePanelGap + tokens.dimensions.splitHandleSize
+
     Box(
         modifier = Modifier
             .then(
                 if (direction == LayoutNode.Direction.HORIZONTAL)
                     Modifier.width(tokens.dimensions.splitHandleSize).fillMaxHeight()
                 else Modifier.height(tokens.dimensions.splitHandleSize).fillMaxWidth()
-            )
-            .hoverable(interactionSource)
-            .testTag("split-handle-${if (direction == LayoutNode.Direction.HORIZONTAL) "h" else "v"}")
-            .pointerInput(Unit) {
-                val size = if (currentParentSize > 0f) currentParentSize else 500f
-                if (direction == LayoutNode.Direction.HORIZONTAL) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { currentOnResizeStart?.invoke() },
-                        onHorizontalDrag = { _, dragAmount ->
-                            currentOnResize(dragAmount / size)
-                        }
-                    )
-                } else {
-                    detectVerticalDragGestures(
-                        onDragStart = { currentOnResizeStart?.invoke() },
-                        onVerticalDrag = { _, dragAmount ->
-                            currentOnResize(dragAmount / size)
-                        }
-                    )
-                }
-            }
+            ),
+        contentAlignment = Alignment.Center,
     ) {
-        TerminalGripDots(
-            orientation = if (direction == LayoutNode.Direction.HORIZONTAL)
-                TerminalGripOrientation.VERTICAL
-            else
-                TerminalGripOrientation.HORIZONTAL,
-            color = gripColor,
-        )
+        Box(
+            modifier = Modifier
+                .then(
+                    if (direction == LayoutNode.Direction.HORIZONTAL)
+                        Modifier.requiredWidth(hitSize).fillMaxHeight()
+                    else Modifier.requiredHeight(hitSize).fillMaxWidth()
+                )
+                .hoverable(interactionSource)
+                .testTag("split-handle-${if (direction == LayoutNode.Direction.HORIZONTAL) "h" else "v"}")
+                .pointerInput(Unit) {
+                    val size = if (currentParentSize > 0f) currentParentSize else 500f
+                    if (direction == LayoutNode.Direction.HORIZONTAL) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { currentOnResizeStart?.invoke() },
+                            onHorizontalDrag = { _, dragAmount ->
+                                currentOnResize(dragAmount / size)
+                            }
+                        )
+                    } else {
+                        detectVerticalDragGestures(
+                            onDragStart = { currentOnResizeStart?.invoke() },
+                            onVerticalDrag = { _, dragAmount ->
+                                currentOnResize(dragAmount / size)
+                            }
+                        )
+                    }
+                }
+        ) {
+            TerminalGripDots(
+                orientation = if (direction == LayoutNode.Direction.HORIZONTAL)
+                    TerminalGripOrientation.VERTICAL
+                else
+                    TerminalGripOrientation.HORIZONTAL,
+                color = gripColor,
+            )
+        }
     }
 }

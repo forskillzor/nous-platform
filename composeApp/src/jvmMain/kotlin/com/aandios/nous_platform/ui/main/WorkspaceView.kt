@@ -8,10 +8,18 @@ package com.aandios.nous_platform.ui.main
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -21,13 +29,17 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.font.FontWeight
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
 import com.aandios.nous.feature.chart.ui.ChartIntent
 import com.aandios.nous.feature.chart.ui.ChartMode
+import com.aandios.nous.feature.chart.ui.ChartSettingsMenu
+import com.aandios.nous.feature.chart.ui.ChartTitleToolbar
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.ChartWindow
 import com.aandios.nous.feature.dom.domain.TradingSymbol
@@ -110,15 +122,30 @@ fun WorkspaceView(
         }
     }
 
-    fun disposePanelVm(pc: PanelConfig) {
+    fun panelVmKey(pc: PanelConfig): String {
         val suffix = when (pc.type) {
             PanelType.CHART -> "_chart"
             PanelType.DOM -> "_dom"
             PanelType.TRADES -> "_trades"
             PanelType.TRADING -> "_trading"
         }
-        val vmKey = "${pc.id}$suffix"
-        (ws.liveViewModels.remove(vmKey) as? com.aandios.nous.core.Disposable)?.dispose()
+        return "${pc.id}$suffix"
+    }
+
+    fun disposePanelVm(pc: PanelConfig) {
+        (ws.liveViewModels.remove(panelVmKey(pc)) as? com.aandios.nous.core.Disposable)?.dispose()
+    }
+
+    fun closePanel(panelId: String) {
+        val newLayout = LayoutEngine.removePanel(layoutState, panelId)
+        if (newLayout != null) {
+            history.push(snapshot())
+            layoutState = newLayout
+            val removedPc = panelConfigs[panelId]
+            panelConfigs = panelConfigs - panelId
+            removedPc?.let { disposePanelVm(it) }
+            persistConfig()
+        }
     }
 
     // Корень — фокусируемый, чтобы ловить Ctrl+Z / Ctrl+Shift+Z (undo/redo сплитов).
@@ -171,17 +198,7 @@ fun WorkspaceView(
             }.toMap(),
             onRatioChange = { persistConfig() },
             onRatioChangeStart = { history.push(snapshot()) },
-            onClosePanel = { panelId ->
-                val newLayout = LayoutEngine.removePanel(layoutState, panelId)
-                if (newLayout != null) {
-                    history.push(snapshot())
-                    layoutState = newLayout
-                    val removedPc = panelConfigs[panelId]
-                    panelConfigs = panelConfigs - panelId
-                    removedPc?.let { disposePanelVm(it) }
-                    persistConfig()
-                }
-            },
+            onClosePanel = { panelId -> closePanel(panelId) },
             onSplitPanel = { panelId, direction, newType ->
                 val newPanelId = "panel-${generateId()}"
                 history.push(snapshot())
@@ -211,7 +228,44 @@ fun WorkspaceView(
                 history.push(snapshot())
                 layoutState = LayoutEngine.movePanelToRoot(layoutState, panelId, zone, ratio = 0.5f)
                 persistConfig()
-            }
+            },
+            // Контролы в верхнем тайтле панели: у графика — биржа/символ/
+            // режим/ТФ/Trading/AI, у остальных — имя панели.
+            panelTitleContent = { panelId ->
+                panelConfigs[panelId]?.let { pc ->
+                    when (pc.type) {
+                        PanelType.CHART -> {
+                            val vm = ws.liveViewModels.getOrPut(panelVmKey(pc)) {
+                                koinInject<ChartViewModel>()
+                            } as ChartViewModel
+                            ChartTitleToolbar(chartViewModel = vm, registry = providerRegistry)
+                        }
+
+                        PanelType.DOM -> PanelTitleLabel(text = "DOM", stream = true)
+                        PanelType.TRADES -> PanelTitleLabel(text = "Trades", glyph = "⇥")
+                        PanelType.TRADING -> PanelTitleLabel(text = "Trading")
+                    }
+                }
+            },
+            // Меню шестерёнки тайтла: у графика — настройки графика,
+            // у остальных — закрытие панели.
+            panelSettingsContent = { panelId, dismiss ->
+                panelConfigs[panelId]?.let { pc ->
+                    when (pc.type) {
+                        PanelType.CHART -> {
+                            val vm = ws.liveViewModels.getOrPut(panelVmKey(pc)) {
+                                koinInject<ChartViewModel>()
+                            } as ChartViewModel
+                            ChartSettingsMenu(chartViewModel = vm, dismiss = dismiss)
+                        }
+
+                        else -> PanelCloseMenuItem {
+                            dismiss()
+                            closePanel(panelId)
+                        }
+                    }
+                }
+            },
         ) { panelId ->
             panelConfigs[panelId]?.let { pc ->
                 when (pc.type) {
@@ -232,6 +286,64 @@ fun WorkspaceView(
             }
         }
     }
+}
+
+/** Имя панели в тайтле (DOM/Trades/Trading): глиф + текст + live-индикатор. */
+@Composable
+private fun PanelTitleLabel(text: String, glyph: String? = null, stream: Boolean = false) {
+    val tokens = LocalTerminalDesignTokens.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+    ) {
+        glyph?.let {
+            Text(
+                text = it,
+                color = tokens.colors.accent,
+                fontSize = tokens.typography.controlSize,
+                fontFamily = TerminalFontFamily,
+            )
+        }
+        Text(
+            text = text,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = tokens.typography.controlSize,
+            fontWeight = FontWeight.Medium,
+            fontFamily = TerminalFontFamily,
+            maxLines = 1,
+        )
+        if (stream) {
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(tokens.colors.bullish),
+            )
+            Text(
+                text = "STREAM",
+                color = tokens.colors.bullish,
+                fontSize = tokens.typography.smallSize,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = tokens.typography.compactLetterSpacing,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PanelCloseMenuItem(onClick: () -> Unit) {
+    val tokens = LocalTerminalDesignTokens.current
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = "Close panel",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = tokens.typography.compactSize,
+                fontFamily = TerminalFontFamily,
+            )
+        },
+        onClick = onClick,
+    )
 }
 
 @Composable

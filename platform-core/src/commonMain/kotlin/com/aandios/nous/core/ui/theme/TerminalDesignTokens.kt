@@ -87,7 +87,7 @@ data class TerminalDimensions(
     val marketWatchTemplatePreviewHeight: Dp = 68.dp,
     val workspaceTabBarHeight: Dp = 32.dp,
     val workspaceTabHeight: Dp = 28.dp,
-    val workspacePanelHeaderHeight: Dp = 28.dp,
+    val workspacePanelHeaderHeight: Dp = 30.dp,
     val workspaceTabMaxWidth: Dp = 140.dp,
     val workspaceSidebarWidth: Dp = 48.dp,
     val workspaceToolSize: Dp = 36.dp,
