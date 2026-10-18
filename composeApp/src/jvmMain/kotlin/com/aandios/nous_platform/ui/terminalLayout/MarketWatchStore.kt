@@ -5,20 +5,15 @@
 
 package com.aandios.nous_platform.ui.terminalLayout
 
-import com.aandios.nous.api.market.Provider
-import com.aandios.nous.api.market.ProviderRegistry
-import com.aandios.nous.api.market.adapters.MarketOverviewAdapter
 import com.aandios.nous.api.market.model.MarketTickerStats
-import kotlinx.coroutines.CancellationException
+import com.aandios.nous.core.market.MarketOverviewStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 
 data class MarketWatchRow(
     val exchangeId: String,
@@ -33,66 +28,29 @@ data class MarketWatchState(
     val error: String? = null,
 )
 
-class MarketWatchStore(
-    private val registry: ProviderRegistry,
-) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val _state = MutableStateFlow(MarketWatchState())
-    val state: StateFlow<MarketWatchState> = _state.asStateFlow()
+/**
+ * Проекция общего [MarketOverviewStore] на форму Market Watch-панели:
+ * загрузка, прелоад при старте и цикл обновления живут в сторе,
+ * здесь — только маппинг в [MarketWatchState].
+ */
+class MarketWatchStore(store: MarketOverviewStore) {
 
-    private var started = false
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    @Synchronized
-    fun start() {
-        if (started) return
-        started = true
-        scope.launch {
-            while (isActive) {
-                refresh()
-                delay(REFRESH_INTERVAL_MS)
-            }
-        }
-    }
-
-    private suspend fun refresh() {
-        _state.value = _state.value.copy(loading = true)
-        val failures = mutableListOf<String>()
-        val refreshed = buildList {
-            registry.providers.forEach { provider ->
-                try {
-                    addAll(provider.toMarketWatchRows())
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    failures += "${provider.config.displayName}: ${e.message ?: "market data unavailable"}"
-                }
-            }
-        }
-        _state.value = MarketWatchState(
-            rows = refreshed,
-            loading = false,
-            error = failures.takeIf { it.isNotEmpty() }?.joinToString("\n"),
-        )
-    }
-
-    private suspend fun Provider.toMarketWatchRows(): List<MarketWatchRow> {
-        val symbols = symbolInfo?.getAllSymbolsInfo()
-            ?.filter { it.status == "TRADING" }
-            ?.map { it.symbol }
-            .orEmpty()
-        val stats = (bookTicker as? MarketOverviewAdapter)?.getMarketOverview().orEmpty()
-            .associateBy { it.symbol }
-        return (symbols + stats.keys).distinct().map { symbol ->
-            MarketWatchRow(
-                exchangeId = providerId,
-                exchangeName = config.displayName,
-                symbol = symbol,
-                stats = stats[symbol],
+    val state: StateFlow<MarketWatchState> = store.state
+        .map { overview ->
+            MarketWatchState(
+                rows = overview.rows.map { row ->
+                    MarketWatchRow(
+                        exchangeId = row.exchangeId,
+                        exchangeName = row.exchangeName,
+                        symbol = row.symbol,
+                        stats = row.stats,
+                    )
+                },
+                loading = overview.loading,
+                error = overview.error,
             )
         }
-    }
-
-    private companion object {
-        const val REFRESH_INTERVAL_MS = 30_000L
-    }
+        .stateIn(scope, SharingStarted.Eagerly, MarketWatchState())
 }

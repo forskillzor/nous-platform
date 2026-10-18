@@ -68,6 +68,12 @@ val appModule = module {
     }
 
     single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
+
+    // Единый каталог рынка (спеки + статистика 24ч): прелоад при старте и
+    // фоновый REST-цикл внутри стора; explorer и Market Watch — потребители.
+    single(createdAtStart = true) {
+        com.aandios.nous.core.market.MarketOverviewStore(get()).also { it.start() }
+    }
     single { MarketWatchStore(get()) }
     single { ThemeSettingsController(get()) }
 
@@ -100,6 +106,7 @@ val appModule = module {
             stateStore = get(),
             candleCache = get(),
             footprintCache = get(),
+            marketOverviewStore = get(),
         )
     }
 

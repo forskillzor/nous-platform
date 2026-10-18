@@ -12,6 +12,7 @@ import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.di.coreModule
 import com.aandios.nous.core.domain.cache.CandleCacheStore
 import com.aandios.nous.core.domain.cache.FootprintCacheStore
+import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.ui.ChartViewModel
@@ -48,6 +49,11 @@ val featureChartModule = module {
     }
     single<ProviderRegistry> { ProviderRegistry(getAll<Provider>()) }
 
+    // Каталог рынка для explorer-дропдауна (прелоад + фоновый цикл)
+    single(createdAtStart = true) {
+        MarketOverviewStore(get()).also { it.start() }
+    }
+
     // 2. Footprint API client (подключается к market-data-server)
     single<FootprintApiClient> {
         FootprintApiClient(httpClient = get<NetworkManager>().httpClient)
@@ -67,6 +73,7 @@ val featureChartModule = module {
             stateStore = get(),
             candleCache = get(),
             footprintCache = get(),
+            marketOverviewStore = get(),
         )
     }
 }

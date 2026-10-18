@@ -322,7 +322,6 @@ private fun ChartWindowContent(
             TerminalPanelHeader {
                 ChartTitleToolbar(
                     chartViewModel = chartViewModel,
-                    registry = registry,
                     settingsMenu = { dismiss -> ChartSettingsMenu(chartViewModel, dismiss) },
                 )
             }

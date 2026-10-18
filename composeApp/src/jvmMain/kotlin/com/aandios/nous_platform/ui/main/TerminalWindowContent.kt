@@ -34,7 +34,6 @@ import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.feature.trading.ui.PaperModeState
 import com.aandios.nous_platform.ui.terminalLayout.TerminalLayout
-import com.aandios.nous_platform.ui.terminalLayout.MarketWatchStore
 import com.aandios.nous_platform.ui.terminalLayout.TerminalStateViewModel
 import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsOverlay
 import com.aandios.nous_platform.ui.terminalLayout.ToolPanelState
@@ -69,8 +68,6 @@ fun TerminalWindowContent(
     val density = LocalDensity.current
     val symbolWatchlists: SymbolWatchlistRepository = koinInject()
     LaunchedEffect(symbolWatchlists) { symbolWatchlists.load() }
-    val marketWatchStore: MarketWatchStore = koinInject()
-    LaunchedEffect(marketWatchStore) { marketWatchStore.start() }
     val paperModeState: PaperModeState = koinInject()
     val paperEnabled by paperModeState.enabled.collectAsState()
 

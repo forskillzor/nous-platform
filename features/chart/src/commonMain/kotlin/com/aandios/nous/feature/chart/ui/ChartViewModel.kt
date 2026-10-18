@@ -27,10 +27,12 @@ import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.domain.repository.ChartRepository
 import com.aandios.nous.core.domain.timeseries.TimeSeriesController
 import com.aandios.nous.core.domain.timeseries.Timeframes
+import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.currentTimeMillis
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.component.SymbolExplorerRow
+import com.aandios.nous.core.ui.component.toSymbolExplorerRow
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.footprint.FootprintController
@@ -48,6 +50,7 @@ class ChartViewModel(
     private val stateStore: StateStore? = null,
     private val candleCache: CandleCacheStore? = null,
     footprintCache: FootprintCacheStore? = null,
+    private val marketOverviewStore: MarketOverviewStore? = null,
     cacheDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -61,12 +64,15 @@ class ChartViewModel(
 
     // ── Расширенный список символов (explorer dropdown в тайтле) ──
 
-    /** Строки всех бирж: спеки + статистика 24ч (ленивая подгрузка). */
-    private val _explorerRows = MutableStateFlow<List<SymbolExplorerRow>>(emptyList())
-    val explorerRows: StateFlow<List<SymbolExplorerRow>> = _explorerRows.asStateFlow()
-
-    private var explorerLoading = false
-    private var lastExplorerRefreshMs = 0L
+    /**
+     * Строки всех бирж из общего каталога рынка ([MarketOverviewStore]):
+     * прелоад при старте приложения, REST-цикл и кэш — внутри стора,
+     * панель только маппит их в форму explorer-строки.
+     */
+    val explorerRows: StateFlow<List<SymbolExplorerRow>> =
+        (marketOverviewStore?.state?.map { state -> state.rows.map { it.toSymbolExplorerRow() } }
+            ?: flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     /** Символ, выбранный в explorer у ДРУГОЙ биржи: применяется после loadSymbols. */
     private var pendingExplorerSymbol: String? = null
@@ -327,31 +333,6 @@ class ChartViewModel(
     }
 
     // ── Explorer (расширенный список символов) ──
-
-    /**
-     * Подгрузка строк extended-дропдауна (все биржи). Вызывается при
-     * открытии меню; троттлится [EXPLORER_REFRESH_THROTTLE_MS],
-     * [force] — явный рефреш.
-     */
-    fun refreshExplorerRows(force: Boolean = false) {
-        if (explorerLoading) return
-        val now = currentTimeMillis()
-        if (!force && now - lastExplorerRefreshMs < EXPLORER_REFRESH_THROTTLE_MS) return
-        explorerLoading = true
-        lastExplorerRefreshMs = now
-        viewModelScope.launch {
-            try {
-                val rows = buildExplorerRows(providerRegistry)
-                if (rows.isNotEmpty()) _explorerRows.value = rows
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Exception) {
-                // Список не критичен: показываем прошлые данные
-            } finally {
-                explorerLoading = false
-            }
-        }
-    }
 
     /**
      * Выбор строки из explorer: биржа (смена = Trading OFF, инвариант
@@ -1159,6 +1140,5 @@ class ChartViewModel(
     companion object {
         private const val CACHE_LIMIT = 5500
         private const val CACHE_WRITE_INTERVAL_MS = 30_000L
-        private const val EXPLORER_REFRESH_THROTTLE_MS = 30_000L
     }
 }

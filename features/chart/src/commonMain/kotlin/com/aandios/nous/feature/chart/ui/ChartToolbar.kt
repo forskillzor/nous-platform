@@ -28,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
 import com.aandios.nous.core.ui.component.SymbolExplorerRow
@@ -46,10 +45,12 @@ private val chartModes = listOf(
 )
 
 /**
- * Компактные контролы графика для верхнего тайтла панели: биржа, символ
- * (расширенный explorer-список), режим графика, таймфрейм (акцентная
- * «кнопка»), Trading и мок-кнопка AI. Настройки (тип контрактов, агрегация,
- * paper, отображение ордеров/позиций) живут в меню шестерёнки тайтла.
+ * Компактные контролы графика для верхнего тайтла панели: символ с биржей
+ * (расширенный explorer-список — закрытый триггер показывает биржу мелким
+ * акцентным текстом), режим графика, таймфрейм (акцентная «кнопка»),
+ * Trading и мок-кнопка AI. Настройки (тип контрактов, агрегация, paper,
+ * отображение ордеров/позиций) живут в меню шестерёнки тайтла. Биржа
+ * переключается выбором строки другой биржи в explorer'е.
  */
 @Composable
 fun ChartToolbar(
@@ -59,14 +60,10 @@ fun ChartToolbar(
     onExplorerRowSelected: (SymbolExplorerRow) -> Unit,
     currentTimeframe: String,
     onTimeframeChange: (String) -> Unit,
-    exchanges: List<String> = emptyList(),
-    currentExchange: String = "",
-    onExchangeChange: (String) -> Unit = {},
     chartMode: ChartMode = ChartMode.CANDLESTICK,
     onChartModeChange: (ChartMode) -> Unit = {},
     tradingEnabled: Boolean = false,
     onTradingToggle: (Boolean) -> Unit = {},
-    onRequestExplorerRefresh: () -> Unit = {},
     onManageWatchlist: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     settingsMenu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
@@ -77,24 +74,11 @@ fun ChartToolbar(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (currentExchange.isNotEmpty()) {
-            TerminalBoxDropdown(
-                current = currentExchange,
-                options = exchanges,
-                optionLabel = { it },
-                onSelect = onExchangeChange,
-                style = TerminalBoxStyle.ACCENT,
-                menuWidth = 150.dp,
-            )
-            Spacer(Modifier.width(tokens.spacing.sm))
-        }
-
         SymbolExplorerDropdown(
             currentSymbol = currentSymbol,
             currentExchangeId = currentExchangeId,
             rows = explorerRows,
             onSelect = onExplorerRowSelected,
-            onRequestRefresh = onRequestExplorerRefresh,
             onManageWatchlist = onManageWatchlist,
         )
 
@@ -170,13 +154,12 @@ fun ChartToolbar(
 
 /**
  * Тайтл-контролы графика для конкретной [ChartViewModel]: состояния и
- * действия берутся из вью-модели, список бирж — из [registry],
- * строки explorer-дропдауна — из [ChartViewModel.explorerRows].
+ * действия берутся из вью-модели, строки explorer-дропдауна — из
+ * [ChartViewModel.explorerRows].
  */
 @Composable
 fun ChartTitleToolbar(
     chartViewModel: ChartViewModel,
-    registry: ProviderRegistry,
     modifier: Modifier = Modifier,
     onManageWatchlist: (() -> Unit)? = null,
     settingsMenu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
@@ -185,10 +168,6 @@ fun ChartTitleToolbar(
     val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
     val explorerRows by chartViewModel.explorerRows.collectAsState()
 
-    val exchanges = registry.providers.map { it.config.displayName }
-    val currentExchange = registry.displayName(uiState.currentProviderId)
-        .ifEmpty { registry.first()?.config?.displayName.orEmpty() }
-
     ChartToolbar(
         currentSymbol = uiState.currentSymbol,
         currentExchangeId = uiState.currentProviderId,
@@ -196,18 +175,10 @@ fun ChartTitleToolbar(
         onExplorerRowSelected = { chartViewModel.selectExplorerRow(it) },
         currentTimeframe = uiState.currentTimeframe,
         onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
-        exchanges = exchanges,
-        currentExchange = currentExchange,
-        onExchangeChange = { name ->
-            registry.idByDisplayName(name)?.let { id ->
-                chartViewModel.dispatch(ChartIntent.SelectProvider(id))
-            }
-        },
         chartMode = uiState.chartMode,
         onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
         tradingEnabled = tradingEnabled,
         onTradingToggle = { chartViewModel.setTradingEnabled(it) },
-        onRequestExplorerRefresh = { chartViewModel.refreshExplorerRows() },
         onManageWatchlist = onManageWatchlist,
         modifier = modifier,
         settingsMenu = settingsMenu,
