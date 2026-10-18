@@ -48,6 +48,23 @@ Mind this when writing paths.
 - Real adapters return `null` from `subscribeTo*` when credentials are missing;
   the UI treats `null` as “no live updates”.
 
+### Shared market catalog (explorer + Market Watch)
+- `MarketOverviewStore` (platform-core, `core/market`) is the **single source**
+  of per-exchange catalog data: SymbolInfo specs + 24h stats
+  (`MarketOverviewAdapter` via `bookTicker`), merged per provider; one failed
+  source never hides the other, failures land in `state.error`. It is
+  preloaded at app start (Koin `createdAtStart`, `start()` is idempotent) and
+  refreshes on a 30s REST loop on `Dispatchers.IO`; consumers never fetch
+  these lists themselves — do not reintroduce duplicate loads.
+- Consumers: the chart explorer (`ChartViewModel.explorerRows` maps
+  `MarketOverviewRow.toSymbolExplorerRow()` — `.P` suffix, uppercased exchange
+  label) and Market Watch (`MarketWatchStore` in composeApp is a thin façade
+  mapping the same state into `MarketWatchState`, so `SymbolsPanel` is
+  untouched).
+- WS live tickers (Binance `!ticker@arr`, MEXC `sub.tickers`; Bybit has no
+  all-market ticker stream) are a possible follow-up — if added, keep them
+  inside the store so consumers stay unchanged; Bybit stays REST regardless.
+
 ### Per-panel flags and persistence
 - Chart: `ChartStatePersistor(stateStore, tradingPrefix)`. `ChartWindow` calls
   `ChartViewModel.attachPanel(workspaceId, panelId)`, which derives the prefix
@@ -261,10 +278,13 @@ from the IDE and tests visually; agents verify via compilation and tests.
 ## Testing guide
 
 ### Where tests live
-- `platform-core/src/jvmTest` — workspace/format utilities.
+- `platform-core/src/jvmTest` — workspace/format utilities, `MarketOverviewStore`,
+  symbol search/explorer (`SymbolSearchTest`, `SymbolExplorerDropdownTest`).
 - `public-api/api-market/src/jvmTest` — paper engine, adapters, commands.
-- `features/dom/src/commonTest` — DOM view model (fakes).
-- `features/chart/src/jvmTest` — chart state/persistence/rendering; no commonTest.
+- `features/dom/src/commonTest` — DOM view model (fakes), including
+  explorer selection (provider switch + pending symbol, contract-type sync).
+- `features/chart/src/jvmTest` — chart state/persistence/rendering +
+  explorer selection (`ChartExplorerRowsTest`); no commonTest.
 - `providers/mexc-provider/src/jvmTest`, `providers/binance-provider/src/jvmTest`.
 - `features/trading`, `features/trades`, `features/settings` have no tests
   (`:features:trading:jvmTest` exists but is empty).
@@ -325,9 +345,12 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `panelSettingsContent`), + (dark 20dp circle, `surfaceVariant` fill +
   `outlineVariant` ring + accent plus drawn in Canvas; split menu; SPLIT RIGHT →
   `onSplitH` → Row, SPLIT DOWN → `onSplitV` → Column) and a large × close. The
-  chart title hosts `ChartTitleToolbar`: provider/mode rounded box dropdowns
+  chart title hosts `ChartTitleToolbar`: mode rounded box dropdown
   (`TerminalBoxStyle.ACCENT` — `surfaceVariant` fill, accent text), symbol
-  explorer box (see below), solid-accent timeframe chip
+  explorer box (see below; its closed trigger shows the exchange label in
+  small accent text before the symbol — provider switching happens by
+  picking a row of another exchange, there is no separate exchange
+  dropdown in the chart title), solid-accent timeframe chip
   (`TerminalBoxStyle.SELECTED`, dark
   text, no chevron), Trading on/off button and AI mock; chart options (Type,
   aggregation, Paper, Show orders/positions) live in the ⚙ menu
@@ -336,29 +359,58 @@ from the IDE and tests visually; agents verify via compilation and tests.
   their ⚙ menu closes the panel. In workspace tiles `ChartWindow` hides its own
   toolbar (standalone previews keep `TerminalPanelHeader`-wrapped version).
 - Chart title symbol control is `SymbolExplorerDropdown` (platform-core):
+  closed trigger shows the current exchange in `primary` accent at
+  `microSize` before the unchanged symbol text;
   tabs ALL + watchlist names uppercased (stars write into an auto-created
   `Favourites` list), search field with hit highlight and ⌘K / Ctrl+K focus,
   chips PERPETUALS / quote / exchange, funnel sort (VOLUME / 24H % / PRICE /
-  SYMBOL, active direction ↓/↑), 5-row scroll list (star, `SYMBOL.P` for
+  SYMBOL, active direction ↓/↑), 5-row scroll list (LazyColumn — keep it lazy,
+  the catalog holds ~2k rows, and pin it to fixed width `menuWidth` × height
+  `5 × 46dp`: the hosting M3 `DropdownMenu` measures content with
+  `IntrinsicSize.Max`, and a SubcomposeLayout cannot answer intrinsic queries
+  unless it has a specified size — never `fillMaxWidth()` there; star,
+  `SYMBOL.P` for
   perpetuals, `EXCHANGE · PERP · VOL $3.84B`, last price, 24h %), footer
   `N CONTRACTS · SORTED BY <sort>` + MANAGE WATCHLIST, which opens the Market
   Watch tool panel (`ToolPanelState` is hoisted in `TerminalWindowContent`;
   standalone `ChartWindow` passes null and hides the action). Rows come from
-  `ChartExplorerRows` (per provider: `symbolInfo` + `bookTicker` as
-  `MarketOverviewAdapter`, across ALL exchanges; one failed source never hides
-  the other) behind the 30s throttle of `ChartViewModel.refreshExplorerRows`.
+  the shared `MarketOverviewStore` catalog (see Trading architecture), so the
+  list is preloaded at app start and opens instantly.
   A pick from another exchange switches the chart provider (Trading OFF by
   invariant) only after that provider's symbols load (`pendingExplorerSymbol`
   in `applyPendingExplorerSymbol`); same-exchange picks sync `contractType`
   from the row's `SymbolInfo` without a double chart load.
-  `SymbolSearchDropdown` stays in place for DOM/Trades.
+  Search uses the single shared matcher (`compileSearchRegex`/`matchSymbol` in
+  `SymbolExplorerDropdown.kt`; also backs Market Watch's `searchSymbols`):
+  symbol first (highlight range; score exact → prefix → substring → empty),
+  then meta fields (exchange/PERP/quote, no highlight). With a query typed and
+  the SYMBOL sort active the explorer ranks by relevance (↓/↑ inverts, like
+  Market Watch); other sort chips keep their field order.
+  DOM and Trades headers use the same explorer (`SymbolExplorerDropdown` in the
+  second header row; their old `Ex` inline-select and `DomSymbolDropdown` /
+  `TradesSymbolDropdown` are gone): the VMs expose `explorerRows` from the
+  shared `MarketOverviewStore`, `selectExplorerRow(row)` switches the provider
+  (DOM: Trading OFF; Trades: `selectProvider`) and applies the symbol via
+  `pendingExplorerSymbol` after `loadSymbols()`, syncing `contractType` from
+  the row's `SymbolInfo`.
 - The shared rounded dropdown shell is `TerminalBoxDropdown` (platform-core,
   compact MW-LIST style: 11sp mono text, smallCard radius, 2dp/6dp padding,
   12dp chevron; styles `NORMAL` (45% `panelHeaderSurface` fill, white text),
   `ACCENT` (`surfaceVariant` fill, accent text — provider/mode) and `SELECTED`
   (solid accent fill, dark text, no chevron — timeframe)); the Market Watch
-  LIST dropdown and `SymbolSearchDropdown(boxStyle = true)` render through it —
-  keep new title dropdowns on it instead of hand-rolled boxes.
+  LIST dropdown renders through it —
+  keep new title dropdowns on it instead of hand-rolled boxes. Dropdown menu
+  popups (the shell and the explorer's chip/funnel submenus) are styled as
+  theme islands like workspace panels: `workspacePanel` radius,
+  `panelSurface` fill, `panelBorder` border at `borderWidth`, zero
+  tonal/shadow elevation.
+- Texts inside compact controls must set `lineHeight` explicitly
+  (`controlLineHeight` for box triggers): `Text` merges with the inherited
+  Material `LocalTextStyle`, so a small `fontSize` alone still lays out the
+  inherited (bodyLarge, 24sp) line height and the control grows (explorer
+  exchange label 9sp without lineHeight made the trigger 28px instead of
+  20px, taller than the neighbouring Candles box; guarded by
+  `TerminalBoxDropdownTriggerHeightTest`).
 - Workspace panel island spacing is controlled by
   `TerminalDesignTokens.dimensions.workspacePanelGap`; `LayoutRenderer` must
   reserve it around leaves and include it in fixed-panel width calculations so
