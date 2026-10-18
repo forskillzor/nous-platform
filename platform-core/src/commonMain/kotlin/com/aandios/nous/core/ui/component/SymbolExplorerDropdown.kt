@@ -5,15 +5,16 @@
 
 package com.aandios.nous.core.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.DropdownMenu
@@ -40,10 +41,13 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.core.market.MarketOverviewRow
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
@@ -70,6 +74,20 @@ data class SymbolExplorerRow(
     val lastPrice: Double? = null,
     val changePercent24h: Double? = null,
     val quoteVolume24h: Double? = null,
+)
+
+/** Маппинг строки каталога рынка в строку explorer-дропдауна. */
+fun MarketOverviewRow.toSymbolExplorerRow(): SymbolExplorerRow = SymbolExplorerRow(
+    symbol = symbol,
+    displaySymbol = symbol + if (isPerpetual) ".P" else "",
+    exchangeId = exchangeId,
+    exchangeLabel = exchangeName.uppercase(),
+    isPerpetual = isPerpetual,
+    quoteAsset = quoteAsset,
+    tickSize = tickSize,
+    lastPrice = stats?.lastPrice,
+    changePercent24h = stats?.changePercent24h,
+    quoteVolume24h = stats?.quoteVolume24h,
 )
 
 enum class SymbolExplorerSort(val label: String) {
@@ -149,8 +167,10 @@ fun sortExplorerRows(
 
 /**
  * Полный конвейер списка: фильтры (таб watchlist, perpetuals, quote, биржа),
- * поиск (regex по символу/бирже/контракту/quote, как в SymbolSearchDropdown)
- * и сортировка. Возвращает матчи с диапазоном подсветки в displaySymbol.
+ * поиск (единый матчер [matchSymbol]: символ с подсветкой, затем
+ * биржа/PERP/quote без подсветки) и сортировка. С активным чипом SYMBOL и
+ * запросом порядок — по релевантности (как Market Watch, направление ↓/↑
+ * инвертирует); при остальных сортировках — по выбранному полю.
  */
 fun computeExplorerRows(
     rows: List<SymbolExplorerRow>,
@@ -175,46 +195,141 @@ fun computeExplorerRows(
         )
     }
 
-    val regex = try {
-        Regex(query, RegexOption.IGNORE_CASE)
-    } catch (e: IllegalArgumentException) {
-        return SymbolExplorerSearchResult(emptyList(), e.message ?: "Invalid regular expression")
+    val regex = when (val compiled = compileSearchRegex(query)) {
+        is SearchRegexResult.Ok -> compiled.regex
+        is SearchRegexResult.Invalid -> return SymbolExplorerSearchResult(emptyList(), compiled.message)
     }
 
     val matched = filtered.mapNotNull { row ->
-        val symbolMatch = regex.find(row.displaySymbol)
-        val otherMatch = if (symbolMatch == null) {
-            val fields = buildList {
+        val match = matchSymbol(
+            displaySymbol = row.displaySymbol,
+            metaFields = buildList {
                 add(row.exchangeLabel)
                 if (row.isPerpetual) add("PERP")
                 row.quoteAsset?.let { add(it) }
-            }
-            fields.firstNotNullOfOrNull { regex.find(it) }
-        } else {
-            null
-        }
-        if (symbolMatch == null && otherMatch == null) {
-            null
-        } else {
-            SymbolExplorerMatch(
-                row = row,
-                matchRange = symbolMatch?.range?.takeIf { symbolMatch.value.isNotEmpty() },
-            )
-        }
+            },
+            regex = regex,
+        ) ?: return@mapNotNull null
+        row to match
     }
 
-    val comparator = Comparator<SymbolExplorerMatch> { a, b ->
-        explorerComparator(sort, descending).compare(a.row, b.row)
-    }.thenBy { it.row.displaySymbol }
+    val relevanceOrder = sort == SymbolExplorerSort.SYMBOL
+    val comparator = if (relevanceOrder) {
+        Comparator<Pair<SymbolExplorerRow, SymbolMatch>> { a, b ->
+            symbolMatchComparator.compare(a.second, b.second)
+        }.thenBy { it.first.displaySymbol }
+    } else {
+        Comparator<Pair<SymbolExplorerRow, SymbolMatch>> { a, b ->
+            explorerComparator(sort, descending).compare(a.first, b.first)
+        }.thenBy { it.first.displaySymbol }
+    }
+    val ordered = if (relevanceOrder && descending) {
+        matched.sortedWith(comparator.reversed())
+    } else {
+        matched.sortedWith(comparator)
+    }
 
-    return SymbolExplorerSearchResult(matched.sortedWith(comparator))
+    return SymbolExplorerSearchResult(
+        ordered.map { (row, match) -> SymbolExplorerMatch(row, match.matchRange) },
+    )
+}
+
+/** Компиляция поискового regex (регистронезависимо) для Market Watch и explorer. */
+internal sealed interface SearchRegexResult {
+    data class Ok(val regex: Regex) : SearchRegexResult
+    data class Invalid(val message: String) : SearchRegexResult
+}
+
+internal fun compileSearchRegex(query: String): SearchRegexResult = try {
+    SearchRegexResult.Ok(Regex(query, RegexOption.IGNORE_CASE))
+} catch (e: IllegalArgumentException) {
+    SearchRegexResult.Invalid(e.message ?: "Invalid regular expression")
 }
 
 /**
- * Расширенный дропдаун выбора символа для тайтла chart: табы (ALL +
- * watchlists), поиск, фильтры (perpetuals/quote/биржа), список со
- * статистикой 24ч и избранным. Не заменяет [SymbolSearchDropdown] —
- * используется только там, где передаётся явно.
+ * Единый матчер поиска (Market Watch и explorer): сначала символ — с
+ * диапазоном подсветки и score релевантности (0 точное → 1 префикс →
+ * 2 подстрока → 3 пустой матч), затем мета-поля (биржа/PERP/quote) без
+ * подсветки (score 4). null — кандидат не совпал.
+ */
+internal fun matchSymbol(
+    displaySymbol: String,
+    metaFields: List<String>,
+    regex: Regex,
+): SymbolMatch? {
+    val symbolMatch = regex.find(displaySymbol)
+    if (symbolMatch != null) {
+        val range = symbolMatch.range.takeIf { symbolMatch.value.isNotEmpty() }
+        val score = when {
+            range == null -> 3
+            range.first == 0 && symbolMatch.value.length == displaySymbol.length -> 0
+            range.first == 0 -> 1
+            else -> 2
+        }
+        return SymbolMatch(
+            matchRange = range,
+            score = score,
+            position = range?.first ?: Int.MAX_VALUE,
+            matchLength = if (range == null) Int.MAX_VALUE else range.last - range.first,
+        )
+    }
+    return metaFields.firstNotNullOfOrNull { regex.find(it) }?.let {
+        SymbolMatch(matchRange = null, score = 4, position = Int.MAX_VALUE, matchLength = Int.MAX_VALUE)
+    }
+}
+
+/**
+ * Матч кандидата: [matchRange] — диапазон подсветки в символе (null —
+ * совпало мета-поле); [score]/[position]/[matchLength] — ключи релевантности.
+ */
+internal data class SymbolMatch(
+    val matchRange: IntRange?,
+    val score: Int,
+    val position: Int,
+    val matchLength: Int,
+)
+
+/** Порядок релевантности матчей: score → позиция → длина (меньше — лучше). */
+internal val symbolMatchComparator: Comparator<SymbolMatch> =
+    compareBy({ it.score }, { it.position }, { it.matchLength })
+
+/**
+ * Одиночное совпадение поиска по списку тикеров: символ + диапазон
+ * подсветки в нём (используется Market Watch).
+ */
+data class SymbolSearchMatch(
+    val symbol: String,
+    val matchRange: IntRange?,
+)
+
+data class SymbolSearchResult(
+    val matches: List<SymbolSearchMatch>,
+    val error: String? = null,
+)
+
+/** Поиск по списку тикеров (Market Watch): релевантность → код символа. */
+fun searchSymbols(symbols: List<String>, query: String): SymbolSearchResult {
+    if (query.isBlank()) return SymbolSearchResult(symbols.map { SymbolSearchMatch(it, null) })
+    val regex = when (val compiled = compileSearchRegex(query)) {
+        is SearchRegexResult.Ok -> compiled.regex
+        is SearchRegexResult.Invalid -> return SymbolSearchResult(emptyList(), compiled.message)
+    }
+
+    val matches = symbols.mapNotNull { symbol ->
+        matchSymbol(displaySymbol = symbol, metaFields = emptyList(), regex = regex)
+            ?.let { symbol to it }
+    }.sortedWith(
+        Comparator<Pair<String, SymbolMatch>> { a, b -> symbolMatchComparator.compare(a.second, b.second) }
+            .thenBy { it.first },
+    )
+    return SymbolSearchResult(matches.map { SymbolSearchMatch(it.first, it.second.matchRange) })
+}
+
+/**
+ * Расширенный дропдаун выбора символа (тайтл chart, заголовки DOM/Trades):
+ * табы (ALL + watchlists), поиск, фильтры (perpetuals/quote/биржа), список со
+ * статистикой 24ч и избранным. Выбор строки другой биржи переключает
+ * провайдера панели (зовите [onSelect] и обрабатывайте кросс-биржу выше).
  */
 @Composable
 fun SymbolExplorerDropdown(
@@ -223,7 +338,6 @@ fun SymbolExplorerDropdown(
     rows: List<SymbolExplorerRow>,
     onSelect: (SymbolExplorerRow) -> Unit,
     modifier: Modifier = Modifier,
-    onRequestRefresh: () -> Unit = {},
     onManageWatchlist: (() -> Unit)? = null,
     menuWidth: androidx.compose.ui.unit.Dp = 380.dp,
 ) {
@@ -245,11 +359,7 @@ fun SymbolExplorerDropdown(
     val searchFocus = remember { FocusRequester() }
 
     LaunchedEffect(expanded) {
-        if (expanded) {
-            onRequestRefresh()
-        } else {
-            query = ""
-        }
+        if (!expanded) query = ""
     }
     LaunchedEffect(expanded) {
         if (expanded) {
@@ -276,11 +386,29 @@ fun SymbolExplorerDropdown(
         }
     }
 
+    val currentExchangeLabel = currentExchangeId?.let { id ->
+        rows.firstOrNull { it.exchangeId == id }?.exchangeLabel
+    }?.takeIf { it.isNotEmpty() }
+    val exchangeLeading: (@Composable () -> Unit)? = currentExchangeLabel?.let { label ->
+        {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = tokens.typography.microSize,
+                lineHeight = tokens.typography.controlLineHeight,
+                fontWeight = FontWeight.Medium,
+                fontFamily = TerminalFontFamily,
+                maxLines = 1,
+            )
+        }
+    }
+
     TerminalBoxDropdown(
         text = currentSymbol,
         modifier = modifier,
         menuWidth = menuWidth,
         onExpandedChange = { expanded = it },
+        leading = exchangeLeading,
     ) { dismiss ->
         val quoteOptions = remember(rows) { explorerQuoteOptions(rows) }
         val exchangeOptions = remember(rows) { explorerExchangeOptions(rows) }
@@ -499,25 +627,32 @@ fun SymbolExplorerDropdown(
                 )
             }
 
-            // ── Список (5 строк со скроллом) ──
+            // ── Список (5 строк со скроллом, ленивый) ──
+            // Fixed width is required: M3 DropdownMenu measures its content with
+            // IntrinsicSize.Max, and a SubcomposeLayout can only answer intrinsic
+            // queries when it has a specified size (SizeNode short-circuit).
             val rowHeight = 46.dp
-            Column(
+            LazyColumn(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(rowHeight * 5)
-                    .verticalScroll(rememberScrollState()),
+                    .width(menuWidth)
+                    .height(rowHeight * 5),
             ) {
                 if (result.matches.isEmpty()) {
-                    Text(
-                        text = result.error ?: "No symbols",
-                        color = if (result.error != null) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                        modifier = Modifier.padding(tokens.spacing.lg),
-                    )
+                    item {
+                        Text(
+                            text = result.error ?: "No symbols",
+                            color = if (result.error != null) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            fontSize = 11.sp,
+                            fontFamily = TerminalFontFamily,
+                            modifier = Modifier.padding(tokens.spacing.lg),
+                        )
+                    }
                 }
-                result.matches.forEach { match ->
+                items(
+                    items = result.matches,
+                    key = { "${it.row.exchangeId}:${it.row.symbol}" },
+                ) { match ->
                     val row = match.row
                     val isCurrent = row.symbol == currentSymbol &&
                         (currentExchangeId == null || row.exchangeId == currentExchangeId)
@@ -654,6 +789,11 @@ private fun <T> ExplorerChipDropdown(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.widthIn(min = 120.dp),
+            shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
+            containerColor = tokens.colors.panelSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            border = BorderStroke(tokens.dimensions.borderWidth, tokens.colors.panelBorder),
         ) {
             options.forEach { (text, value) ->
                 DropdownMenuItem(
@@ -709,6 +849,11 @@ private fun ExplorerSortButton(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.widthIn(min = 150.dp),
+            shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
+            containerColor = tokens.colors.panelSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            border = BorderStroke(tokens.dimensions.borderWidth, tokens.colors.panelBorder),
         ) {
             SymbolExplorerSort.entries.forEach { option ->
                 val isActive = option == sort
@@ -819,6 +964,28 @@ private fun ExplorerRowItem(
         }
     }
     HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
+}
+
+/** Подсветка совпавшего фрагмента символа цветом поиска (как в Market Watch). */
+fun highlightedSymbol(symbol: String, matchRange: IntRange?, highlightColor: Color) = buildAnnotatedString {
+    val range = matchRange
+    if (range == null || range.isEmpty() || range.first !in symbol.indices) {
+        append(symbol)
+        return@buildAnnotatedString
+    }
+    val start = range.first.coerceIn(0, symbol.length)
+    val endExclusive = (range.last + 1).coerceIn(start, symbol.length)
+    append(symbol.substring(0, start))
+    pushStyle(
+        SpanStyle(
+            background = highlightColor.copy(alpha = 0.24f),
+            color = highlightColor,
+            fontWeight = FontWeight.Bold,
+        )
+    )
+    append(symbol.substring(start, endExclusive))
+    pop()
+    append(symbol.substring(endExclusive))
 }
 
 @Composable

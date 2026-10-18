@@ -39,15 +39,13 @@ import com.aandios.nous.feature.trades.ui.header.TradesHeaderBar
 fun TradesWidget(
     viewModel: TradesViewModel,
     currentSymbol: String,
-    onSymbolChanged: (String) -> Unit,
     providers: List<com.aandios.nous.api.market.Provider> = emptyList(),
-    onProviderChanged: (String) -> Unit = {},
     /** Максимальная ширина панели (шестерёнка настроек). */
     maxPanelWidth: androidx.compose.ui.unit.Dp = 240.dp,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
-    val loadedSymbols by viewModel.loadedSymbols.collectAsState()
+    val explorerRows by viewModel.explorerRows.collectAsState()
     val currentSymbolInfo by viewModel.currentSymbolInfo.collectAsState()
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
     val customPresets by viewModel.customPresets.collectAsState()
@@ -81,21 +79,19 @@ fun TradesWidget(
         // Header bar с dropdowns (как в feature-dom)
         TradesHeaderBar(
             currentSymbol = currentSymbol,
-            availableSymbols = loadedSymbols,
             currentSymbolInfo = currentSymbolInfo,
             selectedSizeFilter = selectedSizeFilter,
             customPresets = customPresets,
-            providers = providers,
             currentProviderId = currentProviderId,
             contractType = contractType,
+            explorerRows = explorerRows,
+            onExplorerRowSelected = { row -> viewModel.selectExplorerRow(row) },
             panelWidthDp = panelWidthDp ?: maxPanelWidth.value,
             minPanelWidthDp = measuredMinWidth.value,
             maxPanelWidthDp = maxPanelWidth.value,
             onPanelWidthDpChanged = { viewModel.setPanelWidth(it) },
             onPanelWidthDpChangeFinished = { viewModel.persistPanelWidth() },
-            onProviderChanged = onProviderChanged,
             onContractTypeChanged = { viewModel.setContractType(it) },
-            onSymbolChanged = onSymbolChanged,
             onFilterChanged = { viewModel.updateSizeFilter(it) },
             onPresetAdd = { viewModel.addPreset(it) },
             onPresetEdit = { idx, v -> viewModel.editPreset(idx, v) },

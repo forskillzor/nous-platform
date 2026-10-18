@@ -10,7 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 
-class SymbolSearchDropdownTest {
+class SymbolSearchTest {
     @Test
     fun `ranks exact and prefix matches and returns the matched range`() {
         val result = searchSymbols(

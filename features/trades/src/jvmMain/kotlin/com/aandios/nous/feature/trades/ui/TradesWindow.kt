@@ -44,7 +44,6 @@ fun TradesWindow(
     tradesViewModel: TradesViewModel,
     modifier: Modifier = Modifier,
     currentSymbol: String = "",
-    onSymbolChanged: (String) -> Unit = {},
 ) {
     val registry: com.aandios.nous.api.market.ProviderRegistry = koinInject()
     Box(
@@ -55,9 +54,7 @@ fun TradesWindow(
         TradesWidget(
             viewModel = tradesViewModel,
             currentSymbol = currentSymbol,
-            onSymbolChanged = onSymbolChanged,
             providers = registry.providers,
-            onProviderChanged = { providerId -> tradesViewModel.selectProvider(providerId) },
             maxPanelWidth = TradesRecommendedWidth,
             modifier = Modifier.fillMaxSize()
         )

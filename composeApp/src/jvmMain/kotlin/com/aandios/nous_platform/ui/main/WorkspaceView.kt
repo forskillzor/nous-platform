@@ -230,8 +230,8 @@ fun WorkspaceView(
                 layoutState = LayoutEngine.movePanelToRoot(layoutState, panelId, zone, ratio = 0.5f)
                 persistConfig()
             },
-            // Контролы в верхнем тайтле панели: у графика — биржа/символ/
-            // режим/ТФ/Trading/AI, у остальных — имя панели.
+            // Контролы в верхнем тайтле панели: у графика — символ/режим/ТФ/
+            // Trading/AI, у остальных — имя панели.
             panelTitleContent = { panelId ->
                 panelConfigs[panelId]?.let { pc ->
                     when (pc.type) {
@@ -241,7 +241,6 @@ fun WorkspaceView(
                             } as ChartViewModel
                             ChartTitleToolbar(
                                 chartViewModel = vm,
-                                registry = providerRegistry,
                                 onManageWatchlist = onManageWatchlist,
                             )
                         }
@@ -577,7 +576,6 @@ private fun TradesPanel(
     TradesWindow(
         vm,
         currentSymbol = pc.symbol,
-        onSymbolChanged = { s -> vm.subscribeToTrades(s) },
     )
 }
 

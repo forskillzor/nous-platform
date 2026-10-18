@@ -5,6 +5,7 @@
 
 package com.aandios.nous.core.ui.component
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -100,7 +101,7 @@ fun <T> TerminalBoxDropdown(
 /**
  * Базовая форма [TerminalBoxDropdown] с произвольным содержимым меню
  * (для дропдаунов с поиском/табами — ту же «коробку» использует
- * SymbolSearchDropdown).
+ * symbol explorer).
  */
 @Composable
 fun TerminalBoxDropdown(
@@ -185,6 +186,11 @@ fun TerminalBoxDropdown(
             onDismissRequest = { setExpanded(false) },
             offset = DpOffset(0.dp, 2.dp),
             modifier = Modifier.width(menuWidth),
+            shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
+            containerColor = tokens.colors.panelSurface,
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp,
+            border = BorderStroke(tokens.dimensions.borderWidth, tokens.colors.panelBorder),
         ) {
             menuContent { setExpanded(false) }
         }

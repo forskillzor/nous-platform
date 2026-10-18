@@ -111,11 +111,11 @@ val appModule = module {
     }
 
     factory {
-        DomViewModel(providerRegistry = get(), stateStore = get())
+        DomViewModel(providerRegistry = get(), stateStore = get(), marketOverviewStore = get())
     }
 
     factory {
-        TradesViewModel(providerRegistry = get(), stateStore = get())
+        TradesViewModel(providerRegistry = get(), stateStore = get(), marketOverviewStore = get())
     }
 
     factory {

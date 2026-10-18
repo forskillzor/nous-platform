@@ -24,9 +24,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
+import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.SizeFilter
@@ -35,29 +36,28 @@ import kotlin.math.roundToInt
 /**
  * Заголовок Trades в стиле DOM-хедера: две тонкие строки на едином с контентом
  * фоне, разделённые полосками-спейсерами:
- *  1) биржа · тип контрактов
- *  2) символ (с поиском) · фильтр размера
- * Без live-индикатора и без «двойных» рамок.
+ *  1) тип контрактов · шестерёнка настроек
+ *  2) символ с биржей (explorer) · фильтр размера
+ * Биржа переключается выбором строки другой биржи в explorer'е (как в тайтле
+ * графика). Без live-индикатора и без «двойных» рамок.
  */
 @Composable
 fun TradesHeaderBar(
     currentSymbol: String,
-    availableSymbols: List<SymbolInfo>,
     currentSymbolInfo: SymbolInfo?,
     selectedSizeFilter: SizeFilter,
     customPresets: List<Double>,
-    providers: List<Provider> = emptyList(),
     currentProviderId: String = "",
     contractType: ContractType = ContractType.USDT_M,
+    explorerRows: List<SymbolExplorerRow> = emptyList(),
+    onExplorerRowSelected: (SymbolExplorerRow) -> Unit = {},
     /** Ширина панели (dp) для шестерёнки настроек. */
     panelWidthDp: Float = 240f,
     minPanelWidthDp: Float = 120f,
     maxPanelWidthDp: Float = 240f,
     onPanelWidthDpChanged: (Float) -> Unit = {},
     onPanelWidthDpChangeFinished: () -> Unit = {},
-    onProviderChanged: (String) -> Unit = {},
     onContractTypeChanged: (ContractType) -> Unit = {},
-    onSymbolChanged: (String) -> Unit,
     onFilterChanged: (SizeFilter) -> Unit,
     onPresetAdd: (Double) -> Unit,
     onPresetEdit: (Int, Double) -> Unit,
@@ -72,23 +72,13 @@ fun TradesHeaderBar(
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.surface),
     ) {
-        // Строка 1: биржа · USDT-M/COIN-M
+        // Строка 1: USDT-M/COIN-M · шестерёнка
         Row(
             modifier = Modifier.fillMaxWidth()
                 .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
             horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            TerminalInlineSelect(
-                label = "Ex",
-                current = currentProviderId,
-                items = providers.map { it.providerId },
-                display = { id ->
-                    providers.firstOrNull { it.providerId == id }?.config?.displayName ?: id
-                },
-                onSelect = onProviderChanged,
-                menuWidth = 150.dp,
-            )
             TerminalInlineSelect(
                 label = "Type",
                 current = contractType,
@@ -113,7 +103,7 @@ fun TradesHeaderBar(
             thickness = tokens.dimensions.dividerThickness,
         )
 
-        // Строка 2: символ (сжимается) · фильтр размера
+        // Строка 2: символ с биржей (сжимается) · фильтр размера
         Row(
             modifier = Modifier.fillMaxWidth()
                 .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
@@ -121,10 +111,11 @@ fun TradesHeaderBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(modifier = Modifier.weight(1f).clipToBounds()) {
-                TradesSymbolDropdown(
+                SymbolExplorerDropdown(
                     currentSymbol = currentSymbol,
-                    availableSymbols = availableSymbols,
-                    onSymbolChanged = onSymbolChanged,
+                    currentExchangeId = currentProviderId,
+                    rows = explorerRows,
+                    onSelect = onExplorerRowSelected,
                 )
             }
             SizeFilterDropdown(

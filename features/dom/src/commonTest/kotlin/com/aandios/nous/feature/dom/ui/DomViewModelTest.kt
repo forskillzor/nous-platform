@@ -17,11 +17,13 @@ import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
 import com.aandios.nous.api.market.adapters.TradesAdapter
 import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.BookTicker
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.orderbook.BookWindowLevels
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.orderbook.PriceUpdate
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.feature.dom.domain.DomOptions
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
@@ -501,6 +503,103 @@ class DomViewModelTest {
     }
 
     @Test
+    fun `explorer pick on another exchange switches provider, applies symbol and disables trading`() = testScope.runTest {
+        val mexcSymbolInfoAdapter = FakeSymbolInfoAdapter().apply {
+            allSymbolsInfo = listOf(
+                SymbolInfo(
+                    symbol = "SOLUSDT",
+                    tickSize = 0.01,
+                    stepSize = 0.01,
+                    minQty = 0.1,
+                    minNotional = 5.0,
+                    status = "TRADING",
+                    baseAsset = "SOL",
+                    quoteAsset = "USDT",
+                )
+            )
+        }
+        val mexcProvider = FakeDomProvider(
+            domAdapter = FakeDomAdapter(),
+            bookTickerAdapter = FakeBookTickerAdapter(),
+            symbolInfoAdapter = mexcSymbolInfoAdapter,
+            providerId = "mexc-nous-0.0.1",
+            displayName = "MEXC",
+        )
+        val vm = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(fakeProvider, mexcProvider)),
+            coroutineDispatcher = testDispatcher,
+        )
+        vm.setTradingEnabled(true)
+
+        vm.selectExplorerRow(
+            SymbolExplorerRow(
+                symbol = "SOLUSDT",
+                displaySymbol = "SOLUSDT.P",
+                exchangeId = "mexc-nous-0.0.1",
+                exchangeLabel = "MEXC",
+            )
+        )
+        advanceUntilIdle()
+
+        // Смена биржи — Trading OFF (инвариант), символ — из выбранной строки
+        assertEquals("mexc-nous-0.0.1", vm.domOptions.value.provider)
+        assertEquals("SOLUSDT", vm.domOptions.value.symbol.symbol)
+        assertEquals("mexc-nous-0.0.1", vm.domOptions.value.symbol.provider)
+        assertFalse(vm.isTradingEnabled.first())
+    }
+
+    @Test
+    fun `explorer pick on the same exchange syncs contract type and symbol`() = testScope.runTest {
+        fakeSymbolInfoAdapter.allSymbolsInfo = listOf(
+            SymbolInfo(
+                symbol = "BTCUSDT",
+                tickSize = 0.01,
+                stepSize = 0.01,
+                minQty = 0.001,
+                minNotional = 10.0,
+                status = "TRADING",
+                baseAsset = "BTC",
+                quoteAsset = "USDT",
+                contractType = "PERPETUAL",
+                marginAsset = "USDT",
+            ),
+            SymbolInfo(
+                symbol = "ETHUSD",
+                tickSize = 0.01,
+                stepSize = 0.01,
+                minQty = 0.1,
+                minNotional = 10.0,
+                status = "TRADING",
+                baseAsset = "ETH",
+                quoteAsset = "USD",
+                contractType = "PERPETUAL",
+                marginAsset = "BTC",
+            ),
+        )
+        // Свежий VM: init-loadSymbols видит настроенный список
+        val vm = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(fakeProvider)),
+            coroutineDispatcher = testDispatcher,
+        )
+        advanceUntilIdle()
+
+        vm.selectExplorerRow(
+            SymbolExplorerRow(
+                symbol = "ETHUSD",
+                displaySymbol = "ETHUSD.P",
+                exchangeId = "binance-nous-0.0.1",
+                exchangeLabel = "BINANCE",
+            )
+        )
+        advanceUntilIdle()
+
+        // COIN-M-строка: тип контрактов синхронизируется по SymbolInfo
+        assertEquals("ETHUSD", vm.domOptions.value.symbol.symbol)
+        assertEquals(ContractType.COIN_M, vm.domOptions.value.contractType)
+        assertEquals("ETHUSD", fakeDomAdapter.lastSubscribedSymbol)
+    }
+
+    @Test
     fun `order panel settings persist per panel and restore`() = testScope.runTest {
         val store = FakeStateStore()
         val vm = DomViewModel(
@@ -574,8 +673,13 @@ class FakeSymbolInfoAdapter : SymbolInfoAdapter {
     var tickSize: Double? = null
     var minQty: Double = 0.001
 
+    /** Полный список символов биржи для explorer-тестов. */
+    var allSymbolsInfo: List<SymbolInfo> = emptyList()
+
     /** Задержка ответа по символу — для тестов гонки метаданных. */
     val delayBySymbol = mutableMapOf<String, Long>()
+
+    override suspend fun getAllSymbolsInfo(): List<SymbolInfo> = allSymbolsInfo
 
     override suspend fun getSymbolInfo(symbol: String): SymbolInfo? {
         // Значения фиксируем на момент запроса (как реальный REST-ответ)
@@ -600,11 +704,12 @@ class FakeDomProvider(
     private val domAdapter: DomAdapter,
     private val bookTickerAdapter: BookTickerAdapter,
     private val symbolInfoAdapter: SymbolInfoAdapter,
+    override val providerId: String = "binance-nous-0.0.1",
+    displayName: String = "Binance",
 ) : Provider {
-    override val providerId = "binance-nous-0.0.1"
-    override val providerName = "binance-nous"
+    override val providerName = providerId.substringBeforeLast("-")
     override val version = "0.0.1"
-    override val config = ProviderConfig(displayName = "Binance")
+    override val config = ProviderConfig(displayName = displayName)
     override val networkManager: NetworkManager get() = error("not used")
     override val trades: TradesAdapter? = null
     override val dom: DomAdapter? = domAdapter

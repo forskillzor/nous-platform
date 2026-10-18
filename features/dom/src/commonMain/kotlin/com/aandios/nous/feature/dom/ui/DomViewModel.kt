@@ -20,6 +20,9 @@ import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.repository.DomRepository
+import com.aandios.nous.core.market.MarketOverviewStore
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
+import com.aandios.nous.core.ui.component.toSymbolExplorerRow
 import com.aandios.nous.core.domain.repository.SymbolInfoRepository
 import com.aandios.nous.feature.dom.data.repository.DomRepositoryImpl
 import com.aandios.nous.feature.dom.domain.DomOptions
@@ -29,9 +32,13 @@ import com.aandios.nous.feature.dom.ui.model.BestPricesState
 import com.aandios.nous.feature.dom.ui.model.DomLevel
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlin.math.roundToLong
 
 /**
@@ -55,6 +62,7 @@ class DomViewModel(
     private val providerRegistry: ProviderRegistry,
     private val coroutineDispatcher: CoroutineDispatcher? = null,
     private val stateStore: com.aandios.nous.core.storage.StateStore? = null,
+    private val marketOverviewStore: MarketOverviewStore? = null,
 ) : Disposable {
     private val dispatcher = coroutineDispatcher ?: Dispatchers.Main
     private val viewModelScope = CoroutineScope(dispatcher + SupervisorJob())
@@ -147,6 +155,18 @@ class DomViewModel(
 
     /** Полный список символов провайдера (без фильтра по типу контракта). */
     private var allSymbols: List<TradingSymbol> = emptyList()
+
+    /**
+     * Строки explorer-дропдауна из общего каталога рынка ([MarketOverviewStore]):
+     * прелоад и фоновый REST-цикл — внутри стора, панель только маппит их.
+     */
+    val explorerRows: StateFlow<List<SymbolExplorerRow>> =
+        (marketOverviewStore?.state?.map { state -> state.rows.map { it.toSymbolExplorerRow() } }
+            ?: flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Символ, выбранный в explorer у ДРУГОЙ биржи: применяется после loadSymbols. */
+    private var pendingExplorerSymbol: String? = null
 
     /** Текущий символ — inverse (COIN-M): qty в контрактах, paper недоступен. */
     private var symbolIsInverse: Boolean = false
@@ -263,6 +283,48 @@ class DomViewModel(
             }
             // Символ/провайдер могли смениться — перечитать ордера/позиции
             refreshTradingState()
+        }
+    }
+
+    /**
+     * Выбор строки explorer-дропдауна: биржа (смена = Trading OFF, инвариант
+     * безопасности) и символ; символ применяется после загрузки списка биржи.
+     */
+    fun selectExplorerRow(row: SymbolExplorerRow) {
+        val options = _domOptions.value
+        if (row.exchangeId != options.provider) {
+            pendingExplorerSymbol = row.symbol
+            updateDomOptions(options.copy(provider = row.exchangeId))
+            return
+        }
+        applyExplorerSymbol(row.symbol)
+    }
+
+    /** Применить отложенный выбор explorer'а после загрузки символов биржи. */
+    private fun applyPendingExplorerSymbol() {
+        val symbol = pendingExplorerSymbol ?: return
+        pendingExplorerSymbol = null
+        applyExplorerSymbol(symbol)
+    }
+
+    /**
+     * Синхронизировать тип контрактов по SymbolInfo выбранной строки (как в
+     * explorer графика) и переключить DOM на этот символ.
+     */
+    private fun applyExplorerSymbol(symbol: String) {
+        val match = allSymbols.firstOrNull { it.symbol == symbol }
+            ?: loadedSymbols.value.firstOrNull()
+            ?: return
+        val info = match.symbolInfo
+        if (info != null) {
+            val type = ContractType.of(info)
+            if (_domOptions.value.contractType != type) {
+                updateDomOptions(_domOptions.value.copy(contractType = type))
+            }
+        }
+        val current = _domOptions.value.symbol
+        if (current.symbol != match.symbol || current.provider != match.provider) {
+            updateDomOptions(_domOptions.value.copy(symbol = match))
         }
     }
 
@@ -963,6 +1025,7 @@ class DomViewModel(
                 if (allSymbols.isNotEmpty()) {
                     applyContractTypeFilter()
                     ensureSymbolMatchesContractType()
+                    applyPendingExplorerSymbol()
                 }
             } catch (e: Exception) {
                 println("⚠️ Failed to load symbols from SymbolInfoRepository: ${e.message}")

@@ -61,7 +61,7 @@ fun DomWindow(
 ) {
     val registry: ProviderRegistry = koinInject()
     val domOptions by domViewModel.domOptions.collectAsState()
-    val loadedSymbols by domViewModel.loadedSymbols.collectAsState()
+    val explorerRows by domViewModel.explorerRows.collectAsState()
     val orderQuantity by domViewModel.orderQuantity.collectAsState()
     val isTradingEnabled by domViewModel.isTradingEnabled.collectAsState()
     val symbolTickSize by domViewModel.symbolTickSize.collectAsState()
@@ -149,8 +149,9 @@ fun DomWindow(
         DomHeader(
             domOptions = domOptions,
             symbolTickSize = symbolTickSize,
-            loadedSymbols = loadedSymbols,
             providers = registry.providers,
+            explorerRows = explorerRows,
+            onExplorerRowSelected = { row -> domViewModel.selectExplorerRow(row) },
             onDomOptionsChanged = { newOptions -> domViewModel.updateDomOptions(newOptions) }
         )
         Box(

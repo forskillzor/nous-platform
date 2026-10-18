@@ -112,6 +112,82 @@ class SymbolExplorerDropdownTest {
     }
 
     @Test
+    fun `symbol sort with query ranks prefix before substring`() {
+        val result = computeExplorerRows(
+            rows = listOf(row("WBTCUSDT"), row("BTCUSDT")),
+            activeListSymbols = null,
+            perpetualsOnly = true,
+            quote = null,
+            exchangeId = null,
+            query = "BTC",
+            sort = SymbolExplorerSort.SYMBOL,
+            descending = false,
+        )
+
+        assertEquals(listOf("BTCUSDT", "WBTCUSDT"), result.matches.map { it.row.symbol })
+        assertEquals(0..2, result.matches[0].matchRange)
+        assertEquals(1..3, result.matches[1].matchRange)
+
+        // Направление ↓ инвертирует релевантность (как в Market Watch)
+        val reversed = computeExplorerRows(
+            rows = listOf(row("WBTCUSDT"), row("BTCUSDT")),
+            activeListSymbols = null,
+            perpetualsOnly = true,
+            quote = null,
+            exchangeId = null,
+            query = "BTC",
+            sort = SymbolExplorerSort.SYMBOL,
+            descending = true,
+        )
+        assertEquals(listOf("WBTCUSDT", "BTCUSDT"), reversed.matches.map { it.row.symbol })
+    }
+
+    @Test
+    fun `symbol sort with query puts meta matches after symbol matches`() {
+        val rows = listOf(
+            row("BYBITUSDT"),
+            row("SOLUSDT", exchange = "bybit", label = "BYBIT"),
+            row("ETHUSDT"),
+        )
+
+        val result = computeExplorerRows(
+            rows = rows,
+            activeListSymbols = null,
+            perpetualsOnly = true,
+            quote = null,
+            exchangeId = null,
+            query = "bybit",
+            sort = SymbolExplorerSort.SYMBOL,
+            descending = false,
+        )
+
+        assertEquals(listOf("BYBITUSDT", "SOLUSDT"), result.matches.map { it.row.symbol })
+        assertEquals(0..4, result.matches[0].matchRange)
+        assertNull(result.matches[1].matchRange)
+    }
+
+    @Test
+    fun `non-symbol sorts ignore relevance and keep field order`() {
+        val rows = listOf(
+            row("WBTCUSDT", volume = 5.0e8),
+            row("BTCUSDT", volume = 1.0e9),
+        )
+
+        val result = computeExplorerRows(
+            rows = rows,
+            activeListSymbols = null,
+            perpetualsOnly = true,
+            quote = null,
+            exchangeId = null,
+            query = "BTC",
+            sort = SymbolExplorerSort.VOLUME,
+            descending = true,
+        )
+
+        assertEquals(listOf("BTCUSDT", "WBTCUSDT"), result.matches.map { it.row.symbol })
+    }
+
+    @Test
     fun `invalid regex yields error and no matches`() {
         val result = computeExplorerRows(
             rows = listOf(row("BTCUSDT")), activeListSymbols = null, perpetualsOnly = true,

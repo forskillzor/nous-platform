@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.ContractType
+import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
@@ -32,17 +34,19 @@ import com.aandios.nous.feature.dom.domain.model.DepthLimit
 
 /**
  * Заголовок DOM: две компактные строки без «двойных» рамок —
- *  1) биржа · тип контрактов · свернуть
- *  2) символ (с поиском) · глубина · агрегация
- * Ширина не превышает панель: символ сжимается, у остальных — короткие
- * mono-контролы «label value ▾» в стиле терминала.
+ *  1) тип контрактов · свернуть
+ *  2) символ с биржей (explorer) · глубина · агрегация
+ * Биржа переключается выбором строки другой биржи в explorer'е (как в тайтле
+ * графика). Ширина не превышает панель: символ сжимается, у остальных —
+ * короткие mono-контролы «label value ▾» в стиле терминала.
  */
 @Composable
 fun DomHeader(
     domOptions: DomOptions,
     onDomOptionsChanged: (DomOptions) -> Unit,
     providers: List<Provider> = emptyList(),
-    loadedSymbols: List<TradingSymbol> = emptyList(),
+    explorerRows: List<SymbolExplorerRow> = emptyList(),
+    onExplorerRowSelected: (SymbolExplorerRow) -> Unit = {},
     symbolTickSize: Double? = null,
     modifier: Modifier = Modifier
 ) {
@@ -59,8 +63,8 @@ fun DomHeader(
         ExpandedDomHeader(
             domOptions = domOptions,
             onDomOptionsChanged = onDomOptionsChanged,
-            providers = providers,
-            loadedSymbols = loadedSymbols,
+            explorerRows = explorerRows,
+            onExplorerRowSelected = onExplorerRowSelected,
             symbolTickSize = symbolTickSize,
             modifier = modifier
         )
@@ -71,8 +75,8 @@ fun DomHeader(
 private fun ExpandedDomHeader(
     domOptions: DomOptions,
     onDomOptionsChanged: (DomOptions) -> Unit,
-    providers: List<Provider> = emptyList(),
-    loadedSymbols: List<TradingSymbol> = emptyList(),
+    explorerRows: List<SymbolExplorerRow> = emptyList(),
+    onExplorerRowSelected: (SymbolExplorerRow) -> Unit = {},
     symbolTickSize: Double? = null,
     modifier: Modifier = Modifier
 ) {
@@ -88,23 +92,13 @@ private fun ExpandedDomHeader(
         // Узкие панели: агрегация переезжает в третью тонкую строку
         val narrow = maxWidth < 360.dp
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Строка 1: биржа · тип контрактов · сворачивание
+            // Строка 1: тип контрактов · сворачивание
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TerminalInlineSelect(
-                    label = "Ex",
-                    current = domOptions.provider,
-                    items = providers.map { it.providerId },
-                    display = { id ->
-                        providers.firstOrNull { it.providerId == id }?.config?.displayName ?: id
-                    },
-                    onSelect = { onDomOptionsChanged(domOptions.copy(provider = it)) },
-                    menuWidth = 150.dp,
-                )
                 TerminalInlineSelect(
                     label = "Type",
                     current = domOptions.contractType,
@@ -143,12 +137,11 @@ private fun ExpandedDomHeader(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(modifier = Modifier.weight(1f).clipToBounds()) {
-                    DomSymbolDropdown(
-                        currentSymbol = domOptions.symbol,
-                        availableSymbols = loadedSymbols,
-                        onSymbolChanged = { newSymbol ->
-                            onDomOptionsChanged(domOptions.copy(symbol = newSymbol))
-                        },
+                    SymbolExplorerDropdown(
+                        currentSymbol = domOptions.symbol.symbol,
+                        currentExchangeId = domOptions.provider,
+                        rows = explorerRows,
+                        onSelect = onExplorerRowSelected,
                     )
                 }
                 TerminalInlineSelect(

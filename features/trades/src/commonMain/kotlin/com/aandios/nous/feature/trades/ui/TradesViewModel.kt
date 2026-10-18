@@ -12,7 +12,10 @@ import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.data.repository.TradesRepositoryImpl
 import com.aandios.nous.core.Disposable
+import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
+import com.aandios.nous.core.ui.component.toSymbolExplorerRow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,9 +24,13 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
@@ -53,6 +60,7 @@ sealed class TradesState {
 class TradesViewModel(
     private val providerRegistry: ProviderRegistry,
     private val stateStore: StateStore? = null,
+    private val marketOverviewStore: MarketOverviewStore? = null,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var subscriptionJob: Job? = null
@@ -79,6 +87,18 @@ class TradesViewModel(
 
     /** Все символы провайдера (без фильтра по типу контракта). */
     private var allSymbols: List<SymbolInfo> = emptyList()
+
+    /**
+     * Строки explorer-дропдауна из общего каталога рынка ([MarketOverviewStore]):
+     * прелоад и фоновый REST-цикл — внутри стора, панель только маппит их.
+     */
+    val explorerRows: StateFlow<List<SymbolExplorerRow>> =
+        (marketOverviewStore?.state?.map { state -> state.rows.map { it.toSymbolExplorerRow() } }
+            ?: flowOf(emptyList()))
+            .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    /** Символ, выбранный в explorer у ДРУГОЙ биржи: применяется после loadSymbols. */
+    private var pendingExplorerSymbol: String? = null
 
     /** Тип контрактов панели: USDT-M / COIN-M — фильтр списка символов. */
     private val _contractType = MutableStateFlow(ContractType.USDT_M)
@@ -266,6 +286,39 @@ class TradesViewModel(
         if (symbol.isNotEmpty()) subscribeToTrades(symbol)
     }
 
+    /**
+     * Выбор строки explorer-дропдауна: смена биржи переключает провайдера,
+     * символ применяется после загрузки списка биржи.
+     */
+    fun selectExplorerRow(row: SymbolExplorerRow) {
+        if (row.exchangeId != _currentProviderId.value) {
+            pendingExplorerSymbol = row.symbol
+            selectProvider(row.exchangeId)
+            return
+        }
+        applyExplorerSymbol(row.symbol)
+    }
+
+    /** Применить отложенный выбор explorer'а после загрузки символов биржи. */
+    private fun applyPendingExplorerSymbol() {
+        val symbol = pendingExplorerSymbol ?: return
+        pendingExplorerSymbol = null
+        applyExplorerSymbol(symbol)
+    }
+
+    /**
+     * Синхронизировать тип контрактов по SymbolInfo выбранной строки (как в
+     * chart/DOM) и переключить панель на этот символ.
+     */
+    private fun applyExplorerSymbol(symbol: String) {
+        val info = allSymbols.firstOrNull { it.symbol == symbol }
+            ?: loadedSymbols.value.firstOrNull()
+            ?: return
+        val type = ContractType.of(info)
+        if (_contractType.value != type) setContractType(type)
+        if (_currentSymbol.value != info.symbol) subscribeToTrades(info.symbol)
+    }
+
     fun subscribeToTrades(symbol: String) {
         if (symbol == subscribedSymbol && _state.value is TradesState.Connected) return
         subscribedSymbol = symbol
@@ -319,6 +372,7 @@ class TradesViewModel(
                 if (allSymbols.isNotEmpty()) {
                     applyContractTypeFilter()
                     ensureSymbolMatchesContractType()
+                    applyPendingExplorerSymbol()
                 }
             } catch (e: Exception) {
                 println("⚠️ TradesVM: Failed to load symbols: ${e.message}")
