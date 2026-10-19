@@ -90,94 +90,71 @@ private fun ExpandedDomHeader(
             .background(MaterialTheme.colorScheme.surface),
     ) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-        // Узкие панели: агрегация переезжает в третью тонкую строку
-        val narrow = maxWidth < 360.dp
-        Column(modifier = Modifier.fillMaxWidth()) {
-            // Строка 1: символ (сжимается, клип) · сворачивание
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(modifier = Modifier.weight(1f).clipToBounds()) {
-                    SymbolExplorerDropdown(
-                        currentSymbol = domOptions.symbol.symbol,
-                        currentExchangeId = domOptions.provider,
-                        rows = explorerRows,
-                        onSelect = onExplorerRowSelected,
-                    )
-                }
-                // Отключаем M3 min-touch-target (48dp) — компактная строка
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                    IconButton(
-                        onClick = { onDomOptionsChanged(domOptions.copy(collapsed = true)) },
-                        modifier = Modifier.size(20.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = "Свернуть",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.rotate(180f)
+            // Узкие панели: агрегация переезжает в третью тонкую строку
+            val narrow = maxWidth < 360.dp
+            Column(modifier = Modifier.fillMaxWidth()) {
+                // Строка 1: символ (сжимается, клип) · сворачивание
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(modifier = Modifier.weight(1f).clipToBounds()) {
+                        SymbolExplorerDropdown(
+                            currentSymbol = domOptions.symbol.symbol,
+                            currentExchangeId = domOptions.provider,
+                            rows = explorerRows,
+                            onSelect = onExplorerRowSelected,
                         )
                     }
+                    // Отключаем M3 min-touch-target (48dp) — компактная строка
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+                        IconButton(
+                            onClick = { onDomOptionsChanged(domOptions.copy(collapsed = true)) },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = "Свернуть",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.rotate(180f)
+                            )
+                        }
+                    }
                 }
-            }
 
-            HorizontalDivider(
-                color = tokens.colors.panelBorder,
-                thickness = tokens.dimensions.dividerThickness,
-            )
-
-            // Строка 2: глубина · агрегация
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Spacer(Modifier.weight(1f))
-                TerminalInlineSelect(
-                    label = "Depth",
-                    current = domOptions.depth,
-                    items = DepthLimit.standardValues.map { DepthLimit.create(it) },
-                    display = { it.value.toString() },
-                    onSelect = { onDomOptionsChanged(domOptions.copy(depth = it)) },
-                    menuWidth = 90.dp,
+                HorizontalDivider(
+                    color = tokens.colors.panelBorder,
+                    thickness = tokens.dimensions.dividerThickness,
                 )
-//                if (!narrow) {
+
+                // Строка 2: глубина · агрегация
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TerminalInlineSelect(
+                        label = "Depth",
+                        current = domOptions.depth,
+                        items = DepthLimit.standardValues.map { DepthLimit.create(it) },
+                        display = { it.value.toString() },
+                        onSelect = { onDomOptionsChanged(domOptions.copy(depth = it)) },
+                        menuWidth = 90.dp,
+                    )
                     AggTerminalInlineSelect(
                         current = domOptions.aggregation,
                         symbolTickSize = symbolTickSize,
                         onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
                     )
-//                }
+                }
+                HorizontalDivider(
+                    color = tokens.colors.panelBorder,
+                    thickness = tokens.dimensions.dividerThickness,
+                )
             }
-//            Spacer(Modifier.weight(1f))
-//            if (narrow) {
-//                HorizontalDivider(
-//                    color = tokens.colors.panelBorder,
-//                    thickness = tokens.dimensions.dividerThickness,
-//                )
-//                // Узкая панель: агрегация в третьей строке
-//                Row(
-//                    modifier = Modifier.fillMaxWidth()
-//                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
-//                    verticalAlignment = Alignment.CenterVertically
-//                ) {
-//                    Spacer(Modifier.weight(1f))
-//                    AggTerminalInlineSelect(
-//                        current = domOptions.aggregation,
-//                        symbolTickSize = symbolTickSize,
-//                        onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
-//                    )
-//                }
-//            }
-//            HorizontalDivider(
-//                color = tokens.colors.panelBorder,
-//                thickness = tokens.dimensions.dividerThickness,
-//            )
-        }
         }
     }
 }
