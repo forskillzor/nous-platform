@@ -22,10 +22,10 @@ import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 /** Режимы терминала во второй полосе (визуальные табы). */
 enum class TerminalMode(val label: String) {
-    ACTIVE_FLOW("Active Flow"),
-    BTC_SUITE("BTC Suite"),
-    EXECUTION("Execution"),
+    WORKSPACES("Workspaces"),
     RESEARCH("Research"),
+    BACKTESTING("Backtesting"),
+    EXECUTION("Execution"),
 }
 
 /**

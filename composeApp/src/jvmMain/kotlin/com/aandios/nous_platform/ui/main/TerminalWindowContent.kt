@@ -8,7 +8,6 @@ package com.aandios.nous_platform.ui.main
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -133,7 +132,7 @@ fun TerminalWindowContent(
     val externalDragActive = externalDrag?.let { it.sourceWindowId != session.id } == true
     var themeSettingsOpen by remember { mutableStateOf(false) }
 
-    var currentMode by remember { mutableStateOf(TerminalMode.ACTIVE_FLOW) }
+    var currentMode by remember { mutableStateOf(TerminalMode.WORKSPACES) }
     var addMenuExpanded by remember { mutableStateOf(false) }
     val tokens = LocalTerminalDesignTokens.current
 
