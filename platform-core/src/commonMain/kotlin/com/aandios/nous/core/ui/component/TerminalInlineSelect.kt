@@ -11,8 +11,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,24 +76,16 @@ fun <T> TerminalInlineSelect(
             )
         }
 
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(menuWidth ?: tokens.dimensions.inlineSelectMenuWidth),
         ) {
             items.forEach { item ->
                 val selected = item == current
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = display(item),
-                            color = if (selected) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
-                            fontSize = tokens.typography.controlSize,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                            maxLines = 1,
-                        )
-                    },
+                TerminalMenuItem(
+                    text = display(item),
+                    selected = selected,
                     onClick = {
                         onSelect(item)
                         expanded = false

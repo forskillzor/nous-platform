@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,7 +49,8 @@ fun ToolDetailsPanel(
     type: ToolPanelType,
     width: Dp,
     selectedSymbol: String,
-    onSymbolSelected: (String) -> Unit,
+    selectedProviderId: String? = null,
+    onSymbolSelected: (String, String) -> Unit,
     selectedTimeframe: String,
     onTimeframeSelected: (String) -> Unit,
     onClose: () -> Unit,
@@ -77,6 +79,7 @@ fun ToolDetailsPanel(
                 // Market Watch рисует собственный заголовок по прототипу
                 SymbolsPanel(
                     selectedSymbol = selectedSymbol,
+                    selectedProviderId = selectedProviderId,
                     onSymbolSelected = onSymbolSelected,
                     workspaceTemplates = marketWatchTemplates,
                     onOpenWorkspaceTemplate = onOpenMarketWatchTemplate,
@@ -183,13 +186,17 @@ private fun CornerResizeGrip(
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val color = if (hovered) tokens.colors.accent else tokens.colors.label.copy(alpha = 0.55f)
+    // pointerInput(Unit) не перезапускается: обработчик читаем через
+    // rememberUpdatedState, иначе жест навсегда замыкается на первый колбэк,
+    // который считает ширину от устаревшего topPanelState (дрожание/«не тянется»).
+    val currentOnDrag by rememberUpdatedState(onDrag)
 
     Box(
         modifier = modifier
             .size(16.dp)
             .hoverable(interaction)
             .pointerInput(Unit) {
-                detectHorizontalDragGestures { _, dragAmount -> onDrag(dragAmount) }
+                detectHorizontalDragGestures { _, dragAmount -> currentOnDrag(dragAmount) }
             },
         contentAlignment = Alignment.Companion.Center,
     ) {

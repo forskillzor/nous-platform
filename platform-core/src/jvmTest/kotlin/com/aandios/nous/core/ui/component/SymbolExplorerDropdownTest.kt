@@ -5,6 +5,7 @@
 
 package com.aandios.nous.core.ui.component
 
+import androidx.compose.ui.graphics.Color
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -246,5 +247,18 @@ class SymbolExplorerDropdownTest {
         assertEquals("48 CONTRACTS · SORTED BY VOLUME", explorerFooterText(48, SymbolExplorerSort.VOLUME))
         assertEquals("12 CONTRACTS · SORTED BY 24H %", explorerFooterText(12, SymbolExplorerSort.CHANGE))
         assertNotNull(explorerFooterText(1, SymbolExplorerSort.SYMBOL))
+    }
+
+    @Test
+    fun `highlight annotation covers only the matched substring`() {
+        val accent = Color(0xFFF28C18)
+        val text = highlightedSymbol("WBTCUSDT", 1..3, accent)
+
+        assertEquals("WBTCUSDT", text.text)
+        val span = assertNotNull(text.spanStyles.singleOrNull())
+        assertEquals(1, span.start)
+        assertEquals(4, span.end)
+        // Подсветка совпадения идёт цветом темы, а не хардкодом.
+        assertEquals(accent, span.item.color)
     }
 }

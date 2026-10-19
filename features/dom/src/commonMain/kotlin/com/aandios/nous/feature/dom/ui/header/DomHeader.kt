@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.api.market.Provider
-import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
 import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.component.TerminalInlineSelect
@@ -34,8 +33,10 @@ import com.aandios.nous.feature.dom.domain.model.DepthLimit
 
 /**
  * Заголовок DOM: две компактные строки без «двойных» рамок —
- *  1) тип контрактов · свернуть
- *  2) символ с биржей (explorer) · глубина · агрегация
+ *  1) символ с биржей (explorer) · свернуть
+ *  2) глубина · агрегация
+ * Тип контрактов отдельной кнопкой не переключается: он однозначно известен
+ * из символа (perpetual/инверс) и синхронизируется выбором строки в explorer'е.
  * Биржа переключается выбором строки другой биржи в explorer'е (как в тайтле
  * графика). Ширина не превышает панель: символ сжимается, у остальных —
  * короткие mono-контролы «label value ▾» в стиле терминала.
@@ -92,22 +93,21 @@ private fun ExpandedDomHeader(
         // Узкие панели: агрегация переезжает в третью тонкую строку
         val narrow = maxWidth < 360.dp
         Column(modifier = Modifier.fillMaxWidth()) {
-            // Строка 1: тип контрактов · сворачивание
+            // Строка 1: символ (сжимается, клип) · сворачивание
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                TerminalInlineSelect(
-                    label = "Type",
-                    current = domOptions.contractType,
-                    items = ContractType.entries.toList(),
-                    display = { it.label },
-                    onSelect = { onDomOptionsChanged(domOptions.copy(contractType = it)) },
-                    menuWidth = 120.dp,
-                )
-                Spacer(Modifier.weight(1f))
+                Box(modifier = Modifier.weight(1f).clipToBounds()) {
+                    SymbolExplorerDropdown(
+                        currentSymbol = domOptions.symbol.symbol,
+                        currentExchangeId = domOptions.provider,
+                        rows = explorerRows,
+                        onSelect = onExplorerRowSelected,
+                    )
+                }
                 // Отключаем M3 min-touch-target (48dp) — компактная строка
                 CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
                     IconButton(
@@ -129,21 +129,14 @@ private fun ExpandedDomHeader(
                 thickness = tokens.dimensions.dividerThickness,
             )
 
-            // Строка 2: символ (сжимается, клип) · глубина · агрегация
+            // Строка 2: глубина · агрегация
             Row(
                 modifier = Modifier.fillMaxWidth()
                     .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xxs),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(modifier = Modifier.weight(1f).clipToBounds()) {
-                    SymbolExplorerDropdown(
-                        currentSymbol = domOptions.symbol.symbol,
-                        currentExchangeId = domOptions.provider,
-                        rows = explorerRows,
-                        onSelect = onExplorerRowSelected,
-                    )
-                }
+                Spacer(Modifier.weight(1f))
                 TerminalInlineSelect(
                     label = "Depth",
                     current = domOptions.depth,
@@ -152,37 +145,38 @@ private fun ExpandedDomHeader(
                     onSelect = { onDomOptionsChanged(domOptions.copy(depth = it)) },
                     menuWidth = 90.dp,
                 )
-                if (!narrow) {
+//                if (!narrow) {
                     AggTerminalInlineSelect(
                         current = domOptions.aggregation,
                         symbolTickSize = symbolTickSize,
                         onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
                     )
-                }
+//                }
             }
-            if (narrow) {
-                HorizontalDivider(
-                    color = tokens.colors.panelBorder,
-                    thickness = tokens.dimensions.dividerThickness,
-                )
-                // Узкая панель: агрегация в третьей строке
-                Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    AggTerminalInlineSelect(
-                        current = domOptions.aggregation,
-                        symbolTickSize = symbolTickSize,
-                        onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
-                    )
-                    Spacer(Modifier.weight(1f))
-                }
-            }
-            HorizontalDivider(
-                color = tokens.colors.panelBorder,
-                thickness = tokens.dimensions.dividerThickness,
-            )
+//            Spacer(Modifier.weight(1f))
+//            if (narrow) {
+//                HorizontalDivider(
+//                    color = tokens.colors.panelBorder,
+//                    thickness = tokens.dimensions.dividerThickness,
+//                )
+//                // Узкая панель: агрегация в третьей строке
+//                Row(
+//                    modifier = Modifier.fillMaxWidth()
+//                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.sm),
+//                    verticalAlignment = Alignment.CenterVertically
+//                ) {
+//                    Spacer(Modifier.weight(1f))
+//                    AggTerminalInlineSelect(
+//                        current = domOptions.aggregation,
+//                        symbolTickSize = symbolTickSize,
+//                        onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
+//                    )
+//                }
+//            }
+//            HorizontalDivider(
+//                color = tokens.colors.panelBorder,
+//                thickness = tokens.dimensions.dividerThickness,
+//            )
         }
         }
     }

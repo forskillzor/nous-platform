@@ -39,6 +39,7 @@ import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.ui.component.PanelTextWatermark
+import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.ui.component.TerminalDropdown
 import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.component.TerminalSwitch
@@ -118,7 +119,10 @@ fun TradingPanel(
     val contractType by viewModel.contractType.collectAsState()
     val symbolTypes by viewModel.symbolTypes.collectAsState()
     val dailyPnl by viewModel.dailyPnl.collectAsState()
+    val connections by viewModel.connections.collectAsState()
     val paperSettings: PaperSettingsController = koinInject()
+    var connectionsExpanded by remember { mutableStateOf(false) }
+    var connectionError by remember { mutableStateOf<TradingConnection?>(null) }
 
     // Фильтр по типу контрактов: позиции/ордера/история/балансы
     val visiblePositions = remember(positions, contractType, symbolTypes) {
@@ -180,6 +184,19 @@ fun TradingPanel(
                 enabled = paperEnabled,
                 onToggle = { viewModel.setPaperEnabled(it) },
             )
+            // Подключения сессии (REST + приватный стрим): статусы и ошибки
+            Box {
+                ConnectionsButton(connections = connections, onClick = { connectionsExpanded = true })
+                ConnectionsMenu(
+                    expanded = connectionsExpanded,
+                    connections = connections,
+                    onDismiss = { connectionsExpanded = false },
+                    onConnectionClick = { connection ->
+                        connectionsExpanded = false
+                        connectionError = connection
+                    },
+                )
+            }
             // Настройки paper trading (баланс/сбросы) — отдельное окно
             Text(
                 text = "⚙",
@@ -305,6 +322,18 @@ fun TradingPanel(
                 }
             }
         }
+    }
+
+    // Ошибка подключения из окна Manage connections
+    connectionError?.let { connection ->
+        TerminalContextPopup(
+            expanded = true,
+            onDismiss = { connectionError = null },
+            title = connection.label,
+            message = connection.detail ?: "Unknown error",
+            confirmText = "OK",
+            onConfirm = { connectionError = null },
+        )
     }
 }
 

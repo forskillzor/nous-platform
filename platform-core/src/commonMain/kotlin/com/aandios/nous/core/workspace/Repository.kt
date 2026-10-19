@@ -30,8 +30,13 @@ class WorkspaceRepository(
         return try { json.decodeFromString<WorkspaceConfig>(raw) } catch (_: Exception) { null }
     }
 
-    suspend fun update(config: WorkspaceConfig) {
-        val updated = config.copy(updatedAt = currentTime())
+    /**
+     * Обновляет workspace. [touchUpdatedAt] = false для структурных правок
+     * навигатора (перенос между папками, порядок, переименование папки), чтобы
+     * не искажать «недавние» по updatedAt.
+     */
+    suspend fun update(config: WorkspaceConfig, touchUpdatedAt: Boolean = true) {
+        val updated = if (touchUpdatedAt) config.copy(updatedAt = currentTime()) else config
         store.putString("$PREFIX${config.id}", json.encodeToString(updated))
     }
 

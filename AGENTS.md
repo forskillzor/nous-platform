@@ -58,9 +58,8 @@ Mind this when writing paths.
   these lists themselves — do not reintroduce duplicate loads.
 - Consumers: the chart explorer (`ChartViewModel.explorerRows` maps
   `MarketOverviewRow.toSymbolExplorerRow()` — `.P` suffix, uppercased exchange
-  label) and Market Watch (`MarketWatchStore` in composeApp is a thin façade
-  mapping the same state into `MarketWatchState`, so `SymbolsPanel` is
-  untouched).
+  label) and the Market Watch panel (`SymbolsPanel` maps the same rows the
+  same way; both render the shared `SymbolExplorerContent`).
 - WS live tickers (Binance `!ticker@arr`, MEXC `sub.tickers`; Bybit has no
   all-market ticker stream) are a possible follow-up — if added, keep them
   inside the store so consumers stay unchanged; Bybit stays REST regardless.
@@ -83,8 +82,30 @@ Mind this when writing paths.
   `trading_provider`, `trading_contract_type` (global keys). The window top bar
   Paper switch writes the same `paper_enabled` flag through the shared
   `PaperModeState` singleton (`features/trading`), so header and docked panel
-  stay in sync; `TradingViewModel` observes it for external changes.
+  stay in sync; `TradingViewModel` observes it for external changes. The header
+  has a Manage connections button (signal glyph tinted by the worst status)
+  opening `ConnectionsMenu` (`TradingConnectionsMenu.kt`): rows REST API /
+  Account stream with `TradingViewModel.connections` statuses
+  CONNECTED / CONNECTING / ERROR — CONNECTING during restart, REST flips on
+  core-call failures in `refreshAll`, stream on `subscribeTo*` availability
+  and collector failures; paper mode reports local CONNECTED ("Paper engine").
+  ERROR rows open `TerminalContextPopup` with the error detail.
 - Trades panel: `trades_provider` (global key).
+- Sidebar (tool panel) width: `tool_panel_width` (plain float dp, restore clamped
+  to `workspaceToolPanelMin/MaxWidth`, save debounced 400 ms) via
+  `ToolPanelPrefsRepository` (platform-core, `core/ui/panel`).
+- Market Watch panel: `market_watch_prefs` (JSON `MarketWatchPrefs`: exchangeId
+  (null = all), listId, sort name, descending, perpetualsOnly, quoteAsset,
+  scrollIndex/scrollOffset) — same repository; legacy payloads ("ALL",
+  "SYMBOL" defaults) decode via field defaults, scroll restores after catalog
+  rows load, saves debounced 500 ms. The panel list is the shared
+  `SymbolExplorerContent` (platform-core): tabs ALL + watchlists, ⌘K search,
+  PERPETUALS/quote/exchange chips, funnel sort, `.P` display symbols, per-row
+  star (active list or Favourites); the panel adds only a row context menu
+  (Apply to current workspace, OPEN <sym> WITH templates, Add to <list name>)
+  and a ⚙ menu (New/Rename/Delete list, Close panel). Catalog failures are
+  never printed in the body: a red exclamation badge in the panel title opens
+  `TerminalContextPopup` with `MarketOverviewStore.state.error`.
 - Chart: provider/contract-type state is global (`chart_provider_id`,
   `chart_contract_type`).
 - Theme selection is global (`terminal_theme`) and is managed by
@@ -140,6 +161,12 @@ Mind this when writing paths.
 ### Order flow
 - Chart: `ChartViewModel.buildTradingRequest` builds an `OrderRequest`
   (leverage + marginMode + optional TP/SL), submitted via the active adapter.
+- Chart trading panel (`ChartTradingPanel`): order type is one dropdown
+  (LIMIT/POST_ONLY/IOC/FOK/MARKET); the Price field (hidden for MARKET) feeds
+  Buy Limit / Sell Limit — empty falls back to best bid/ask (previous
+  behaviour); Qty/Price inputs show base/quote currency suffixes; primary
+  CTAs are `BUY / LONG` / `SELL / SHORT` (no hotkey hints); RO + Confirm
+  chips stay on one row.
 - DOM: `OrderIntent` → `MarketOrderCommand` / `LimitOrderCommand` /
   `BestBidAskCommand`, which build and execute `OrderRequest`s.
 - Both panels share `TradingAdapter.replaceOrder(order, price, quantity,
@@ -279,7 +306,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
 
 ### Where tests live
 - `platform-core/src/jvmTest` — workspace/format utilities, `MarketOverviewStore`,
-  symbol search/explorer (`SymbolSearchTest`, `SymbolExplorerDropdownTest`).
+  explorer (`SymbolExplorerDropdownTest`), menu rows (`TerminalMenuItemTest`).
 - `public-api/api-market/src/jvmTest` — paper engine, adapters, commands.
 - `features/dom/src/commonTest` — DOM view model (fakes), including
   explorer selection (provider switch + pending symbol, contract-type sync).
@@ -361,6 +388,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - Chart title symbol control is `SymbolExplorerDropdown` (platform-core):
   closed trigger shows the current exchange in `primary` accent at
   `microSize` before the unchanged symbol text;
+  its popup body is the shared `SymbolExplorerContent` (hoisted state params,
+  optional `rowMenu` per-row context menu hook) — Market Watch renders the
+  same composable inline, so keep new explorer features inside the content;
   tabs ALL + watchlist names uppercased (stars write into an auto-created
   `Favourites` list), search field with hit highlight and ⌘K / Ctrl+K focus,
   chips PERPETUALS / quote / exchange, funnel sort (VOLUME / 24H % / PRICE /
@@ -381,18 +411,49 @@ from the IDE and tests visually; agents verify via compilation and tests.
   in `applyPendingExplorerSymbol`); same-exchange picks sync `contractType`
   from the row's `SymbolInfo` without a double chart load.
   Search uses the single shared matcher (`compileSearchRegex`/`matchSymbol` in
-  `SymbolExplorerDropdown.kt`; also backs Market Watch's `searchSymbols`):
+  `SymbolExplorerDropdown.kt`):
   symbol first (highlight range; score exact → prefix → substring → empty),
   then meta fields (exchange/PERP/quote, no highlight). With a query typed and
   the SYMBOL sort active the explorer ranks by relevance (↓/↑ inverts, like
   Market Watch); other sort chips keep their field order.
   DOM and Trades headers use the same explorer (`SymbolExplorerDropdown` in the
-  second header row; their old `Ex` inline-select and `DomSymbolDropdown` /
-  `TradesSymbolDropdown` are gone): the VMs expose `explorerRows` from the
+  first header row next to the contract-type button; their old `Ex`
+  inline-select and `DomSymbolDropdown` / `TradesSymbolDropdown` are gone):
+  the VMs expose `explorerRows` from the
   shared `MarketOverviewStore`, `selectExplorerRow(row)` switches the provider
   (DOM: Trading OFF; Trades: `selectProvider`) and applies the symbol via
   `pendingExplorerSymbol` after `loadSymbols()`, syncing `contractType` from
-  the row's `SymbolInfo`.
+  the row's `SymbolInfo`. Header layout: none of the headers has a separate
+  contract-type button — the type is implied by the symbol (row picks sync
+  `contractType`); DOM row 1 = symbol explorer + collapse, row 2 = depth + agg
+  (agg wraps to a third row on narrow panels); Trades is a single row =
+  symbol explorer + size filter.
+  Trades size filter is one box button: funnel glyph (`TerminalFunnelGlyph`,
+  shared with the explorer sort funnel) + current mode in `primary` text
+  ("ALL" / "≥ …").
+- Left sidebar is `WorkspaceNavigator` (platform-core, replaced `ProjectTree`):
+  workspace tree grouped by `WorkspaceConfig.group` folders ("Unsorted" =
+  empty group, pinned first, `folderOrder` then alphabetical), folder
+  create/rename/delete and workspace rename/make-template/delete via theme
+  island menus (`NavigatorMenuItem`), inline rename, search via the shared
+  matcher (folder-name match keeps all children; invalid regex shows an error
+  and hides the tree while searching), drag & drop for workspaces
+  (into/between folders, auto-expands collapsed target) and folders, Quick
+  Access templates section; pure model + DnD resolution live in
+  `WorkspaceNavigatorModel.kt` (`buildNavigatorTree`,
+  `visibleNavigatorItems`, `resolveNavigatorDropTarget`,
+  `applyWorkspaceDrop`/`applyFolderDrop` — unit-tested). Workspace rows use
+  the Market Watch row style: 46dp, full-height accent bar, full-height
+  mosaic column (16dp glyph, like the explorer star), two lines (name +
+  `navigatorWorkspaceSubline`
+  "Exchange · Symbol", always visible), thin bottom divider; folder rows stay
+  compact 26dp. Folder order and
+  collapsed set persist via `NavigatorStateRepository` (`navigator_state` in
+  StateStore); structural moves persist user workspaces through
+  `WorkspaceRepository.update(..., touchUpdatedAt = false)` so "recent"
+  ordering is not polluted. Sidebar icon (mosaic) is
+  `composeResources/drawable/workspaces.svg`; other navigator glyphs are
+  Canvas-drawn in platform-core (no composeResources there).
 - The shared rounded dropdown shell is `TerminalBoxDropdown` (platform-core,
   compact MW-LIST style: 11sp mono text, smallCard radius, 2dp/6dp padding,
   12dp chevron; styles `NORMAL` (45% `panelHeaderSurface` fill, white text),
@@ -400,10 +461,22 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (solid accent fill, dark text, no chevron — timeframe)); the Market Watch
   LIST dropdown renders through it —
   keep new title dropdowns on it instead of hand-rolled boxes. Dropdown menu
-  popups (the shell and the explorer's chip/funnel submenus) are styled as
-  theme islands like workspace panels: `workspacePanel` radius,
-  `panelSurface` fill, `panelBorder` border at `borderWidth`, zero
-  tonal/shadow elevation.
+  popups (the shell, explorer chip/funnel submenus, panel ⚙/split menus,
+  DOM/Trades selects, size filter, depth, navigator menus) render through the
+  shared `TerminalDropdownMenu` wrapper — theme islands like workspace panels:
+  `workspacePanel` radius, `panelSurface` fill, `panelBorder` border at
+  `borderWidth`, zero tonal/shadow elevation. Never call M3 `DropdownMenu`
+  directly (bidasker-web is a separate web prototype, exempt).
+- All menu/dropdown options render through the shared `TerminalMenuItem`
+  (platform-core): 26dp row (like workspaces list rows), 2dp accent left bar +
+  `selection` background on the selected option (explorer style),
+  `panelHeaderSurface` hover, `indication = null`; plain mono text
+  `compactSize`/`controlLineHeight`. It is a plain Row, not M3
+  `DropdownMenuItem`, because M3 enforces a 48dp minimum item height. Used by
+  `TerminalBoxDropdown`/`TerminalDropdown`/`TerminalInlineSelect`, explorer
+  chips/funnel, chart settings rows, panel/⚙ menus and trades size filter;
+  guarded by `TerminalMenuItemTest`. Do not reintroduce `DropdownMenuItem`
+  for option rows (bidasker-web is a separate web prototype, exempt).
 - Texts inside compact controls must set `lineHeight` explicitly
   (`controlLineHeight` for box triggers): `Text` merges with the inherited
   Material `LocalTextStyle`, so a small `fontSize` alone still lays out the
@@ -436,9 +509,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `PanelTextWatermark` is the generic form (big text + sub lines) and backs the
   docked trading panel watermark (exchange name + USDT-M/COIN-M, center of the
   content area).
-- Trades panel width is a setting, not a drag: the header gear
-  (`TradesSettingsGear`) opens a width slider (min = measured trade-row text
-  width from `TradesWidget` + 4dp column gaps + 8dp outer padding, max =
+- Trades panel width is a setting, not a drag: the panel ⚙ menu (title bar;
+  `TradesWidthMenuContent`, features/trades jvmMain) opens a width slider
+  (min = measured trade-row text width from `TradesWidget` + 4dp column gaps +
+  8dp outer padding, pushed into `TradesViewModel.measuredMinWidthDp`, max =
   `TradesRecommendedWidth`); `TradesViewModel.attachPanel` persists it under
   `trades_width_{panelId}` and `WorkspaceView` feeds it into
   `LayoutRenderer.fixedPanelWidths`. DOM stays rigid `fixedPanelWidths`.

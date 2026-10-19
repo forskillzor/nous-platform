@@ -16,8 +16,6 @@ import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -31,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalDesignTokens
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
@@ -231,7 +231,7 @@ private fun TabItem(
     ) {
         Text(
             text = name,
-            color = if (isActive) MaterialTheme.colorScheme.onSurface
+            color = if (isActive) MaterialTheme.colorScheme.primary
             else tokens.colors.label,
             fontSize = tokens.typography.compactSize,
             fontFamily = TerminalFontFamily,
@@ -251,15 +251,9 @@ private fun TabItem(
                         .clickable { menuExpanded = true }
                         .padding(horizontal = tokens.spacing.xxs)
                 )
-                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                "Open in new window",
-                                fontSize = tokens.typography.controlSize,
-                                fontFamily = TerminalFontFamily,
-                            )
-                        },
+                TerminalDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    TerminalMenuItem(
+                        text = "Open in new window",
                         onClick = {
                             menuExpanded = false
                             onOpenInNewWindow()

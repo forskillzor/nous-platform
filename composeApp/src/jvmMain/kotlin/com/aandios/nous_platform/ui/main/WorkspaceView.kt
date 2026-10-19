@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -31,6 +30,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
@@ -49,6 +49,7 @@ import com.aandios.nous.feature.dom.ui.DomWindow
 import com.aandios.nous.feature.dom.ui.DomRecommendedWidth
 import com.aandios.nous.feature.trades.ui.SizeFilter
 import com.aandios.nous.feature.trades.ui.TradesViewModel
+import com.aandios.nous.feature.trades.ui.TradesWidthMenuContent
 import com.aandios.nous.feature.trades.ui.TradesWindow
 import com.aandios.nous.feature.trading.ui.TradingViewModel
 import com.aandios.nous.feature.trading.ui.TradingWindow
@@ -252,7 +253,7 @@ fun WorkspaceView(
                 }
             },
             // Меню шестерёнки тайтла: у графика — настройки графика,
-            // у остальных — закрытие панели.
+            // у Trades — ширина панели; у остальных пока закрытие панели.
             panelSettingsContent = { panelId, dismiss ->
                 panelConfigs[panelId]?.let { pc ->
                     when (pc.type) {
@@ -261,6 +262,13 @@ fun WorkspaceView(
                                 koinInject<ChartViewModel>()
                             } as ChartViewModel
                             ChartSettingsMenu(chartViewModel = vm, dismiss = dismiss)
+                        }
+
+                        PanelType.TRADES -> {
+                            val vm = ws.liveViewModels.getOrPut("${pc.id}_trades") {
+                                koinInject<TradesViewModel>()
+                            } as TradesViewModel
+                            TradesWidthMenuContent(vm)
                         }
 
                         else -> PanelCloseMenuItem {
@@ -336,18 +344,7 @@ private fun PanelTitleLabel(text: String, glyph: String? = null, stream: Boolean
 
 @Composable
 private fun PanelCloseMenuItem(onClick: () -> Unit) {
-    val tokens = LocalTerminalDesignTokens.current
-    DropdownMenuItem(
-        text = {
-            Text(
-                text = "Close panel",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = tokens.typography.compactSize,
-                fontFamily = TerminalFontFamily,
-            )
-        },
-        onClick = onClick,
-    )
+    TerminalMenuItem(text = "Close panel", onClick = onClick)
 }
 
 @Composable

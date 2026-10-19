@@ -17,6 +17,7 @@ import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.storage.StateStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +29,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+
+/** Статус подключения торговой сессии для окна Manage connections. */
+enum class TradingConnectionStatus { CONNECTED, CONNECTING, ERROR }
+
+/** Строка окна Manage connections: REST API или приватный стрим счёта. */
+data class TradingConnection(
+    val id: String,
+    val label: String,
+    val status: TradingConnectionStatus,
+    val detail: String? = null,
+)
 
 /**
  * Состояние торговой панели: позиции, ордера, балансы, история +
@@ -102,6 +114,10 @@ class TradingViewModel(
     /** Реализованный PnL за сегодня (null — адаптер не поддерживает). */
     private val _dailyPnl = MutableStateFlow<Double?>(null)
     val dailyPnl: StateFlow<Double?> = _dailyPnl.asStateFlow()
+
+    /** Подключения сессии (REST API + приватный стрим) — окно Manage connections. */
+    private val _connections = MutableStateFlow<List<TradingConnection>>(emptyList())
+    val connections: StateFlow<List<TradingConnection>> = _connections.asStateFlow()
 
     fun selectTab(tab: String) {
         if (tab.isNotEmpty()) _activeTab.value = tab
@@ -187,9 +203,14 @@ class TradingViewModel(
         refreshJob?.cancel()
         liveJobs.forEach { it.cancel() }
         liveJobs.clear()
+        resetConnections()
         loadSymbolTypes()
         refreshJob = scope.launch {
-            val adapter = tradingAdapter() ?: return@launch
+            val adapter = tradingAdapter()
+            if (adapter == null) {
+                failConnections("Trading adapter is unavailable for ${providerRegistry.displayName(_providerId.value)}")
+                return@launch
+            }
             refreshAll(adapter)
             startLive(adapter)
             while (isActive) {
@@ -242,14 +263,26 @@ class TradingViewModel(
     }
 
     private suspend fun refreshAll(adapter: com.aandios.nous.api.market.adapters.TradingAdapter) {
-        runCatching { adapter.getPositions() }.onSuccess { _positions.value = it }
-        runCatching { adapter.getOpenOrders() }.onSuccess { _openOrders.value = it }
-        runCatching { adapter.getBalances() }.onSuccess { _balances.value = it }
+        var restError: String? = null
+        fun recordRestFailure(e: Throwable) {
+            if (restError == null) restError = e.message ?: "request failed"
+        }
+        runCatching { adapter.getPositions() }.onSuccess { _positions.value = it }.onFailure { recordRestFailure(it) }
+        runCatching { adapter.getOpenOrders() }.onSuccess { _openOrders.value = it }.onFailure { recordRestFailure(it) }
+        runCatching { adapter.getBalances() }.onSuccess { _balances.value = it }.onFailure { recordRestFailure(it) }
         // История — сразу, чтобы счётчик на табе был точным
         runCatching { adapter.getTradeHistory(limit = 100) }.onSuccess { _tradeHistory.value = it }
         runCatching { adapter.getPositionMode() }.onSuccess { if (it != null) _positionMode.value = it }
         // Реализованный PnL за сегодня (у Binance-заглушки — null)
         _dailyPnl.value = runCatching { adapter.getDailyRealizedPnl() }.getOrNull()
+        // Paper-движок локальный — его состояние не отражает REST-подключение.
+        if (_paperEnabled.value) return
+        val error = restError
+        setConnectionStatus(
+            REST_CONNECTION_ID,
+            if (error == null) TradingConnectionStatus.CONNECTED else TradingConnectionStatus.ERROR,
+            error,
+        )
     }
 
     fun refreshTradeHistory() {
@@ -260,24 +293,60 @@ class TradingViewModel(
     }
 
     private fun startLive(adapter: com.aandios.nous.api.market.adapters.TradingAdapter) {
-        adapter.subscribeToPositions()?.let { flow ->
+        val positionsFlow = runCatching { adapter.subscribeToPositions() }.getOrNull()
+        val ordersFlow = runCatching { adapter.subscribeToOrders() }.getOrNull()
+        val balancesFlow = runCatching { adapter.subscribeToBalances() }.getOrNull()
+        when {
+            // Paper-движок живёт в процессе — стрим не зависит от ключей биржи.
+            _paperEnabled.value ->
+                setConnectionStatus(STREAM_CONNECTION_ID, TradingConnectionStatus.CONNECTED, "Paper engine")
+
+            positionsFlow != null || ordersFlow != null || balancesFlow != null ->
+                setConnectionStatus(STREAM_CONNECTION_ID, TradingConnectionStatus.CONNECTED, null)
+
+            else ->
+                setConnectionStatus(
+                    STREAM_CONNECTION_ID,
+                    TradingConnectionStatus.ERROR,
+                    "Private stream is unavailable — add API keys for this exchange",
+                )
+        }
+        positionsFlow?.let { flow ->
             liveJobs += scope.launch {
-                flow.collect { update ->
-                    _positions.value = upsertPosition(_positions.value, update)
+                try {
+                    flow.collect { update ->
+                        _positions.value = upsertPosition(_positions.value, update)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    setConnectionStatus(STREAM_CONNECTION_ID, TradingConnectionStatus.ERROR, e.message ?: "stream error")
                 }
             }
         }
-        adapter.subscribeToOrders()?.let { flow ->
+        ordersFlow?.let { flow ->
             liveJobs += scope.launch {
-                flow.collect { update ->
-                    _openOrders.value = upsertOrder(_openOrders.value, update)
+                try {
+                    flow.collect { update ->
+                        _openOrders.value = upsertOrder(_openOrders.value, update)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    setConnectionStatus(STREAM_CONNECTION_ID, TradingConnectionStatus.ERROR, e.message ?: "stream error")
                 }
             }
         }
-        adapter.subscribeToBalances()?.let { flow ->
+        balancesFlow?.let { flow ->
             liveJobs += scope.launch {
-                flow.collect { update ->
-                    _balances.value = upsertBalance(_balances.value, update)
+                try {
+                    flow.collect { update ->
+                        _balances.value = upsertBalance(_balances.value, update)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    setConnectionStatus(STREAM_CONNECTION_ID, TradingConnectionStatus.ERROR, e.message ?: "stream error")
                 }
             }
         }
@@ -286,6 +355,35 @@ class TradingViewModel(
             liveJobs += scope.launch {
                 flow.collect { text -> _lastMessage.value = text }
             }
+        }
+    }
+
+    // ── Manage connections (REST API + приватный стрим) ──
+
+    /** Сброс статусов перед подключением: paper — сразу connected, live — connecting. */
+    private fun resetConnections() {
+        val paper = _paperEnabled.value
+        fun row(id: String, label: String) = TradingConnection(
+            id = id,
+            label = label,
+            status = if (paper) TradingConnectionStatus.CONNECTED else TradingConnectionStatus.CONNECTING,
+            detail = if (paper) "Paper engine" else null,
+        )
+        _connections.value = listOf(
+            row(REST_CONNECTION_ID, "REST API"),
+            row(STREAM_CONNECTION_ID, "Account stream"),
+        )
+    }
+
+    private fun setConnectionStatus(id: String, status: TradingConnectionStatus, detail: String?) {
+        _connections.value = _connections.value.map {
+            if (it.id == id) it.copy(status = status, detail = detail) else it
+        }
+    }
+
+    private fun failConnections(message: String) {
+        _connections.value = _connections.value.map {
+            it.copy(status = TradingConnectionStatus.ERROR, detail = message)
         }
     }
 
@@ -391,5 +489,9 @@ class TradingViewModel(
 
         /** Ключ StateStore: тип контрактов панели (USDT_M / COIN_M). */
         const val CONTRACT_TYPE_STORE_KEY = "trading_contract_type"
+
+        /** Идентификаторы строк окна Manage connections. */
+        const val REST_CONNECTION_ID = "rest"
+        const val STREAM_CONNECTION_ID = "stream"
     }
 }

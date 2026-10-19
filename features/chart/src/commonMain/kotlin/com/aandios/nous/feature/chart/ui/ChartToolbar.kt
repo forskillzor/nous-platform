@@ -11,8 +11,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +31,8 @@ import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
 import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.component.TerminalBoxDropdown
 import com.aandios.nous.core.ui.component.TerminalBoxStyle
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
@@ -253,7 +253,7 @@ private fun ChartSettingsGear(settingsMenu: @Composable (dismiss: () -> Unit) ->
                 drawCircle(color, radius = knobRadius, center = Offset(bottomKnobX, bottomY), style = Stroke(stroke))
             }
         }
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.widthIn(min = 200.dp),
@@ -271,71 +271,60 @@ private fun <T> OptionChoiceRow(
     selected: T,
     onSelect: (T) -> Unit,
 ) {
-    DropdownMenuItem(
-        text = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = label,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-                options.forEachIndexed { index, (value, text) ->
-                    Text(
-                        text = text,
-                        color = if (value == selected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 11.sp,
-                        fontWeight = if (value == selected) FontWeight.Bold else FontWeight.Normal,
-                        fontFamily = TerminalFontFamily,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .clickable { onSelect(value) }
-                            .background(
-                                if (value == selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                else Color.Transparent,
-                                RoundedCornerShape(3.dp),
-                            )
-                            .padding(horizontal = 5.dp, vertical = 3.dp),
+    val tokens = LocalTerminalDesignTokens.current
+    TerminalMenuItem(onClick = {}) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 12.sp,
+            lineHeight = tokens.typography.controlLineHeight,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        options.forEachIndexed { index, (value, text) ->
+            Text(
+                text = text,
+                color = if (value == selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp,
+                lineHeight = tokens.typography.compactLineHeight,
+                fontWeight = if (value == selected) FontWeight.Bold else FontWeight.Normal,
+                fontFamily = TerminalFontFamily,
+                maxLines = 1,
+                modifier = Modifier
+                    .clickable { onSelect(value) }
+                    .background(
+                        if (value == selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                        else Color.Transparent,
+                        RoundedCornerShape(3.dp),
                     )
-                    if (index != options.lastIndex) Spacer(Modifier.width(4.dp))
-                }
-            }
-        },
-        onClick = {},
-    )
+                    .padding(horizontal = 5.dp, vertical = 3.dp),
+            )
+            if (index != options.lastIndex) Spacer(Modifier.width(4.dp))
+        }
+    }
 }
 
 /** Строка Options: label + компактный свич (клик по строке тоже переключает). */
 @Composable
 private fun OptionSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    DropdownMenuItem(
-        text = {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = label,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 12.sp,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-                // Отключаем M3 min-touch-target (48dp) — компактные строки меню
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
-                    TerminalSwitch(
-                        checked = checked,
-                        onCheckedChange = onCheckedChange,
-                        modifier = Modifier.scale(0.7f),
-                    )
-                }
-            }
-        },
-        onClick = { onCheckedChange(!checked) },
-    )
+    val tokens = LocalTerminalDesignTokens.current
+    TerminalMenuItem(onClick = { onCheckedChange(!checked) }) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 12.sp,
+            lineHeight = tokens.typography.controlLineHeight,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        // Отключаем M3 min-touch-target (48dp) — компактные строки меню
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides Dp.Unspecified) {
+            TerminalSwitch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                modifier = Modifier.scale(0.7f),
+            )
+        }
+    }
 }

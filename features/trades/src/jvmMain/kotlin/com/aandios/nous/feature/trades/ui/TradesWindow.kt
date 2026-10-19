@@ -55,7 +55,6 @@ fun TradesWindow(
             viewModel = tradesViewModel,
             currentSymbol = currentSymbol,
             providers = registry.providers,
-            maxPanelWidth = TradesRecommendedWidth,
             modifier = Modifier.fillMaxSize()
         )
     }

@@ -75,24 +75,19 @@ fun <T> TerminalDropdown(
         }
 
         // Выпадающее меню
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(menuWidth ?: tokens.dimensions.dropdownWidth)
         ) {
             items.forEach { item ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = displayText(item),
-                            fontSize = tokens.typography.controlSize,
-                            fontWeight = if (currentValue == item) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
+                TerminalMenuItem(
+                    text = displayText(item),
+                    selected = currentValue == item,
                     onClick = {
                         onValueChanged(item)
                         expanded = false
-                    }
+                    },
                 )
             }
         }

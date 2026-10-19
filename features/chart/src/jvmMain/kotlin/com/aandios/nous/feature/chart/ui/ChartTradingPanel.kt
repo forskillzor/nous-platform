@@ -48,12 +48,15 @@ internal fun Modifier.blockChartPointerInput(): Modifier = pointerInput(Unit) {
 }
 
 /**
- * Вертикальная панель chart trading в стиле DrawingToolPanel: строка настроек
- * с label (Order / Margin / Leverage / Qty), затем действия.
+ * Вертикальная панель chart trading в стиле DrawingToolPanel: строки настроек
+ * (Order / Margin / Leverage / Price / Qty), TP/SL, RO + Confirm, затем CTA
+ * «BUY / LONG» / «SELL / SHORT», лимитки по лучшей цене и Cancel/Close All.
  *
- * Qty — edittext с placeholder = minQty инструмента (пусто → берётся minQty).
- * Buy/Sell — market; Buy Limit/Sell Limit — лимитки по лучшим bid/ask.
- * Cancel All — отмена всех ордеров, Close All — закрытие позиций symbol.
+ * Order — тип ордера одним дропдауном (LIMIT/POST_ONLY/IOC/FOK/MARKET —
+ * аналог сегментов LIMIT/MARKET/STOP из макета). Price виден для не-market
+ * типов: задаёт цену лимиток, пусто → лучшие bid/ask (поведение как раньше).
+ * Qty — edittext с placeholder = minQty инструмента (пусто → minQty);
+ * поля Qty/Price показывают валютный суффикс (SOL / USDT).
  * Ордер ставится по активному символу/бирже графика (ex/sym берутся с chart).
  */
 @Composable
@@ -72,6 +75,10 @@ fun ChartTradingPanel(
     bestBid: Double?,
     bestAsk: Double?,
     formatter: SymbolFormatter = SymbolFormatter.DEFAULT,
+    /** Базовая валюта символа — валютный суффикс поля Qty («SOL»). */
+    baseAsset: String? = null,
+    /** Котируемая валюта символа — валютный суффикс поля Price («USDT»). */
+    quoteAsset: String? = null,
     marginInfo: String? = null,
     pnlText: String? = null,
     pnlUp: Boolean = true,
@@ -86,8 +93,10 @@ fun ChartTradingPanel(
     onStopLossChanged: (Double?) -> Unit,
     onBuy: () -> Unit,
     onSell: () -> Unit,
-    onBuyLimit: () -> Unit,
-    onSellLimit: () -> Unit,
+    /** Лимитка BUY: цена из поля Price, пусто → лучший bid. */
+    onBuyLimit: (Double) -> Unit,
+    /** Лимитка SELL: цена из поля Price, пусто → лучший ask. */
+    onSellLimit: (Double) -> Unit,
     onCancelAll: () -> Unit,
     onCloseAll: () -> Unit,
     onConfirmPending: () -> Unit,
@@ -102,6 +111,8 @@ fun ChartTradingPanel(
     var qtyText by remember(quantity) {
         mutableStateOf(quantity?.let { trimZeros(it) } ?: "")
     }
+    // Цена лимитки из поля Price (пусто → лучшая bid/ask); сброс при смене символа
+    var priceText by remember(caption) { mutableStateOf("") }
 
     Column(
         modifier = modifier
@@ -217,10 +228,24 @@ fun ChartTradingPanel(
                 menuWidth = 90.dp,
             )
         }
+        // Price — цена лимитки (аналог макета): пусто → лучшие bid/ask.
+        // Для MARKET цена не используется и строка скрыта.
+        if (orderType != OrderType.MARKET) {
+            SettingRow("Price") {
+                NumberInput(
+                    text = priceText,
+                    placeholder = "—",
+                    suffix = quoteAsset?.uppercase(),
+                    onTextChanged = { priceText = it },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
         SettingRow("Qty") {
-            QtyInput(
-                qtyText = qtyText,
-                minQty = minQty,
+            NumberInput(
+                text = qtyText,
+                placeholder = minQty?.takeIf { it > 0 }?.let { trimZeros(it) } ?: "",
+                suffix = baseAsset?.uppercase(),
                 onTextChanged = { text ->
                     qtyText = text
                     // В VM кладём только корректное положительное число;
@@ -289,15 +314,18 @@ fun ChartTradingPanel(
                 SideButton("Cancel", tokens.colors.label, onCancelPending, Modifier.weight(1f))
             }
         } else {
-            // Market
+            val typedPrice = priceText.toDoubleOrNull()?.takeIf { it > 0 }
+            // Market: основные CTA сторон (без хоткей-подписей Ctrl+B/S)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                SideButton("Buy", tokens.colors.buyOrder, onBuy, Modifier.weight(1f))
-                SideButton("Sell", tokens.colors.sellOrder, onSell, Modifier.weight(1f))
+                PrimarySideButton("BUY / LONG", tokens.colors.buyOrder, onBuy, Modifier.weight(1f))
+                PrimarySideButton("SELL / SHORT", tokens.colors.sellOrder, onSell, Modifier.weight(1f))
             }
-            // Лимитки по лучшим ценам (bid/ask)
+            // Лимитки: цена из поля Price, пусто — лучшие bid/ask
+            val buyLimitPrice = typedPrice ?: bestBid
+            val sellLimitPrice = typedPrice ?: bestAsk
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                LimitButton("Buy Limit", tokens.colors.buyOrder, bestBid, onBuyLimit, Modifier.weight(1f))
-                LimitButton("Sell Limit", tokens.colors.sellOrder, bestAsk, onSellLimit, Modifier.weight(1f))
+                LimitButton("Buy Limit", tokens.colors.buyOrder, buyLimitPrice, { buyLimitPrice?.let(onBuyLimit) }, Modifier.weight(1f))
+                LimitButton("Sell Limit", tokens.colors.sellOrder, sellLimitPrice, { sellLimitPrice?.let(onSellLimit) }, Modifier.weight(1f))
             }
         }
 
@@ -393,9 +421,9 @@ private fun CompactHeader(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text("Qty", color = tokens.colors.label, fontSize = 10.sp, fontFamily = TerminalFontFamily)
-            QtyInput(
-                qtyText = qtyText,
-                minQty = minQty,
+            NumberInput(
+                text = qtyText,
+                placeholder = minQty?.takeIf { it > 0 }?.let { trimZeros(it) } ?: "",
                 onTextChanged = onQtyTextChanged,
                 modifier = Modifier.width(66.dp),
             )
@@ -432,40 +460,68 @@ private fun CompactHeader(
         )
     }
 }
-/** Поле qty с placeholder = minQty инструмента (пусто → minQty). */
+/**
+ * Числовое поле панели (Qty / Price): placeholder при пустом значении и
+ * валютный суффикс внутри коробки справа («SOL» / «USDT», как в макете).
+ */
 @Composable
-private fun QtyInput(
-    qtyText: String,
-    minQty: Double?,
+private fun NumberInput(
+    text: String,
+    placeholder: String,
     onTextChanged: (String) -> Unit,
+    suffix: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    BasicTextField(
-        value = qtyText,
-        onValueChange = onTextChanged,
-        singleLine = true,
-        textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 11.sp, fontFamily = TerminalFontFamily),
-        cursorBrush = SolidColor(tokens.colors.accent),
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = modifier
             .height(24.dp)
             .background(tokens.colors.panelHeaderSurface, RoundedCornerShape(3.dp))
             .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, RoundedCornerShape(3.dp))
-            .padding(horizontal = 6.dp, vertical = 4.dp),
-        decorationBox = { inner ->
-            Box(contentAlignment = Alignment.CenterStart) {
-                if (qtyText.isEmpty() && minQty != null && minQty > 0) {
-                    Text(
-                        text = trimZeros(minQty),
-                        color = tokens.colors.label.copy(alpha = 0.65f),
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                    )
+            .padding(horizontal = 6.dp),
+    ) {
+        BasicTextField(
+            value = text,
+            onValueChange = onTextChanged,
+            singleLine = true,
+            textStyle = TextStyle(
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 11.sp,
+                lineHeight = tokens.typography.controlLineHeight,
+                fontFamily = TerminalFontFamily,
+            ),
+            cursorBrush = SolidColor(tokens.colors.accent),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (text.isEmpty() && placeholder.isNotEmpty()) {
+                        Text(
+                            text = placeholder,
+                            color = tokens.colors.label.copy(alpha = 0.65f),
+                            fontSize = 11.sp,
+                            lineHeight = tokens.typography.controlLineHeight,
+                            fontFamily = TerminalFontFamily,
+                            maxLines = 1,
+                        )
+                    }
+                    inner()
                 }
-                inner()
-            }
-        },
-    )
+            },
+        )
+        if (suffix != null) {
+            Spacer(Modifier.width(tokens.spacing.xs))
+            Text(
+                text = suffix,
+                color = tokens.colors.label.copy(alpha = 0.75f),
+                fontSize = 9.sp,
+                lineHeight = tokens.typography.compactLineHeight,
+                fontFamily = TerminalFontFamily,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+            )
+        }
+    }
 }
 
 /** Строка настройки: label фиксированной ширины + контрол. */
@@ -545,6 +601,36 @@ private fun SideButton(
             text = label,
             color = color,
             fontSize = 10.sp,
+            fontFamily = TerminalFontFamily,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * Основная CTA-кнопка стороны: «BUY / LONG» / «SELL / SHORT» — крупнее
+ * обычных SideButton, одна строка без хоткей-подписей (Ctrl+B / Ctrl+S).
+ */
+@Composable
+private fun PrimarySideButton(
+    label: String,
+    color: Color,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .height(26.dp)
+            .background(color.copy(alpha = 0.22f), RoundedCornerShape(3.dp))
+            .border(1.dp, color.copy(alpha = 0.75f), RoundedCornerShape(3.dp))
+            .clickableNoIndication(onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontSize = 11.sp,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,

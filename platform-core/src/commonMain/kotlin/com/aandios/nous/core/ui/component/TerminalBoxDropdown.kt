@@ -5,8 +5,6 @@
 
 package com.aandios.nous.core.ui.component
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -19,8 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -32,13 +28,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
@@ -73,26 +67,13 @@ fun <T> TerminalBoxDropdown(
         menuWidth = menuWidth,
     ) { dismiss ->
         options.forEach { option ->
-            val isSelected = option == current
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = optionLabel(option),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                        maxLines = 1,
-                    )
-                },
+            TerminalMenuItem(
+                text = optionLabel(option),
+                selected = option == current,
                 onClick = {
                     onSelect(option)
                     dismiss()
                 },
-                modifier = Modifier.background(
-                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
-                    else Color.Transparent,
-                ),
             )
         }
     }
@@ -181,16 +162,11 @@ fun TerminalBoxDropdown(
                 }
             }
         }
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { setExpanded(false) },
             offset = DpOffset(0.dp, 2.dp),
             modifier = Modifier.width(menuWidth),
-            shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
-            containerColor = tokens.colors.panelSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-            border = BorderStroke(tokens.dimensions.borderWidth, tokens.colors.panelBorder),
         ) {
             menuContent { setExpanded(false) }
         }

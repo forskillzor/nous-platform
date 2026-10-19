@@ -14,6 +14,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.feature.dom.domain.model.DepthLimit
@@ -69,42 +71,29 @@ fun DepthLimitSelector(
         }
 
         // Выпадающее меню
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(tokens.dimensions.dropdownWidth)
         ) {
             standardValues.forEach { value ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = "$value",
-                            fontSize = tokens.typography.controlSize,
-                            fontFamily = TerminalFontFamily,
-                            fontWeight = if (currentLimit.value == value) FontWeight.Bold else FontWeight.Normal
-                        )
-                    },
+                TerminalMenuItem(
+                    text = "$value",
+                    selected = currentLimit.value == value,
                     onClick = {
                         onLimitChanged(DepthLimit.create(value))
                         expanded = false
-                    }
+                    },
                 )
             }
-            
+
             // Кастомное значение
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        text = "Custom...",
-                        fontSize = tokens.typography.controlSize,
-                        fontFamily = TerminalFontFamily,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                    )
-                },
+            TerminalMenuItem(
+                text = "Custom...",
                 onClick = {
                     // TODO: Реализовать диалог для ввода кастомного значения
                     expanded = false
-                }
+                },
             )
         }
     }

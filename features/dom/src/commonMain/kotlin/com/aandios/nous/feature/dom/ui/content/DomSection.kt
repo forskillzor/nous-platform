@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.dom.ui.content
+
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.background
@@ -92,7 +93,7 @@ fun DomSection(
 
     // Якорь: последняя сделка → best ask → best bid → верхний уровень книги
     val anchorTicks = lastPriceDisplayTicks ?: bestAskDisplayTicks ?: bestBidDisplayTicks
-        ?: levelsMap.keys.maxOrNull() ?: 0L
+    ?: levelsMap.keys.maxOrNull() ?: 0L
 
     val step = ladderStepTicks.coerceAtLeast(1L)
 
@@ -147,64 +148,69 @@ fun DomSection(
             .onGloballyPositioned { boxRoot = it.positionInRoot() }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text("Bid Vol",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.weight(0.8f)
-            )
-            Text("Price",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.weight(0.6f)
-            )
-            Text("Ask Vol",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.weight(0.8f)
-            )
-        }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    "Bid Vol",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(0.8f)
+                )
+                Text(
+                    "Price",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(0.6f)
+                )
+                Text(
+                    "Ask Vol",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                    modifier = Modifier.weight(0.8f)
+                )
+            }
 
-        LazyColumn(
-            state = lazyListState,
-            modifier = Modifier.weight(1f)
-        ) {
-            items(
-                count = ROW_COUNT,
-                key = { index -> anchorTicks + (ROWS_ABOVE - index) * step }
-            ) { index ->
-                val key = anchorTicks + (ROWS_ABOVE - index) * step
-                Box(modifier = Modifier.height(RowHeight)) {
-                    LevelRow(
-                        priceTicks = key,
-                        level = levelsMap[key],
-                        maxSteps = maxSteps,
-                        selectedDisplayTicks = selectedDisplayTicks,
-                        lastPriceDisplayTicks = lastPriceDisplayTicks,
-                        tickSize = tickSize,
-                        stepSize = stepSize,
-                        formatter = formatter,
-                        order = orderByTicks[key],
-                        position = positionByTicks[key],
-                        markPrice = markPrice,
-                        baseText = baseText,
-                        contractSize = contractSize,
-                        inverse = inverse,
-                        priceStepPerRow = tickSize * step.toDouble(),
-                        dragState = dragState,
-                        onCancelOrder = onCancelOrder,
-                        onResizeOrder = onResizeOrder,
-                        onMoveOrder = onMoveOrder,
-                        onPriceClick = { _, dPrice -> onPriceSelected(dPrice) }
-                    )
+//            Spacer(Modifier.weight(1f))
+
+            LazyColumn(
+                state = lazyListState,
+                modifier = Modifier.weight(1f)
+            ) {
+                items(
+                    count = ROW_COUNT,
+                    key = { index -> anchorTicks + (ROWS_ABOVE - index) * step }
+                ) { index ->
+                    val key = anchorTicks + (ROWS_ABOVE - index) * step
+                    Box(modifier = Modifier.height(RowHeight)) {
+                        LevelRow(
+                            priceTicks = key,
+                            level = levelsMap[key],
+                            maxSteps = maxSteps,
+                            selectedDisplayTicks = selectedDisplayTicks,
+                            lastPriceDisplayTicks = lastPriceDisplayTicks,
+                            tickSize = tickSize,
+                            stepSize = stepSize,
+                            formatter = formatter,
+                            order = orderByTicks[key],
+                            position = positionByTicks[key],
+                            markPrice = markPrice,
+                            baseText = baseText,
+                            contractSize = contractSize,
+                            inverse = inverse,
+                            priceStepPerRow = tickSize * step.toDouble(),
+                            dragState = dragState,
+                            onCancelOrder = onCancelOrder,
+                            onResizeOrder = onResizeOrder,
+                            onMoveOrder = onMoveOrder,
+                            onPriceClick = { _, dPrice -> onPriceSelected(dPrice) }
+                        )
+                    }
                 }
             }
-        }
         }
 
         // «Летящий» чип при драге ордера — как перетаскивание в chart trading
@@ -220,7 +226,7 @@ fun DomSection(
             val kind = if (draggingOrder.reduceOnly) "Close" else "Open"
             val sideName = if (draggingOrder.side == OrderSide.BUY) "Long" else "Short"
             val label = (listOf(kind, sideName, baseText.orEmpty()).filter { it.isNotBlank() }.joinToString(" ") +
-                " → " + formatter.formatPrice(targetPrice)).trim()
+                    " → " + formatter.formatPrice(targetPrice)).trim()
 
             Box(
                 modifier = Modifier

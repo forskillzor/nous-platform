@@ -108,6 +108,13 @@ class TradesViewModel(
     private val _panelWidthDp = MutableStateFlow<Float?>(null)
     val panelWidthDp: StateFlow<Float?> = _panelWidthDp.asStateFlow()
 
+    /**
+     * Измеренная минимальная ширина панели (dp) по тексту строки сделки —
+     * нижняя граница ползунка ширины в ⚙ тайтла (заполняет TradesWidget).
+     */
+    private val _measuredMinWidthDp = MutableStateFlow(120f)
+    val measuredMinWidthDp: StateFlow<Float> = _measuredMinWidthDp.asStateFlow()
+
     private var panelKey: String? = null
 
     // Информация о текущем символе (minQty, tickSize и т.д.)
@@ -186,6 +193,11 @@ class TradesViewModel(
     fun persistPanelWidth() {
         val width = _panelWidthDp.value ?: return
         viewModelScope.launch { stateStore?.putString(widthStoreKey(), width.toString()) }
+    }
+
+    /** Измеренная минимальная ширина строки сделки (нижняя граница ползунка). */
+    fun setMeasuredMinWidth(widthDp: Float) {
+        if (widthDp > 0f) _measuredMinWidthDp.value = widthDp
     }
 
     private fun widthStoreKey(): String = "trades_width_${panelKey ?: "default"}"

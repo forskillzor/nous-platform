@@ -12,8 +12,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,8 +30,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
 import com.aandios.nous.core.ui.component.TerminalGripDots
 import com.aandios.nous.core.ui.component.TerminalGripOrientation
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.workspace.PanelConfig
@@ -184,7 +184,7 @@ fun PanelHeader(
                     ) {
                         TerminalSlidersGlyph(tokens.colors.label)
                     }
-                    DropdownMenu(
+                    TerminalDropdownMenu(
                         expanded = settingsMenuExpanded,
                         onDismissRequest = { settingsMenuExpanded = false },
                         modifier = Modifier.widthIn(min = 200.dp),
@@ -197,7 +197,7 @@ fun PanelHeader(
             if (onSplitH != null || onSplitV != null) {
                 Box {
                     PanelAddButton(onClick = { addMenuExpanded = true })
-                    DropdownMenu(
+                    TerminalDropdownMenu(
                         expanded = addMenuExpanded,
                         onDismissRequest = { addMenuExpanded = false },
                         modifier = Modifier.width(160.dp),
@@ -271,18 +271,7 @@ private fun PanelMenuCaption(text: String) {
 
 @Composable
 private fun PanelMenuRow(label: String, onClick: () -> Unit) {
-    val tokens = LocalTerminalDesignTokens.current
-    DropdownMenuItem(
-        text = {
-            Text(
-                text = label,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = tokens.typography.compactSize,
-                fontFamily = TerminalFontFamily,
-            )
-        },
-        onClick = onClick,
-    )
+    TerminalMenuItem(text = label, onClick = onClick)
 }
 
 /** Компактная иконка настроек (ползунки) для тайтла панели. */

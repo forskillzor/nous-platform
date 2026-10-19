@@ -17,8 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,6 +39,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.aandios.nous.core.ui.component.ConfirmDeleteDialog
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.LayoutNode
 import com.aandios.nous.core.workspace.PanelState
@@ -259,10 +259,10 @@ private fun WorkspaceCard(
                 if (hasMenu) {
                     Box {
                         CardIconButton("\u22EE") { menuExpanded = true }
-                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                        TerminalDropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                             onRename?.let { fn ->
-                                DropdownMenuItem(
-                                    text = { Text("Rename", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
+                                TerminalMenuItem(
+                                    text = "Rename",
                                     onClick = {
                                         menuExpanded = false
                                         dialogText = title
@@ -271,8 +271,8 @@ private fun WorkspaceCard(
                                 )
                             }
                             onDuplicate?.let { fn ->
-                                DropdownMenuItem(
-                                    text = { Text("Duplicate", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
+                                TerminalMenuItem(
+                                    text = "Duplicate",
                                     onClick = {
                                         menuExpanded = false
                                         fn()
@@ -280,8 +280,8 @@ private fun WorkspaceCard(
                                 )
                             }
                             onChangeDescription?.let { fn ->
-                                DropdownMenuItem(
-                                    text = { Text("Change", fontSize = 12.sp, fontFamily = TerminalFontFamily) },
+                                TerminalMenuItem(
+                                    text = "Change",
                                     onClick = {
                                         menuExpanded = false
                                         dialogText = config.description

@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.runtime.snapshotFlow
@@ -21,6 +20,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.window.v2.WindowState
 import com.aandios.nous.core.ui.workspace.TabBar
@@ -30,6 +30,8 @@ import com.aandios.nous.core.workspace.viewmodel.TabManager
 import com.aandios.nous.core.workspace.viewmodel.WindowManager
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
 import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.panel.ToolPanelPrefsRepository
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.feature.trading.ui.PaperModeState
@@ -39,6 +41,7 @@ import com.aandios.nous_platform.ui.terminalLayout.ThemeSettingsOverlay
 import com.aandios.nous_platform.ui.terminalLayout.ToolPanelState
 import com.aandios.nous_platform.ui.terminalLayout.ToolPanelType
 import com.aandios.nous_platform.ui.terminalLayout.WorkspaceTemplatePicker
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
@@ -68,6 +71,8 @@ fun TerminalWindowContent(
     val density = LocalDensity.current
     val symbolWatchlists: SymbolWatchlistRepository = koinInject()
     LaunchedEffect(symbolWatchlists) { symbolWatchlists.load() }
+    val navigatorStateRepository: NavigatorStateRepository = koinInject()
+    val toolPanelPrefsRepository: ToolPanelPrefsRepository = koinInject()
     val paperModeState: PaperModeState = koinInject()
     val paperEnabled by paperModeState.enabled.collectAsState()
 
@@ -143,6 +148,24 @@ fun TerminalWindowContent(
             )
         )
     }
+    // Персистенс ширины сайдбара: грузим до первого сохранения, пишем с дебаунсом.
+    var toolPanelWidthLoaded by remember { mutableStateOf(false) }
+    LaunchedEffect(toolPanelPrefsRepository) {
+        val restored = toolPanelPrefsRepository
+            .loadWidth(tokens.dimensions.workspaceToolPanelWidth.value)
+            .dp
+            .coerceIn(
+                tokens.dimensions.workspaceToolPanelMinWidth,
+                tokens.dimensions.workspaceToolPanelMaxWidth,
+            )
+        topPanelState = topPanelState.copy(width = restored)
+        toolPanelWidthLoaded = true
+    }
+    LaunchedEffect(topPanelState.width, toolPanelWidthLoaded) {
+        if (!toolPanelWidthLoaded) return@LaunchedEffect
+        delay(400)
+        toolPanelPrefsRepository.saveWidth(topPanelState.width.value)
+    }
 
     CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
         Box(Modifier.fillMaxSize()) {
@@ -209,7 +232,7 @@ fun TerminalWindowContent(
                                             .clickable { addMenuExpanded = true }
                                             .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
                                     )
-                                    DropdownMenu(
+                                    TerminalDropdownMenu(
                                         expanded = addMenuExpanded,
                                         onDismissRequest = { addMenuExpanded = false },
                                     ) {
@@ -253,13 +276,28 @@ fun TerminalWindowContent(
                     terminalState = terminalStateViewModel,
                     topPanelState = topPanelState,
                     onTopPanelStateChange = { topPanelState = it },
+                    // Ресайз ширины сайдбара: read-modify-write по живому состоянию
+                    // (жест в pointerInput(Unit) не должен строиться от устаревшего
+                    // значения topPanelState из первой композиции — иначе дрожание).
+                    onTopPanelWidthDelta = { delta ->
+                        topPanelState = topPanelState.copy(
+                            width = (topPanelState.width + delta).coerceIn(
+                                tokens.dimensions.workspaceToolPanelMinWidth,
+                                tokens.dimensions.workspaceToolPanelMaxWidth
+                            )
+                        )
+                    },
                     tabManager = tabManager,
                     workspaceRepo = workspaceRepo,
                     templateRepo = templateRepo,
                     workspaceBus = workspaceBus,
+                    navigatorStateRepo = navigatorStateRepository,
+                    workspaceTemplates = marketWatchTemplates,
                     activeWorkspaceId = session.activeWorkspaceId,
                     onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
-                    onSymbolSelected = { terminalStateViewModel.changeSymbol(it) },
+                    onSymbolSelected = { symbol, providerId ->
+                        terminalStateViewModel.changeSymbol(symbol, providerId)
+                    },
                     onTimeframeSelected = { terminalStateViewModel.changeTimeFrame(it) },
                     marketWatchTemplates = marketWatchTemplates,
                     onOpenThemeSettings = { themeSettingsOpen = true },

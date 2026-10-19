@@ -30,7 +30,7 @@ import androidx.compose.ui.window.Dialog
 
 /**
  * Общий попап подтверждения удаления. Привязан к функционалу удаления,
- * а не к конкретному экрану: используется и в ProjectTree, и на WelcomeScreen.
+ * а не к конкретному экрану: используется на WelcomeScreen и в навигаторе.
  */
 @Composable
 fun ConfirmDeleteDialog(

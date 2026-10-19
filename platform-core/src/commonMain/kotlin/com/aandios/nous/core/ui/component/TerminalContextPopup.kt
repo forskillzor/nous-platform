@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,11 +38,10 @@ fun TerminalContextPopup(
     destructive: Boolean = false,
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    DropdownMenu(
+    TerminalDropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.width(tokens.dimensions.contextPopupWidth)
-            .background(MaterialTheme.colorScheme.surface),
+        modifier = Modifier.width(tokens.dimensions.contextPopupWidth),
     ) {
         Column(Modifier.padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md)) {
             Text(

@@ -40,8 +40,6 @@ fun TradesWidget(
     viewModel: TradesViewModel,
     currentSymbol: String,
     providers: List<com.aandios.nous.api.market.Provider> = emptyList(),
-    /** Максимальная ширина панели (шестерёнка настроек). */
-    maxPanelWidth: androidx.compose.ui.unit.Dp = 240.dp,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsState()
@@ -50,18 +48,15 @@ fun TradesWidget(
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
     val customPresets by viewModel.customPresets.collectAsState()
     val currentProviderId by viewModel.currentProviderId.collectAsState()
-    val contractType by viewModel.contractType.collectAsState()
     // Подписка на буфер отфильтрованных сделок — триггерит рекомпозицию
     // при reseed фильтра, даже если фид не менялся.
     val filteredBuffer by viewModel.filteredBuffer.collectAsState()
 
     val lazyListState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
-    // Мин. ширина для слайдера настроек: измеряем текст строки сделки
+    // Мин. ширина для ползунка (⚙ тайтла): измеряем текст строки сделки
     val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     val density = androidx.compose.ui.platform.LocalDensity.current
-    var measuredMinWidth by remember { mutableStateOf(120.dp) }
-    val panelWidthDp by viewModel.panelWidthDp.collectAsState()
     val tokens = LocalTerminalDesignTokens.current
 
     // Автоскролл живёт, пока пользователь у вершины списка. Выключаем только
@@ -83,15 +78,8 @@ fun TradesWidget(
             selectedSizeFilter = selectedSizeFilter,
             customPresets = customPresets,
             currentProviderId = currentProviderId,
-            contractType = contractType,
             explorerRows = explorerRows,
             onExplorerRowSelected = { row -> viewModel.selectExplorerRow(row) },
-            panelWidthDp = panelWidthDp ?: maxPanelWidth.value,
-            minPanelWidthDp = measuredMinWidth.value,
-            maxPanelWidthDp = maxPanelWidth.value,
-            onPanelWidthDpChanged = { viewModel.setPanelWidth(it) },
-            onPanelWidthDpChangeFinished = { viewModel.persistPanelWidth() },
-            onContractTypeChanged = { viewModel.setContractType(it) },
             onFilterChanged = { viewModel.updateSizeFilter(it) },
             onPresetAdd = { viewModel.addPreset(it) },
             onPresetEdit = { idx, v -> viewModel.editPreset(idx, v) },
@@ -165,7 +153,8 @@ fun TradesWidget(
                     ).size.width
                     val gapsPx = with(density) { 4.dp.toPx() * 2 + 8.dp.toPx() * 2 }
                     val minWidth = with(density) { (wTime + wPrice + wQty).toFloat().plus(gapsPx).toDp() }
-                    LaunchedEffect(minWidth) { measuredMinWidth = minWidth }
+                    // Минимум для ползунка ширины (⚙ тайтла панели) — в VM
+                    LaunchedEffect(minWidth) { viewModel.setMeasuredMinWidth(minWidth.value) }
                 }
 
                 if (visibleTrades.isEmpty()) {

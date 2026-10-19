@@ -6,15 +6,16 @@
 package com.aandios.nous.feature.trades.ui.header
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalFunnelGlyph
+import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.SizeFilter
 
@@ -46,7 +50,7 @@ fun SizeFilterDropdown(
     var customText by remember { mutableStateOf("") }
 
     val displayLabel = when (currentFilter) {
-        is SizeFilter.All -> "All"
+        is SizeFilter.All -> "ALL"
         is SizeFilter.MinQty -> if (minQty != null) "≥ ${fmt(minQty)}" else "≥ min"
         is SizeFilter.MinQtyx10 -> if (minQty != null) "≥ ${fmt(minQty * 10)}" else "≥ ×10"
         is SizeFilter.MinQtyx100 -> if (minQty != null) "≥ ${fmt(minQty * 100)}" else "≥ ×100"
@@ -54,57 +58,51 @@ fun SizeFilterDropdown(
     }
 
     Box(modifier = modifier) {
-        // Компактный триггер в стиле TerminalInlineSelect: «Size ≥ min ▾»
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
+        // Одна кнопка-коробка: воронка + текущий режим (акцентный текст)
+        val triggerShape = RoundedCornerShape(tokens.cornerRadii.smallCard)
+        Surface(
+            shape = triggerShape,
+            color = MaterialTheme.colorScheme.surfaceVariant,
             modifier = Modifier
-                .clickable { expanded = true }
-                .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs)
+                .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, triggerShape)
+                .clickable { expanded = true },
         ) {
-            Text(
-                text = "Size",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = tokens.typography.microSize,
-                fontFamily = TerminalFontFamily,
-                maxLines = 1,
-            )
-            Spacer(Modifier.width(tokens.spacing.xs))
-            Text(
-                text = displayLabel,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = tokens.typography.compactSize,
-                fontFamily = TerminalFontFamily,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.width(tokens.spacing.xxs))
-            Text(
-                text = "▾",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = tokens.typography.microSize,
-                fontFamily = TerminalFontFamily,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(
+                    horizontal = tokens.spacing.sm,
+                    vertical = tokens.spacing.xxs,
+                ),
+            ) {
+                TerminalFunnelGlyph(color = tokens.colors.label, size = 11.dp)
+                Spacer(Modifier.width(tokens.spacing.xs))
+                Text(
+                    text = displayLabel,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = tokens.typography.compactSize,
+                    lineHeight = tokens.typography.controlLineHeight,
+                    fontFamily = TerminalFontFamily,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
 
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.width(tokens.dimensions.tradeFilterMenuWidth)
         ) {
             // "All" option
-            DropdownMenuItem(
-                text = { Text("All", fontSize = tokens.typography.controlSize) },
+            TerminalMenuItem(
+                text = "All",
+                selected = currentFilter is SizeFilter.All,
                 onClick = {
                     onFilterChanged(SizeFilter.All)
                     customText = ""
                     expanded = false
                 },
-                leadingIcon = {
-                    if (currentFilter is SizeFilter.All)
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                    else Spacer(Modifier.size(14.dp))
-                }
             )
 
             HorizontalDivider(
@@ -195,15 +193,8 @@ fun SizeFilterDropdown(
                 thickness = tokens.dimensions.dividerThickness,
                 color = tokens.colors.panelBorder,
             )
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        "+ Add preset",
-                        fontSize = tokens.typography.controlSize,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                },
-                leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary) },
+            TerminalMenuItem(
+                text = "+ Add preset",
                 onClick = {
                     val v = customText.toDoubleOrNull()
                     if (v != null && v > 0) {
@@ -222,20 +213,11 @@ private fun PresetRow(
     isActive: Boolean,
     onClick: () -> Unit,
 ) {
-    val tokens = LocalTerminalDesignTokens.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.sm),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (isActive)
-            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-        else Spacer(Modifier.size(14.dp))
-        Spacer(Modifier.width(tokens.spacing.md))
-        Text(label, fontSize = tokens.typography.controlSize)
-    }
+    TerminalMenuItem(
+        text = label,
+        selected = isActive,
+        onClick = onClick,
+    )
 }
 
 @Composable

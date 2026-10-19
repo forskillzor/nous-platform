@@ -5,20 +5,19 @@
 
 package com.aandios.nous.core.ui.component
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,10 +40,14 @@ import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.market.MarketOverviewRow
@@ -52,6 +55,7 @@ import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -74,6 +78,7 @@ data class SymbolExplorerRow(
     val lastPrice: Double? = null,
     val changePercent24h: Double? = null,
     val quoteVolume24h: Double? = null,
+    val exchangeName: String = exchangeLabel,
 )
 
 /** Маппинг строки каталога рынка в строку explorer-дропдауна. */
@@ -88,6 +93,7 @@ fun MarketOverviewRow.toSymbolExplorerRow(): SymbolExplorerRow = SymbolExplorerR
     lastPrice = stats?.lastPrice,
     changePercent24h = stats?.changePercent24h,
     quoteVolume24h = stats?.quoteVolume24h,
+    exchangeName = exchangeName,
 )
 
 enum class SymbolExplorerSort(val label: String) {
@@ -294,42 +300,11 @@ internal val symbolMatchComparator: Comparator<SymbolMatch> =
     compareBy({ it.score }, { it.position }, { it.matchLength })
 
 /**
- * Одиночное совпадение поиска по списку тикеров: символ + диапазон
- * подсветки в нём (используется Market Watch).
- */
-data class SymbolSearchMatch(
-    val symbol: String,
-    val matchRange: IntRange?,
-)
-
-data class SymbolSearchResult(
-    val matches: List<SymbolSearchMatch>,
-    val error: String? = null,
-)
-
-/** Поиск по списку тикеров (Market Watch): релевантность → код символа. */
-fun searchSymbols(symbols: List<String>, query: String): SymbolSearchResult {
-    if (query.isBlank()) return SymbolSearchResult(symbols.map { SymbolSearchMatch(it, null) })
-    val regex = when (val compiled = compileSearchRegex(query)) {
-        is SearchRegexResult.Ok -> compiled.regex
-        is SearchRegexResult.Invalid -> return SymbolSearchResult(emptyList(), compiled.message)
-    }
-
-    val matches = symbols.mapNotNull { symbol ->
-        matchSymbol(displaySymbol = symbol, metaFields = emptyList(), regex = regex)
-            ?.let { symbol to it }
-    }.sortedWith(
-        Comparator<Pair<String, SymbolMatch>> { a, b -> symbolMatchComparator.compare(a.second, b.second) }
-            .thenBy { it.first },
-    )
-    return SymbolSearchResult(matches.map { SymbolSearchMatch(it.first, it.second.matchRange) })
-}
-
-/**
  * Расширенный дропдаун выбора символа (тайтл chart, заголовки DOM/Trades):
  * табы (ALL + watchlists), поиск, фильтры (perpetuals/quote/биржа), список со
  * статистикой 24ч и избранным. Выбор строки другой биржи переключает
  * провайдера панели (зовите [onSelect] и обрабатывайте кросс-биржу выше).
+ * Содержимое — общий [SymbolExplorerContent] (та же форма, что в Market Watch).
  */
 @Composable
 fun SymbolExplorerDropdown(
@@ -342,10 +317,6 @@ fun SymbolExplorerDropdown(
     menuWidth: androidx.compose.ui.unit.Dp = 380.dp,
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    val watchlistRepository = LocalSymbolWatchlistRepository.current
-    val watchlists by (
-        watchlistRepository?.lists ?: kotlinx.coroutines.flow.flowOf<List<SymbolWatchlist>>(emptyList())
-        ).collectAsState(initial = emptyList())
 
     var expanded by remember { mutableStateOf(false) }
     var activeListId by remember { mutableStateOf<String?>(null) }
@@ -365,24 +336,6 @@ fun SymbolExplorerDropdown(
         if (expanded) {
             delay(80)
             runCatching { searchFocus.requestFocus() }
-        }
-    }
-
-    val activeList = activeListId?.let { id -> watchlists.firstOrNull { it.id == id } }
-    val favouritesList = watchlists.firstOrNull { it.name.equals("Favourites", ignoreCase = true) }
-    val starSymbols: Set<String> = (activeList ?: favouritesList)?.symbols?.toSet().orEmpty()
-
-    val scope = rememberCoroutineScope()
-    val toggleStar: (String) -> Unit = { symbol ->
-        val repo = watchlistRepository
-        if (repo != null) {
-            val list = activeList ?: favouritesList
-            scope.launch {
-                val target = list ?: runCatching { repo.create("Favourites") }.getOrNull()
-                    ?: repo.lists.value.firstOrNull { it.name.equals("Favourites", ignoreCase = true) }
-                    ?: return@launch
-                runCatching { repo.toggleSymbol(target.id, symbol) }
-            }
         }
     }
 
@@ -410,57 +363,37 @@ fun SymbolExplorerDropdown(
         onExpandedChange = { expanded = it },
         leading = exchangeLeading,
     ) { dismiss ->
-        val quoteOptions = remember(rows) { explorerQuoteOptions(rows) }
-        val exchangeOptions = remember(rows) { explorerExchangeOptions(rows) }
-        val effectiveQuote = quoteFilter?.takeIf { it in quoteOptions }
-        val effectiveExchange = exchangeFilter?.takeIf { id -> exchangeOptions.any { it.first == id } }
-
-        val result = remember(
-            rows, activeListId, watchlists, perpetualsOnly,
-            effectiveQuote, effectiveExchange, query, sort, descending,
-        ) {
-            computeExplorerRows(
-                rows = rows,
-                activeListSymbols = activeList?.symbols?.toSet(),
-                perpetualsOnly = perpetualsOnly,
-                quote = effectiveQuote,
-                exchangeId = effectiveExchange,
-                query = query,
-                sort = sort,
-                descending = descending,
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .onPreviewKeyEvent { event ->
-                    if (event.type == KeyEventType.KeyDown && event.key == Key.K &&
-                        (event.isCtrlPressed || event.isMetaPressed)
-                    ) {
-                        runCatching { searchFocus.requestFocus() }
-                        true
-                    } else {
-                        false
-                    }
-                },
-        ) {
-            // ── Табы (ALL + watchlists) + закрыть ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-            ) {
-                ExplorerTab("ALL", active = activeListId == null) { activeListId = null }
-                watchlists.forEach { list ->
-                    ExplorerTab(
-                        label = list.name.uppercase(),
-                        active = activeListId == list.id,
-                    ) { activeListId = list.id }
-                }
-                Spacer(Modifier.weight(1f))
+        // Fixed width/height are required: M3 DropdownMenu measures its content
+        // with IntrinsicSize.Max, and a SubcomposeLayout can only answer
+        // intrinsic queries when it has a specified size (SizeNode short-circuit).
+        SymbolExplorerContent(
+            rows = rows,
+            currentSymbol = currentSymbol,
+            currentExchangeId = currentExchangeId,
+            activeListId = activeListId,
+            onActiveListIdChange = { activeListId = it },
+            perpetualsOnly = perpetualsOnly,
+            onPerpetualsOnlyChange = { perpetualsOnly = it },
+            quoteFilter = quoteFilter,
+            onQuoteFilterChange = { quoteFilter = it },
+            exchangeFilter = exchangeFilter,
+            onExchangeFilterChange = { exchangeFilter = it },
+            sort = sort,
+            descending = descending,
+            onSortChange = { selected, desc ->
+                sort = selected
+                descending = desc
+            },
+            query = query,
+            onQueryChange = { query = it },
+            onSelect = { row ->
+                onSelect(row)
+                dismiss()
+            },
+            listWidth = menuWidth,
+            listHeight = EXPLORER_ROW_HEIGHT * 5,
+            searchFocusRequester = searchFocus,
+            tabsTrailing = {
                 Text(
                     text = "✕",
                     color = tokens.colors.label,
@@ -470,225 +403,9 @@ fun SymbolExplorerDropdown(
                         .clickable { dismiss() }
                         .padding(tokens.spacing.xs),
                 )
-            }
-
-            HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-
-            // ── Поиск ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm)
-                    .height(26.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                        RoundedCornerShape(tokens.cornerRadii.smallCard),
-                    )
-                    .border(
-                        tokens.dimensions.borderWidth,
-                        tokens.colors.panelBorder,
-                        RoundedCornerShape(tokens.cornerRadii.smallCard),
-                    )
-                    .padding(horizontal = tokens.spacing.md),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Canvas(modifier = Modifier.size(12.dp)) {
-                    val stroke = 1.2.dp.toPx()
-                    val radius = size.minDimension * 0.32f
-                    val center = Offset(size.width * 0.4f, size.height * 0.4f)
-                    val color = tokens.colors.label
-                    drawCircle(
-                        color = color,
-                        radius = radius,
-                        center = center,
-                        style = Stroke(stroke),
-                    )
-                    drawLine(
-                        color = color,
-                        start = Offset(center.x + radius * 0.7f, center.y + radius * 0.7f),
-                        end = Offset(size.width * 0.92f, size.height * 0.92f),
-                        strokeWidth = stroke,
-                    )
-                }
-                Spacer(Modifier.width(tokens.spacing.sm))
-                Box(modifier = Modifier.weight(1f)) {
-                    if (query.isEmpty()) {
-                        Text(
-                            text = "Search symbol, market or contract",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                            fontSize = 11.sp,
-                            fontFamily = TerminalFontFamily,
-                            maxLines = 1,
-                        )
-                    }
-                    BasicTextField(
-                        value = query,
-                        onValueChange = { query = it },
-                        singleLine = true,
-                        textStyle = TextStyle(
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 11.sp,
-                            fontFamily = TerminalFontFamily,
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(searchFocus),
-                    )
-                }
-                Spacer(Modifier.width(tokens.spacing.sm))
-                Text(
-                    text = "⌘ K",
-                    color = tokens.colors.label,
-                    fontSize = 9.sp,
-                    fontFamily = TerminalFontFamily,
-                    modifier = Modifier
-                        .background(
-                            tokens.colors.panelHeaderSurface,
-                            RoundedCornerShape(3.dp),
-                        )
-                        .border(
-                            tokens.dimensions.borderWidth,
-                            tokens.colors.panelBorder,
-                            RoundedCornerShape(3.dp),
-                        )
-                        .padding(horizontal = tokens.spacing.xs, vertical = 1.dp),
-                )
-            }
-
-            // ── Фильтры: perpetuals / quote / биржа + сортировка ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-            ) {
-                ExplorerFilterChip(
-                    label = "PERPETUALS",
-                    active = perpetualsOnly,
-                    onClick = { perpetualsOnly = !perpetualsOnly },
-                )
-                ExplorerChipDropdown(
-                    label = quoteFilter?.takeIf { it in quoteOptions } ?: "ALL",
-                    options = buildList {
-                        add("ALL" to (null as String?))
-                        quoteOptions.forEach { add(it to it) }
-                    },
-                    onSelect = { quoteFilter = it },
-                )
-                ExplorerChipDropdown(
-                    label = effectiveExchange?.let { id -> exchangeOptions.first { it.first == id }.second }
-                        ?: "ALL EXCHANGES",
-                    options = buildList {
-                        add("ALL EXCHANGES" to (null as String?))
-                        exchangeOptions.forEach { (id, text) -> add(text to id) }
-                    },
-                    onSelect = { exchangeFilter = it },
-                )
-                Spacer(Modifier.weight(1f))
-                ExplorerSortButton(
-                    sort = sort,
-                    descending = descending,
-                    onSortSelected = { selected ->
-                        if (selected == sort) descending = !descending else {
-                            sort = selected
-                            descending = selected != SymbolExplorerSort.SYMBOL
-                        }
-                    },
-                )
-            }
-
-            HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-
-            // ── Шапка списка ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "CONTRACT",
-                    color = tokens.colors.label,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = TerminalFontFamily,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                Text(
-                    text = "LAST  24H",
-                    color = tokens.colors.label,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = TerminalFontFamily,
-                    letterSpacing = 1.sp,
-                )
-            }
-
-            // ── Список (5 строк со скроллом, ленивый) ──
-            // Fixed width is required: M3 DropdownMenu measures its content with
-            // IntrinsicSize.Max, and a SubcomposeLayout can only answer intrinsic
-            // queries when it has a specified size (SizeNode short-circuit).
-            val rowHeight = 46.dp
-            LazyColumn(
-                modifier = Modifier
-                    .width(menuWidth)
-                    .height(rowHeight * 5),
-            ) {
-                if (result.matches.isEmpty()) {
-                    item {
-                        Text(
-                            text = result.error ?: "No symbols",
-                            color = if (result.error != null) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                            fontSize = 11.sp,
-                            fontFamily = TerminalFontFamily,
-                            modifier = Modifier.padding(tokens.spacing.lg),
-                        )
-                    }
-                }
-                items(
-                    items = result.matches,
-                    key = { "${it.row.exchangeId}:${it.row.symbol}" },
-                ) { match ->
-                    val row = match.row
-                    val isCurrent = row.symbol == currentSymbol &&
-                        (currentExchangeId == null || row.exchangeId == currentExchangeId)
-                    ExplorerRowItem(
-                        row = row,
-                        matchRange = match.matchRange,
-                        starred = row.symbol in starSymbols,
-                        isCurrent = isCurrent,
-                        rowHeight = rowHeight,
-                        onToggleStar = { toggleStar(row.symbol) },
-                        onClick = {
-                            onSelect(row)
-                            dismiss()
-                        },
-                    )
-                }
-            }
-
-            HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-
-            // ── Футер ──
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = explorerFooterText(result.matches.size, sort),
-                    color = tokens.colors.label,
-                    fontSize = 9.sp,
-                    fontFamily = TerminalFontFamily,
-                    letterSpacing = 0.5.sp,
-                    modifier = Modifier.weight(1f),
-                )
-                if (onManageWatchlist != null) {
+            },
+            footerTrailing = if (onManageWatchlist != null) {
+                {
                     Text(
                         text = "MANAGE WATCHLIST",
                         color = tokens.colors.accent,
@@ -704,7 +421,354 @@ fun SymbolExplorerDropdown(
                             .padding(tokens.spacing.xs),
                     )
                 }
+            } else {
+                null
+            },
+        )
+    }
+}
+
+/** Высота строки explorer-списка (фиксированная — для попапа). */
+private val EXPLORER_ROW_HEIGHT = 46.dp
+
+/**
+ * Содержимое explorer-списка (общее для попапа [SymbolExplorerDropdown] и
+ * панели Market Watch): табы (ALL + watchlists), поиск, фильтры
+ * (perpetuals/quote/биржа), сортировка, ленивый список со статистикой 24ч и
+ * звёздами (активный список или Favourites), футер. Состояние поднимает
+ * владелец; [rowMenu] добавляет контекстное меню строки, [onListError] —
+ * ошибки избранного.
+ */
+@Composable
+fun SymbolExplorerContent(
+    rows: List<SymbolExplorerRow>,
+    currentSymbol: String,
+    currentExchangeId: String?,
+    activeListId: String?,
+    onActiveListIdChange: (String?) -> Unit,
+    perpetualsOnly: Boolean,
+    onPerpetualsOnlyChange: (Boolean) -> Unit,
+    quoteFilter: String?,
+    onQuoteFilterChange: (String?) -> Unit,
+    exchangeFilter: String?,
+    onExchangeFilterChange: (String?) -> Unit,
+    sort: SymbolExplorerSort,
+    descending: Boolean,
+    onSortChange: (SymbolExplorerSort, Boolean) -> Unit,
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSelect: (SymbolExplorerRow) -> Unit,
+    modifier: Modifier = Modifier,
+    listState: LazyListState = rememberLazyListState(),
+    listWidth: Dp? = null,
+    listHeight: Dp? = null,
+    searchFocusRequester: FocusRequester = remember { FocusRequester() },
+    tabsTrailing: (@Composable RowScope.() -> Unit)? = null,
+    footerTrailing: (@Composable RowScope.() -> Unit)? = null,
+    rowMenu: (@Composable (SymbolExplorerRow, dismiss: () -> Unit) -> Unit)? = null,
+    onListError: ((String?) -> Unit)? = null,
+) {
+    val tokens = LocalTerminalDesignTokens.current
+    val watchlistRepository = LocalSymbolWatchlistRepository.current
+    val watchlists by (
+        watchlistRepository?.lists ?: kotlinx.coroutines.flow.flowOf<List<SymbolWatchlist>>(emptyList())
+        ).collectAsState(initial = emptyList())
+
+    val activeList = activeListId?.let { id -> watchlists.firstOrNull { it.id == id } }
+    val favouritesList = watchlists.firstOrNull { it.name.equals("Favourites", ignoreCase = true) }
+    val starSymbols: Set<String> = (activeList ?: favouritesList)?.symbols?.toSet().orEmpty()
+
+    val scope = rememberCoroutineScope()
+    val toggleStar: (String) -> Unit = { symbol ->
+        val repo = watchlistRepository
+        if (repo != null) {
+            val list = activeList ?: favouritesList
+            scope.launch {
+                try {
+                    val target = list
+                        ?: runCatching { repo.create("Favourites") }.getOrNull()
+                        ?: repo.lists.value.firstOrNull { it.name.equals("Favourites", ignoreCase = true) }
+                        ?: return@launch
+                    repo.toggleSymbol(target.id, symbol)
+                    onListError?.invoke(null)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    onListError?.invoke(e.message)
+                }
             }
+        }
+    }
+
+    val quoteOptions = remember(rows) { explorerQuoteOptions(rows) }
+    val exchangeOptions = remember(rows) { explorerExchangeOptions(rows) }
+    val effectiveQuote = quoteFilter?.takeIf { it in quoteOptions }
+    val effectiveExchange = exchangeFilter?.takeIf { id -> exchangeOptions.any { it.first == id } }
+
+    val result = remember(
+        rows, activeListId, watchlists, perpetualsOnly,
+        effectiveQuote, effectiveExchange, query, sort, descending,
+    ) {
+        computeExplorerRows(
+            rows = rows,
+            activeListSymbols = activeList?.symbols?.toSet(),
+            perpetualsOnly = perpetualsOnly,
+            quote = effectiveQuote,
+            exchangeId = effectiveExchange,
+            query = query,
+            sort = sort,
+            descending = descending,
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.K &&
+                    (event.isCtrlPressed || event.isMetaPressed)
+                ) {
+                    runCatching { searchFocusRequester.requestFocus() }
+                    true
+                } else {
+                    false
+                }
+            },
+    ) {
+        // ── Табы (ALL + watchlists) + хвост владельца ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+        ) {
+            ExplorerTab("ALL", active = activeListId == null) { onActiveListIdChange(null) }
+            watchlists.forEach { list ->
+                ExplorerTab(
+                    label = list.name.uppercase(),
+                    active = activeListId == list.id,
+                ) { onActiveListIdChange(list.id) }
+            }
+            Spacer(Modifier.weight(1f))
+            tabsTrailing?.invoke(this)
+        }
+
+        HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
+
+        // ── Поиск ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm)
+                .height(26.dp)
+                .background(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(tokens.cornerRadii.smallCard),
+                )
+                .border(
+                    tokens.dimensions.borderWidth,
+                    tokens.colors.panelBorder,
+                    RoundedCornerShape(tokens.cornerRadii.smallCard),
+                )
+                .padding(horizontal = tokens.spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Canvas(modifier = Modifier.size(12.dp)) {
+                val stroke = 1.2.dp.toPx()
+                val radius = size.minDimension * 0.32f
+                val center = Offset(size.width * 0.4f, size.height * 0.4f)
+                val color = tokens.colors.label
+                drawCircle(
+                    color = color,
+                    radius = radius,
+                    center = center,
+                    style = Stroke(stroke),
+                )
+                drawLine(
+                    color = color,
+                    start = Offset(center.x + radius * 0.7f, center.y + radius * 0.7f),
+                    end = Offset(size.width * 0.92f, size.height * 0.92f),
+                    strokeWidth = stroke,
+                )
+            }
+            Spacer(Modifier.width(tokens.spacing.sm))
+            Box(modifier = Modifier.weight(1f)) {
+                if (query.isEmpty()) {
+                    Text(
+                        text = "Search symbol, market or contract",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                        fontSize = 11.sp,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
+                BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 11.sp,
+                        fontFamily = TerminalFontFamily,
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(searchFocusRequester),
+                )
+            }
+            Spacer(Modifier.width(tokens.spacing.sm))
+            Text(
+                text = "⌘ K",
+                color = tokens.colors.label,
+                fontSize = 9.sp,
+                fontFamily = TerminalFontFamily,
+                modifier = Modifier
+                    .background(
+                        tokens.colors.panelHeaderSurface,
+                        RoundedCornerShape(3.dp),
+                    )
+                    .border(
+                        tokens.dimensions.borderWidth,
+                        tokens.colors.panelBorder,
+                        RoundedCornerShape(3.dp),
+                    )
+                    .padding(horizontal = tokens.spacing.xs, vertical = 1.dp),
+            )
+        }
+
+        // ── Фильтры: perpetuals / quote / биржа + сортировка ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
+        ) {
+            ExplorerFilterChip(
+                label = "PERPETUALS",
+                active = perpetualsOnly,
+                onClick = { onPerpetualsOnlyChange(!perpetualsOnly) },
+            )
+            ExplorerChipDropdown(
+                label = quoteFilter?.takeIf { it in quoteOptions } ?: "ALL",
+                selectedValue = quoteFilter?.takeIf { it in quoteOptions },
+                options = buildList {
+                    add("ALL" to (null as String?))
+                    quoteOptions.forEach { add(it to it) }
+                },
+                onSelect = { onQuoteFilterChange(it) },
+            )
+            ExplorerChipDropdown(
+                label = effectiveExchange?.let { id -> exchangeOptions.first { it.first == id }.second }
+                    ?: "ALL EXCHANGES",
+                selectedValue = effectiveExchange,
+                options = buildList {
+                    add("ALL EXCHANGES" to (null as String?))
+                    exchangeOptions.forEach { (id, text) -> add(text to id) }
+                },
+                onSelect = { onExchangeFilterChange(it) },
+            )
+            Spacer(Modifier.weight(1f))
+            ExplorerSortButton(
+                sort = sort,
+                descending = descending,
+                onSortSelected = { selected ->
+                    if (selected == sort) {
+                        onSortChange(sort, !descending)
+                    } else {
+                        onSortChange(selected, selected != SymbolExplorerSort.SYMBOL)
+                    }
+                },
+            )
+        }
+
+        HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
+
+        // ── Шапка списка ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "CONTRACT",
+                color = tokens.colors.label,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = 1.sp,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = "LAST  24H",
+                color = tokens.colors.label,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Medium,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = 1.sp,
+            )
+        }
+
+        // ── Список (ленивый; фиксированные ширина/высота нужны попапу) ──
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .then(if (listWidth != null) Modifier.width(listWidth) else Modifier.fillMaxWidth())
+                .then(if (listHeight != null) Modifier.height(listHeight) else Modifier.weight(1f)),
+        ) {
+            if (result.matches.isEmpty()) {
+                item {
+                    Text(
+                        text = result.error ?: "No symbols",
+                        color = if (result.error != null) MaterialTheme.colorScheme.error
+                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                        fontSize = 11.sp,
+                        fontFamily = TerminalFontFamily,
+                        modifier = Modifier.padding(tokens.spacing.lg),
+                    )
+                }
+            }
+            items(
+                items = result.matches,
+                key = { "${it.row.exchangeId}:${it.row.symbol}" },
+            ) { match ->
+                val row = match.row
+                val isCurrent = row.symbol == currentSymbol &&
+                    (currentExchangeId == null || row.exchangeId == currentExchangeId)
+                ExplorerRowItem(
+                    row = row,
+                    matchRange = match.matchRange,
+                    starred = row.symbol in starSymbols,
+                    isCurrent = isCurrent,
+                    rowHeight = EXPLORER_ROW_HEIGHT,
+                    onToggleStar = { toggleStar(row.symbol) },
+                    onClick = { onSelect(row) },
+                    menuContent = rowMenu,
+                )
+            }
+        }
+
+        HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
+
+        // ── Футер ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = explorerFooterText(result.matches.size, sort),
+                color = tokens.colors.label,
+                fontSize = 9.sp,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.weight(1f),
+            )
+            footerTrailing?.invoke(this)
         }
     }
 }
@@ -755,6 +819,7 @@ private fun ExplorerFilterChip(label: String, active: Boolean, onClick: () -> Un
 private fun <T> ExplorerChipDropdown(
     label: String,
     options: List<Pair<String, T?>>,
+    selectedValue: T?,
     onSelect: (T?) -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -785,28 +850,15 @@ private fun <T> ExplorerChipDropdown(
                 modifier = Modifier.size(12.dp),
             )
         }
-        DropdownMenu(
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.widthIn(min = 120.dp),
-            shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
-            containerColor = tokens.colors.panelSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-            border = BorderStroke(tokens.dimensions.borderWidth, tokens.colors.panelBorder),
         ) {
             options.forEach { (text, value) ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = text,
-                            color = if (value == null && label == text) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                            fontSize = 11.sp,
-                            fontFamily = TerminalFontFamily,
-                            maxLines = 1,
-                        )
-                    },
+                TerminalMenuItem(
+                    text = text,
+                    selected = value == selectedValue,
                     onClick = {
                         onSelect(value)
                         expanded = false
@@ -826,48 +878,20 @@ private fun ExplorerSortButton(
     val tokens = LocalTerminalDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
     Box {
-        Canvas(
-            modifier = Modifier
-                .size(20.dp)
-                .clickable { expanded = true },
-        ) {
-            val stroke = 1.2.dp.toPx()
-            val w = size.width
-            val h = size.height
-            val path = Path().apply {
-                moveTo(w * 0.08f, h * 0.12f)
-                lineTo(w * 0.92f, h * 0.12f)
-                lineTo(w * 0.58f, h * 0.55f)
-                lineTo(w * 0.58f, h * 0.9f)
-                lineTo(w * 0.42f, h * 0.9f)
-                lineTo(w * 0.42f, h * 0.55f)
-                close()
-            }
-            drawPath(path, color = tokens.colors.label, style = Stroke(stroke))
-        }
-        DropdownMenu(
+        TerminalFunnelGlyph(
+            color = tokens.colors.label,
+            modifier = Modifier.clickable { expanded = true },
+        )
+        TerminalDropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
             modifier = Modifier.widthIn(min = 150.dp),
-            shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
-            containerColor = tokens.colors.panelSurface,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp,
-            border = BorderStroke(tokens.dimensions.borderWidth, tokens.colors.panelBorder),
         ) {
             SymbolExplorerSort.entries.forEach { option ->
                 val isActive = option == sort
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            text = option.label + if (isActive && descending) "  ↓" else if (isActive) "  ↑" else "",
-                            color = if (isActive) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
-                            fontSize = 11.sp,
-                            fontFamily = TerminalFontFamily,
-                            maxLines = 1,
-                        )
-                    },
+                TerminalMenuItem(
+                    text = option.label + if (isActive && descending) "  ↓" else if (isActive) "  ↑" else "",
+                    selected = isActive,
                     onClick = {
                         onSortSelected(option)
                         expanded = false
@@ -887,79 +911,115 @@ private fun ExplorerRowItem(
     rowHeight: androidx.compose.ui.unit.Dp,
     onToggleStar: () -> Unit,
     onClick: () -> Unit,
+    menuContent: (@Composable (SymbolExplorerRow, dismiss: () -> Unit) -> Unit)? = null,
 ) {
     val tokens = LocalTerminalDesignTokens.current
     val formatter = remember(row.tickSize) {
         row.tickSize?.let { SymbolFormatter(it) } ?: SymbolFormatter.DEFAULT
     }
+    var menuExpanded by remember(row.exchangeId, row.symbol) { mutableStateOf(false) }
     val subline = buildList {
         add(row.exchangeLabel)
         if (row.isPerpetual) add("PERP")
         row.quoteVolume24h?.let { add("VOL $" + SymbolFormatter.formatCompactVolume(it)) }
     }.joinToString(" · ")
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(rowHeight)
-            .background(if (isCurrent) tokens.colors.selection else Color.Transparent)
-            .clickable(onClick = onClick),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .width(2.dp)
-                .fillMaxHeight()
-                .background(if (isCurrent) tokens.colors.accent else Color.Transparent),
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .height(rowHeight)
+        .background(if (isCurrent) tokens.colors.selection else Color.Transparent)
+        .then(
+            if (menuContent != null) {
+                Modifier.pointerInput(row.exchangeId, row.symbol) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (
+                                event.type == PointerEventType.Press &&
+                                event.buttons.isSecondaryPressed
+                            ) {
+                                menuExpanded = true
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                }
+            } else {
+                Modifier
+            },
         )
-        Box(
-            modifier = Modifier
-                .width(34.dp)
-                .fillMaxHeight()
-                .clickable(onClick = onToggleStar),
-            contentAlignment = Alignment.Center,
+        .clickable(onClick = onClick)
+
+    Box {
+        Row(
+            modifier = rowModifier,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            ExplorerStar(starred = starred)
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = highlightedSymbol(row.displaySymbol, matchRange, tokens.colors.accent),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                fontFamily = TerminalFontFamily,
-                maxLines = 1,
+            Box(
+                modifier = Modifier
+                    .width(2.dp)
+                    .fillMaxHeight()
+                    .background(if (isCurrent) tokens.colors.accent else Color.Transparent),
             )
-            if (subline.isNotEmpty()) {
+            Box(
+                modifier = Modifier
+                    .width(34.dp)
+                    .fillMaxHeight()
+                    .clickable(onClick = onToggleStar),
+                contentAlignment = Alignment.Center,
+            ) {
+                ExplorerStar(starred = starred)
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = subline,
-                    color = tokens.colors.label,
-                    fontSize = 9.sp,
+                    text = highlightedSymbol(row.displaySymbol, matchRange, tokens.colors.accent),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
                     fontFamily = TerminalFontFamily,
                     maxLines = 1,
                 )
+                if (subline.isNotEmpty()) {
+                    Text(
+                        text = subline,
+                        color = tokens.colors.label,
+                        fontSize = 9.sp,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                modifier = Modifier.padding(horizontal = tokens.spacing.lg),
+            ) {
+                Text(
+                    text = row.lastPrice?.let { formatter.formatPrice(it) } ?: "—",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 12.sp,
+                    fontFamily = TerminalFontFamily,
+                    maxLines = 1,
+                )
+                val change = row.changePercent24h
+                if (change != null) {
+                    Text(
+                        text = (if (change >= 0) "+" else "-") + plainDecimalFixed(abs(change), 2) + "%",
+                        color = if (change >= 0) tokens.colors.profit else tokens.colors.loss,
+                        fontSize = 9.sp,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
             }
         }
-        Column(
-            horizontalAlignment = Alignment.End,
-            modifier = Modifier.padding(horizontal = tokens.spacing.lg),
-        ) {
-            Text(
-                text = row.lastPrice?.let { formatter.formatPrice(it) } ?: "—",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 12.sp,
-                fontFamily = TerminalFontFamily,
-                maxLines = 1,
-            )
-            val change = row.changePercent24h
-            if (change != null) {
-                Text(
-                    text = (if (change >= 0) "+" else "-") + plainDecimalFixed(abs(change), 2) + "%",
-                    color = if (change >= 0) tokens.colors.profit else tokens.colors.loss,
-                    fontSize = 9.sp,
-                    fontFamily = TerminalFontFamily,
-                    maxLines = 1,
-                )
+        if (menuContent != null) {
+            TerminalDropdownMenu(
+                expanded = menuExpanded,
+                onDismissRequest = { menuExpanded = false },
+            ) {
+                Column(Modifier.padding(vertical = tokens.spacing.xs)) {
+                    menuContent(row) { menuExpanded = false }
+                }
             }
         }
     }
