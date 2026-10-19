@@ -83,13 +83,15 @@ import com.aandios.nous.core.ui.component.TerminalDropdownMenu
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.workspace.WorkspaceConfig
+import com.aandios.nous.core.workspace.currentTime
 import kotlin.math.roundToInt
 
 /**
  * Navigator workspace'ов (левая tool-панель): заголовок с созданием папки,
  * поиск единым матчером explorer/Market Watch, дерево папок с workspace'ами
- * (drag & drop папок и workspace'ов, контекстные меню Rename/Make Template/
- * Delete) и Quick Access с шаблонами. Папка — это [WorkspaceConfig.group],
+ * (drag & drop папок и workspace'ов, контекстные меню Rename/Duplicate/
+ * Make Template/Delete) и Quick Access с шаблонами. Одиночный клик открывает
+ * preview-вкладку, двойной — закреплённую. Папка — это [WorkspaceConfig.group],
  * порядок папок и свёрнутость персистит вызывающая сторона (NavigatorState).
  */
 @Composable
@@ -99,7 +101,8 @@ fun WorkspaceNavigator(
     folderOrder: List<String>,
     collapsedFolders: Set<String>,
     templates: List<Pair<String, WorkspaceConfig>>,
-    onWorkspaceClick: (WorkspaceConfig) -> Unit,
+    onWorkspacePreview: (WorkspaceConfig) -> Unit,
+    onWorkspaceOpen: (WorkspaceConfig) -> Unit,
     onNewWorkspace: () -> Unit,
     onCreateFolder: (String) -> Unit,
     onRenameFolder: (String, String) -> Unit,
@@ -112,6 +115,7 @@ fun WorkspaceNavigator(
     onCreateFromTemplate: (String, WorkspaceConfig) -> Unit,
     modifier: Modifier = Modifier,
     onMakeTemplate: ((WorkspaceConfig) -> Unit)? = null,
+    onDuplicateWorkspace: ((WorkspaceConfig) -> Unit)? = null,
 ) {
     val tokens = LocalTerminalDesignTokens.current
     val accent = MaterialTheme.colorScheme.primary
@@ -389,7 +393,11 @@ fun WorkspaceNavigator(
                                         item.indexInFolder == item.folder.workspaces.lastIndex),
                                 isDragged = dragPayload?.key == item.key,
                                 draggable = draggable,
-                                onClick = { onWorkspaceClick(item.entry.workspace) },
+                                onClick = { onWorkspacePreview(item.entry.workspace) },
+                                onDoubleClick = { onWorkspaceOpen(item.entry.workspace) },
+                                onDuplicate = onDuplicateWorkspace?.let { fn ->
+                                    { fn(item.entry.workspace) }
+                                },
                                 onRename = { newName -> onRenameWorkspace(item.entry.workspace, newName) },
                                 onDelete = { onDeleteWorkspace(item.entry.workspace) },
                                 onMakeTemplate = onMakeTemplate?.let { fn ->
@@ -776,6 +784,9 @@ private val NAVIGATOR_WORKSPACE_ROW_HEIGHT = 46.dp
 private val NAVIGATOR_WORKSPACE_ICON_WIDTH = 34.dp
 private val NAVIGATOR_WORKSPACE_GLYPH_SIZE = 16.dp
 
+/** Окно распознавания двойного клика (мс): одиночный срабатывает мгновенно. */
+private const val NAVIGATOR_DOUBLE_TAP_WINDOW_MS = 400L
+
 @Composable
 private fun NavigatorWorkspaceRow(
     item: NavigatorItem.WorkspaceItem,
@@ -785,9 +796,11 @@ private fun NavigatorWorkspaceRow(
     isDragged: Boolean,
     draggable: Boolean,
     onClick: () -> Unit,
+    onDoubleClick: () -> Unit,
     onRename: (String) -> Unit,
     onDelete: () -> Unit,
     onMakeTemplate: (() -> Unit)?,
+    onDuplicate: (() -> Unit)?,
     onDragStart: (Offset) -> Unit,
     onDrag: (Offset) -> Unit,
     onDragEnd: () -> Unit,
@@ -802,6 +815,7 @@ private fun NavigatorWorkspaceRow(
     var menuExpanded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var lastTapAt by remember { mutableStateOf(0L) }
     val currentDragStart by rememberUpdatedState(onDragStart)
     val currentDrag by rememberUpdatedState(onDrag)
     val currentDragEnd by rememberUpdatedState(onDragEnd)
@@ -823,7 +837,13 @@ private fun NavigatorWorkspaceRow(
                 )
                 .hoverable(interaction)
                 .clickable(interactionSource = interaction, indication = null) {
-                    if (!editing) onClick()
+                    if (!editing) {
+                        val now = currentTime()
+                        val doubleTap = now - lastTapAt <= NAVIGATOR_DOUBLE_TAP_WINDOW_MS
+                        lastTapAt = now
+                        onClick()
+                        if (doubleTap) onDoubleClick()
+                    }
                 }
                 .pointerInput(draggable, item.key) {
                     if (draggable) {
@@ -916,6 +936,12 @@ private fun NavigatorWorkspaceRow(
             NavigatorMenuItem("Rename") {
                 menuExpanded = false
                 editing = true
+            }
+            onDuplicate?.let { fn ->
+                NavigatorMenuItem("Duplicate") {
+                    menuExpanded = false
+                    fn()
+                }
             }
             onMakeTemplate?.let { fn ->
                 NavigatorMenuItem("Make Template") {

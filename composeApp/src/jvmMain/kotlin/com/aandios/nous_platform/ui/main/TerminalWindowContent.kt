@@ -219,6 +219,8 @@ fun TerminalWindowContent(
                                 val cursor = WindowBoundsRegistry.cursorLocation()
                                 windowManager.detachWorkspace(wsId, session.id, cursor?.first, cursor?.second)
                             },
+                            previewWorkspaceId = session.previewWorkspaceId,
+                            onTabDoubleClick = { wsId -> windowManager.promotePreview(session.id, wsId) },
                             externalDragActive = externalDragActive,
                             trailing = {
                                 Box {
@@ -295,6 +297,7 @@ fun TerminalWindowContent(
                     workspaceTemplates = marketWatchTemplates,
                     activeWorkspaceId = session.activeWorkspaceId,
                     onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
+                    onPreviewWorkspace = { config -> windowManager.openWorkspacePreviewIn(session.id, config) },
                     onSymbolSelected = { symbol, providerId ->
                         terminalStateViewModel.changeSymbol(symbol, providerId)
                     },

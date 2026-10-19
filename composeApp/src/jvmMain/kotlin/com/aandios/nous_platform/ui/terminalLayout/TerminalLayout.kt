@@ -34,6 +34,7 @@ import com.aandios.nous.core.workspace.TemplateRepository
 import com.aandios.nous.core.workspace.WorkspaceBus
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import com.aandios.nous.core.workspace.WorkspaceRepository
+import com.aandios.nous.core.workspace.duplicateWorkspaceConfig
 import com.aandios.nous.core.workspace.viewmodel.TabManager
 import kotlinx.coroutines.launch
 import nous_platform.composeapp.generated.resources.*
@@ -89,6 +90,7 @@ fun TerminalLayout(
     workspaceTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
     activeWorkspaceId: String? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
+    onPreviewWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
     onOpenMarketWatchTemplate: ((WorkspaceConfig, String, String, String, String) -> Unit)? = null,
     onApplyToCurrentWorkspace: ((String, String, String) -> Unit)? = null,
@@ -254,7 +256,8 @@ fun TerminalLayout(
                                 folderOrder = navigatorState.folders,
                                 collapsedFolders = navigatorState.collapsed.toSet(),
                                 templates = workspaceTemplates,
-                                onWorkspaceClick = { config -> onOpenWorkspace?.invoke(config) },
+                                onWorkspacePreview = { config -> onPreviewWorkspace?.invoke(config) },
+                                onWorkspaceOpen = { config -> onOpenWorkspace?.invoke(config) },
                                 onNewWorkspace = {
                                     scope.launch {
                                         val config = com.aandios.nous.core.workspace.Templates.nous()
@@ -341,6 +344,14 @@ fun TerminalLayout(
                                             repo.create(ws.copy(id = com.aandios.nous.core.workspace.generateId()))
                                             workspaceBus?.workspaceChanged()
                                         }
+                                    }
+                                },
+                                onDuplicateWorkspace = { ws ->
+                                    scope.launch {
+                                        val copy = duplicateWorkspaceConfig(ws)
+                                        workspaceRepo?.create(copy)
+                                        onOpenWorkspace?.invoke(copy)
+                                        refreshWorkspaces()
                                     }
                                 },
                                 modifier = Modifier.fillMaxSize(),

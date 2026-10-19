@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -33,6 +34,7 @@ import com.aandios.nous.core.ui.component.TerminalDropdownMenu
 import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalDesignTokens
+import com.aandios.nous.core.workspace.currentTime
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
 import kotlin.math.roundToInt
 
@@ -55,6 +57,8 @@ fun TabBar(
     onDragStart: ((String) -> Unit)? = null,
     onDragEndResolve: (() -> Unit)? = null,
     onOpenInNewWindow: ((String) -> Unit)? = null,
+    previewWorkspaceId: String? = null,
+    onTabDoubleClick: ((String) -> Unit)? = null,
     externalDragActive: Boolean = false,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
@@ -153,9 +157,11 @@ fun TabBar(
                     TabItem(
                         name = ws.config.name,
                         isActive = isActive && !isDragged,
+                        isPreview = ws.config.id == previewWorkspaceId,
                         tokens = tokens,
                         onClick = { if (!isDragged) onTabClick(index) },
                         onClose = { if (!isDragged) onTabClose(ws.config.id) },
+                        onDoubleClick = onTabDoubleClick?.let { fn -> { fn(ws.config.id) } },
                         onOpenInNewWindow = onOpenInNewWindow?.let { fn -> { fn(ws.config.id) } },
                     )
                 }
@@ -193,16 +199,22 @@ fun TabBar(
     }
 }
 
+/** Окно распознавания двойного клика (мс): одиночный клик срабатывает мгновенно. */
+private const val TAB_DOUBLE_TAP_WINDOW_MS = 400L
+
 @Composable
 private fun TabItem(
     name: String,
     isActive: Boolean,
+    isPreview: Boolean,
     tokens: TerminalDesignTokens,
     onClick: () -> Unit,
     onClose: () -> Unit,
+    onDoubleClick: (() -> Unit)? = null,
     onOpenInNewWindow: (() -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    var lastTapAt by remember { mutableStateOf(0L) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val shape = RoundedCornerShape(tokens.cornerRadii.workspaceTab)
@@ -225,7 +237,13 @@ private fun TabItem(
                 shape,
             )
             .hoverable(interaction)
-            .clickable { onClick() }
+            .clickable {
+                val now = currentTime()
+                val doubleTap = now - lastTapAt <= TAB_DOUBLE_TAP_WINDOW_MS
+                lastTapAt = now
+                onClick()
+                if (doubleTap) onDoubleClick?.invoke()
+            }
             .padding(horizontal = tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -235,6 +253,7 @@ private fun TabItem(
             else tokens.colors.label,
             fontSize = tokens.typography.compactSize,
             fontFamily = TerminalFontFamily,
+            fontStyle = if (isPreview) FontStyle.Italic else FontStyle.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = tokens.dimensions.workspaceTabMaxWidth)

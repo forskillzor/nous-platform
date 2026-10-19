@@ -9,6 +9,11 @@ import com.aandios.nous.core.workspace.AppConfig
 import com.aandios.nous.core.workspace.AppStateRepository
 import com.aandios.nous.core.workspace.WindowSessionState
 import com.aandios.nous.core.workspace.WorkspaceRepository
+import com.aandios.nous.core.workspace.openPinned
+import com.aandios.nous.core.workspace.openPreview
+import com.aandios.nous.core.workspace.promotePreview
+import com.aandios.nous.core.workspace.withoutWorkspace
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,7 +24,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Управляет окнами терминала (вкладки как в браузере):
- * у каждого окна свой список workspace-вкладок и активная вкладка.
+ * у каждого окна свой список workspace-вкладок, активная вкладка и одна
+ * preview-вкладка (одиночный клик в навигаторе, курсив в TabBar).
  * ViewModel'ы всех workspace'ов живут в TabManager и переживают
  * переносы между окнами.
  */
@@ -27,8 +33,9 @@ class WindowManager(
     private val tabManager: TabManager,
     private val workspaceRepo: WorkspaceRepository,
     private val appStateRepo: AppStateRepository,
+    dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     private val _sessions = MutableStateFlow<List<WindowSessionState>>(emptyList())
     val sessions: StateFlow<List<WindowSessionState>> = _sessions
@@ -56,11 +63,12 @@ class WindowManager(
         }
 
         val valid = states.mapNotNull { st ->
-            val ids = st.workspaceIds.filter { workspaceRepo.get(it) != null }
+            val ids = st.workspaceIds.filter { workspaceRepo.get(it) != null }.distinct()
             if (ids.isEmpty()) return@mapNotNull null
             st.copy(
                 workspaceIds = ids,
-                activeWorkspaceId = st.activeWorkspaceId?.takeIf { it in ids }
+                activeWorkspaceId = st.activeWorkspaceId?.takeIf { it in ids } ?: ids.lastOrNull(),
+                previewWorkspaceId = st.previewWorkspaceId?.takeIf { it in ids },
             )
         }
 
@@ -74,15 +82,26 @@ class WindowManager(
         persist()
     }
 
-    /** Открыть workspace во вкладке указанного окна (создать новую вкладку). */
+    /** Открыть workspace закреплённой вкладкой (двойной клик, шаблоны). Дубликат невозможен. */
     fun openWorkspaceIn(sessionId: String, config: com.aandios.nous.core.workspace.WorkspaceConfig) {
         scope.launch { tabManager.openWorkspace(config) }
-        updateSession(sessionId) { st ->
-            st.copy(
-                workspaceIds = st.workspaceIds + config.id,
-                activeWorkspaceId = config.id,
-            )
+        updateSession(sessionId) { it.openPinned(config.id) }
+    }
+
+    /** Открыть workspace в preview-вкладке (одиночный клик); уже открытый — переключение. */
+    fun openWorkspacePreviewIn(sessionId: String, config: com.aandios.nous.core.workspace.WorkspaceConfig) {
+        scope.launch { tabManager.openWorkspace(config) }
+        val replacedPreview = sessionById(sessionId)?.let { st ->
+            if (config.id in st.workspaceIds) null
+            else st.previewWorkspaceId?.takeIf { it in st.workspaceIds }
         }
+        updateSession(sessionId) { it.openPreview(config.id) }
+        replacedPreview?.let { disposeIfUnused(it) }
+    }
+
+    /** Закрепить preview-вкладку (двойной клик по вкладке в TabBar). */
+    fun promotePreview(sessionId: String, workspaceId: String) {
+        updateSession(sessionId) { it.promotePreview(workspaceId) }
     }
 
     /** Открыть существующий workspace во вкладке (без дублирования вкладки). */
@@ -90,16 +109,7 @@ class WindowManager(
         scope.launch {
             workspaceRepo.get(workspaceId)?.let { tabManager.openWorkspace(it) }
         }
-        updateSession(sessionId) { st ->
-            if (workspaceId in st.workspaceIds) {
-                st.copy(activeWorkspaceId = workspaceId)
-            } else {
-                st.copy(
-                    workspaceIds = st.workspaceIds + workspaceId,
-                    activeWorkspaceId = workspaceId,
-                )
-            }
-        }
+        updateSession(sessionId) { it.openPinned(workspaceId) }
     }
 
     fun activate(sessionId: String, workspaceId: String) {
@@ -107,17 +117,8 @@ class WindowManager(
     }
 
     fun closeWorkspaceIn(sessionId: String, workspaceId: String) {
-        updateSession(sessionId) { st ->
-            val ids = st.workspaceIds - workspaceId
-            st.copy(
-                workspaceIds = ids,
-                activeWorkspaceId = st.activeWorkspaceId?.takeIf { it != workspaceId }
-                    ?: ids.lastOrNull(),
-            )
-        }
-        if (_sessions.value.none { workspaceId in it.workspaceIds }) {
-            scope.launch { tabManager.closeWorkspace(workspaceId) }
-        }
+        updateSession(sessionId) { it.withoutWorkspace(workspaceId) }
+        disposeIfUnused(workspaceId)
     }
 
     fun reorderWorkspace(sessionId: String, fromIndex: Int, toIndex: Int) {
@@ -131,16 +132,9 @@ class WindowManager(
         }
     }
 
-    /** Вынести вкладку в новое окно (detach) с позицией курсора. */
+    /** Вынести вкладку в новое окно (detach) с позицией курсора. Preview промоутится. */
     fun detachWorkspace(workspaceId: String, fromSessionId: String, x: Int? = null, y: Int? = null) {
-        updateSession(fromSessionId) { st ->
-            val ids = st.workspaceIds - workspaceId
-            st.copy(
-                workspaceIds = ids,
-                activeWorkspaceId = st.activeWorkspaceId?.takeIf { it != workspaceId }
-                    ?: ids.lastOrNull(),
-            )
-        }
+        updateSession(fromSessionId) { it.withoutWorkspace(workspaceId) }
         val newSession = WindowSessionState(
             workspaceIds = listOf(workspaceId),
             activeWorkspaceId = workspaceId,
@@ -151,18 +145,11 @@ class WindowManager(
         persist()
     }
 
-    /** Перенести вкладку между окнами (перетаскивание между окнами). */
+    /** Перенести вкладку между окнами (перетаскивание между окнами). Preview промоутится. */
     fun moveWorkspace(workspaceId: String, fromSessionId: String, toSessionId: String, toIndex: Int) {
         if (fromSessionId == toSessionId) return
         val to = sessionById(toSessionId) ?: return
-        updateSession(fromSessionId) { st ->
-            val ids = st.workspaceIds - workspaceId
-            st.copy(
-                workspaceIds = ids,
-                activeWorkspaceId = st.activeWorkspaceId?.takeIf { it != workspaceId }
-                    ?: ids.lastOrNull(),
-            )
-        }
+        updateSession(fromSessionId) { it.withoutWorkspace(workspaceId) }
         updateSession(toSessionId) { st ->
             val ids = st.workspaceIds.toMutableList()
             ids.add(toIndex.coerceIn(0, ids.size), workspaceId)
@@ -196,6 +183,12 @@ class WindowManager(
         }
         persist()
         return remaining.isNotEmpty()
+    }
+
+    private fun disposeIfUnused(workspaceId: String) {
+        if (_sessions.value.none { workspaceId in it.workspaceIds }) {
+            scope.launch { tabManager.closeWorkspace(workspaceId) }
+        }
     }
 
     private fun updateSession(sessionId: String, transform: (WindowSessionState) -> WindowSessionState) {

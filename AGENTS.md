@@ -434,10 +434,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - Left sidebar is `WorkspaceNavigator` (platform-core, replaced `ProjectTree`):
   workspace tree grouped by `WorkspaceConfig.group` folders ("Unsorted" =
   empty group, pinned first, `folderOrder` then alphabetical), folder
-  create/rename/delete and workspace rename/make-template/delete via theme
-  island menus (`NavigatorMenuItem`), inline rename, search via the shared
-  matcher (folder-name match keeps all children; invalid regex shows an error
-  and hides the tree while searching), drag & drop for workspaces
+  create/rename/delete and workspace rename/duplicate/make-template/delete via
+  theme island menus (`NavigatorMenuItem`), inline rename, search via the
+  shared matcher (folder-name match keeps all children; invalid regex shows an
+  error and hides the tree while searching), drag & drop for workspaces
   (into/between folders, auto-expands collapsed target) and folders, Quick
   Access templates section; pure model + DnD resolution live in
   `WorkspaceNavigatorModel.kt` (`buildNavigatorTree`,
@@ -454,6 +454,26 @@ from the IDE and tests visually; agents verify via compilation and tests.
   ordering is not polluted. Sidebar icon (mosaic) is
   `composeResources/drawable/workspaces.svg`; other navigator glyphs are
   Canvas-drawn in platform-core (no composeResources there).
+- Workspace tabs follow IDEA preview semantics (do not break): a window holds
+  at most one preview tab and tabs never duplicate. Single click in the
+  navigator (or any non-drag tap) opens/reuses the preview via
+  `WindowManager.openWorkspacePreviewIn`; double click pins
+  (`openWorkspaceIn` → `openPinned`), instantly — double-tap is detected with
+  a ~400 ms timestamp window inside `clickable` (never `combinedClickable`,
+  it would delay the preview; TabBar does the same, nested ×/menu clickables
+  consume their taps). The preview tab renders italic in `TabBar`
+  (`previewWorkspaceId`), double click on a tab promotes it
+  (`WindowManager.promotePreview`). A different pinned open keeps the current
+  preview; the preview slot is replaced in place; replacing/closing/moving/
+  detaching disposes the workspace VM only when no window holds it
+  (`disposeIfUnused`). `previewWorkspaceId` persists with the session and
+  survives restart via `WindowSessionState`; `restoreSessions` drops stale
+  ids, deduplicates tabs and falls back to the last tab when active is stale.
+  `duplicateWorkspaceConfig` (WorkspaceConfig.kt) makes "`{name} copy`" in the
+  same folder; the Duplicate menu item opens it pinned. Pure tab transitions
+  live in `PreviewTabs.kt` (`openPreview`/`openPinned`/`promotePreview`/
+  `withoutWorkspace`) and are covered by `PreviewTabsTest` +
+  `WindowManagerTest` (inject `StandardTestDispatcher`).
 - The shared rounded dropdown shell is `TerminalBoxDropdown` (platform-core,
   compact MW-LIST style: 11sp mono text, smallCard radius, 2dp/6dp padding,
   12dp chevron; styles `NORMAL` (45% `panelHeaderSurface` fill, white text),

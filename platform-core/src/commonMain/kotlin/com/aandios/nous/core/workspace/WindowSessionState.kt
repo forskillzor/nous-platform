@@ -9,13 +9,16 @@ import kotlinx.serialization.Serializable
 
 /**
  * Состояние одного окна терминала: набор вкладок (workspace id),
- * активная вкладка и геометрия окна. Персистится в AppConfig.windows.
+ * активная вкладка, preview-вкладка (одна на окно, как в IDEA) и геометрия.
+ * Персистится в AppConfig.windows.
  */
 @Serializable
 data class WindowSessionState(
     val id: String = generateId(),
     val workspaceIds: List<String> = emptyList(),
     val activeWorkspaceId: String? = null,
+    /** Preview-вкладка (курсив в TabBar); null — превью нет. Всегда из [workspaceIds]. */
+    val previewWorkspaceId: String? = null,
     /** Позиция окна на экране (px); null — позиция по умолчанию. */
     val x: Int? = null,
     val y: Int? = null,

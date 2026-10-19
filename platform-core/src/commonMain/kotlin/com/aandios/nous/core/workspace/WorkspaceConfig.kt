@@ -28,3 +28,11 @@ data class WorkspaceConfig(
     val updatedAt: Long = currentTime(),
     val order: Int = 0
 )
+
+/** Копия workspace для меню Duplicate: новый id, имя «… copy», та же папка. */
+fun duplicateWorkspaceConfig(config: WorkspaceConfig): WorkspaceConfig = config.copy(
+    id = generateId(),
+    name = "${config.name} copy",
+    createdAt = currentTime(),
+    updatedAt = currentTime(),
+)
