@@ -251,6 +251,7 @@ private fun RenderNode(
         is LayoutNode.Leaf -> {
             val config = panels[node.panelId]
             val panelId = node.panelId
+            var panelSize by remember(panelId) { mutableStateOf(IntSize.Zero) }
             Column(
                 modifier = modifier
                     .padding(tokens.dimensions.workspacePanelGap / 2)
@@ -264,85 +265,88 @@ private fun RenderNode(
                     .onGloballyPositioned {
                         fly.rects.value = fly.rects.value + (panelId to it.boundsInWindow())
                     }
+                    .onSizeChanged { panelSize = it }
                     .graphicsLayer { applyFlyTransform(fly, panelId) }
             ) {
-                if (config != null) {
-                    PanelHeader(
-                        config = config,
-                        onClose = onClosePanel?.let { { it(panelId) } },
-                        onSplitH = onSplitPanel?.let { fn ->
-                            { type ->
-                                fn(
-                                    panelId,
-                                    LayoutNode.Direction.HORIZONTAL,
-                                    type
-                                )
-                            }
-                        },
-                        onSplitV = onSplitPanel?.let { fn ->
-                            { type ->
-                                fn(
-                                    panelId,
-                                    LayoutNode.Direction.VERTICAL,
-                                    type
-                                )
-                            }
-                        },
-                        onDrag = if (onMovePanel != null || onMovePanelToRoot != null) {
-                            PanelDragHandlers(
-                                onDragStart = {
-                                    dragState.panelId = panelId
-                                    dragState.targetId = null
-                                    dragState.zone = null
-                                    dragState.rootZone = null
-                                    dragState.cancelled = false
-                                },
-                                onDrag = { globalPos ->
-                                    if (!dragState.cancelled) {
-                                        resolveDropTarget(
-                                            dragState = dragState,
-                                            globalPos = globalPos,
-                                            excludeId = panelId,
-                                            validPanelIds = panels.keys,
-                                            rects = fly.rects.value,
-                                            wsRect = wsRect,
-                                            rootBandPx = rootBandPx,
-                                        )
-                                    }
-                                },
-                                onDragEnd = {
-                                    val target = dragState.targetId
-                                    val zone = dragState.zone
-                                    val rootZone = dragState.rootZone
-                                    val wasCancelled = dragState.cancelled
-                                    dragState.clearTargets()
-                                    dragState.cancelled = false
-                                    if (!wasCancelled) {
-                                        when {
-                                            rootZone != null && onMovePanelToRoot != null ->
-                                                onMovePanelToRoot(panelId, rootZone)
-
-                                            target != null && zone != null && onMovePanel != null ->
-                                                onMovePanel(panelId, target, zone)
+                CompositionLocalProvider(LocalPanelSize provides panelSize) {
+                    if (config != null) {
+                        PanelHeader(
+                            config = config,
+                            onClose = onClosePanel?.let { { it(panelId) } },
+                            onSplitH = onSplitPanel?.let { fn ->
+                                { type ->
+                                    fn(
+                                        panelId,
+                                        LayoutNode.Direction.HORIZONTAL,
+                                        type
+                                    )
+                                }
+                            },
+                            onSplitV = onSplitPanel?.let { fn ->
+                                { type ->
+                                    fn(
+                                        panelId,
+                                        LayoutNode.Direction.VERTICAL,
+                                        type
+                                    )
+                                }
+                            },
+                            onDrag = if (onMovePanel != null || onMovePanelToRoot != null) {
+                                PanelDragHandlers(
+                                    onDragStart = {
+                                        dragState.panelId = panelId
+                                        dragState.targetId = null
+                                        dragState.zone = null
+                                        dragState.rootZone = null
+                                        dragState.cancelled = false
+                                    },
+                                    onDrag = { globalPos ->
+                                        if (!dragState.cancelled) {
+                                            resolveDropTarget(
+                                                dragState = dragState,
+                                                globalPos = globalPos,
+                                                excludeId = panelId,
+                                                validPanelIds = panels.keys,
+                                                rects = fly.rects.value,
+                                                wsRect = wsRect,
+                                                rootBandPx = rootBandPx,
+                                            )
                                         }
-                                    }
-                                },
-                                onDragCancel = {
-                                    // Прерванный жест (фокус ушёл и т.п.) — только чистим
-                                    // состояние, перенос НЕ коммитим.
-                                    dragState.clearTargets()
-                                    dragState.cancelled = false
-                                },
-                            )
-                        } else null,
-                        titleContent = panelTitleContent?.let { fn -> { fn(panelId) } },
-                        settingsContent = panelSettingsContent?.let { fn ->
-                            { dismiss: () -> Unit -> fn(panelId, dismiss) }
-                        },
-                    )
-                }
-                Box(modifier = Modifier.fillMaxSize().weight(1f)) {
-                    panelContent(panelId)
+                                    },
+                                    onDragEnd = {
+                                        val target = dragState.targetId
+                                        val zone = dragState.zone
+                                        val rootZone = dragState.rootZone
+                                        val wasCancelled = dragState.cancelled
+                                        dragState.clearTargets()
+                                        dragState.cancelled = false
+                                        if (!wasCancelled) {
+                                            when {
+                                                rootZone != null && onMovePanelToRoot != null ->
+                                                    onMovePanelToRoot(panelId, rootZone)
+
+                                                target != null && zone != null && onMovePanel != null ->
+                                                    onMovePanel(panelId, target, zone)
+                                            }
+                                        }
+                                    },
+                                    onDragCancel = {
+                                        // Прерванный жест (фокус ушёл и т.п.) — только чистим
+                                        // состояние, перенос НЕ коммитим.
+                                        dragState.clearTargets()
+                                        dragState.cancelled = false
+                                    },
+                                )
+                            } else null,
+                            titleContent = panelTitleContent?.let { fn -> { fn(panelId) } },
+                            settingsContent = panelSettingsContent?.let { fn ->
+                                { dismiss: () -> Unit -> fn(panelId, dismiss) }
+                            },
+                        )
+                    }
+                    Box(modifier = Modifier.fillMaxSize().weight(1f)) {
+                        panelContent(panelId)
+                    }
                 }
             }
         }

@@ -5,12 +5,7 @@
 
 package com.aandios.nous_platform.ui.terminalLayout
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.hoverable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,17 +22,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.component.TerminalPanelHeader
+import com.aandios.nous.core.ui.component.TerminalResizeGrip
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import org.jetbrains.compose.resources.painterResource
@@ -162,75 +153,13 @@ fun ToolDetailsPanel(
             }
 
             if (onWidthDelta != null) {
-                CornerResizeGrip(
+                TerminalResizeGrip(
                     onDrag = onWidthDelta,
                     modifier = Modifier.Companion
                         .align(Alignment.BottomEnd)
                         .padding(tokens.spacing.sm),
                 )
             }
-        }
-    }
-}
-
-/**
- * Угловая ручка ширины панели: диагональная стрелка в правом нижнем углу
- * островка (как в прототипе). Тянется горизонтально.
- */
-@Composable
-private fun CornerResizeGrip(
-    onDrag: (Float) -> Unit,
-    modifier: Modifier = Modifier.Companion,
-) {
-    val tokens = LocalTerminalDesignTokens.current
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    val color = if (hovered) tokens.colors.accent else tokens.colors.label.copy(alpha = 0.55f)
-    // pointerInput(Unit) не перезапускается: обработчик читаем через
-    // rememberUpdatedState, иначе жест навсегда замыкается на первый колбэк,
-    // который считает ширину от устаревшего topPanelState (дрожание/«не тянется»).
-    val currentOnDrag by rememberUpdatedState(onDrag)
-
-    Box(
-        modifier = modifier
-            .size(16.dp)
-            .hoverable(interaction)
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures { _, dragAmount -> currentOnDrag(dragAmount) }
-            },
-        contentAlignment = Alignment.Companion.Center,
-    ) {
-        Canvas(modifier = Modifier.Companion.size(12.dp)) {
-            val stroke = 1.4.dp.toPx()
-            val inset = size.minDimension * 0.12f
-            val topLeft = Offset(inset, inset)
-            val bottomRight = Offset(size.width - inset, size.height - inset)
-            drawLine(color, topLeft, bottomRight, strokeWidth = stroke)
-            val head = size.minDimension * 0.26f
-            drawLine(
-                color,
-                topLeft,
-                Offset(topLeft.x + head, topLeft.y),
-                strokeWidth = stroke,
-            )
-            drawLine(
-                color,
-                topLeft,
-                Offset(topLeft.x, topLeft.y + head),
-                strokeWidth = stroke,
-            )
-            drawLine(
-                color,
-                bottomRight,
-                Offset(bottomRight.x - head, bottomRight.y),
-                strokeWidth = stroke,
-            )
-            drawLine(
-                color,
-                bottomRight,
-                Offset(bottomRight.x, bottomRight.y - head),
-                strokeWidth = stroke,
-            )
         }
     }
 }

@@ -5,9 +5,6 @@
 
 package com.aandios.nous_platform.ui.terminalLayout
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,7 +20,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -371,15 +367,6 @@ fun SymbolsPanel(
                 },
                 onListError = { listActionError = it },
             )
-
-            // FAB «в начало списка»: появляется, когда список прокручен вниз
-            ScrollToTopFab(
-                visible = listState.firstVisibleItemIndex > 0,
-                onClick = { scope.launch { listState.animateScrollToItem(0) } },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = tokens.spacing.md, bottom = 30.dp),
-            )
         }
     }
 
@@ -488,61 +475,3 @@ private fun ErrorBadgeGlyph(color: Color, modifier: Modifier = Modifier) {
     }
 }
 
-/** FAB «в начало списка»: круглая кнопка-остров над футером списка. */
-@Composable
-private fun ScrollToTopFab(
-    visible: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val tokens = LocalTerminalDesignTokens.current
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(),
-        exit = fadeOut(),
-        modifier = modifier,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(tokens.colors.panelHeaderSurface)
-                .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, CircleShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center,
-        ) {
-            ScrollToTopGlyph(color = MaterialTheme.colorScheme.primary)
-        }
-    }
-}
-
-/** Стрелка вверх для FAB «в начало списка». */
-@Composable
-private fun ScrollToTopGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(12.dp)) {
-        val stroke = 1.4.dp.toPx()
-        val w = size.width
-        val h = size.height
-        drawLine(
-            color = color,
-            start = Offset(w * 0.5f, h),
-            end = Offset(w * 0.5f, h * 0.15f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.18f, h * 0.45f),
-            end = Offset(w * 0.5f, h * 0.15f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(w * 0.82f, h * 0.45f),
-            end = Offset(w * 0.5f, h * 0.15f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-    }
-}

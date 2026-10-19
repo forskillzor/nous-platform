@@ -103,9 +103,8 @@ Mind this when writing paths.
   PERPETUALS/quote/exchange chips, arrow sort, `.P` display symbols, per-row
   star (active list or Favourites); the panel adds only a row context menu
   (Apply to current workspace, OPEN <sym> WITH templates, Add to <list name>)
-  and a ⚙ menu (New/Rename/Delete list, Close panel) plus a scroll-to-top FAB
-  over the list (visible once scrolled, `panelHeaderSurface` island with an
-  accent arrow). Catalog failures are
+  and a ⚙ menu (New/Rename/Delete list, Close panel). The scroll-to-top FAB
+  lives in the shared content (so the popup has it too). Catalog failures are
   never printed in the body: a red exclamation badge in the panel title opens
   `TerminalContextPopup` with `MarketOverviewStore.state.error`.
 - Chart: provider/contract-type state is global (`chart_provider_id`,
@@ -401,8 +400,11 @@ from the IDE and tests visually; agents verify via compilation and tests.
   the catalog holds ~2k rows, and pin it to fixed width `menuWidth` × height
   `5 × 46dp`: the hosting M3 `DropdownMenu` measures content with
   `IntrinsicSize.Max`, and a SubcomposeLayout cannot answer intrinsic queries
-  unless it has a specified size — never `fillMaxWidth()` there; star,
-  `SYMBOL.P` for
+  unless it has a specified size — never `fillMaxWidth()` there; the height is
+  resizable via `TerminalResizeGrip` in the footer (vertical drag, right of
+  MANAGE WATCHLIST; min 2 rows; max = `LocalPanelSize.height` minus popup
+  chrome, so it never exceeds the host panel); scroll-to-top FAB over the list;
+  star, `SYMBOL.P` for
   perpetuals, `EXCHANGE · PERP · VOL $3.84B`, last price, 24h %), footer
   `N CONTRACTS · SORTED BY <sort>` + MANAGE WATCHLIST, which opens the Market
   Watch tool panel (`ToolPanelState` is hoisted in `TerminalWindowContent`;
@@ -519,6 +521,11 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`workspacePanelGap + splitHandleSize`) via a centered
   `requiredWidth`/`requiredHeight` overflow child (dots stay centered) —
   never shrink the hit region back to the 2dp strip.
+- Corner resize affordances (Market Watch tool-panel width, explorer popup list
+  height) use the shared `TerminalResizeGrip` (diagonal 45° two-way arrow,
+  `TerminalResizeOrientation.HORIZONTAL`/`VERTICAL`). `LayoutRenderer` leaves
+  publish their size via `LocalPanelSize` (IntSize; zero outside a workspace
+  panel); popups use it to cap their height to the host panel.
 - DOM ladder and order-entry colors should come from
   `LocalTerminalDesignTokens.current`; preserve strong white-on-side-color and
   dark-on-quantity-input contrast.

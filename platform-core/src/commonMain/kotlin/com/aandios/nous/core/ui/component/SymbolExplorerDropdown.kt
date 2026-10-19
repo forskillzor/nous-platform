@@ -5,6 +5,9 @@
 
 package com.aandios.nous.core.ui.component
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -32,6 +36,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -43,6 +48,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -55,6 +61,7 @@ import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
+import com.aandios.nous.core.ui.workspace.LocalPanelSize
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -326,6 +333,26 @@ fun SymbolExplorerDropdown(
     var sort by remember { mutableStateOf(SymbolExplorerSort.VOLUME) }
     var descending by remember { mutableStateOf(true) }
     var query by remember { mutableStateOf("") }
+    var listHeight by remember { mutableStateOf(EXPLORER_ROW_HEIGHT * 5) }
+
+    val density = LocalDensity.current
+    val panelSize = LocalPanelSize.current
+    // Верхняя граница высоты списка — высота панели-хозяина (chart/DOM/
+    // Trades) за вычетом хрома попапа, чтобы список не вылезал за панель.
+    // Вне workspace-панели (standalone окна) размера нет — без границы.
+    val maxListHeight = remember(panelSize, density) {
+        if (panelSize.height > 0) {
+            with(density) {
+                (panelSize.height.toDp() - EXPLORER_POPUP_CHROME_HEIGHT)
+                    .coerceAtLeast(EXPLORER_MIN_LIST_HEIGHT)
+            }
+        } else {
+            null
+        }
+    }
+    val cappedListHeight = maxListHeight
+        ?.let { max -> listHeight.coerceIn(EXPLORER_MIN_LIST_HEIGHT, max) }
+        ?: listHeight.coerceAtLeast(EXPLORER_MIN_LIST_HEIGHT)
 
     val searchFocus = remember { FocusRequester() }
 
@@ -391,7 +418,7 @@ fun SymbolExplorerDropdown(
                 dismiss()
             },
             listWidth = menuWidth,
-            listHeight = EXPLORER_ROW_HEIGHT * 5,
+            listHeight = cappedListHeight,
             searchFocusRequester = searchFocus,
             tabsTrailing = {
                 Text(
@@ -404,8 +431,8 @@ fun SymbolExplorerDropdown(
                         .padding(tokens.spacing.xs),
                 )
             },
-            footerTrailing = if (onManageWatchlist != null) {
-                {
+            footerTrailing = {
+                if (onManageWatchlist != null) {
                     Text(
                         text = "MANAGE WATCHLIST",
                         color = tokens.colors.accent,
@@ -421,8 +448,16 @@ fun SymbolExplorerDropdown(
                             .padding(tokens.spacing.xs),
                     )
                 }
-            } else {
-                null
+                Spacer(Modifier.width(tokens.spacing.xs))
+                TerminalResizeGrip(
+                    onDrag = { delta ->
+                        val updated = listHeight + with(density) { delta.toDp() }
+                        listHeight = maxListHeight
+                            ?.let { max -> updated.coerceIn(EXPLORER_MIN_LIST_HEIGHT, max) }
+                            ?: updated.coerceAtLeast(EXPLORER_MIN_LIST_HEIGHT)
+                    },
+                    orientation = TerminalResizeOrientation.VERTICAL,
+                )
             },
         )
     }
@@ -430,6 +465,15 @@ fun SymbolExplorerDropdown(
 
 /** Высота строки explorer-списка (фиксированная — для попапа). */
 private val EXPLORER_ROW_HEIGHT = 46.dp
+
+/** Минимальная высота списка при ресайзе (две строки). */
+private val EXPLORER_MIN_LIST_HEIGHT = EXPLORER_ROW_HEIGHT * 2
+
+/**
+ * Хром попапа (табы + поиск + фильтры + шапка + футер с отступами), который
+ * вычитается из высоты панели при ограничении ресайза списка.
+ */
+private val EXPLORER_POPUP_CHROME_HEIGHT = 180.dp
 
 /**
  * Содержимое explorer-списка (общее для попапа [SymbolExplorerDropdown] и
@@ -713,42 +757,54 @@ fun SymbolExplorerContent(
         }
 
         // ── Список (ленивый; фиксированные ширина/высота нужны попапу) ──
-        LazyColumn(
-            state = listState,
+        Box(
             modifier = Modifier
                 .then(if (listWidth != null) Modifier.width(listWidth) else Modifier.fillMaxWidth())
                 .then(if (listHeight != null) Modifier.height(listHeight) else Modifier.weight(1f)),
         ) {
-            if (result.matches.isEmpty()) {
-                item {
-                    Text(
-                        text = result.error ?: "No symbols",
-                        color = if (result.error != null) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                        modifier = Modifier.padding(tokens.spacing.lg),
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                if (result.matches.isEmpty()) {
+                    item {
+                        Text(
+                            text = result.error ?: "No symbols",
+                            color = if (result.error != null) MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                            fontSize = 11.sp,
+                            fontFamily = TerminalFontFamily,
+                            modifier = Modifier.padding(tokens.spacing.lg),
+                        )
+                    }
+                }
+                items(
+                    items = result.matches,
+                    key = { "${it.row.exchangeId}:${it.row.symbol}" },
+                ) { match ->
+                    val row = match.row
+                    val isCurrent = row.symbol == currentSymbol &&
+                        (currentExchangeId == null || row.exchangeId == currentExchangeId)
+                    ExplorerRowItem(
+                        row = row,
+                        matchRange = match.matchRange,
+                        starred = row.symbol in starSymbols,
+                        isCurrent = isCurrent,
+                        rowHeight = EXPLORER_ROW_HEIGHT,
+                        onToggleStar = { toggleStar(row.symbol) },
+                        onClick = { onSelect(row) },
+                        menuContent = rowMenu,
                     )
                 }
             }
-            items(
-                items = result.matches,
-                key = { "${it.row.exchangeId}:${it.row.symbol}" },
-            ) { match ->
-                val row = match.row
-                val isCurrent = row.symbol == currentSymbol &&
-                    (currentExchangeId == null || row.exchangeId == currentExchangeId)
-                ExplorerRowItem(
-                    row = row,
-                    matchRange = match.matchRange,
-                    starred = row.symbol in starSymbols,
-                    isCurrent = isCurrent,
-                    rowHeight = EXPLORER_ROW_HEIGHT,
-                    onToggleStar = { toggleStar(row.symbol) },
-                    onClick = { onSelect(row) },
-                    menuContent = rowMenu,
-                )
-            }
+
+            ExplorerScrollTopFab(
+                visible = listState.firstVisibleItemIndex > 0,
+                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = tokens.spacing.md, bottom = tokens.spacing.sm),
+            )
         }
 
         HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
@@ -770,6 +826,68 @@ fun SymbolExplorerContent(
             )
             footerTrailing?.invoke(this)
         }
+    }
+}
+
+/**
+ * Кнопка прокрутки списка explorer в начало. Вынесена из
+ * [SymbolExplorerContent] в отдельный composable: внутри `Column { Box { … } }`
+ * вызов AnimatedVisibility разрешается в ColumnScope-перегрузку и не компилируется.
+ */
+@Composable
+private fun ExplorerScrollTopFab(
+    visible: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = LocalTerminalDesignTokens.current
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(tokens.colors.panelHeaderSurface)
+                .border(tokens.dimensions.borderWidth, tokens.colors.panelBorder, CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            ExplorerScrollTopGlyph(color = MaterialTheme.colorScheme.primary)
+        }
+    }
+}
+
+@Composable
+private fun ExplorerScrollTopGlyph(color: Color) {
+    Canvas(modifier = Modifier.size(12.dp)) {
+        val stroke = 1.4.dp.toPx()
+        val w = size.width
+        val h = size.height
+        drawLine(
+            color,
+            Offset(w * 0.5f, h),
+            Offset(w * 0.5f, h * 0.15f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(w * 0.18f, h * 0.45f),
+            Offset(w * 0.5f, h * 0.15f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(w * 0.82f, h * 0.45f),
+            Offset(w * 0.5f, h * 0.15f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
