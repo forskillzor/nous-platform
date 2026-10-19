@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/** Обводка-воронка (фильтр/сортировка) — общая для explorer и trades-фильтра. */
+/** Обводка-воронка (фильтр) — кнопка размера сделок в trades-панели. */
 @Composable
 fun TerminalFunnelGlyph(
     color: Color,

@@ -878,7 +878,7 @@ private fun ExplorerSortButton(
     val tokens = LocalTerminalDesignTokens.current
     var expanded by remember { mutableStateOf(false) }
     Box {
-        TerminalFunnelGlyph(
+        TerminalSortGlyph(
             color = tokens.colors.label,
             modifier = Modifier.clickable { expanded = true },
         )

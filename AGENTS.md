@@ -100,10 +100,12 @@ Mind this when writing paths.
   "SYMBOL" defaults) decode via field defaults, scroll restores after catalog
   rows load, saves debounced 500 ms. The panel list is the shared
   `SymbolExplorerContent` (platform-core): tabs ALL + watchlists, ⌘K search,
-  PERPETUALS/quote/exchange chips, funnel sort, `.P` display symbols, per-row
+  PERPETUALS/quote/exchange chips, arrow sort, `.P` display symbols, per-row
   star (active list or Favourites); the panel adds only a row context menu
   (Apply to current workspace, OPEN <sym> WITH templates, Add to <list name>)
-  and a ⚙ menu (New/Rename/Delete list, Close panel). Catalog failures are
+  and a ⚙ menu (New/Rename/Delete list, Close panel) plus a scroll-to-top FAB
+  over the list (visible once scrolled, `panelHeaderSurface` island with an
+  accent arrow). Catalog failures are
   never printed in the body: a red exclamation badge in the panel title opens
   `TerminalContextPopup` with `MarketOverviewStore.state.error`.
 - Chart: provider/contract-type state is global (`chart_provider_id`,
@@ -393,8 +395,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   same composable inline, so keep new explorer features inside the content;
   tabs ALL + watchlist names uppercased (stars write into an auto-created
   `Favourites` list), search field with hit highlight and ⌘K / Ctrl+K focus,
-  chips PERPETUALS / quote / exchange, funnel sort (VOLUME / 24H % / PRICE /
-  SYMBOL, active direction ↓/↑), 5-row scroll list (LazyColumn — keep it lazy,
+  chips PERPETUALS / quote / exchange, up/down-arrow sort trigger
+  (`TerminalSortGlyph`; VOLUME / 24H % / PRICE / SYMBOL options, active
+  direction ↓/↑ in the menu), 5-row scroll list (LazyColumn — keep it lazy,
   the catalog holds ~2k rows, and pin it to fixed width `menuWidth` × height
   `5 × 46dp`: the hosting M3 `DropdownMenu` measures content with
   `IntrinsicSize.Max`, and a SubcomposeLayout cannot answer intrinsic queries
@@ -428,9 +431,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `contractType`); DOM row 1 = symbol explorer + collapse, row 2 = depth + agg
   (agg wraps to a third row on narrow panels); Trades is a single row =
   symbol explorer + size filter.
-  Trades size filter is one box button: funnel glyph (`TerminalFunnelGlyph`,
-  shared with the explorer sort funnel) + current mode in `primary` text
-  ("ALL" / "≥ …").
+  Trades size filter is one box button: funnel glyph (`TerminalFunnelGlyph` —
+  a filter, unlike the explorer's `TerminalSortGlyph` arrows) + current mode
+  in `primary` text ("ALL" / "≥ …").
 - Left sidebar is `WorkspaceNavigator` (platform-core, replaced `ProjectTree`):
   workspace tree grouped by `WorkspaceConfig.group` folders ("Unsorted" =
   empty group, pinned first, `folderOrder` then alphabetical), folder
@@ -481,7 +484,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (solid accent fill, dark text, no chevron — timeframe)); the Market Watch
   LIST dropdown renders through it —
   keep new title dropdowns on it instead of hand-rolled boxes. Dropdown menu
-  popups (the shell, explorer chip/funnel submenus, panel ⚙/split menus,
+  popups (the shell, explorer chip/sort submenus, panel ⚙/split menus,
   DOM/Trades selects, size filter, depth, navigator menus) render through the
   shared `TerminalDropdownMenu` wrapper — theme islands like workspace panels:
   `workspacePanel` radius, `panelSurface` fill, `panelBorder` border at
@@ -494,7 +497,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `compactSize`/`controlLineHeight`. It is a plain Row, not M3
   `DropdownMenuItem`, because M3 enforces a 48dp minimum item height. Used by
   `TerminalBoxDropdown`/`TerminalDropdown`/`TerminalInlineSelect`, explorer
-  chips/funnel, chart settings rows, panel/⚙ menus and trades size filter;
+  chips/sort, chart settings rows, panel/⚙ menus and trades size filter;
   guarded by `TerminalMenuItemTest`. Do not reintroduce `DropdownMenuItem`
   for option rows (bidasker-web is a separate web prototype, exempt).
 - Texts inside compact controls must set `lineHeight` explicitly
