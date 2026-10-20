@@ -44,13 +44,19 @@ private val chartModes = listOf(
     ChartMode.FOOTPRINT to "Footprint",
 )
 
+private fun aggregationLabel(level: AggregationLevel): String = when (level) {
+    AggregationLevel.BaseTick -> "1x"
+    AggregationLevel.TenTick -> "10x"
+    AggregationLevel.HundredTick -> "100x"
+}
+
 /**
  * Компактные контролы графика для верхнего тайтла панели: символ с биржей
  * (расширенный explorer-список — закрытый триггер показывает биржу мелким
- * акцентным текстом), режим графика, таймфрейм (акцентная «кнопка»),
- * Trading и мок-кнопка AI. Настройки (тип контрактов, агрегация, paper,
- * отображение ордеров/позиций) живут в меню шестерёнки тайтла. Биржа
- * переключается выбором строки другой биржи в explorer'е.
+ * акцентным текстом), режим графика, агрегация footprint (только в режиме
+ * Footprint), таймфрейм (акцентная «кнопка») и Trading. Настройки (тип
+ * контрактов, paper, отображение ордеров/позиций) живут в меню шестерёнки
+ * тайтла. Биржа переключается выбором строки другой биржи в explorer'е.
  */
 @Composable
 fun ChartToolbar(
@@ -62,6 +68,8 @@ fun ChartToolbar(
     onTimeframeChange: (String) -> Unit,
     chartMode: ChartMode = ChartMode.CANDLESTICK,
     onChartModeChange: (ChartMode) -> Unit = {},
+    fpAggregation: AggregationLevel = AggregationLevel.BaseTick,
+    onFpAggregationChange: (AggregationLevel) -> Unit = {},
     tradingEnabled: Boolean = false,
     onTradingToggle: (Boolean) -> Unit = {},
     onManageWatchlist: (() -> Unit)? = null,
@@ -99,6 +107,18 @@ fun ChartToolbar(
             menuWidth = 130.dp,
         )
 
+        if (chartMode == ChartMode.FOOTPRINT) {
+            Spacer(Modifier.width(tokens.spacing.sm))
+            TerminalBoxDropdown(
+                current = fpAggregation,
+                options = AggregationLevel.all(),
+                optionLabel = { aggregationLabel(it) },
+                onSelect = onFpAggregationChange,
+                style = TerminalBoxStyle.NORMAL,
+                menuWidth = 90.dp,
+            )
+        }
+
         Spacer(Modifier.width(tokens.spacing.md))
 
         TerminalBoxDropdown(
@@ -127,21 +147,6 @@ fun ChartToolbar(
                     else Color.Transparent
                 )
                 .clickable { onTradingToggle(!tradingEnabled) }
-                .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
-        )
-
-        Spacer(Modifier.width(tokens.spacing.lg))
-
-        Text(
-            text = "AI",
-            color = tokens.colors.label,
-            fontSize = tokens.typography.compactSize,
-            fontWeight = FontWeight.Medium,
-            fontFamily = TerminalFontFamily,
-            maxLines = 1,
-            modifier = Modifier
-                .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
-                .clickable { }
                 .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
         )
 
@@ -177,6 +182,8 @@ fun ChartTitleToolbar(
         onTimeframeChange = { chartViewModel.dispatch(ChartIntent.SelectTimeframe(it)) },
         chartMode = uiState.chartMode,
         onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
+        fpAggregation = uiState.fpAggregation,
+        onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
         tradingEnabled = tradingEnabled,
         onTradingToggle = { chartViewModel.setTradingEnabled(it) },
         onManageWatchlist = onManageWatchlist,
@@ -186,8 +193,8 @@ fun ChartTitleToolbar(
 }
 
 /**
- * Содержимое меню настроек тайтла графика: тип контрактов, агрегация
- * footprint, paper-режим и отображение ордеров/позиций.
+ * Содержимое меню настроек тайтла графика: тип контрактов, paper-режим
+ * и отображение ордеров/позиций.
  */
 @Composable
 fun ChartSettingsMenu(chartViewModel: ChartViewModel, dismiss: () -> Unit) {
@@ -202,20 +209,6 @@ fun ChartSettingsMenu(chartViewModel: ChartViewModel, dismiss: () -> Unit) {
         selected = uiState.contractType,
         onSelect = { chartViewModel.dispatch(ChartIntent.SelectContractType(it)) },
     )
-    if (uiState.chartMode == ChartMode.FOOTPRINT) {
-        OptionChoiceRow(
-            label = "Aggregation",
-            options = AggregationLevel.all().map { level ->
-                level to when (level) {
-                    AggregationLevel.BaseTick -> "1x"
-                    AggregationLevel.TenTick -> "10x"
-                    AggregationLevel.HundredTick -> "100x"
-                }
-            },
-            selected = uiState.fpAggregation,
-            onSelect = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
-        )
-    }
     OptionSwitchRow("Paper", paperEnabled) { chartViewModel.setPaperEnabled(it) }
     OptionSwitchRow("Show orders", showOrders) { chartViewModel.setShowOrders(it) }
     OptionSwitchRow("Show positions", showPositions) { chartViewModel.setShowPositions(it) }

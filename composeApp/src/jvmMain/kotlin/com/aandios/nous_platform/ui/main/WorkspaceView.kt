@@ -231,8 +231,8 @@ fun WorkspaceView(
                 layoutState = LayoutEngine.movePanelToRoot(layoutState, panelId, zone, ratio = 0.5f)
                 persistConfig()
             },
-            // Контролы в верхнем тайтле панели: у графика — символ/режим/ТФ/
-            // Trading/AI, у остальных — имя панели.
+            // Контролы в верхнем тайтле панели: у графика — символ/режим/
+            // агрегация footprint/ТФ/Trading, у остальных — имя панели.
             panelTitleContent = { panelId ->
                 panelConfigs[panelId]?.let { pc ->
                     when (pc.type) {

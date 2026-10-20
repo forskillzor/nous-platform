@@ -419,9 +419,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   picking a row of another exchange, there is no separate exchange
   dropdown in the chart title), solid-accent timeframe chip
   (`TerminalBoxStyle.SELECTED`, dark
-  text, no chevron), Trading on/off button and AI mock; chart options (Type,
-  aggregation, Paper, Show orders/positions) live in the ⚙ menu
-  (`ChartSettingsMenu`). DOM/Trades/Trading titles are plain
+  text, no chevron), a footprint-only aggregation dropdown (1x/10x/100x),
+  Trading on/off button; chart options (Type, Paper, Show orders/positions)
+  live in the gear menu (`ChartSettingsMenu`). DOM/Trades/Trading titles are plain
   `PanelTitleLabel`s (DOM shows a `STREAM` dot; the Trades glyph is accent);
   their ⚙ menu closes the panel. In workspace tiles `ChartWindow` hides its own
   toolbar (standalone previews keep `TerminalPanelHeader`-wrapped version).
