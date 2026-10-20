@@ -182,7 +182,7 @@ fun CandleStickChartInteraction(
     val tapThresholdPx = 4f
 
     /** TextMeasurer для измерения текста */
-    val textMeasurer = rememberTextMeasurer()
+    val textMeasurer = rememberTextMeasurer(cacheSize = 128)
     val density = LocalDensity.current
 
     val chartFocusRequester = remember { FocusRequester() }
@@ -601,8 +601,13 @@ fun CandleStickChartInteraction(
         val startIdx = (clampedOffset / totalW).toInt().coerceIn(0, max(0, candles.size - 1))
         val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, candles.size)
 
-        // Autoscale по видимым свечам (текущая цена НЕ влияет на диапазон)
-        priceScale.fit { series.priceRange(startIdx, endIdx) }
+        // Autoscale по видимым свечам (текущая цена НЕ влияет на диапазон).
+        // Кэш на (series, startIdx, endIdx): тики/перерисовки без смены данных
+        // не пересчитывают диапазон по всем уровням footprint.
+        val visibleRange = remember(series, startIdx, endIdx) {
+            series.priceRange(startIdx, endIdx)
+        }
+        priceScale.fit { visibleRange }
         val priceRange = priceScale.range(verticalScroll, chartHeightPx)
         currentPriceRange = priceRange
         // Линия и badge текущей цены рисуются, только если цена попадает в видимый диапазон

@@ -29,18 +29,30 @@ fun calculatePriceRangeWithCurrentPrice(
     candles: List<Candle>,
     currentPrice: Float?
 ): PriceRange {
-    val priceList = buildList {
-        addAll(candles.map { it.high })
-        addAll(candles.map { it.low })
-        currentPrice?.let { add(it) }
-    }.filter { it.isFinite() }
+    var maxPrice = Float.NEGATIVE_INFINITY
+    var minPrice = Float.POSITIVE_INFINITY
 
-    if (priceList.isEmpty()) {
+    for (candle in candles) {
+        val high = candle.high
+        if (high.isFinite()) {
+            if (high > maxPrice) maxPrice = high
+            if (high < minPrice) minPrice = high
+        }
+        val low = candle.low
+        if (low.isFinite()) {
+            if (low > maxPrice) maxPrice = low
+            if (low < minPrice) minPrice = low
+        }
+    }
+    if (currentPrice != null && currentPrice.isFinite()) {
+        if (currentPrice > maxPrice) maxPrice = currentPrice
+        if (currentPrice < minPrice) minPrice = currentPrice
+    }
+
+    if (minPrice > maxPrice) {
         return PriceRange(0f, 0f, 0f, 0f, 0f)
     }
 
-    val maxPrice = priceList.maxOrNull() ?: 0f
-    val minPrice = priceList.minOrNull() ?: 0f
     val priceRange = maxPrice - minPrice
 
     // Добавляем 5% padding сверху и снизу
@@ -64,11 +76,18 @@ fun calculatePriceRangeWithCurrentPrice(
  * могут не заполнять (иначе диапазон схлопывается в «плоскую линию»).
  */
 fun calculatePriceRangeFromLevels(candles: List<FootprintCandle>): PriceRange {
-    val prices = candles.flatMap { c -> c.levels.map { it.priceFloat } }.filter { it.isFinite() }
-    if (prices.isEmpty()) return PriceRange(0f, 0f, 0f, 0f, 0f)
+    var maxPrice = Float.NEGATIVE_INFINITY
+    var minPrice = Float.POSITIVE_INFINITY
+    for (candle in candles) {
+        for (level in candle.levels) {
+            val price = level.priceFloat
+            if (!price.isFinite()) continue
+            if (price > maxPrice) maxPrice = price
+            if (price < minPrice) minPrice = price
+        }
+    }
+    if (minPrice > maxPrice) return PriceRange(0f, 0f, 0f, 0f, 0f)
 
-    val maxPrice = prices.maxOrNull() ?: 0f
-    val minPrice = prices.minOrNull() ?: 0f
     val rawRange = maxPrice - minPrice
 
     val padding = if (rawRange <= 0f) maxPrice * 0.01f else rawRange * 0.05f

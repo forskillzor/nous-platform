@@ -11,6 +11,7 @@ import com.aandios.nous.api.market.model.MutableFootprintCandle
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.currentTimeMillis
 import com.aandios.nous.core.domain.cache.FootprintCacheStore
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -47,9 +48,11 @@ class FootprintController(
     private val footprintCache: FootprintCacheStore? = null,
     /** Пространство имён биржи для кэша и запросов (displayName провайдера). */
     private val exchange: String = "Binance",
+    private val processingDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val clock: () -> Long = ::currentTimeMillis,
 ) : Disposable {
 
-    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val scope = CoroutineScope(processingDispatcher + SupervisorJob())
     private var footprintJob: Job? = null
     private var pollingJob: Job? = null
     private var formingJob: Job? = null
@@ -119,6 +122,7 @@ class FootprintController(
                     var liveCandle: MutableFootprintCandle? = null
                     var lastCandleStart = 0L
                     var tickCount = 0L
+                    var lastUiUpdateMs = 0L
 
                     tradesAdapter.subscribeToTrades(this@FootprintController.symbol).collect { trade ->
                         val candleStart = trade.timestamp / displayMs * displayMs
@@ -144,6 +148,7 @@ class FootprintController(
                             }
                             liveCandle = null
                             tickCount = 0
+                            lastUiUpdateMs = 0L
                         }
 
                         val candle = liveCandle ?: MutableFootprintCandle(
@@ -156,12 +161,16 @@ class FootprintController(
 
                         lastCandleStart = candleStart
 
-                        val liveSnapshot = candle.toFootprintCandle(tickCount)
-                        _state.update {
-                            it.copy(
-                                liveCandle = if (liveSnapshot.levels.isNotEmpty()) liveSnapshot else null,
-                                currentPrice = candle.lastPrice.takeIf { p -> p > 0f },
-                            )
+                        val now = clock()
+                        if (now - lastUiUpdateMs >= LIVE_SNAPSHOT_INTERVAL_MS) {
+                            lastUiUpdateMs = now
+                            val liveSnapshot = candle.toFootprintCandle(tickCount)
+                            _state.update {
+                                it.copy(
+                                    liveCandle = if (liveSnapshot.levels.isNotEmpty()) liveSnapshot else null,
+                                    currentPrice = candle.lastPrice.takeIf { p -> p > 0f },
+                                )
+                            }
                         }
                     }
                 } else {
@@ -470,5 +479,6 @@ class FootprintController(
     companion object {
         private const val CACHE_LIMIT = 200
         private const val FORMING_POLL_INTERVAL_MS = 30_000L
+        private const val LIVE_SNAPSHOT_INTERVAL_MS = 100L
     }
 }

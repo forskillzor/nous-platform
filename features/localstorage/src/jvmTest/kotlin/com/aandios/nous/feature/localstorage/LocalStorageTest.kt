@@ -8,6 +8,10 @@ package com.aandios.nous.feature.localstorage
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.FootprintLevel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import java.nio.file.Files
 import java.sql.DriverManager
@@ -118,6 +122,26 @@ class LocalStorageTest {
         assertEquals(2, stats.size)
         assertTrue(stats.any { it.key == "Candles Binance BTCUSDT 1m" && it.exchange == "Binance" })
         assertTrue(stats.any { it.key == "Footprint MEXC ETHUSDT" && it.exchange == "MEXC" })
+        storage.close()
+    }
+
+    @Test
+    fun `concurrent writes are serialized and all persisted`() = runTest {
+        val storage = LocalStorage(tempDbPath())
+
+        coroutineScope {
+            (0 until 16).map { i ->
+                launch(Dispatchers.Default) {
+                    storage.putString("key-$i", "value-$i")
+                    storage.saveCandles("Binance", "SYM$i", "1m", listOf(candle(i * 60_000L, i.toFloat())))
+                }
+            }.joinAll()
+        }
+
+        (0 until 16).forEach { i ->
+            assertEquals("value-$i", storage.getString("key-$i"))
+            assertEquals(i.toFloat(), storage.getCandles("Binance", "SYM$i", "1m").single().close)
+        }
         storage.close()
     }
 

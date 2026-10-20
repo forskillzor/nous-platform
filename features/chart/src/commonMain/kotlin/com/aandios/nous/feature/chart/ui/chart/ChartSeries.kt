@@ -8,12 +8,15 @@ package com.aandios.nous.feature.chart.ui.chart
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
+import com.aandios.nous.api.market.model.FootprintLevel
 import com.aandios.nous.feature.chart.model.PriceRange
+import com.aandios.nous.feature.chart.rendering.aggregateLevels
 import com.aandios.nous.feature.chart.rendering.drawChart
 import com.aandios.nous.feature.chart.rendering.drawFootprintChart
 import com.aandios.nous.feature.chart.ui.ChartConfig
 import com.aandios.nous.feature.chart.utils.calculatePriceRangeFromLevels
 import com.aandios.nous.feature.chart.utils.calculatePriceRangeWithCurrentPrice
+import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 
 /**
  * Серия графика — единица данных + рендер, по образу ISeries в
@@ -68,6 +71,8 @@ class FootprintSeries(
     private val config: ChartConfig,
 ) : ChartSeries {
 
+    private val aggregatedLevelsCache = mutableMapOf<Long, List<FootprintLevel>>()
+
     /**
      * Диапазон — по уровням bid/ask, а не по каркасным свечам:
      * minPrice/maxPrice footprint-свечей могут отсутствовать.
@@ -76,6 +81,16 @@ class FootprintSeries(
         calculatePriceRangeFromLevels(
             footprintCandles.subList(visibleStart, visibleEnd.coerceAtMost(footprintCandles.size))
         )
+
+    private fun levelsFor(candle: FootprintCandle): List<FootprintLevel> {
+        val fp = config.footprintConfig
+        if (fp.aggregationLevel == AggregationLevel.BaseTick || fp.tickSize <= 0.0) {
+            return candle.levels
+        }
+        return aggregatedLevelsCache.getOrPut(candle.startTime) {
+            aggregateLevels(candle.levels, fp.aggregationLevel, fp.tickSize)
+        }
+    }
 
     override fun draw(scope: DrawScope, canvas: ChartCanvas) {
         scope.drawFootprintChart(
@@ -88,6 +103,7 @@ class FootprintSeries(
             zoomLevel = canvas.zoomLevel,
             visibleStartIndex = canvas.visibleStartIndex,
             visibleEndIndex = canvas.visibleEndIndex,
+            aggregatedLevelsProvider = ::levelsFor,
         )
     }
 }

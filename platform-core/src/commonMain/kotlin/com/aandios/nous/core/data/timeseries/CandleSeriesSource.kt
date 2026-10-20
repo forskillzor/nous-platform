@@ -43,7 +43,7 @@ class CandleSeriesSource(
                 high = maxOf(lastCandle.high, update.high),
                 low = minOf(lastCandle.low, update.low),
                 close = update.close,
-                volume = lastCandle.volume + update.volume,
+                volume = update.volume,
             )
         } else {
             items + update

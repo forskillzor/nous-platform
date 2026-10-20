@@ -66,6 +66,11 @@ fun DrawScope.drawTimeScale(
 
         // Показываем метку на первой видимой свече
         val firstLabelIdx = visibleStartIdx + (step - visibleStartIdx % step) % step
+        val textStyle = TextStyle(
+            color = config.axisTextColor,
+            fontSize = 9.sp,
+            fontFamily = TerminalFontFamily
+        )
 
         for (i in firstLabelIdx until visibleEndIdx step step) {
             if (i in candles.indices) {
@@ -73,13 +78,6 @@ fun DrawScope.drawTimeScale(
 
                 // Форматируем время
                 val timeText = formatTime(candles[i].timestamp)
-
-                // Стиль текста для шкалы времени
-                val textStyle = TextStyle(
-                    color = config.axisTextColor,
-                    fontSize = 9.sp,
-                    fontFamily = TerminalFontFamily
-                )
 
                 val textLayoutResult = textMeasurer.measure(
                     text = AnnotatedString(timeText),

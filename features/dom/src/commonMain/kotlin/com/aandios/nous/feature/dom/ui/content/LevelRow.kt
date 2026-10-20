@@ -105,6 +105,56 @@ fun LevelRow(
     val bidQty = level?.bidSteps?.let { it * stepSize }
     val askQty = level?.askSteps?.let { it * stepSize }
 
+    val labelSmallStyle = MaterialTheme.typography.labelSmall
+    val bodySmallStyle = MaterialTheme.typography.bodySmall
+    val volumeTextStyle = remember(labelSmallStyle, tokens.typography.compactSize) {
+        labelSmallStyle.copy(
+            fontFamily = TerminalFontFamily,
+            fontSize = tokens.typography.compactSize,
+        )
+    }
+    val priceTextStyle = remember(
+        bodySmallStyle,
+        tokens.typography.compactSize,
+        isSelected,
+        position,
+        order,
+    ) {
+        bodySmallStyle.copy(
+            fontFamily = TerminalFontFamily,
+            fontSize = tokens.typography.compactSize,
+            fontWeight = if (isSelected || position != null || order != null) FontWeight.Bold else FontWeight.Normal,
+        )
+    }
+    val priceText = remember(price, formatter) { formatter.formatPrice(price) }
+    val bidText = remember(bidQty, formatter) {
+        bidQty?.takeIf { it > 0 }?.let(formatter::formatVolumeFull)
+    }
+    val askText = remember(askQty, formatter) {
+        askQty?.takeIf { it > 0 }?.let(formatter::formatVolumeFull)
+    }
+    val positionPnl = remember(
+        position,
+        markPrice,
+        tickSize,
+        contractSize,
+        inverse,
+        tokens.colors.profit,
+        tokens.colors.loss,
+    ) {
+        position?.let {
+            positionPnlText(
+                position = it,
+                markPrice = markPrice,
+                tickSize = tickSize,
+                contractSize = contractSize,
+                inverse = inverse,
+                positiveColor = tokens.colors.profit,
+                negativeColor = tokens.colors.loss,
+            )
+        }
+    }
+
     val positionColor = if (position?.side == TradeSide.BUY) longColor else shortColor
     val orderColor = if (order?.side == OrderSide.BUY) longColor else shortColor
 
@@ -159,14 +209,11 @@ fun LevelRow(
                             .background(tokens.colors.bullish.copy(alpha = 0.3f))
                     )
                 }
-                if (bidSteps > 0 && bidQty != null) {
+                if (bidSteps > 0 && bidText != null) {
                     Text(
-                        text = formatter.formatVolumeFull(bidQty),
+                        text = bidText,
                         color = tokens.colors.bullish,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = TerminalFontFamily,
-                            fontSize = tokens.typography.compactSize
-                        ),
+                        style = volumeTextStyle,
                         modifier = Modifier.align(Alignment.CenterStart)
                     )
                 }
@@ -207,13 +254,9 @@ fun LevelRow(
 
         // Price
         Text(
-            text = formatter.formatPrice(price),
+            text = priceText,
             color = priceColor,
-            style = MaterialTheme.typography.bodySmall.copy(
-                fontFamily = TerminalFontFamily,
-                fontSize = tokens.typography.compactSize,
-                fontWeight = if (isSelected || position != null || order != null) FontWeight.Bold else FontWeight.Normal
-            ),
+            style = priceTextStyle,
             modifier = Modifier.weight(0.6f)
         )
 
@@ -233,43 +276,33 @@ fun LevelRow(
                             .background(tokens.colors.bearish.copy(alpha = 0.3f))
                     )
                 }
-                if (askSteps > 0 && askQty != null) {
+                if (askSteps > 0 && askText != null) {
                     Text(
-                        text = formatter.formatVolumeFull(askQty),
+                        text = askText,
                         color = tokens.colors.bearish,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = TerminalFontFamily,
-                            fontSize = tokens.typography.compactSize
-                        ),
+                        style = volumeTextStyle,
                         modifier = Modifier.align(Alignment.CenterEnd)
                     )
                 }
             } else {
-                val (pnlText, pnlColor) = positionPnlText(
-                    position = position,
-                    markPrice = markPrice,
-                    tickSize = tickSize,
-                    contractSize = contractSize,
-                    inverse = inverse,
-                    positiveColor = tokens.colors.profit,
-                    negativeColor = tokens.colors.loss,
-                )
-                // Тёмная мини-плашка под PnL — как у бейджа позиции в chart trading
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .background(tokens.colors.pnlPlate, RoundedCornerShape(tokens.cornerRadii.card))
-                        .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs / 2),
-                ) {
-                    Text(
-                        text = pnlText,
-                        color = pnlColor,
-                        fontSize = tokens.typography.microSize,
-                        lineHeight = tokens.typography.compactLineHeight,
-                        fontFamily = TerminalFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                    )
+                positionPnl?.let { (pnlText, pnlColor) ->
+                    // Тёмная мини-плашка под PnL — как у бейджа позиции в chart trading
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .background(tokens.colors.pnlPlate, RoundedCornerShape(tokens.cornerRadii.card))
+                            .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs / 2),
+                    ) {
+                        Text(
+                            text = pnlText,
+                            color = pnlColor,
+                            fontSize = tokens.typography.microSize,
+                            lineHeight = tokens.typography.compactLineHeight,
+                            fontFamily = TerminalFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
             if (order != null && order.side == OrderSide.BUY && position == null) {
@@ -422,9 +455,21 @@ private fun OrderChip(
     val sideName = if (isBuy) "Long" else "Short"
     val base = baseText.orEmpty()
 
-    val full = listOf(kind, sideName, base).filter { it.isNotBlank() }.joinToString(" ")
-    val short = (kind.first().toString() + sideName + " " + base).trim()
-    val shortest = kind.first().toString() + sideName
+    val full = remember(kind, sideName, base) {
+        listOf(kind, sideName, base).filter { it.isNotBlank() }.joinToString(" ")
+    }
+    val short = remember(kind, sideName, base) { (kind.first().toString() + sideName + " " + base).trim() }
+    val shortest = remember(kind, sideName) { kind.first().toString() + sideName }
+    val chipShape = remember(tokens.cornerRadii.card) { RoundedCornerShape(tokens.cornerRadii.card) }
+    val chipStyle = remember(tokens.typography.microSize, tokens.typography.compactLineHeight) {
+        TextStyle(
+            color = Color.White,
+            fontSize = tokens.typography.microSize,
+            lineHeight = tokens.typography.compactLineHeight,
+            fontFamily = TerminalFontFamily,
+            fontWeight = FontWeight.Medium,
+        )
+    }
 
     var qtyText by remember(order.orderId) { mutableStateOf(trimQty(order.quantity)) }
     var committed by remember(order.orderId) { mutableStateOf(false) }
@@ -447,19 +492,14 @@ private fun OrderChip(
     val measurer = rememberTextMeasurer()
 
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val style = TextStyle(
-            color = Color.White,
-            fontSize = tokens.typography.microSize,
-            lineHeight = tokens.typography.compactLineHeight,
-            fontFamily = TerminalFontFamily,
-            fontWeight = FontWeight.Medium,
-        )
         // Фиксированная часть: инпут qty
         val fixedPx = with(density) { (40.dp + tokens.spacing.xs).toPx() }
         val textBudgetPx = with(density) { maxWidth.toPx() } - fixedPx
-        val label = listOf(full, short, shortest).firstOrNull { candidate ->
-            measurer.measure(AnnotatedString(candidate), style).size.width <= textBudgetPx
-        } ?: shortest
+        val label = remember(textBudgetPx, measurer, chipStyle, full, short, shortest) {
+            listOf(full, short, shortest).firstOrNull { candidate ->
+                measurer.measure(AnnotatedString(candidate), chipStyle).size.width <= textBudgetPx
+            } ?: shortest
+        }
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -467,7 +507,7 @@ private fun OrderChip(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(tokens.dimensions.compactControlHeight)
-                .background(color, RoundedCornerShape(tokens.cornerRadii.card))
+                .background(color, chipShape)
                 .padding(horizontal = tokens.spacing.xxs + tokens.dimensions.borderWidth)
                 .alpha(if (beingDragged) 0.3f else 1f)
                 // Поглощаем одиночные клики, чтобы строка лесенки не реагировала
@@ -518,7 +558,7 @@ private fun OrderChip(
             // Двойной клик по подписи — отмена ордера; драг — перемещение
             Text(
                 text = label,
-                style = style,
+                style = chipStyle,
                 maxLines = 1,
                 softWrap = false,
                 textAlign = if (qtyOnLeft) TextAlign.End else TextAlign.Start,
@@ -548,21 +588,26 @@ private fun QtyField(
     onValueChange: (String) -> Unit,
     onCommit: () -> Unit,
 ) {
+    val tokens = LocalTerminalDesignTokens.current
+    val textStyle = remember(tokens.typography.microSize) {
+        TextStyle(
+            color = Color(0xFF1A1A1A),
+            fontSize = tokens.typography.microSize,
+            fontFamily = TerminalFontFamily,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+        )
+    }
+    val backgroundShape = remember { RoundedCornerShape(2.dp) }
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
-        textStyle = TextStyle(
-            color = Color(0xFF1A1A1A),
-            fontSize = LocalTerminalDesignTokens.current.typography.microSize,
-            fontFamily = TerminalFontFamily,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center,
-        ),
+        textStyle = textStyle,
         cursorBrush = SolidColor(cursorColor),
         modifier = Modifier
             .width(40.dp)
-            .background(MaterialTheme.colorScheme.onPrimary, RoundedCornerShape(2.dp))
+            .background(MaterialTheme.colorScheme.onPrimary, backgroundShape)
             .padding(horizontal = 2.dp, vertical = 1.dp)
             .onKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown &&

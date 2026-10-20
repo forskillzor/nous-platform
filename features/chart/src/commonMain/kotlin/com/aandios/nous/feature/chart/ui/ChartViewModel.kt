@@ -168,6 +168,11 @@ class ChartViewModel(
     private var lastSnapshotSymbol: String = ""
     private var lastSnapshotTimeframe: String = ""
 
+    // Candle-серия продолжает жить в footprint-режиме, но её обновления
+    // не публикуются в UI; при возврате в CANDLESTICK отдаём последний снапшот.
+    private var latestCandleState: ChartState? = null
+    private var latestCandleHasMoreHistory: Boolean = true
+
     /** Текущий провайдер данных (по умолчанию — первый из реестра). */
     private var activeProviderId: String = providerRegistry.first()?.providerId.orEmpty()
 
@@ -398,6 +403,14 @@ class ChartViewModel(
             startFootprint(_state.value.currentSymbol, _state.value.currentTimeframe)
         } else {
             footprintController?.stop()
+            latestCandleState?.let { latest ->
+                _state.update {
+                    it.copy(
+                        chartState = latest,
+                        hasMoreHistory = latestCandleHasMoreHistory,
+                    )
+                }
+            }
         }
     }
 
@@ -866,9 +879,16 @@ class ChartViewModel(
     }
 
     /** Последняя цена для определения стороны chart-ордера. */
-    fun chartLastPrice(): Double? = when (val s = _state.value.chartState) {
-        is ChartState.Success -> s.currentPrice?.toDouble() ?: s.candles.lastOrNull()?.close?.toDouble()
-        else -> null
+    fun chartLastPrice(): Double? {
+        val s = _state.value
+        if (s.chartMode == ChartMode.FOOTPRINT) {
+            return s.footprintCurrentPrice?.toDouble()
+                ?: s.liveFootprintCandle?.close?.takeIf { it > 0f }?.toDouble()
+        }
+        return when (val chart = s.chartState) {
+            is ChartState.Success -> chart.currentPrice?.toDouble() ?: chart.candles.lastOrNull()?.close?.toDouble()
+            else -> null
+        }
     }
 
     private fun saveTradingState() {
@@ -995,13 +1015,20 @@ class ChartViewModel(
         candleStateJob?.cancel()
         candleController?.dispose()
 
-        _state.update { it.copy(chartState = ChartState.Loading) }
+        latestCandleState = ChartState.Loading
+        latestCandleHasMoreHistory = true
+        if (_state.value.chartMode != ChartMode.FOOTPRINT) {
+            _state.update { it.copy(chartState = ChartState.Loading) }
+        }
 
         val provider = activeProvider()
         val chartAdapter = provider?.chart
         if (chartAdapter == null) {
-            _state.update {
-                it.copy(chartState = ChartState.Error("Chart adapter not available for ${exchangeName()}"))
+            val errorState = ChartState.Error("Chart adapter not available for ${exchangeName()}")
+            latestCandleState = errorState
+            latestCandleHasMoreHistory = false
+            if (_state.value.chartMode != ChartMode.FOOTPRINT) {
+                _state.update { it.copy(chartState = errorState) }
             }
             return
         }
@@ -1015,21 +1042,31 @@ class ChartViewModel(
 
         candleStateJob = viewModelScope.launch {
             controller.state.collect { series ->
-                val error = series.error
-                _state.update { s ->
-                    val chartState = when {
-                        error != null && series.items.isEmpty() -> ChartState.Error(error)
-                        series.items.isNotEmpty() -> ChartState.Success(series.items, series.items.last().close)
-                        series.loading -> ChartState.Loading
-                        else -> s.chartState
-                    }
-                    s.copy(
-                        chartState = chartState,
-                        hasMoreHistory = series.hasMore,
-                    )
+                if (_state.value.currentSymbol != ticker || _state.value.currentTimeframe != timeframe) {
+                    return@collect
                 }
-                // Paper engine: mark-цена из последней свечи (исполнение бумажных ордеров)
-                if (series.items.isNotEmpty()) {
+                val error = series.error
+                val chartState = when {
+                    error != null && series.items.isEmpty() -> ChartState.Error(error)
+                    series.items.isNotEmpty() -> ChartState.Success(series.items, series.items.last().close)
+                    series.loading -> ChartState.Loading
+                    else -> _state.value.chartState
+                }
+                latestCandleState = chartState
+                latestCandleHasMoreHistory = series.hasMore
+                _state.update { s ->
+                    if (s.chartMode == ChartMode.FOOTPRINT) {
+                        s
+                    } else {
+                        s.copy(
+                            chartState = chartState,
+                            hasMoreHistory = series.hasMore,
+                        )
+                    }
+                }
+                // Paper engine: mark-цена из последней свечи (исполнение бумажных ордеров).
+                // В footprint-режиме mark-цену ведёт footprint-контроллер.
+                if (_state.value.chartMode != ChartMode.FOOTPRINT && series.items.isNotEmpty()) {
                     PaperTrading.adapter.feedMarkPrice(ticker, series.items.last().close.toDouble())
                 }
                 scheduleCacheWrite(ticker, timeframe, series.items)
@@ -1049,13 +1086,21 @@ class ChartViewModel(
                 emptyList()
             }
 
+            val targetMatches = _state.value.currentSymbol == ticker &&
+                _state.value.currentTimeframe == timeframe
+            val cachedState = if (targetMatches && cached.isNotEmpty() && latestCandleState is ChartState.Loading) {
+                ChartState.Success(cached, cached.last().close)
+            } else {
+                null
+            }
+            if (cachedState != null) latestCandleState = cachedState
             _state.update { s ->
-                if (cached.isNotEmpty() &&
-                    s.currentSymbol == ticker &&
-                    s.currentTimeframe == timeframe &&
-                    s.chartState is ChartState.Loading
-                ) {
-                    s.copy(chartState = ChartState.Success(cached, cached.last().close))
+                if (cachedState == null || s.currentSymbol != ticker || s.currentTimeframe != timeframe) {
+                    s
+                } else if (s.chartMode == ChartMode.FOOTPRINT) {
+                    s
+                } else if (s.chartState is ChartState.Loading) {
+                    s.copy(chartState = cachedState)
                 } else {
                     s
                 }

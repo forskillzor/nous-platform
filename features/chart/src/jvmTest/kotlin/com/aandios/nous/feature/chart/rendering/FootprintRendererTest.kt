@@ -9,6 +9,7 @@ import com.aandios.nous.api.market.model.FootprintLevel
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FootprintRendererTest {
@@ -53,6 +54,20 @@ class FootprintRendererTest {
         assertEquals(4.5f, merged.askVolumeFloat)
         assertEquals(6, merged.bidCount)
         assertEquals(6, merged.askCount)
+    }
+
+    @Test
+    fun `footprint level is visible when its price span intersects viewport`() {
+        assertTrue(footprintLevelVisible(price = 90f, nextPrice = 101f, visibleMin = 100f, visibleMax = 110f))
+        assertTrue(footprintLevelVisible(price = 109f, nextPrice = 120f, visibleMin = 100f, visibleMax = 110f))
+        assertTrue(footprintLevelVisible(price = 105f, nextPrice = 106f, visibleMin = 100f, visibleMax = 110f))
+    }
+
+    @Test
+    fun `footprint level is hidden outside viewport`() {
+        assertFalse(footprintLevelVisible(price = 80f, nextPrice = 90f, visibleMin = 100f, visibleMax = 110f))
+        assertFalse(footprintLevelVisible(price = 120f, nextPrice = 130f, visibleMin = 100f, visibleMax = 110f))
+        assertFalse(footprintLevelVisible(price = Float.NaN, nextPrice = 105f, visibleMin = 100f, visibleMax = 110f))
     }
 
     @Test

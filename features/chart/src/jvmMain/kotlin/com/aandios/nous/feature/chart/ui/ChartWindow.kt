@@ -36,6 +36,7 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
@@ -223,19 +224,6 @@ private fun ChartWindowContent(
             "$sign${String.format(java.util.Locale.US, "%.2f", pnl)} USDT"
         text to (pnl >= 0)
     }
-    // Лучшие bid/ask для лимиток «по лучшей цене» (Buy Limit / Sell Limit)
-    var bestBid by remember { mutableStateOf<Double?>(null) }
-    var bestAsk by remember { mutableStateOf<Double?>(null) }
-    LaunchedEffect(uiState.currentProviderId, uiState.currentSymbol) {
-        bestBid = null
-        bestAsk = null
-        val ticker = registry.get(uiState.currentProviderId)?.bookTicker ?: return@LaunchedEffect
-        ticker.subscribeToBookTicker(uiState.currentSymbol).collect { tick ->
-            bestBid = tick.bestBid.takeIf { it > 0 }
-            bestAsk = tick.bestAsk.takeIf { it > 0 }
-        }
-    }
-
     LaunchedEffect(uiState.currentSymbol, uiState.currentProviderId) {
         // Ордера видны всегда (и при выключенном Trading — только просмотр)
         chartViewModel.refreshOpenOrders()
@@ -468,13 +456,45 @@ private fun ChartWindowContent(
                         }
                     } else {
                         // Merge completed + live: live overrides same startTime
-                        val allFp = buildList {
-                            val liveStart = uiState.liveFootprintCandle?.startTime
-                            addAll(uiState.footprintCandles.filter { it.startTime != liveStart })
-                            uiState.liveFootprintCandle?.let { add(it) }
+                        val liveFp = uiState.liveFootprintCandle
+                        val completedFp = uiState.footprintCandles
+                        val allFp = remember(completedFp, liveFp) {
+                            buildList {
+                                val liveStart = liveFp?.startTime
+                                addAll(completedFp.filter { it.startTime != liveStart })
+                                liveFp?.let { add(it) }
+                            }
                         }
-                        val fpToCandle = remember(allFp) {
-                            allFp.map { it.toSkeletonCandle() }
+                        val skeletonCache = remember(uiState.currentSymbol, uiState.currentTimeframe) {
+                            mutableMapOf<Long, Pair<FootprintCandle, Candle>>()
+                        }
+                        val completedSkeletons = remember(completedFp, skeletonCache) {
+                            completedFp.map { candle ->
+                                val cached = skeletonCache[candle.startTime]
+                                if (cached != null && cached.first === candle) {
+                                    cached.second
+                                } else {
+                                    candle.toSkeletonCandle().also {
+                                        skeletonCache[candle.startTime] = candle to it
+                                    }
+                                }
+                            }
+                        }
+                        val liveSkeleton = remember(liveFp) {
+                            liveFp?.toSkeletonCandle()
+                        }
+                        val fpToCandle = remember(completedSkeletons, liveSkeleton) {
+                            if (liveSkeleton == null) {
+                                completedSkeletons
+                            } else {
+                                val liveStart = liveSkeleton.timestamp
+                                val index = completedSkeletons.indexOfFirst { it.timestamp == liveStart }
+                                if (index >= 0) {
+                                    completedSkeletons.toMutableList().apply { this[index] = liveSkeleton }
+                                } else {
+                                    completedSkeletons + liveSkeleton
+                                }
+                            }
                         }
                         CandleStickChart(
                             candles = fpToCandle,
@@ -554,8 +574,8 @@ private fun ChartWindowContent(
                     stopLoss = chartStopLoss,
                     confirmOrders = confirmOrders,
                     pendingOrder = pendingOrder,
-                    bestBid = bestBid,
-                    bestAsk = bestAsk,
+                    bookTicker = registry.get(uiState.currentProviderId)?.bookTicker,
+                    symbol = uiState.currentSymbol,
                     formatter = uiState.currentSymbolFormatter,
                     baseAsset = uiState.currentSymbolInfo?.baseAsset,
                     quoteAsset = uiState.currentSymbolInfo?.quoteAsset,

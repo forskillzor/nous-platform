@@ -177,6 +177,38 @@ Mind this when writing paths.
 - Paper engine notices (`TradingAdapter.notices()`) and real-adapter
   `OrderResponse.message` surface as panel snackbars (chart and DOM).
 
+### Chart/footprint performance invariants (JFR-guided)
+- `ChartTradingPanel` owns the best bid/ask subscription (limit price
+  fallback); it must not live in `ChartWindowContent`, otherwise every book
+  ticker tick recomposes/redraws the whole chart. Subscribe only while the
+  panel is expanded; paper/live trading does not change this.
+- The footprint merge (`allFp`) and the visible autoscale range are memoized
+  (`remember(series, startIdx, endIdx)`); keep range calculation out of every
+  redraw.
+- Footprint live accumulation runs on `Dispatchers.Default` and publishes a
+  `liveCandle`/`currentPrice` snapshot at most every 100 ms. The candle series
+  keeps running in footprint mode but must not publish `chartState` /
+  `hasMoreHistory`; `latestCandleState` is applied when returning to
+  CANDLESTICK. `chartLastPrice()` uses `footprintCurrentPrice` in footprint
+  mode, and the candle mark price must not overwrite the footprint mark.
+- `FootprintLevel`/`FootprintCandle` numeric caches are body `val`s (not
+  getters); price-range scans are single-pass. `CandleSeriesSource.mergeItem`
+  treats provider live volume as cumulative (`volume = update.volume`, never
+  add it to the previous candle).
+- `FootprintSeries` caches `aggregateLevels` per candle; `LocalStorage` DB work
+  is serialized on `Dispatchers.IO` through a `Mutex` (`withDb`).
+- Chart text uses `rememberTextMeasurer(cacheSize = 128)` — the default 8-slot
+  cache thrashes on price/time-scale labels. Trades UI samples `state` and
+  `filteredBuffer` at 50 ms (20 Hz), memoizes `TradeRow` formatted strings, and
+  measures the width-slider minimum only when sample string lengths change.
+- `FootprintCandle.toSkeletonCandle()` must use the model's cached
+  `open/high/low/close` body vals; only fall back to scanning `levels` when the
+  min/max strings are invalid. `ChartWindowContent` caches skeleton candles per
+  candle identity (completed history is not remapped on every live tick), and
+  `drawFootprintCandle` skips levels whose price span is outside the visible
+  range — heavy BTCUSDT footprints otherwise emit thousands of offscreen
+  `drawRect`s while scrolling.
+
 ### MEXC provider specifics
 - Symbols: platform `BTCUSDT` ↔ native `BTC_USDT`
   (`toMexcSymbol`/`fromMexcSymbol` in `MexcEndpoints.kt`).

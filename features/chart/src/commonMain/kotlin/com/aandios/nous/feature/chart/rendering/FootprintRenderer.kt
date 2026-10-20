@@ -42,6 +42,7 @@ fun DrawScope.drawFootprintChart(
     zoomLevel: Float = 1f,
     visibleStartIndex: Int = 0,
     visibleEndIndex: Int = 0,
+    aggregatedLevelsProvider: ((FootprintCandle) -> List<FootprintLevel>)? = null,
 ) {
     withTransform({
         translate(left = chartArea.left, top = chartArea.top)
@@ -53,6 +54,7 @@ fun DrawScope.drawFootprintChart(
         val fpWidth = candleMetrics.width
         val fpSpacing = candleMetrics.spacing
         val totalW = fpWidth + fpSpacing
+        val fpMetrics = CandleMetrics(fpWidth * 2f, fpSpacing) // 2x wider
 
         // Viewport max volume for gradient normalization
         var viewportMaxVol = 0f
@@ -71,16 +73,28 @@ fun DrawScope.drawFootprintChart(
                     candle = candles[i],
                     centerX = x,
                     priceRange = priceRange,
-                    metrics = CandleMetrics(fpWidth * 2f, fpSpacing), // 2x wider
+                    metrics = fpMetrics,
                     config = config,
                     chartHeight = chartArea.height,
                     viewportMaxVol = viewportMaxVol,
-                    tickSize = config.footprintConfig.tickSize
+                    tickSize = config.footprintConfig.tickSize,
+                    aggregatedLevels = aggregatedLevelsProvider?.invoke(candles[i]),
                 )
             }
         }
     }
 }
+
+internal fun footprintLevelVisible(
+    price: Float,
+    nextPrice: Float,
+    visibleMin: Float,
+    visibleMax: Float,
+): Boolean =
+    price.isFinite() &&
+        nextPrice.isFinite() &&
+        maxOf(price, nextPrice) >= visibleMin &&
+        minOf(price, nextPrice) <= visibleMax
 
 fun DrawScope.drawFootprintCandle(
     candle: FootprintCandle,
@@ -90,9 +104,10 @@ fun DrawScope.drawFootprintCandle(
     config: ChartConfig,
     chartHeight: Float,
     viewportMaxVol: Float = 1f,
-    tickSize: Double = 0.01
+    tickSize: Double = 0.01,
+    aggregatedLevels: List<FootprintLevel>? = null,
 ) {
-    val levels = if (config.footprintConfig.aggregationLevel != AggregationLevel.BaseTick && tickSize > 0.0) {
+    val levels = aggregatedLevels ?: if (config.footprintConfig.aggregationLevel != AggregationLevel.BaseTick && tickSize > 0.0) {
         aggregateLevels(candle.levels, config.footprintConfig.aggregationLevel, tickSize)
     } else {
         candle.levels
@@ -103,25 +118,32 @@ fun DrawScope.drawFootprintCandle(
     val maxBarWidth = halfWidth
     val minAlpha = 0.12f
 
+    val visibleMin = priceRange.visibleMin
+    val visibleMax = priceRange.visibleMax
+
     for (i in levels.indices) {
         val level = levels[i]
-        val priceY = priceToY(level.priceFloat, priceRange, chartHeight)
+        val price = level.priceFloat
+        val bidVolume = level.bidVolumeFloat
+        val askVolume = level.askVolumeFloat
         val nextPrice = if (i < levels.size - 1) {
             levels[i + 1].priceFloat
         } else {
-            level.priceFloat - (levels.getOrNull(levels.size - 2)?.priceFloat?.let {
+            price - (levels.getOrNull(levels.size - 2)?.priceFloat?.let {
                 levels.last().priceFloat - it
             } ?: 1f)
         }
+        if (!footprintLevelVisible(price, nextPrice, visibleMin, visibleMax)) continue
+        val priceY = priceToY(price, priceRange, chartHeight)
         val nextPriceY = priceToY(nextPrice, priceRange, chartHeight)
         val levelHeight = abs(nextPriceY - priceY).coerceAtLeast(1f)
         val topY = minOf(priceY, nextPriceY)
 
-        val bidWidth = (level.bidVolumeFloat / viewportMaxVol * maxBarWidth).coerceAtLeast(if (level.bidVolumeFloat > 0f) 1f else 0f)
-        val askWidth = (level.askVolumeFloat / viewportMaxVol * maxBarWidth).coerceAtLeast(if (level.askVolumeFloat > 0f) 1f else 0f)
+        val bidWidth = (bidVolume / viewportMaxVol * maxBarWidth).coerceAtLeast(if (bidVolume > 0f) 1f else 0f)
+        val askWidth = (askVolume / viewportMaxVol * maxBarWidth).coerceAtLeast(if (askVolume > 0f) 1f else 0f)
 
         if (askWidth > 0f) {
-            val alpha = (minAlpha + (1f - minAlpha) * (level.askVolumeFloat / viewportMaxVol)).coerceIn(minAlpha, 1f)
+            val alpha = (minAlpha + (1f - minAlpha) * (askVolume / viewportMaxVol)).coerceIn(minAlpha, 1f)
             drawRect(
                 color = config.footprintConfig.askColor.copy(alpha = alpha),
                 topLeft = Offset(centerX - halfWidth + (maxBarWidth - askWidth), topY),
@@ -129,7 +151,7 @@ fun DrawScope.drawFootprintCandle(
             )
         }
         if (bidWidth > 0f) {
-            val alpha = (minAlpha + (1f - minAlpha) * (level.bidVolumeFloat / viewportMaxVol)).coerceIn(minAlpha, 1f)
+            val alpha = (minAlpha + (1f - minAlpha) * (bidVolume / viewportMaxVol)).coerceIn(minAlpha, 1f)
             drawRect(
                 color = config.footprintConfig.bidColor.copy(alpha = alpha),
                 topLeft = Offset(centerX + halfWidth - maxBarWidth, topY),
@@ -192,15 +214,17 @@ fun DrawScope.drawFootprintPopup(
     val title = "Price       Ask    Bid"
     val titleStyle = TextStyle(color = config.accentColor, fontSize = fontSize, fontFamily = TerminalFontFamily)
     val titleLayout = textMeasurer.measure(AnnotatedString(title), titleStyle)
+    val rowStyle = TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily)
+    val measureStyle = TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)
 
     // Measure column positions: Price | Ask | Bid
     val priceX = 4f
-    val askX = priceX + textMeasurer.measure(AnnotatedString("  64321.12 "), TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)).size.width + 4f
-    val bidX = askX + textMeasurer.measure(AnnotatedString(" 12345 "), TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)).size.width + 4f
+    val askX = priceX + textMeasurer.measure(AnnotatedString("  64321.12 "), measureStyle).size.width + 4f
+    val bidX = askX + textMeasurer.measure(AnnotatedString(" 12345 "), measureStyle).size.width + 4f
 
     val fmt = config.priceFormatter
 
-    val panelW = textMeasurer.measure(AnnotatedString("  64321.12   12345   12345"), TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)).size.width + 50f
+    val panelW = textMeasurer.measure(AnnotatedString("  64321.12   12345   12345"), measureStyle).size.width + 50f
     val gapBetweenRows = 2f
     val rowH = 14f
     val panelH = titleLayout.size.height + viewLevels.size * rowH + (viewLevels.size - 1) * gapBetweenRows + 10f
@@ -231,14 +255,14 @@ fun DrawScope.drawFootprintPopup(
 
         // Price text
         val priceText = fmt.formatPrice(level.priceFloat)
-        val priceLayout = textMeasurer.measure(AnnotatedString(priceText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily))
+        val priceLayout = textMeasurer.measure(AnnotatedString(priceText), rowStyle)
         drawText(priceLayout, topLeft = Offset(panelX + priceX, yOff))
 
         // Ask volume bar + text (left column after price)
         val askVol = level.askVolumeFloat
         val askBarW = (askVol / maxVol * 30f).coerceAtLeast(if (askVol > 0f) 2f else 0f)
         val askText = fmt.formatVolume(askVol)
-        val askLayout = textMeasurer.measure(AnnotatedString(askText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily))
+        val askLayout = textMeasurer.measure(AnnotatedString(askText), rowStyle)
         val askTextX = panelX + askX
         if (askBarW > 0f) drawRect(color = darkRed, topLeft = Offset(askTextX + askLayout.size.width + 2f, yOff + 2f), size = Size(askBarW, maxOf(rowH - 4f, 1f)))
         drawText(askLayout, topLeft = Offset(askTextX, yOff))
@@ -247,7 +271,7 @@ fun DrawScope.drawFootprintPopup(
         val bidVol = level.bidVolumeFloat
         val bidBarW = (bidVol / maxVol * 30f).coerceAtLeast(if (bidVol > 0f) 2f else 0f)
         val bidText = fmt.formatVolume(bidVol)
-        val bidLayout = textMeasurer.measure(AnnotatedString(bidText), TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily))
+        val bidLayout = textMeasurer.measure(AnnotatedString(bidText), rowStyle)
         val bidTextX = panelX + bidX
         if (bidBarW > 0f) drawRect(color = darkGreen, topLeft = Offset(bidTextX + bidLayout.size.width + 2f, yOff + 2f), size = Size(bidBarW, maxOf(rowH - 4f, 1f)))
         drawText(bidLayout, topLeft = Offset(bidTextX, yOff))

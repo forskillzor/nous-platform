@@ -30,11 +30,14 @@ import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.core.ui.component.PanelSymbolWatermark
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.feature.trades.ui.header.TradesHeaderBar
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.sample
 
 /**
  * Панель для отображения потока сделок (Trades).
  * Использует MaterialTheme цвета (как feature-dom) + кастомный header с dropdowns.
  */
+@OptIn(FlowPreview::class)
 @Composable
 fun TradesWidget(
     viewModel: TradesViewModel,
@@ -42,7 +45,9 @@ fun TradesWidget(
     providers: List<com.aandios.nous.api.market.Provider> = emptyList(),
     modifier: Modifier = Modifier,
 ) {
-    val state by viewModel.state.collectAsState()
+    val state by remember(viewModel) {
+        viewModel.state.sample(50)
+    }.collectAsState(initial = viewModel.state.value)
     val explorerRows by viewModel.explorerRows.collectAsState()
     val currentSymbolInfo by viewModel.currentSymbolInfo.collectAsState()
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
@@ -50,7 +55,9 @@ fun TradesWidget(
     val currentProviderId by viewModel.currentProviderId.collectAsState()
     // Подписка на буфер отфильтрованных сделок — триггерит рекомпозицию
     // при reseed фильтра, даже если фид не менялся.
-    val filteredBuffer by viewModel.filteredBuffer.collectAsState()
+    val filteredBuffer by remember(viewModel) {
+        viewModel.filteredBuffer.sample(50)
+    }.collectAsState(initial = viewModel.filteredBuffer.value)
 
     val lazyListState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
@@ -130,29 +137,41 @@ fun TradesWidget(
             }
             is TradesState.Connected -> {
                 val visibleTrades = viewModel.visibleTrades(currentState.trades)
+                val maxQuantity = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
 
                 // Минимум для слайдера ширины: время + цена + кол-во
                 // + 4dp между колонками + внешние отступы 8dp с каждой стороны
                 if (visibleTrades.isNotEmpty()) {
-                    val maxQty = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
                     val maxPrice = visibleTrades.maxOfOrNull { it.price } ?: 0.0
-                    val sampleStyle = androidx.compose.ui.text.TextStyle(fontSize = tokens.typography.compactSize)
-                    val wTime = measurer.measure(
-                        androidx.compose.ui.text.AnnotatedString(
-                            viewModel.formatTime(visibleTrades.first().timestamp)
-                        ),
-                        sampleStyle,
-                    ).size.width
-                    val wPrice = measurer.measure(
-                        androidx.compose.ui.text.AnnotatedString(viewModel.formatPrice(maxPrice)),
-                        sampleStyle,
-                    ).size.width
-                    val wQty = measurer.measure(
-                        androidx.compose.ui.text.AnnotatedString(viewModel.formatQuantity(maxQty)),
-                        sampleStyle,
-                    ).size.width
-                    val gapsPx = with(density) { 4.dp.toPx() * 2 + 8.dp.toPx() * 2 }
-                    val minWidth = with(density) { (wTime + wPrice + wQty).toFloat().plus(gapsPx).toDp() }
+                    val timeSample = viewModel.formatTime(visibleTrades.first().timestamp)
+                    val priceSample = viewModel.formatPrice(maxPrice)
+                    val qtySample = viewModel.formatQuantity(maxQuantity)
+                    val minWidth = remember(
+                        measurer,
+                        density,
+                        tokens.typography.compactSize,
+                        timeSample.length,
+                        priceSample.length,
+                        qtySample.length,
+                    ) {
+                        val sampleStyle = androidx.compose.ui.text.TextStyle(
+                            fontSize = tokens.typography.compactSize,
+                        )
+                        val wTime = measurer.measure(
+                            androidx.compose.ui.text.AnnotatedString(timeSample),
+                            sampleStyle,
+                        ).size.width
+                        val wPrice = measurer.measure(
+                            androidx.compose.ui.text.AnnotatedString(priceSample),
+                            sampleStyle,
+                        ).size.width
+                        val wQty = measurer.measure(
+                            androidx.compose.ui.text.AnnotatedString(qtySample),
+                            sampleStyle,
+                        ).size.width
+                        val gapsPx = with(density) { 4.dp.toPx() * 2 + 8.dp.toPx() * 2 }
+                        with(density) { (wTime + wPrice + wQty).toFloat().plus(gapsPx).toDp() }
+                    }
                     // Минимум для ползунка ширины (⚙ тайтла панели) — в VM
                     LaunchedEffect(minWidth) { viewModel.setMeasuredMinWidth(minWidth.value) }
                 }
@@ -169,8 +188,6 @@ fun TradesWidget(
                         )
                     }
                 } else {
-                    val maxQuantity = visibleTrades.maxOfOrNull { it.quantity } ?: 1.0
-
                     // Новая сделка сверху: если автоскролл включён — сразу к ней
                     val newestId = visibleTrades.firstOrNull()?.id
                     LaunchedEffect(newestId) {
@@ -248,6 +265,9 @@ private fun TradeRow(
 ) {
     val tokens = LocalTerminalDesignTokens.current
     val sideColor = if (trade.isBuyerMaker) tokens.colors.bearish else tokens.colors.bullish
+    val timeText = remember(trade) { viewModel.formatTime(trade.timestamp) }
+    val priceText = remember(trade) { viewModel.formatPrice(trade.price) }
+    val quantityText = remember(trade) { viewModel.formatQuantity(trade.quantity) }
 
     Row(
         modifier = Modifier
@@ -257,7 +277,7 @@ private fun TradeRow(
     ) {
         // Время — чуть темнее цены
         Text(
-            text = viewModel.formatTime(trade.timestamp),
+            text = timeText,
             color = tokens.colors.label,
             fontSize = tokens.typography.compactSize,
             modifier = Modifier.weight(1f)
@@ -265,7 +285,7 @@ private fun TradeRow(
 
         // Цена — одного цвета (белая)
         Text(
-            text = viewModel.formatPrice(trade.price),
+            text = priceText,
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = tokens.typography.compactSize,
             fontWeight = FontWeight.Medium,
@@ -290,7 +310,7 @@ private fun TradeRow(
             )
             // Текст количества поверх бара
             Text(
-                text = viewModel.formatQuantity(trade.quantity),
+                text = quantityText,
                 color = sideColor,
                 fontSize = tokens.typography.compactSize,
                 textAlign = TextAlign.End,

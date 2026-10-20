@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aandios.nous.api.market.adapters.BookTickerAdapter
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.core.ui.component.TerminalDropdown
@@ -72,8 +74,8 @@ fun ChartTradingPanel(
     stopLoss: Double?,
     confirmOrders: Boolean,
     pendingOrder: OrderRequest?,
-    bestBid: Double?,
-    bestAsk: Double?,
+    bookTicker: BookTickerAdapter? = null,
+    symbol: String = "",
     formatter: SymbolFormatter = SymbolFormatter.DEFAULT,
     /** Базовая валюта символа — валютный суффикс поля Qty («SOL»). */
     baseAsset: String? = null,
@@ -113,6 +115,19 @@ fun ChartTradingPanel(
     }
     // Цена лимитки из поля Price (пусто → лучшая bid/ask); сброс при смене символа
     var priceText by remember(caption) { mutableStateOf("") }
+
+    // Лучшие bid/ask живут в панели, чтобы тики стакана не перерисовывали чарт
+    var bestBid by remember { mutableStateOf<Double?>(null) }
+    var bestAsk by remember { mutableStateOf<Double?>(null) }
+    LaunchedEffect(bookTicker, symbol, collapsed) {
+        bestBid = null
+        bestAsk = null
+        if (collapsed || bookTicker == null || symbol.isBlank()) return@LaunchedEffect
+        bookTicker.subscribeToBookTicker(symbol).collect { tick ->
+            bestBid = tick.bestBid.takeIf { it > 0 }
+            bestAsk = tick.bestAsk.takeIf { it > 0 }
+        }
+    }
 
     Column(
         modifier = modifier

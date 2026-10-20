@@ -247,6 +247,34 @@ class ChartCalculatorTest {
     }
 
     @Test
+    fun `price range ignores non-finite current price`() {
+        val candles = listOf(Candle(open = 95f, high = 100f, close = 99f, low = 94f, timestamp = 0L))
+
+        val result = calculatePriceRangeWithCurrentPrice(candles, currentPrice = Float.NaN)
+
+        assertEquals(100f, result.max, 0.001f)
+        assertEquals(94f, result.min, 0.001f)
+    }
+
+    @Test
+    fun `footprint price range ignores non-finite level prices`() {
+        val candles = listOf(
+            FootprintCandle(
+                levels = listOf(
+                    FootprintLevel(price = "NaN", bidVolume = "1", askVolume = "1"),
+                    FootprintLevel(price = "Infinity", bidVolume = "1", askVolume = "1"),
+                    FootprintLevel(price = "100.0", bidVolume = "1", askVolume = "1"),
+                ),
+            ),
+        )
+
+        val result = calculatePriceRangeFromLevels(candles)
+
+        assertEquals(100f, result.max, 0.001f)
+        assertEquals(100f, result.min, 0.001f)
+    }
+
+    @Test
     fun `prependedCount counts candles added to the left`() {
         val candles = (0 until 10).map { Candle(1f, 2f, 1.5f, 0.5f, it * 60_000L, 10f) }
 

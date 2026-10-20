@@ -17,14 +17,21 @@ import com.aandios.nous.api.market.model.FootprintCandle
  * из уровней bid/ask.
  */
 fun FootprintCandle.toSkeletonCandle(): Candle {
-    val levelPrices = levels.map { it.priceFloat }.filter { it.isFinite() }
-    val highFromString = maxPrice.toFloatOrNull()?.takeIf { it.isFinite() && it > 0f }
-    val lowFromString = minPrice.toFloatOrNull()?.takeIf { it.isFinite() && it > 0f }
+    var levelMax = Float.NEGATIVE_INFINITY
+    var levelMin = Float.POSITIVE_INFINITY
+    if (!high.isFinite() || high <= 0f || !low.isFinite() || low <= 0f) {
+        for (level in levels) {
+            val price = level.priceFloat
+            if (!price.isFinite()) continue
+            if (price > levelMax) levelMax = price
+            if (price < levelMin) levelMin = price
+        }
+    }
     return Candle(
-        open = levels.firstOrNull()?.priceFloat ?: 0f,
-        high = highFromString ?: (levelPrices.maxOrNull() ?: 0f),
-        close = levels.lastOrNull()?.priceFloat ?: 0f,
-        low = lowFromString ?: (levelPrices.minOrNull() ?: 0f),
+        open = open,
+        high = high.takeIf { it.isFinite() && it > 0f } ?: levelMax.takeIf { it.isFinite() } ?: 0f,
+        close = close,
+        low = low.takeIf { it.isFinite() && it > 0f } ?: levelMin.takeIf { it.isFinite() } ?: 0f,
         timestamp = startTime,
         volume = maxVolume,
     )

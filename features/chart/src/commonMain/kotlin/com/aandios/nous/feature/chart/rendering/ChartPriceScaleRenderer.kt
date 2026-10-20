@@ -43,6 +43,12 @@ fun DrawScope.drawPriceScale(
         )
 
         val numberOfLevels = 8
+        val levelTextStyle = TextStyle(
+            color = config.axisTextColor,
+            fontSize = 10.sp,
+            fontFamily = TerminalFontFamily,
+            textAlign = TextAlign.Right
+        )
 
         // Генерируем уровни цен
         val priceLevels = generatePriceLevels(
@@ -65,7 +71,8 @@ fun DrawScope.drawPriceScale(
                     y = y,
                     config = config,
                     priceScaleWidth = priceScaleArea.width,
-                    textMeasurer = textMeasurer
+                    textMeasurer = textMeasurer,
+                    textStyle = levelTextStyle
                 )
             }
         }
@@ -149,15 +156,10 @@ fun DrawScope.drawPriceLevel(
     y: Float,
     config: ChartConfig,
     priceScaleWidth: Float,
-    textMeasurer: TextMeasurer
+    textMeasurer: TextMeasurer,
+    textStyle: TextStyle
 ) {
     val priceText = formatPrice(price, config.priceFormatter)
-    val textStyle = TextStyle(
-        color = config.axisTextColor,
-        fontSize = 10.sp,
-        fontFamily = TerminalFontFamily,
-        textAlign = TextAlign.Right
-    )
 
     val textLayoutResult = textMeasurer.measure(
         text = AnnotatedString(priceText),
