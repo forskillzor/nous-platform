@@ -295,6 +295,7 @@ fun TerminalWindowContent(
                     navigatorStateRepo = navigatorStateRepository,
                     workspaceTemplates = marketWatchTemplates,
                     activeWorkspaceId = session.activeWorkspaceId,
+                    previewWorkspaceId = session.previewWorkspaceId,
                     onOpenWorkspace = { config -> windowManager.openWorkspaceIn(session.id, config) },
                     onPreviewWorkspace = { config -> windowManager.openWorkspacePreviewIn(session.id, config) },
                     onSymbolSelected = { symbol, providerId ->

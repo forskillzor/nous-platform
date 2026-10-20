@@ -69,6 +69,9 @@ class LayoutRendererRenderTest {
                 node = tree,
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 rendered += panelId
                 Box(
@@ -107,6 +110,9 @@ class LayoutRendererRenderTest {
                 node = tree,
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(
                     Modifier
@@ -140,6 +146,9 @@ class LayoutRendererRenderTest {
                 node = tree,
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 rendered += panelId
                 Box(Modifier.fillMaxSize())
@@ -184,6 +193,9 @@ class LayoutRendererRenderTest {
                 panels = panels,
                 modifier = Modifier.fillMaxSize().onSizeChanged { layoutSize = it },
                 fixedPanelWidths = mapOf("dom" to 240.dp, "trades" to 240.dp),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -226,6 +238,9 @@ class LayoutRendererRenderTest {
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
                 fixedPanelWidths = mapOf("a" to 240.dp, "b" to 240.dp),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -286,6 +301,9 @@ class LayoutRendererRenderTest {
                     "trades1" to 240.dp,
                     "trades2" to 240.dp,
                 ),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -355,6 +373,9 @@ class LayoutRendererRenderTest {
                     "dom3" to 240.dp,
                     "trades2" to 240.dp,
                 ),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -428,6 +449,9 @@ class LayoutRendererRenderTest {
                     "dom3" to 240.dp,
                     "trades1" to 240.dp,
                 ),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -471,6 +495,9 @@ class LayoutRendererRenderTest {
                 node = tree,
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 rendered += panelId
                 Box(Modifier.fillMaxSize())
@@ -515,6 +542,9 @@ class LayoutRendererRenderTest {
                 node = tree,
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(
                     Modifier
@@ -585,6 +615,9 @@ class LayoutRendererRenderTest {
                 node = tree,
                 panels = mapOf("a" to panel("a"), "b" to panel("b")),
                 modifier = Modifier.fillMaxSize(),
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -641,6 +674,9 @@ class LayoutRendererRenderTest {
                 panels = panels,
                 modifier = Modifier.fillMaxSize(),
                 fixedPanelWidths = fixedWidths,
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }
@@ -792,6 +828,9 @@ class LayoutRendererRenderTest {
                 fixedPanelWidths = panels
                     .filterValues { it.type != PanelType.CHART }
                     .mapValues { 240.dp },
+                onClosePanel = {},
+                panelTitleContent = {},
+                panelSettingsContent = { _, _ -> },
             ) { panelId ->
                 Box(Modifier.fillMaxSize().onSizeChanged { sizes[panelId] = it })
             }

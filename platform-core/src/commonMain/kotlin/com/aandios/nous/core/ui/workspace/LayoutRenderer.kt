@@ -107,15 +107,15 @@ fun LayoutRenderer(
     node: LayoutNode,
     modifier: Modifier = Modifier,
     panels: Map<String, PanelConfig> = emptyMap(),
-    onClosePanel: ((String) -> Unit)? = null,
+    onClosePanel: ((String) -> Unit),
     onSplitPanel: ((String, LayoutNode.Direction, PanelType) -> Unit)? = null,
     onRatioChange: (() -> Unit)? = null,
     onRatioChangeStart: (() -> Unit)? = null,
     onMovePanel: ((String, String, LayoutEngine.DropZone) -> Unit)? = null,
     onMovePanelToRoot: ((String, LayoutEngine.DropZone) -> Unit)? = null,
     fixedPanelWidths: Map<String, Dp> = emptyMap(),
-    panelTitleContent: (@Composable (panelId: String) -> Unit)? = null,
-    panelSettingsContent: (@Composable (panelId: String, dismiss: () -> Unit) -> Unit)? = null,
+    panelTitleContent: (@Composable (panelId: String) -> Unit),
+    panelSettingsContent: (@Composable (panelId: String, dismiss: () -> Unit) -> Unit),
     panelContent: @Composable (panelId: String) -> Unit
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -231,7 +231,7 @@ private fun RenderNode(
     node: LayoutNode,
     modifier: Modifier,
     panels: Map<String, PanelConfig>,
-    onClosePanel: ((String) -> Unit)?,
+    onClosePanel: ((String) -> Unit),
     onSplitPanel: ((String, LayoutNode.Direction, PanelType) -> Unit)?,
     onRatioChange: (() -> Unit)?,
     onRatioChangeStart: (() -> Unit)?,
@@ -242,8 +242,8 @@ private fun RenderNode(
     dragState: PanelDragState,
     fly: PanelFlyContext,
     fixedPanelWidthsPx: Map<String, Float> = emptyMap(),
-    panelTitleContent: (@Composable (panelId: String) -> Unit)? = null,
-    panelSettingsContent: (@Composable (panelId: String, dismiss: () -> Unit) -> Unit)? = null,
+    panelTitleContent: (@Composable (panelId: String) -> Unit),
+    panelSettingsContent: (@Composable (panelId: String, dismiss: () -> Unit) -> Unit),
     panelContent: @Composable (panelId: String) -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -272,7 +272,7 @@ private fun RenderNode(
                     if (config != null) {
                         PanelHeader(
                             config = config,
-                            onClose = onClosePanel?.let { { it(panelId) } },
+                            onClose = onClosePanel.let { { it(panelId) } },
                             onSplitH = onSplitPanel?.let { fn ->
                                 { type ->
                                     fn(
@@ -338,8 +338,8 @@ private fun RenderNode(
                                     },
                                 )
                             } else null,
-                            titleContent = panelTitleContent?.let { fn -> { fn(panelId) } },
-                            settingsContent = panelSettingsContent?.let { fn ->
+                            titleContent = panelTitleContent.let { fn -> { fn(panelId) } },
+                            settingsContent = panelSettingsContent.let { fn ->
                                 { dismiss: () -> Unit -> fn(panelId, dismiss) }
                             },
                         )

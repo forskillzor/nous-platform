@@ -10,6 +10,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SymbolExplorerDropdownTest {
 
@@ -252,7 +253,7 @@ class SymbolExplorerDropdownTest {
     @Test
     fun `highlight annotation covers only the matched substring`() {
         val accent = Color(0xFFF28C18)
-        val text = highlightedSymbol("WBTCUSDT", 1..3, accent)
+        val text = highlightedMatch("WBTCUSDT", 1..3, accent)
 
         assertEquals("WBTCUSDT", text.text)
         val span = assertNotNull(text.spanStyles.singleOrNull())
@@ -260,5 +261,52 @@ class SymbolExplorerDropdownTest {
         assertEquals(4, span.end)
         // Подсветка совпадения идёт цветом темы, а не хардкодом.
         assertEquals(accent, span.item.color)
+        assertEquals(accent.copy(alpha = 0.24f), span.item.background)
+    }
+
+    @Test
+    fun `list reorder target accounts for the dragged item removal`() {
+        assertEquals(2, explorerListReorderTarget(fromIndex = 0, boundary = 3, count = 4))
+        assertEquals(0, explorerListReorderTarget(fromIndex = 2, boundary = 0, count = 4))
+        assertEquals(3, explorerListReorderTarget(fromIndex = 1, boundary = 4, count = 4))
+        assertEquals(0, explorerListReorderTarget(fromIndex = 3, boundary = 0, count = 4))
+        assertEquals(2, explorerListReorderTarget(fromIndex = 2, boundary = 2, count = 4))
+        assertEquals(0, explorerListReorderTarget(fromIndex = 0, boundary = 0, count = 3))
+    }
+
+    @Test
+    fun `merged watchlist order keeps favourites pinned`() {
+        val lists = listOf(
+            SymbolWatchlist("a", "Alpha"),
+            SymbolWatchlist("fav", "Favourites"),
+            SymbolWatchlist("b", "Beta"),
+            SymbolWatchlist("c", "Gamma"),
+        )
+        assertEquals(
+            listOf("b", "fav", "a", "c"),
+            explorerMergedWatchlistOrder(lists, listOf("b", "a", "c")),
+        )
+        assertEquals(
+            listOf("c", "fav", "a", "b"),
+            explorerMergedWatchlistOrder(lists, listOf("c", "a", "b")),
+        )
+    }
+
+    @Test
+    fun `favourites list matches case-insensitively`() {
+        val lists = listOf(
+            SymbolWatchlist("x", "Scalp"),
+            SymbolWatchlist("fav", "favourites"),
+        )
+        assertEquals("fav", lists.favouritesWatchlist()?.id)
+    }
+
+    @Test
+    fun `highlight without a match keeps plain text`() {
+        val accent = Color(0xFFF28C18)
+        assertEquals("SOLUSDT", highlightedMatch("SOLUSDT", null, accent).text)
+        assertTrue(highlightedMatch("SOLUSDT", null, accent).spanStyles.isEmpty())
+        assertEquals("SOLUSDT", highlightedMatch("SOLUSDT", 9..12, accent).text)
+        assertTrue(highlightedMatch("SOLUSDT", 9..12, accent).spanStyles.isEmpty())
     }
 }

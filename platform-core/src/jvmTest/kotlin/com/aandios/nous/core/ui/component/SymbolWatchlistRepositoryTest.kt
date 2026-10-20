@@ -46,6 +46,26 @@ class SymbolWatchlistRepositoryTest {
     }
 
     @Test
+    fun `reorder applies and persists the requested order`(): Unit = runBlocking {
+        val store = MemoryStateStore()
+        val repository = SymbolWatchlistRepository(store)
+        repository.load()
+        val first = repository.create("First")
+        val second = repository.create("Second")
+        val third = repository.create("Third")
+
+        repository.reorder(listOf(third.id, first.id, second.id))
+        assertEquals(listOf("Third", "First", "Second"), repository.lists.value.map { it.name })
+
+        val restored = SymbolWatchlistRepository(store)
+        restored.load()
+        assertEquals(listOf(third.id, first.id, second.id), restored.lists.value.map { it.id })
+
+        assertFailsWith<IllegalArgumentException> { repository.reorder(listOf(third.id)) }
+        assertFailsWith<IllegalArgumentException> { repository.reorder(listOf(third.id, first.id, "unknown")) }
+    }
+
+    @Test
     fun `renames and deletes a list and its membership`() {
         runBlocking {
             val store = MemoryStateStore()

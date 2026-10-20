@@ -9,13 +9,10 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,7 +20,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,8 +40,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.ui.component.LocalSymbolWatchlistRepository
@@ -50,10 +47,8 @@ import com.aandios.nous.core.ui.component.SymbolExplorerContent
 import com.aandios.nous.core.ui.component.SymbolExplorerSort
 import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.ui.component.TerminalDropdownMenu
-import com.aandios.nous.core.ui.component.TerminalGripDots
-import com.aandios.nous.core.ui.component.TerminalGripOrientation
 import com.aandios.nous.core.ui.component.TerminalMenuItem
-import com.aandios.nous.core.ui.component.TerminalPanelHeader
+import com.aandios.nous.core.ui.component.ToolPanelTitleBar
 import com.aandios.nous.core.ui.component.toSymbolExplorerRow
 import com.aandios.nous.core.ui.panel.MarketWatchPrefs
 import com.aandios.nous.core.ui.panel.ToolPanelPrefsRepository
@@ -65,7 +60,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import org.jetbrains.compose.resources.painterResource
 import org.koin.compose.koinInject
+import nous_platform.composeapp.generated.resources.Res
+import nous_platform.composeapp.generated.resources.candlestick
 
 private enum class WatchlistDialogMode {
     CREATE,
@@ -187,29 +185,22 @@ fun SymbolsPanel(
     }
 
     Column(modifier = modifier.fillMaxSize().background(tokens.colors.panelSurface)) {
-        // ── Заголовок: grip, title, настройки списков и панели ──
-        TerminalPanelHeader {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
+        // ── Заголовок: глиф, тайтл, настройки списков и панели ──
+        Surface(
+            color = tokens.colors.panelHeaderSurface,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            ToolPanelTitleBar(
+                title = "Market Watch",
+                leading = {
+                    Icon(
+                        painter = painterResource(Res.drawable.candlestick),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(14.dp),
+                    )
+                },
             ) {
-                TerminalGripDots(
-                    orientation = TerminalGripOrientation.VERTICAL,
-                    color = tokens.colors.label.copy(alpha = 0.55f),
-                    modifier = Modifier.width(8.dp).height(14.dp),
-                )
-                Text(
-                    text = "Market Watch",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = tokens.typography.controlSize,
-                    lineHeight = tokens.typography.controlLineHeight,
-                    fontFamily = TerminalFontFamily,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
                 marketState.error?.let {
                     // Ошибка каталога: бейдж в тайтле, текст — в контекстном окне по клику
                     ErrorBadgeGlyph(
@@ -267,6 +258,10 @@ fun SymbolsPanel(
                 }
             }
         }
+        HorizontalDivider(
+            color = tokens.colors.panelBorder,
+            thickness = tokens.dimensions.dividerThickness,
+        )
 
         listActionError?.let {
             Text(
@@ -289,12 +284,6 @@ fun SymbolsPanel(
             )
         }
 
-        if (marketState.loading && explorerRows.isEmpty()) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.CenterHorizontally).padding(tokens.spacing.lg),
-                strokeWidth = tokens.dimensions.borderWidth * 2,
-            )
-        }
 
         // ── Список: тот же explorer, что в тайтлах chart/DOM/Trades ──
         Box(modifier = Modifier.weight(1f)) {

@@ -77,7 +77,8 @@ Mind this when writing paths.
 - DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`,
   `dom_contract_{panelId}` (USDT_M / COIN_M) and the order panel settings
   persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
-  `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId).
+  `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId);
+  `dom_freq_{panelId}` stores the DOM level-emission frequency (100–300 ms).
 - Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`),
   `trading_provider`, `trading_contract_type` (global keys). The window top bar
   Paper switch writes the same `paper_enabled` flag through the shared
@@ -99,9 +100,10 @@ Mind this when writing paths.
   scrollIndex/scrollOffset) — same repository; legacy payloads ("ALL",
   "SYMBOL" defaults) decode via field defaults, scroll restores after catalog
   rows load, saves debounced 500 ms. The panel list is the shared
-  `SymbolExplorerContent` (platform-core): tabs ALL + watchlists, ⌘K search,
-  PERPETUALS/quote/exchange chips, arrow sort, `.P` display symbols, per-row
-  star (active list or Favourites); the panel adds only a row context menu
+  `SymbolExplorerContent` (platform-core): tabs ALL + Favourites (other lists
+  in the LISTS dropdown), ⌘K search, PERPETUALS/quote/exchange chips, arrow
+  sort, `.P` display symbols, per-row star (active list or Favourites); the
+  panel adds only a row context menu
   (Apply to current workspace, OPEN <sym> WITH templates, Add to <list name>)
   and a ⚙ menu (New/Rename/Delete list, Close panel). The scroll-to-top FAB
   lives in the shared content (so the popup has it too). Catalog failures are
@@ -368,11 +370,16 @@ from the IDE and tests visually; agents verify via compilation and tests.
   (`LocalMinimumInteractiveComponentSize = Dp.Unspecified`) and use `scale(0.7f)`.
 - Internal panel headers use `TerminalPanelHeader` for the shared surface,
   spacing and bottom divider; keep panel-specific controls and actions inside it.
+- Left tool panels (Workspaces navigator, Market Watch, legacy tool types)
+  share `ToolPanelTitleBar` (platform-core): 38dp row, leading glyph slot,
+  uppercase bold mono title + optional count, trailing actions — the "airy"
+  title style, no grip dots or lowercase titles.
 - Panel top titles are `PanelHeader` (platform-core): drag grip, per-panel
   controls (`LayoutRenderer.panelTitleContent` slot), then ⚙ (menu via
   `panelSettingsContent`), + (dark 20dp circle, `surfaceVariant` fill +
   `outlineVariant` ring + accent plus drawn in Canvas; split menu; SPLIT RIGHT →
-  `onSplitH` → Row, SPLIT DOWN → `onSplitV` → Column) and a large × close. The
+  `onSplitH` → Row, SPLIT DOWN → `onSplitV` → Column) and a 20dp Canvas ×
+  glyph close matching the plus button. The
   chart title hosts `ChartTitleToolbar`: mode rounded box dropdown
   (`TerminalBoxStyle.ACCENT` — `surfaceVariant` fill, accent text), symbol
   explorer box (see below; its closed trigger shows the exchange label in
@@ -392,8 +399,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
   its popup body is the shared `SymbolExplorerContent` (hoisted state params,
   optional `rowMenu` per-row context menu hook) — Market Watch renders the
   same composable inline, so keep new explorer features inside the content;
-  tabs ALL + watchlist names uppercased (stars write into an auto-created
-  `Favourites` list), search field with hit highlight and ⌘K / Ctrl+K focus,
+  tabs ALL + Favourites uppercased; other watchlists live in the uppercased
+  LISTS dropdown trigger showing the active list (stars write into an
+  auto-created `Favourites` list), search field with hit highlight and
+  ⌘K / Ctrl+K focus,
   chips PERPETUALS / quote / exchange, up/down-arrow sort trigger
   (`TerminalSortGlyph`; VOLUME / 24H % / PRICE / SYMBOL options, active
   direction ↓/↑ in the menu), 5-row scroll list (LazyColumn — keep it lazy,
@@ -430,9 +439,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `pendingExplorerSymbol` after `loadSymbols()`, syncing `contractType` from
   the row's `SymbolInfo`. Header layout: none of the headers has a separate
   contract-type button — the type is implied by the symbol (row picks sync
-  `contractType`); DOM row 1 = symbol explorer + collapse, row 2 = depth + agg
-  (agg wraps to a third row on narrow panels); Trades is a single row =
-  symbol explorer + size filter.
+  `contractType`); DOM row 1 = symbol explorer + collapse, row 2 =
+  depth + agg + freq; FREQ throttles the level-structure emissions from the
+  DOM model (100/150/200/250/300 ms, persisted per panel). Trades is a single
+  row = symbol explorer + size filter.
   Trades size filter is one box button: funnel glyph (`TerminalFunnelGlyph` —
   a filter, unlike the explorer's `TerminalSortGlyph` arrows) + current mode
   in `primary` text ("ALL" / "≥ …").
@@ -447,12 +457,30 @@ from the IDE and tests visually; agents verify via compilation and tests.
   Access templates section; pure model + DnD resolution live in
   `WorkspaceNavigatorModel.kt` (`buildNavigatorTree`,
   `visibleNavigatorItems`, `resolveNavigatorDropTarget`,
-  `applyWorkspaceDrop`/`applyFolderDrop` — unit-tested). Workspace rows use
-  the Market Watch row style: 46dp, full-height accent bar, full-height
-  mosaic column (16dp glyph, like the explorer star), two lines (name +
-  `navigatorWorkspaceSubline`
-  "Exchange · Symbol", always visible), thin bottom divider; folder rows stay
-  compact 26dp. Folder order and
+  `applyWorkspaceDrop`/`applyFolderDrop` — unit-tested). Header: mosaic +
+  WORKSPACES + total count, explicit `+ workspace` / `+ folder` actions (no
+  "…" menu anywhere; Expand/Collapse All and New Workspace/New Folder live in
+  the empty-list right-click menu), New Folder is an inline
+  `NavigatorNewFolderRow` (ENTER creates, ESC cancels), search focuses on
+  Ctrl/⌘K and shows a clear × only when non-empty, matching also symbol.
+  Workspace rows: selection background and active accent indicator are inset
+  to the tree-guide line (x = 10.5dp, not the panel edge), full-height 24dp
+  icon column with
+  `NavigatorMiniMapGlyph` (16dp miniature of the actual panel layout in the
+  same semantic type colors as `WorkspaceLayoutThumbnail` on WelcomeScreen,
+  no inner labels; shares `collectRects` from `WelcomeScreen.kt`), inactive =
+  32dp one line (name + exchange right, preview italic), active = 48dp two
+  lines (name + exchange, then raw chart symbol only), thin bottom divider,
+  tree indent guide (1dp vertical line at x = 10.5dp — centered between the
+  panel edge and the child glyph, neutral `label` tint);
+  folder rows 28dp uppercase, count at 60% alpha, gray outline folder glyph
+  (`FolderGlyph(open = !collapsed)` — closed/open flap), active-folder accent
+  tint, no status dot, no row "…" buttons — all actions via right-click
+  context menus (`NavigatorContextMenu` title + shared `TerminalMenuItem`
+  rows with pencil/copy/layers/trash glyphs). Quick Access is one header row
+  (count + chevron) with a height-capped scroller of `NavigatorTemplateRow`s
+  (miniature per template). New workspaces are
+  created in Unsorted (`Templates.nous().copy(group = "")`). Folder order and
   collapsed set persist via `NavigatorStateRepository` (`navigator_state` in
   StateStore); structural moves persist user workspaces through
   `WorkspaceRepository.update(..., touchUpdatedAt = false)` so "recent"
@@ -502,6 +530,22 @@ from the IDE and tests visually; agents verify via compilation and tests.
   chips/sort, chart settings rows, panel/⚙ menus and trades size filter;
   guarded by `TerminalMenuItemTest`. Do not reintroduce `DropdownMenuItem`
   for option rows (bidasker-web is a separate web prototype, exempt).
+- Search-match highlighting is the shared `highlightedMatch` (platform-core
+  `SearchHighlight.kt`): accent 24% fill + accent bold text. Use it for every
+  regex-match label (explorer, Market Watch, Workspaces navigator) instead of
+  ad-hoc SpanStyles.
+- Search inputs are the shared `TerminalSearchField` (platform-core): 28dp
+  bordered box with search glyph, placeholder, CTRL K hint and × clear (Esc
+  clears too). Used by the Workspaces navigator and the explorer/Market Watch
+  search; reuse it instead of hand-rolling search rows.
+- Explorer/Market Watch tab row is fixed: ALL + Favourites (matched by name,
+  case-insensitive); every other list lives in a `TerminalBoxDropdown` whose
+  trigger shows the active list (or LISTS). The menu is built on the shared
+  `TerminalDropdownMenu` / `TerminalMenuItem` (hover/selected styling like
+  every other menu, `ExplorerTabs.kt` in platform-core) and supports
+  drag-reorder inside the dropdown only; order persists through
+  `SymbolWatchlistRepository.reorder(ids)` with Favourites keeping its slot
+  (`explorerMergedWatchlistOrder`).
 - Texts inside compact controls must set `lineHeight` explicitly
   (`controlLineHeight` for box triggers): `Text` merges with the inherited
   Material `LocalTextStyle`, so a small `fontSize` alone still lays out the

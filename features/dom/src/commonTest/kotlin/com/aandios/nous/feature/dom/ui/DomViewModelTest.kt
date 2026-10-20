@@ -167,6 +167,8 @@ class DomViewModelTest {
         val quantity = viewModel.orderQuantity.first()
         assertEquals("0.01", quantity)
 
+        assertEquals(100, options.freqMs)
+
         val tradingEnabled = viewModel.isTradingEnabled.first()
         assertFalse(tradingEnabled) // по умолчанию выключено: live не включается сам
 
@@ -278,6 +280,34 @@ class DomViewModelTest {
         assertEquals(2, asks.size)
         assertEquals(0.8, asks[50100.0])
         assertEquals(1.2, asks[50200.0])
+    }
+
+    @Test
+    fun `book window emissions are limited by freq option`() = testScope.runTest {
+        fakeSymbolInfoAdapter.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        viewModel.updateDomOptions(viewModel.domOptions.value.copy(freqMs = 300))
+        advanceUntilIdle()
+
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(bids = listOf(PriceUpdate(50000.0, 1.0)), asks = emptyList())
+        )
+        runCurrent()
+        assertEquals(listOf(50000L), viewModel.sortedLevels.map { it.priceTicks })
+
+        // Второе окно приходит внутри интервала — уровни ещё старые
+        fakeDomAdapter.windowFlow.emit(
+            BookWindowLevels(bids = listOf(PriceUpdate(50100.0, 2.0)), asks = emptyList())
+        )
+        runCurrent()
+        assertEquals(listOf(50000L), viewModel.sortedLevels.map { it.priceTicks })
+
+        // Через FREQ эмитится последнее (актуальное) окно
+        advanceTimeBy(300)
+        runCurrent()
+        assertEquals(listOf(50100L), viewModel.sortedLevels.map { it.priceTicks })
     }
 
     @Test
@@ -616,7 +646,7 @@ class DomViewModelTest {
         vm.setLeverage(10)
         vm.setMarginMode(1)
         vm.updateOrderQuantity("2.5")
-        vm.updateDomOptions(vm.domOptions.value.copy(collapsed = true))
+        vm.updateDomOptions(vm.domOptions.value.copy(collapsed = true, freqMs = 250))
         advanceUntilIdle()
 
         // Новый экземпляр панели (рестарт) читает сохранённые настройки
@@ -635,6 +665,7 @@ class DomViewModelTest {
         assertEquals(1, restored.marginMode.first())
         assertEquals("2.5", restored.orderQuantity.first())
         assertTrue(restored.domOptions.value.collapsed)
+        assertEquals(250, restored.domOptions.value.freqMs)
     }
 }
 

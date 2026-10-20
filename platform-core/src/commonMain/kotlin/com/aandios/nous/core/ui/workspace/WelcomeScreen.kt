@@ -548,7 +548,7 @@ fun WorkspaceLayoutThumbnail(config: WorkspaceConfig, modifier: Modifier = Modif
     }
 }
 
-private fun collectRects(
+internal fun collectRects(
     node: LayoutNode,
     x: Float,
     y: Float,
@@ -565,9 +565,10 @@ private fun collectRects(
             val horizontal = node.direction == LayoutNode.Direction.HORIZONTAL
             val totalSpan = if (horizontal) w else h
             val usable = (totalSpan - gap * (children.size - 1)).coerceAtLeast(0f)
+            val ratio = node.ratio.coerceIn(0f, 1f)
             var offset = 0f
             children.forEachIndexed { i, child ->
-                val span = if (children.size == 2 && i == 0) usable * node.ratio else usable / children.size
+                val span = if (i == 0) usable * ratio else usable * (1f - ratio) / (children.size - 1)
                 val childRect = if (horizontal) {
                     collectRects(child, x + offset, y, span, h, gap)
                 } else {

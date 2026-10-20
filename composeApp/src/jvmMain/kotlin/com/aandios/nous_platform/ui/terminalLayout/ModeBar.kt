@@ -25,6 +25,7 @@ enum class TerminalMode(val label: String) {
     WORKSPACES("Workspaces"),
     RESEARCH("Research"),
     BACKTESTING("Backtesting"),
+    CODE("Code"),
     EXECUTION("Execution"),
 }
 

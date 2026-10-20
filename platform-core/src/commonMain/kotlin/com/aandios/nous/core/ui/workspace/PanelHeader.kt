@@ -27,8 +27,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.core.ui.component.TerminalDropdownMenu
 import com.aandios.nous.core.ui.component.TerminalGripDots
@@ -37,6 +37,7 @@ import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.workspace.PanelConfig
+import com.aandios.nous.core.workspace.PanelState
 import com.aandios.nous.core.workspace.PanelType
 
 /**
@@ -64,13 +65,13 @@ private val splitableTypes = listOf(
 @Composable
 fun PanelHeader(
     config: PanelConfig,
-    onClose: (() -> Unit)? = null,
+    onClose: (() -> Unit),
     onSplitH: ((PanelType) -> Unit)? = null,
     onSplitV: ((PanelType) -> Unit)? = null,
     onDrag: PanelDragHandlers? = null,
     modifier: Modifier = Modifier,
-    titleContent: (@Composable () -> Unit)? = null,
-    settingsContent: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    titleContent: (@Composable () -> Unit),
+    settingsContent: (@Composable (dismiss: () -> Unit) -> Unit),
 ) {
     val tokens = LocalTerminalDesignTokens.current
     var addMenuExpanded by remember { mutableStateOf(false) }
@@ -90,90 +91,67 @@ fun PanelHeader(
                 .fillMaxWidth()
                 .height(tokens.dimensions.workspacePanelHeaderHeight)
                 .background(tokens.colors.panelSurface)
-            .onGloballyPositioned { headerOrigin = it.positionInWindow() }
-            .then(
-                if (onDrag != null) {
-                    Modifier.pointerInput(dragThresholdPx) {
-                        var totalDrag = 0f
-                        var dragActive = false
-                        detectDragGestures(
-                            onDragStart = {
-                                totalDrag = 0f
-                                dragActive = false
-                            },
-                            onDrag = { change, dragAmount ->
-                                totalDrag += dragAmount.getDistance()
-                                val handler = currentOnDrag ?: return@detectDragGestures
-                                if (!dragActive && totalDrag >= dragThresholdPx) {
-                                    dragActive = true
-                                    handler.onDragStart()
-                                }
-                                if (dragActive) {
-                                    handler.onDrag(headerOrigin + change.position)
-                                }
-                            },
-                            onDragEnd = {
-                                val handler = currentOnDrag
-                                if (dragActive) handler?.onDragEnd()
-                                dragActive = false
-                            },
-                            onDragCancel = {
-                                val handler = currentOnDrag
-                                if (dragActive) handler?.onDragCancel()
-                                dragActive = false
-                            },
-                        )
-                    }
-                } else Modifier
-            )
-            .padding(start = tokens.spacing.md, end = tokens.spacing.md),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (onDrag != null) {
-            Box(
-                modifier = Modifier
-                    .width(10.dp)
-                    .height(14.dp),
-            ) {
-                TerminalGripDots(
-                    orientation = TerminalGripOrientation.VERTICAL,
-                    color = tokens.colors.label,
+                .onGloballyPositioned { headerOrigin = it.positionInWindow() }
+                .then(
+                    if (onDrag != null) {
+                        Modifier.pointerInput(dragThresholdPx) {
+                            var totalDrag = 0f
+                            var dragActive = false
+                            detectDragGestures(
+                                onDragStart = {
+                                    totalDrag = 0f
+                                    dragActive = false
+                                },
+                                onDrag = { change, dragAmount ->
+                                    totalDrag += dragAmount.getDistance()
+                                    val handler = currentOnDrag ?: return@detectDragGestures
+                                    if (!dragActive && totalDrag >= dragThresholdPx) {
+                                        dragActive = true
+                                        handler.onDragStart()
+                                    }
+                                    if (dragActive) {
+                                        handler.onDrag(headerOrigin + change.position)
+                                    }
+                                },
+                                onDragEnd = {
+                                    val handler = currentOnDrag
+                                    if (dragActive) handler?.onDragEnd()
+                                    dragActive = false
+                                },
+                                onDragCancel = {
+                                    val handler = currentOnDrag
+                                    if (dragActive) handler?.onDragCancel()
+                                    dragActive = false
+                                },
+                            )
+                        }
+                    } else Modifier
                 )
-            }
-            Spacer(Modifier.width(tokens.spacing.md))
-        }
-
-        if (titleContent != null) {
-            titleContent()
-        } else {
-            val prefix = when (config.type) {
-                PanelType.CHART -> "▤"; PanelType.DOM -> "▥"; PanelType.TRADES -> "▦"; PanelType.TRADING -> "▧"
-            }
-            Text(
-                prefix,
-                color = tokens.colors.accent,
-                fontSize = tokens.typography.smallSize,
-                fontFamily = TerminalFontFamily,
-            )
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Text(
-                text = "${config.symbol} · ${panelStateLabel(config)}",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = tokens.typography.smallSize,
-                fontFamily = TerminalFontFamily,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Spacer(Modifier.weight(1f))
-
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
+                .padding(start = tokens.spacing.md, end = tokens.spacing.md),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (settingsContent != null) {
+            if (onDrag != null) {
+                Box(
+                    modifier = Modifier
+                        .width(10.dp)
+                        .height(14.dp),
+                ) {
+                    TerminalGripDots(
+                        orientation = TerminalGripOrientation.VERTICAL,
+                        color = tokens.colors.label,
+                    )
+                }
+                Spacer(Modifier.width(tokens.spacing.md))
+            }
+
+            titleContent()
+
+            Spacer(Modifier.weight(1f))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
+            ) {
                 Box {
                     Box(
                         modifier = Modifier
@@ -192,56 +170,49 @@ fun PanelHeader(
                         settingsContent { settingsMenuExpanded = false }
                     }
                 }
-            }
 
-            if (onSplitH != null || onSplitV != null) {
-                Box {
-                    PanelAddButton(onClick = { addMenuExpanded = true })
-                    TerminalDropdownMenu(
-                        expanded = addMenuExpanded,
-                        onDismissRequest = { addMenuExpanded = false },
-                        modifier = Modifier.width(160.dp),
-                    ) {
-                        if (onSplitH != null) {
-                            PanelMenuCaption("SPLIT RIGHT")
-                            splitableTypes.forEach { (type, label) ->
-                                PanelMenuRow(label) {
-                                    addMenuExpanded = false
-                                    onSplitH(type)
+                if (onSplitH != null || onSplitV != null) {
+                    Box {
+                        PanelAddButton(onClick = { addMenuExpanded = true })
+                        TerminalDropdownMenu(
+                            expanded = addMenuExpanded,
+                            onDismissRequest = { addMenuExpanded = false },
+                            modifier = Modifier.width(160.dp),
+                        ) {
+                            if (onSplitH != null) {
+                                PanelMenuCaption("SPLIT RIGHT")
+                                splitableTypes.forEach { (type, label) ->
+                                    PanelMenuRow(label) {
+                                        addMenuExpanded = false
+                                        onSplitH(type)
+                                    }
+                                }
+                                if (onSplitV != null) {
+                                    HorizontalDivider(
+                                        color = tokens.colors.panelBorder,
+                                        thickness = tokens.dimensions.dividerThickness,
+                                    )
                                 }
                             }
                             if (onSplitV != null) {
-                                HorizontalDivider(
-                                    color = tokens.colors.panelBorder,
-                                    thickness = tokens.dimensions.dividerThickness,
-                                )
-                            }
-                        }
-                        if (onSplitV != null) {
-                            PanelMenuCaption("SPLIT DOWN")
-                            splitableTypes.forEach { (type, label) ->
-                                PanelMenuRow(label) {
-                                    addMenuExpanded = false
-                                    onSplitV(type)
+                                PanelMenuCaption("SPLIT DOWN")
+                                splitableTypes.forEach { (type, label) ->
+                                    PanelMenuRow(label) {
+                                        addMenuExpanded = false
+                                        onSplitV(type)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            if (onClose != null) {
-                Text(
-                    "×",
+                PanelCloseButton(
                     color = tokens.colors.label,
-                    fontSize = tokens.typography.compactActionSize,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .clickable { onClose() }
-                        .padding(horizontal = tokens.spacing.xxs),
+                    cornerRadius = tokens.cornerRadii.smallCard,
+                    onClick = onClose,
                 )
             }
-        }
         }
 
         HorizontalDivider(
@@ -291,38 +262,72 @@ private fun TerminalSlidersGlyph(color: Color) {
         drawCircle(color, radius = knobRadius, center = Offset(topKnobX, topY), style = Stroke(stroke))
 
         drawLine(color, Offset(edge, bottomY), Offset(bottomKnobX - knobRadius, bottomY), strokeWidth = stroke)
-        drawLine(color, Offset(bottomKnobX + knobRadius, bottomY), Offset(size.width - edge, bottomY), strokeWidth = stroke)
+        drawLine(
+            color,
+            Offset(bottomKnobX + knobRadius, bottomY),
+            Offset(size.width - edge, bottomY),
+            strokeWidth = stroke
+        )
         drawCircle(color, radius = knobRadius, center = Offset(bottomKnobX, bottomY), style = Stroke(stroke))
+    }
+}
+
+/** Кнопка закрытия панели: глиф × того же размера, что и соседняя «+». */
+@Composable
+private fun PanelCloseButton(
+    color: Color,
+    cornerRadius: Dp,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(20.dp)
+            .clip(RoundedCornerShape(cornerRadius))
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        CloseGlyph(color = color, glyphSize = 20.dp)
+    }
+}
+
+/** Контурный крестик закрытия в сетке 20×20, как у глифа «+». */
+@Composable
+private fun CloseGlyph(color: Color, glyphSize: Dp) {
+    Canvas(modifier = Modifier.size(glyphSize)) {
+        val stroke = 1.2.dp.toPx()
+        val inset = size.minDimension * 0.24f
+        drawLine(
+            color = color,
+            start = Offset(inset, inset),
+            end = Offset(size.width - inset, size.height - inset),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(size.width - inset, inset),
+            end = Offset(inset, size.height - inset),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
 /** Кнопка «+» в тайтле: тёмный круг с акцентным плюсом по центру (прототип). */
 @Composable
 private fun PanelAddButton(onClick: () -> Unit) {
-    val circleFill = MaterialTheme.colorScheme.surfaceVariant
-    val circleBorder = MaterialTheme.colorScheme.outlineVariant
-    val plusColor = MaterialTheme.colorScheme.primary
-    Canvas(
+    Box(
         modifier = Modifier
             .size(20.dp)
-            .clip(CircleShape)
             .clickable { onClick() },
     ) {
-        val stroke = 1.5.dp.toPx()
-        val radius = size.minDimension / 2f
-        drawCircle(color = circleFill, radius = radius)
-        drawCircle(color = circleBorder, radius = radius - stroke / 2f, style = Stroke(stroke))
-        val arm = radius * 0.5f
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        drawLine(plusColor, Offset(cx - arm, cy), Offset(cx + arm, cy), strokeWidth = stroke, cap = StrokeCap.Round)
-        drawLine(plusColor, Offset(cx, cy - arm), Offset(cx, cy + arm), strokeWidth = stroke, cap = StrokeCap.Round)
+        PlusGlyph(color = MaterialTheme.colorScheme.onSurfaceVariant, glyphSize = 20.dp)
     }
 }
 
 private fun panelStateLabel(config: PanelConfig): String = when (val state = config.state) {
-    is com.aandios.nous.core.workspace.PanelState.Chart -> state.timeframe
-    is com.aandios.nous.core.workspace.PanelState.Dom -> "${state.depth}lvl"
-    is com.aandios.nous.core.workspace.PanelState.Trades -> "trades"
-    is com.aandios.nous.core.workspace.PanelState.Trading -> "trading"
+    is PanelState.Chart -> state.timeframe
+    is PanelState.Dom -> "${state.depth}lvl"
+    is PanelState.Trades -> "trades"
+    is PanelState.Trading -> "trading"
 }

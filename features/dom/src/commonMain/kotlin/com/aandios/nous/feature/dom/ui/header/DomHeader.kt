@@ -34,7 +34,7 @@ import com.aandios.nous.feature.dom.domain.model.DepthLimit
 /**
  * Заголовок DOM: две компактные строки без «двойных» рамок —
  *  1) символ с биржей (explorer) · свернуть
- *  2) глубина · агрегация
+ *  2) глубина · агрегация · частота обновления уровней
  * Тип контрактов отдельной кнопкой не переключается: он однозначно известен
  * из символа (perpetual/инверс) и синхронизируется выбором строки в explorer'е.
  * Биржа переключается выбором строки другой биржи в explorer'е (как в тайтле
@@ -148,6 +148,14 @@ private fun ExpandedDomHeader(
                         current = domOptions.aggregation,
                         symbolTickSize = symbolTickSize,
                         onSelect = { onDomOptionsChanged(domOptions.copy(aggregation = it)) },
+                    )
+                    TerminalInlineSelect(
+                        label = "Freq",
+                        current = domOptions.freqMs,
+                        items = DomOptions.frequencyOptions,
+                        display = { it.toString() },
+                        onSelect = { onDomOptionsChanged(domOptions.copy(freqMs = it)) },
+                        menuWidth = 80.dp,
                     )
                 }
                 HorizontalDivider(

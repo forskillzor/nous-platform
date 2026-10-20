@@ -81,16 +81,19 @@ class WorkspaceNavigatorModelTest {
     }
 
     @Test
-    fun `search by folder name keeps all children without highlight`() {
+    fun `search by folder name keeps all children and highlights matching names`() {
         val tree = buildNavigatorTree(
-            workspaces = listOf(ws("w1", "One", group = "Scalping"), ws("w2", "Two", group = "Scalping")),
+            workspaces = listOf(
+                ws("w1", "One", group = "Scalping"),
+                ws("w2", "LTCUSDT Classic Scalping", group = "Scalping"),
+            ),
             folderOrder = emptyList(),
-            query = "scalp",
+            query = "scalping",
         )
         val folder = tree.folders.single()
         assertEquals("Scalping", folder.rawGroup)
         assertEquals(listOf("w1", "w2"), folder.workspaces.map { it.workspace.id })
-        assertEquals(listOf(null, null), folder.workspaces.map { it.highlight })
+        assertEquals(listOf(null, 16..23), folder.workspaces.map { it.highlight })
     }
 
     @Test
@@ -252,19 +255,21 @@ class WorkspaceNavigatorModelTest {
     }
 
     @Test
-    fun `workspace subline joins exchange and chart symbol`() {
+    fun `navigator symbol prefers chart panel`() {
         val config = ws("w1", "One", provider = "Binance").copy(
             panels = listOf(
                 PanelConfig(id = "p1", type = PanelType.DOM, providerRef = "main", symbol = "ETHUSDT"),
                 PanelConfig(id = "p2", type = PanelType.CHART, providerRef = "main", symbol = "SOLUSDT"),
             ),
         )
-        assertEquals("Binance · SOLUSDT", navigatorWorkspaceSubline(config))
+        assertEquals("SOLUSDT", navigatorPanelSymbol(config))
+        assertEquals("Binance", navigatorExchangeLabel(config))
     }
 
     @Test
-    fun `workspace subline skips missing parts`() {
-        assertEquals("", navigatorWorkspaceSubline(ws("w1", "One")))
-        assertEquals("Bybit", navigatorWorkspaceSubline(ws("w2", "Two", provider = "Bybit")))
+    fun `navigator symbol and exchange are empty without data`() {
+        assertEquals("", navigatorPanelSymbol(ws("w1", "One")))
+        assertEquals("", navigatorExchangeLabel(ws("w1", "One")))
+        assertEquals("Bybit", navigatorExchangeLabel(ws("w2", "Two", provider = "Bybit")))
     }
 }

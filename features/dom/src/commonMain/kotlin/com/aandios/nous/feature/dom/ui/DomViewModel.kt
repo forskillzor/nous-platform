@@ -68,6 +68,11 @@ class DomViewModel(
     private val viewModelScope = CoroutineScope(dispatcher + SupervisorJob())
     private var subscriptionJob: Job? = null
 
+    // Эмиты структуры уровней ограничены [DomOptions.freqMs]: окна копятся
+    // (последнее побеждает) и применяются не чаще выбранной частоты.
+    private var levelsPumpJob: Job? = null
+    private var pendingWindow: DomEvent.BookWindow? = null
+
     private val _domOptions = MutableStateFlow(DomOptions.default())
     val domOptions: StateFlow<DomOptions> = _domOptions.asStateFlow()
 
@@ -236,6 +241,7 @@ class DomViewModel(
             val aggChanged = oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
             val contractTypeChanged = oldOptions.contractType != newOptions.contractType
             val collapsedChanged = oldOptions.collapsed != newOptions.collapsed
+            val freqChanged = oldOptions.freqMs != newOptions.freqMs
             _domOptions.value = newOptions
             updateAggMultiplier()
 
@@ -279,6 +285,11 @@ class DomViewModel(
                     viewModelScope.launch {
                         store.putString(collapsedStoreKey(), if (newOptions.collapsed) "1" else "0")
                     }
+                }
+            }
+            if (freqChanged) {
+                stateStore?.let { store ->
+                    viewModelScope.launch { store.putString(freqStoreKey(), newOptions.freqMs.toString()) }
                 }
             }
             // Символ/провайдер могли смениться — перечитать ордера/позиции
@@ -334,6 +345,8 @@ class DomViewModel(
 
     private fun restartSubscription(options: DomOptions) {
         subscriptionJob?.cancel()
+        levelsPumpJob?.cancel()
+        pendingWindow = null
         subscriptionJob = viewModelScope.launch {
             updateAggMultiplier()
             subscribeToBookWindows(options)
@@ -377,8 +390,27 @@ class DomViewModel(
 
     private fun processDomEvent(event: DomEvent) {
         when (event) {
-            is DomEvent.BookWindow -> handleBookWindow(event)
+            is DomEvent.BookWindow -> enqueueBookWindow(event)
             is DomEvent.BestPrices -> handleBestPrices(event)
+        }
+    }
+
+    /**
+     * Частота обновления структуры уровней: первое окно применяется сразу,
+     * последующие — не чаще [DomOptions.freqMs]; промежуточные окна
+     * схлопываются (актуально последнее).
+     */
+    private fun enqueueBookWindow(window: DomEvent.BookWindow) {
+        pendingWindow = window
+        if (levelsPumpJob?.isActive == true) return
+        levelsPumpJob = viewModelScope.launch {
+            while (isActive) {
+                val next = pendingWindow ?: break
+                pendingWindow = null
+                handleBookWindow(next)
+                delay(_domOptions.value.freqMs.toLong())
+                if (pendingWindow == null) break
+            }
         }
     }
 
@@ -390,7 +422,7 @@ class DomViewModel(
         event.asks.forEach { u -> asksByPrice[u.price] = u.quantity }
 
         // Метаданные (tickSize/stepSize) могли ещё не прийти — окно пропускаем,
-        // следующее (через 100мс) отрисует книгу целиком
+        // следующее окно (по FREQ) отрисует книгу целиком
         if (scaleReady) rebuildLevelsFromWindow()
     }
 
@@ -682,6 +714,14 @@ class DomViewModel(
                 // Восстановленный qty — выбор пользователя: minQty его не перетирает
                 qtyUserEdited = true
             }
+            // Частота эмитов структуры уровней (лесенки) этой панели
+            store.getString(freqStoreKey())?.toIntOrNull()
+                ?.takeIf { it in DomOptions.frequencyOptions }
+                ?.let { savedFreq ->
+                    if (savedFreq != _domOptions.value.freqMs) {
+                        _domOptions.value = _domOptions.value.copy(freqMs = savedFreq)
+                    }
+                }
             if (store.getString(collapsedStoreKey()) == "1" && !_domOptions.value.collapsed) {
                 _domOptions.value = _domOptions.value.copy(collapsed = true)
             }
@@ -707,6 +747,8 @@ class DomViewModel(
     private fun marginStoreKey(): String = "dom_margin_${panelKey ?: "default"}"
 
     private fun qtyStoreKey(): String = "dom_qty_${panelKey ?: "default"}"
+
+    private fun freqStoreKey(): String = "dom_freq_${panelKey ?: "default"}"
 
     private fun collapsedStoreKey(): String = "dom_collapsed_${panelKey ?: "default"}"
 

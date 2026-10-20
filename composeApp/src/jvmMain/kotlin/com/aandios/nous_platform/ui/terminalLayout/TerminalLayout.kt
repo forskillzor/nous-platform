@@ -89,6 +89,7 @@ fun TerminalLayout(
     navigatorStateRepo: NavigatorStateRepository? = null,
     workspaceTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
     activeWorkspaceId: String? = null,
+    previewWorkspaceId: String? = null,
     onOpenWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     onPreviewWorkspace: ((WorkspaceConfig) -> Unit)? = null,
     marketWatchTemplates: List<Pair<String, WorkspaceConfig>> = emptyList(),
@@ -253,6 +254,7 @@ fun TerminalLayout(
                             WorkspaceNavigator(
                                 workspaces = allWorkspaceConfigs,
                                 activeId = activeWorkspaceId,
+                                previewId = previewWorkspaceId,
                                 folderOrder = navigatorState.folders,
                                 collapsedFolders = navigatorState.collapsed.toSet(),
                                 templates = workspaceTemplates,
@@ -260,7 +262,7 @@ fun TerminalLayout(
                                 onWorkspaceOpen = { config -> onOpenWorkspace?.invoke(config) },
                                 onNewWorkspace = {
                                     scope.launch {
-                                        val config = com.aandios.nous.core.workspace.Templates.nous()
+                                        val config = com.aandios.nous.core.workspace.Templates.nous().copy(group = "")
                                         workspaceRepo!!.create(config)
                                         onOpenWorkspace?.invoke(config)
                                         refreshWorkspaces()

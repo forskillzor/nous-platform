@@ -16,6 +16,7 @@ import com.aandios.nous.feature.dom.domain.model.DepthLimit
  * [provider] — id провайдера из ProviderRegistry (только реально
  * реализованные провайдеры; UI выбирает из реестра).
  * [contractType] — USDT-M / COIN-M: фильтр списка символов.
+ * [freqMs] — частота эмитов структуры уровней из DOM-модели (мс).
  */
 data class DomOptions(
     val provider: String = "binance-nous-0.0.1",
@@ -24,8 +25,12 @@ data class DomOptions(
     val aggregation: AggregationLevel = AggregationLevel.BaseTick,
     val collapsed: Boolean = false,
     val contractType: ContractType = ContractType.USDT_M,
+    val freqMs: Int = 100,
 ) {
     companion object {
+        /** Варианты частоты обновления структуры уровней (мс). */
+        val frequencyOptions: List<Int> = listOf(100, 150, 200, 250, 300)
+
         fun default() = DomOptions()
     }
     

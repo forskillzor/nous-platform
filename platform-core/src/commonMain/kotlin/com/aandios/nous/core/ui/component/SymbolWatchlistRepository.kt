@@ -26,6 +26,14 @@ data class SymbolWatchlist(
     val symbols: List<String> = emptyList(),
 )
 
+internal const val FAVOURITES_LIST_NAME = "Favourites"
+
+internal fun SymbolWatchlist.isFavourites(): Boolean =
+    name.equals(FAVOURITES_LIST_NAME, ignoreCase = true)
+
+internal fun List<SymbolWatchlist>.favouritesWatchlist(): SymbolWatchlist? =
+    firstOrNull { it.isFavourites() }
+
 class SymbolWatchlistRepository(private val stateStore: StateStore) {
     private val mutex = Mutex()
     private val json = Json { ignoreUnknownKeys = true }
@@ -68,6 +76,15 @@ class SymbolWatchlistRepository(private val stateStore: StateStore) {
     suspend fun delete(id: String) = updateLists { lists ->
         require(lists.any { it.id == id }) { "Watchlist not found: $id" }
         lists.filterNot { it.id == id }
+    }
+
+    /** Полная перестановка списков: [ids] — желаемый порядок существующих списков. */
+    suspend fun reorder(ids: List<String>) = updateLists { lists ->
+        require(ids.size == lists.size && ids.toSet() == lists.map { it.id }.toSet()) {
+            "Reorder must be a permutation of existing watchlists"
+        }
+        val byId = lists.associateBy { it.id }
+        ids.map { checkNotNull(byId[it]) }
     }
 
     suspend fun toggleSymbol(id: String, symbol: String) = updateLists { lists ->

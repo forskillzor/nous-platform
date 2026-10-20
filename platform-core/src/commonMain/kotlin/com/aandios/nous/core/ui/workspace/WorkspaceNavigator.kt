@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,8 +31,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +49,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -56,6 +59,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -63,16 +67,18 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
@@ -80,6 +86,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.aandios.nous.core.ui.component.TerminalContextPopup
 import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalMenuItem
+import com.aandios.nous.core.ui.component.TerminalSearchField
+import com.aandios.nous.core.ui.component.ToolPanelTitleBar
+import com.aandios.nous.core.ui.component.highlightedMatch
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.workspace.WorkspaceConfig
@@ -114,16 +124,18 @@ fun WorkspaceNavigator(
     onFolderOrderChange: (List<String>) -> Unit,
     onCreateFromTemplate: (String, WorkspaceConfig) -> Unit,
     modifier: Modifier = Modifier,
+    previewId: String? = null,
     onMakeTemplate: ((WorkspaceConfig) -> Unit)? = null,
     onDuplicateWorkspace: ((WorkspaceConfig) -> Unit)? = null,
 ) {
     val tokens = LocalTerminalDesignTokens.current
     val accent = MaterialTheme.colorScheme.primary
+    val searchFocusRequester = remember { FocusRequester() }
 
     var query by remember { mutableStateOf("") }
-    var headerMenuExpanded by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf<String?>(null) }
     var templatesExpanded by remember { mutableStateOf(false) }
+    var emptyMenuExpanded by remember { mutableStateOf(false) }
 
     val tree = remember(workspaces, folderOrder, query) {
         buildNavigatorTree(workspaces, folderOrder, query)
@@ -218,79 +230,41 @@ fun WorkspaceNavigator(
 
     val draggable = query.isBlank()
 
-    Column(modifier = modifier.fillMaxSize().background(tokens.colors.panelSurface)) {
-        Box {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(34.dp)
-                    .padding(horizontal = tokens.spacing.sm),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                MosaicGlyph(color = accent, size = 13.dp)
-                Spacer(Modifier.width(tokens.spacing.sm))
-                Text(
-                    text = "Workspaces",
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = tokens.typography.controlSize,
-                    lineHeight = tokens.typography.controlLineHeight,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = TerminalFontFamily,
-                    maxLines = 1,
-                    modifier = Modifier.weight(1f),
-                )
-                NavigatorActionButton(onClick = { newFolderName = "" }, description = "New folder") {
-                    FolderPlusGlyph(color = accent, size = 14.dp)
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(tokens.colors.panelSurface)
+            .onPreviewKeyEvent { event ->
+                if (event.type == KeyEventType.KeyDown && event.key == Key.K &&
+                    (event.isCtrlPressed || event.isMetaPressed)
+                ) {
+                    runCatching { searchFocusRequester.requestFocus() }
+                    true
+                } else {
+                    false
                 }
-                Spacer(Modifier.width(tokens.spacing.xxs))
-                NavigatorActionButton(onClick = { headerMenuExpanded = true }, description = "More actions") {
-                    DotsGlyph(color = tokens.colors.label)
-                }
+            },
+    ) {
+        ToolPanelTitleBar(
+            title = "Workspaces",
+            count = workspaces.size,
+            leading = { MosaicGlyph(color = MaterialTheme.colorScheme.onSurfaceVariant, size = 13.dp) },
+        ) {
+            NavigatorActionButton(onClick = onNewWorkspace, description = "New workspace") {
+                PlusGlyph(color = MaterialTheme.colorScheme.onSurfaceVariant, glyphSize = 15.dp)
             }
-            NavigatorMenu(expanded = headerMenuExpanded, onDismiss = { headerMenuExpanded = false }) {
-                NavigatorMenuItem("New Workspace") {
-                    headerMenuExpanded = false
-                    onNewWorkspace()
-                }
-                NavigatorMenuItem("New Folder") {
-                    headerMenuExpanded = false
-                    newFolderName = ""
-                }
-                NavigatorMenuItem("Expand All") {
-                    headerMenuExpanded = false
-                    onCollapsedFoldersChange(emptySet())
-                }
-                NavigatorMenuItem("Collapse All") {
-                    headerMenuExpanded = false
-                    onCollapsedFoldersChange(
-                        items.filterIsInstance<NavigatorItem.FolderItem>().map { it.folder.rawGroup }.toSet(),
-                    )
-                }
+            Spacer(Modifier.width(tokens.spacing.xxs))
+            NavigatorActionButton(onClick = { newFolderName = "" }, description = "New folder") {
+                FolderPlusGlyph(color = MaterialTheme.colorScheme.onSurfaceVariant, size = 15.dp)
             }
         }
 
-        newFolderName?.let { name ->
-            TerminalContextPopup(
-                expanded = true,
-                onDismiss = { newFolderName = null },
-                title = "New folder",
-                message = "Workspaces can be dragged into the folder afterwards.",
-                value = name,
-                onValueChange = { newFolderName = it },
-                placeholder = "Folder name",
-                confirmText = "Create",
-                onConfirm = {
-                    val trimmed = name.trim()
-                    newFolderName = null
-                    if (trimmed.isNotEmpty() && trimmed != NAVIGATOR_UNSORTED_LABEL) onCreateFolder(trimmed)
-                },
-            )
-        }
-
-        NavigatorSearchField(
+        TerminalSearchField(
             query = query,
             onQueryChange = { query = it },
-            modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            placeholder = "Search workspaces",
+            focusRequester = searchFocusRequester,
+            modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs),
         )
 
         tree.error?.let { message ->
@@ -306,28 +280,25 @@ fun WorkspaceNavigator(
             )
         }
 
-        Row(
+        Box(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Press &&
+                                event.buttons.isSecondaryPressed &&
+                                event.changes.none { it.isConsumed }
+                            ) {
+                                emptyMenuExpanded = true
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
+                },
         ) {
-            Text(
-                text = "WORKSPACES",
-                color = tokens.colors.label,
-                fontSize = tokens.typography.smallSize,
-                lineHeight = tokens.typography.compactLineHeight,
-                letterSpacing = tokens.typography.compactLetterSpacing,
-                fontWeight = FontWeight.Medium,
-                fontFamily = TerminalFontFamily,
-                modifier = Modifier.weight(1f),
-            )
-            NavigatorActionButton(onClick = onNewWorkspace, description = "New workspace") {
-                PlusGlyph(color = tokens.colors.label, size = 12.dp)
-            }
-        }
-
-        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (items.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(tokens.spacing.md),
@@ -387,6 +358,7 @@ fun WorkspaceNavigator(
                             is NavigatorItem.WorkspaceItem -> NavigatorWorkspaceRow(
                                 item = item,
                                 isActive = item.entry.workspace.id == activeId,
+                                isPreview = item.entry.workspace.id == previewId,
                                 showLineAbove = lineAboveKey == item.key,
                                 showLineBelow = endLineKey == item.key ||
                                     (appendLineFolder == item.folder.rawGroup &&
@@ -450,6 +422,44 @@ fun WorkspaceNavigator(
                     )
                 }
             }
+
+            NavigatorContextMenu(
+                expanded = emptyMenuExpanded,
+                onDismiss = { emptyMenuExpanded = false },
+                title = "Workspaces",
+            ) {
+                NavigatorMenuItem("New Workspace", onClick = {
+                    emptyMenuExpanded = false
+                    onNewWorkspace()
+                })
+                NavigatorMenuItem("New Folder", onClick = {
+                    emptyMenuExpanded = false
+                    newFolderName = ""
+                })
+                NavigatorMenuDivider()
+                NavigatorMenuItem("Expand All", onClick = {
+                    emptyMenuExpanded = false
+                    onCollapsedFoldersChange(emptySet())
+                })
+                NavigatorMenuItem("Collapse All", onClick = {
+                    emptyMenuExpanded = false
+                    onCollapsedFoldersChange(tree.folders.map { it.rawGroup }.toSet())
+                })
+            }
+        }
+
+        newFolderName?.let { name ->
+            NavigatorNewFolderRow(
+                value = name,
+                onValueChange = { newFolderName = it },
+                onSubmit = { value ->
+                    val trimmed = value.trim()
+                    newFolderName = null
+                    if (trimmed.isNotEmpty() && trimmed != NAVIGATOR_UNSORTED_LABEL) onCreateFolder(trimmed)
+                },
+                onCancel = { newFolderName = null },
+                modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+            )
         }
 
         HorizontalDivider(
@@ -472,38 +482,17 @@ fun WorkspaceNavigator(
                 letterSpacing = tokens.typography.compactLetterSpacing,
                 fontWeight = FontWeight.Medium,
                 fontFamily = TerminalFontFamily,
+            )
+            Spacer(Modifier.width(tokens.spacing.xs))
+            Text(
+                text = templates.size.toString(),
+                color = tokens.colors.label.copy(alpha = 0.6f),
+                fontSize = tokens.typography.microSize,
+                lineHeight = tokens.typography.compactLineHeight,
+                fontFamily = TerminalFontFamily,
                 modifier = Modifier.weight(1f),
             )
             ChevronGlyph(collapsed = !templatesExpanded, color = tokens.colors.label)
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md)
-                .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
-                .clickable { templatesExpanded = !templatesExpanded }
-                .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            LayersGlyph(color = accent, size = 13.dp)
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Text(
-                text = "Workspace templates",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = tokens.typography.compactSize,
-                lineHeight = tokens.typography.controlLineHeight,
-                fontFamily = TerminalFontFamily,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                text = templates.size.toString(),
-                color = tokens.colors.label,
-                fontSize = tokens.typography.smallSize,
-                lineHeight = tokens.typography.compactLineHeight,
-                fontFamily = TerminalFontFamily,
-            )
         }
 
         if (templatesExpanded) {
@@ -514,30 +503,20 @@ fun WorkspaceNavigator(
                     fontSize = tokens.typography.smallSize,
                     lineHeight = tokens.typography.compactLineHeight,
                     fontFamily = TerminalFontFamily,
-                    modifier = Modifier.padding(start = 26.dp, end = tokens.spacing.md, bottom = tokens.spacing.xs),
+                    modifier = Modifier.padding(start = tokens.spacing.lg, end = tokens.spacing.md, bottom = tokens.spacing.xs),
                 )
             } else {
-                templates.forEach { (label, config) ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = tokens.spacing.md)
-                            .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
-                            .clickable { onCreateFromTemplate(label, config) }
-                            .padding(start = tokens.spacing.lg, end = tokens.spacing.sm, top = tokens.spacing.xxs, bottom = tokens.spacing.xxs),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        MosaicGlyph(color = tokens.colors.label, size = 11.dp)
-                        Spacer(Modifier.width(tokens.spacing.sm))
-                        Text(
-                            text = label,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = tokens.typography.compactSize,
-                            lineHeight = tokens.typography.controlLineHeight,
-                            fontFamily = TerminalFontFamily,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f),
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 180.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    templates.forEach { (label, config) ->
+                        NavigatorTemplateRow(
+                            label = label,
+                            config = config,
+                            onClick = { onCreateFromTemplate(label, config) },
                         )
                     }
                 }
@@ -548,80 +527,93 @@ fun WorkspaceNavigator(
 }
 
 @Composable
-private fun NavigatorSearchField(
-    query: String,
-    onQueryChange: (String) -> Unit,
+private fun NavigatorNewFolderRow(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: (String) -> Unit,
+    onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    val focusRequester = remember { FocusRequester() }
+    val accent = MaterialTheme.colorScheme.primary
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .height(26.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                RoundedCornerShape(tokens.cornerRadii.smallCard),
-            )
-            .border(
-                tokens.dimensions.borderWidth,
-                tokens.colors.panelBorder,
-                RoundedCornerShape(tokens.cornerRadii.smallCard),
-            )
-            .padding(horizontal = tokens.spacing.md),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        SearchGlyph(color = tokens.colors.label)
-        Spacer(Modifier.width(tokens.spacing.sm))
-        Box(modifier = Modifier.weight(1f)) {
-            if (query.isEmpty()) {
-                Text(
-                    text = "Search workspaces",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                    fontSize = tokens.typography.compactSize,
-                    lineHeight = tokens.typography.controlLineHeight,
-                    fontFamily = TerminalFontFamily,
-                    maxLines = 1,
+            .height(30.dp)
+            .drawBehind {
+                val stroke = tokens.dimensions.borderWidth.toPx()
+                val radius = tokens.cornerRadii.smallCard.toPx()
+                drawRoundRect(
+                    color = accent.copy(alpha = 0.7f),
+                    cornerRadius = CornerRadius(radius, radius),
+                    style = Stroke(
+                        width = stroke,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx())),
+                    ),
                 )
             }
-            BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = TextStyle(
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = tokens.typography.compactSize,
-                    fontFamily = TerminalFontFamily,
-                ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(focusRequester)
-                    .onPreviewKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                            onQueryChange("")
-                            true
-                        } else {
-                            false
-                        }
-                    },
-            )
-        }
+            .padding(horizontal = tokens.spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FolderGlyph(color = MaterialTheme.colorScheme.onSurfaceVariant, size = 13.dp)
+        Spacer(Modifier.width(tokens.spacing.sm))
+        InlineRenameField(
+            initial = value,
+            onSubmit = onSubmit,
+            onCancel = onCancel,
+            modifier = Modifier.weight(1f),
+            placeholder = "New folder",
+            boxed = false,
+        )
         Spacer(Modifier.width(tokens.spacing.sm))
         Text(
-            text = "⌘ K",
+            text = "ENTER",
             color = tokens.colors.label,
             fontSize = tokens.typography.microSize,
             lineHeight = tokens.typography.compactLineHeight,
+            letterSpacing = tokens.typography.compactLetterSpacing,
             fontFamily = TerminalFontFamily,
-            modifier = Modifier
-                .background(tokens.colors.panelHeaderSurface, RoundedCornerShape(3.dp))
-                .border(
-                    tokens.dimensions.borderWidth,
-                    tokens.colors.panelBorder,
-                    RoundedCornerShape(3.dp),
-                )
-                .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun NavigatorTemplateRow(
+    label: String,
+    config: WorkspaceConfig,
+    onClick: () -> Unit,
+) {
+    val tokens = LocalTerminalDesignTokens.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(28.dp)
+            .padding(horizontal = tokens.spacing.md)
+            .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
+            .clickable { onClick() }
+            .padding(horizontal = tokens.spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.width(NAVIGATOR_WORKSPACE_ICON_WIDTH),
+            contentAlignment = Alignment.Center,
+        ) {
+            NavigatorMiniMapGlyph(
+                config = config,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Spacer(Modifier.width(tokens.spacing.xs))
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = tokens.typography.compactSize,
+            lineHeight = tokens.typography.controlLineHeight,
+            fontFamily = TerminalFontFamily,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
         )
     }
 }
@@ -660,18 +652,30 @@ private fun NavigatorFolderRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(26.dp)
+                .height(28.dp)
                 .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
                 .background(
                     when {
                         dropHighlight -> accent.copy(alpha = 0.16f)
                         hovered -> tokens.colors.panelHeaderSurface
+                        item.containsActive -> accent.copy(alpha = 0.08f)
                         else -> Color.Transparent
                     },
                 )
                 .hoverable(interaction)
                 .clickable(interactionSource = interaction, indication = null) {
                     if (!editing) onToggle()
+                }
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                                menuExpanded = true
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
+                    }
                 }
                 .pointerInput(draggable, item.key) {
                     if (draggable) {
@@ -683,12 +687,19 @@ private fun NavigatorFolderRow(
                         )
                     }
                 }
-                .padding(horizontal = tokens.spacing.xs),
+                .padding(start = tokens.spacing.md, end = tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            ChevronGlyph(collapsed = collapsed, color = tokens.colors.label)
+            ChevronGlyph(
+                collapsed = collapsed,
+                color = if (item.containsActive) accent else tokens.colors.label,
+            )
             Spacer(Modifier.width(tokens.spacing.xs))
-            FolderGlyph(color = accent.copy(alpha = 0.9f), size = 13.dp)
+            FolderGlyph(
+                color = if (item.containsActive) accent else tokens.colors.label,
+                size = 16.dp,
+                open = !collapsed,
+            )
             Spacer(Modifier.width(tokens.spacing.sm))
             if (editing) {
                 InlineRenameField(
@@ -703,34 +714,25 @@ private fun NavigatorFolderRow(
                 )
             } else {
                 Text(
-                    text = item.folder.name,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = tokens.typography.controlSize,
-                    lineHeight = tokens.typography.controlLineHeight,
+                    text = item.folder.name.uppercase(),
+                    color = tokens.colors.label,
+                    fontSize = tokens.typography.smallSize,
+                    lineHeight = tokens.typography.compactLineHeight,
+                    letterSpacing = tokens.typography.compactLetterSpacing,
                     fontWeight = FontWeight.Medium,
                     fontFamily = TerminalFontFamily,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
                 )
-                if (collapsed && item.containsActive) {
-                    Box(
-                        modifier = Modifier
-                            .size(5.dp)
-                            .clip(CircleShape)
-                            .background(accent),
-                    )
-                    Spacer(Modifier.width(tokens.spacing.xs))
-                }
+                Spacer(Modifier.width(tokens.spacing.xs))
                 Text(
                     text = item.folder.workspaces.size.toString(),
-                    color = tokens.colors.label,
+                    color = tokens.colors.label.copy(alpha = 0.6f),
                     fontSize = tokens.typography.smallSize,
                     lineHeight = tokens.typography.compactLineHeight,
                     fontFamily = TerminalFontFamily,
                 )
-                Spacer(Modifier.width(tokens.spacing.xs))
-                RowActionDots(visible = hovered || menuExpanded) { menuExpanded = true }
             }
         }
         if (showLineAbove) {
@@ -751,15 +753,20 @@ private fun NavigatorFolderRow(
                     .background(accent),
             )
         }
-        NavigatorMenu(expanded = menuExpanded, onDismiss = { menuExpanded = false }) {
-            NavigatorMenuItem("Rename") {
+        NavigatorContextMenu(
+            expanded = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            title = item.folder.name,
+        ) {
+            NavigatorMenuItem("Rename", onClick = {
                 menuExpanded = false
                 editing = true
-            }
-            NavigatorMenuItem("Delete", destructive = true) {
+            }, icon = { PencilGlyph(color = tokens.colors.label, glyphSize = 12.dp) })
+            NavigatorMenuDivider()
+            NavigatorMenuItem("Delete", onClick = {
                 menuExpanded = false
                 confirmDelete = true
-            }
+            }, icon = { TrashGlyph(color = MaterialTheme.colorScheme.error, glyphSize = 12.dp) })
         }
         if (confirmDelete) {
             TerminalContextPopup(
@@ -779,10 +786,21 @@ private fun NavigatorFolderRow(
     }
 }
 
-/** Workspace-строка навигатора в стиле Market Watch: две линии, иконка в колонке как star. */
-private val NAVIGATOR_WORKSPACE_ROW_HEIGHT = 46.dp
-private val NAVIGATOR_WORKSPACE_ICON_WIDTH = 34.dp
+/** Workspace-строка навигатора: неактивная односрочная, активная двухсрочная с мини-картой. */
+private val NAVIGATOR_WORKSPACE_ROW_HEIGHT = 32.dp
+private val NAVIGATOR_WORKSPACE_ACTIVE_ROW_HEIGHT = 48.dp
+private val NAVIGATOR_WORKSPACE_ICON_WIDTH = 24.dp
 private val NAVIGATOR_WORKSPACE_GLYPH_SIZE = 16.dp
+
+/**
+ * X гайд-линии вложенности: центр зазора между краем панели и глифом ребёнка
+ * (зазор слева = зазор справа до глифа).
+ */
+private val NAVIGATOR_TREE_GUIDE_X = 10.5.dp
+private val NAVIGATOR_TREE_GUIDE_WIDTH = 1.dp
+
+/** Отступ контента ребёнка папки от края панели до колонки иконки. */
+private val NAVIGATOR_CHILD_INDENT = 18.dp
 
 /** Окно распознавания двойного клика (мс): одиночный срабатывает мгновенно. */
 private const val NAVIGATOR_DOUBLE_TAP_WINDOW_MS = 400L
@@ -791,6 +809,7 @@ private const val NAVIGATOR_DOUBLE_TAP_WINDOW_MS = 400L
 private fun NavigatorWorkspaceRow(
     item: NavigatorItem.WorkspaceItem,
     isActive: Boolean,
+    isPreview: Boolean,
     showLineAbove: Boolean,
     showLineBelow: Boolean,
     isDragged: Boolean,
@@ -820,21 +839,30 @@ private fun NavigatorWorkspaceRow(
     val currentDrag by rememberUpdatedState(onDrag)
     val currentDragEnd by rememberUpdatedState(onDragEnd)
     val currentDragCancel by rememberUpdatedState(onDragCancel)
-    val subline = navigatorWorkspaceSubline(ws)
+    val exchange = navigatorExchangeLabel(ws)
+    val symbol = navigatorPanelSymbol(ws)
+    val rowHeight = if (isActive) NAVIGATOR_WORKSPACE_ACTIVE_ROW_HEIGHT else NAVIGATOR_WORKSPACE_ROW_HEIGHT
 
     Box(modifier = modifier.fillMaxWidth().graphicsLayer { alpha = if (isDragged) 0.4f else 1f }) {
-        Row(
+        Box(
             modifier = Modifier
+                .align(Alignment.TopStart)
                 .fillMaxWidth()
-                .height(NAVIGATOR_WORKSPACE_ROW_HEIGHT)
-                .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
+                .height(rowHeight)
+                .padding(start = NAVIGATOR_TREE_GUIDE_X)
+                .clip(RoundedCornerShape(topEnd = tokens.cornerRadii.smallCard, bottomEnd = tokens.cornerRadii.smallCard))
                 .background(
                     when {
                         isActive -> tokens.colors.selection
                         hovered -> tokens.colors.panelHeaderSurface
                         else -> Color.Transparent
                     },
-                )
+                ),
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(rowHeight)
                 .hoverable(interaction)
                 .clickable(interactionSource = interaction, indication = null) {
                     if (!editing) {
@@ -843,6 +871,17 @@ private fun NavigatorWorkspaceRow(
                         lastTapAt = now
                         onClick()
                         if (doubleTap) onDoubleClick()
+                    }
+                }
+                .pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            if (event.type == PointerEventType.Press && event.buttons.isSecondaryPressed) {
+                                menuExpanded = true
+                                event.changes.forEach { it.consume() }
+                            }
+                        }
                     }
                 }
                 .pointerInput(draggable, item.key) {
@@ -855,26 +894,24 @@ private fun NavigatorWorkspaceRow(
                         )
                     }
                 }
-                .padding(end = tokens.spacing.xs),
+                .padding(end = tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                modifier = Modifier
-                    .width(2.dp)
-                    .fillMaxHeight()
-                    .background(if (isActive) accent else Color.Transparent),
-            )
+            Spacer(Modifier.width(NAVIGATOR_CHILD_INDENT))
             Box(
                 modifier = Modifier
                     .width(NAVIGATOR_WORKSPACE_ICON_WIDTH)
                     .fillMaxHeight(),
                 contentAlignment = Alignment.Center,
             ) {
-                MosaicGlyph(
-                    color = if (isActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                    size = NAVIGATOR_WORKSPACE_GLYPH_SIZE,
+                NavigatorMiniMapGlyph(
+                    config = ws,
+                    active = isActive,
+                    preview = isPreview && !isActive,
+                    modifier = Modifier.size(NAVIGATOR_WORKSPACE_GLYPH_SIZE),
                 )
             }
+            Spacer(Modifier.width(tokens.spacing.xs))
             if (editing) {
                 InlineRenameField(
                     initial = ws.name,
@@ -886,33 +923,87 @@ private fun NavigatorWorkspaceRow(
                     onCancel = { editing = false },
                     modifier = Modifier.weight(1f),
                 )
-            } else {
+            } else if (isActive) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = highlightedName(ws.name, item.entry.highlight, accent),
-                        color = if (isActive) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = tokens.typography.controlSize,
-                        lineHeight = tokens.typography.controlLineHeight,
-                        fontFamily = TerminalFontFamily,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (subline.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = subline,
+                            text = highlightedMatch(ws.name, item.entry.highlight, accent),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = tokens.typography.controlSize,
+                            lineHeight = tokens.typography.controlLineHeight,
+                            fontFamily = TerminalFontFamily,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (exchange.isNotEmpty()) {
+                            Spacer(Modifier.width(tokens.spacing.xs))
+                            Text(
+                                text = exchange.uppercase(),
+                                color = tokens.colors.label,
+                                fontSize = tokens.typography.microSize,
+                                lineHeight = tokens.typography.compactLineHeight,
+                                letterSpacing = tokens.typography.compactLetterSpacing,
+                                fontFamily = TerminalFontFamily,
+                                maxLines = 1,
+                            )
+                        }
+                    }
+                    if (symbol.isNotEmpty()) {
+                        Text(
+                            text = symbol,
                             color = tokens.colors.label,
-                            fontSize = tokens.typography.microSize,
-                            lineHeight = tokens.typography.compactLineHeight,
+                            fontSize = tokens.typography.compactSize,
+                            lineHeight = tokens.typography.controlLineHeight,
                             fontFamily = TerminalFontFamily,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
-                Spacer(Modifier.width(tokens.spacing.xs))
-                RowActionDots(visible = hovered || menuExpanded) { menuExpanded = true }
+            } else {
+                Text(
+                    text = highlightedMatch(ws.name, item.entry.highlight, accent),
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    fontSize = tokens.typography.controlSize,
+                    lineHeight = tokens.typography.controlLineHeight,
+                    fontStyle = if (isPreview) FontStyle.Italic else FontStyle.Normal,
+                    fontFamily = TerminalFontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (exchange.isNotEmpty()) {
+                    Spacer(Modifier.width(tokens.spacing.xs))
+                    Text(
+                        text = exchange.uppercase(),
+                        color = tokens.colors.label,
+                        fontSize = tokens.typography.microSize,
+                        lineHeight = tokens.typography.compactLineHeight,
+                        letterSpacing = tokens.typography.compactLetterSpacing,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
             }
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = NAVIGATOR_TREE_GUIDE_X)
+                .width(NAVIGATOR_TREE_GUIDE_WIDTH)
+                .height(rowHeight)
+                .background(tokens.colors.label.copy(alpha = 0.35f)),
+        )
+        if (isActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = NAVIGATOR_TREE_GUIDE_X)
+                    .width(2.dp)
+                    .height(rowHeight)
+                    .background(accent),
+            )
         }
         if (showLineAbove) {
             Box(
@@ -932,27 +1023,32 @@ private fun NavigatorWorkspaceRow(
                     .background(accent),
             )
         }
-        NavigatorMenu(expanded = menuExpanded, onDismiss = { menuExpanded = false }) {
-            NavigatorMenuItem("Rename") {
+        NavigatorContextMenu(
+            expanded = menuExpanded,
+            onDismiss = { menuExpanded = false },
+            title = ws.name,
+        ) {
+            NavigatorMenuItem("Rename", onClick = {
                 menuExpanded = false
                 editing = true
-            }
+            }, icon = { PencilGlyph(color = tokens.colors.label, glyphSize = 12.dp) })
             onDuplicate?.let { fn ->
-                NavigatorMenuItem("Duplicate") {
+                NavigatorMenuItem("Duplicate", onClick = {
                     menuExpanded = false
                     fn()
-                }
+                }, icon = { CopyGlyph(color = tokens.colors.label, glyphSize = 12.dp) })
             }
             onMakeTemplate?.let { fn ->
-                NavigatorMenuItem("Make Template") {
+                NavigatorMenuItem("Make Template", onClick = {
                     menuExpanded = false
                     fn()
-                }
+                }, icon = { LayersGlyph(color = tokens.colors.label, size = 12.dp) })
             }
-            NavigatorMenuItem("Delete", destructive = true) {
+            NavigatorMenuDivider()
+            NavigatorMenuItem("Delete", onClick = {
                 menuExpanded = false
                 confirmDelete = true
-            }
+            }, icon = { TrashGlyph(color = MaterialTheme.colorScheme.error, glyphSize = 12.dp) })
         }
         if (confirmDelete) {
             TerminalContextPopup(
@@ -969,10 +1065,6 @@ private fun NavigatorWorkspaceRow(
             )
         }
     }
-    HorizontalDivider(
-        color = tokens.colors.panelBorder,
-        thickness = tokens.dimensions.borderWidth,
-    )
 }
 
 @Composable
@@ -981,6 +1073,8 @@ private fun InlineRenameField(
     onSubmit: (String) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    placeholder: String = "",
+    boxed: Boolean = true,
 ) {
     val tokens = LocalTerminalDesignTokens.current
     var value by remember { mutableStateOf(initial) }
@@ -1006,16 +1100,23 @@ private fun InlineRenameField(
         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
         modifier = modifier
             .height(20.dp)
-            .background(
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                RoundedCornerShape(tokens.cornerRadii.smallCard),
+            .then(
+                if (boxed) {
+                    Modifier
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                            RoundedCornerShape(tokens.cornerRadii.smallCard),
+                        )
+                        .border(
+                            tokens.dimensions.borderWidth,
+                            MaterialTheme.colorScheme.primary,
+                            RoundedCornerShape(tokens.cornerRadii.smallCard),
+                        )
+                        .padding(horizontal = tokens.spacing.sm)
+                } else {
+                    Modifier
+                },
             )
-            .border(
-                tokens.dimensions.borderWidth,
-                MaterialTheme.colorScheme.primary,
-                RoundedCornerShape(tokens.cornerRadii.smallCard),
-            )
-            .padding(horizontal = tokens.spacing.sm)
             .focusRequester(focusRequester)
             .onFocusChanged { state ->
                 if (state.isFocused) hadFocus = true
@@ -1037,15 +1138,28 @@ private fun InlineRenameField(
                 }
             },
         decorationBox = { inner ->
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) { inner() }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.CenterStart) {
+                if (value.isEmpty() && placeholder.isNotEmpty()) {
+                    Text(
+                        text = placeholder,
+                        color = tokens.colors.label,
+                        fontSize = tokens.typography.compactSize,
+                        lineHeight = tokens.typography.controlLineHeight,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
+                inner()
+            }
         },
     )
 }
 
 @Composable
-private fun NavigatorMenu(
+private fun NavigatorContextMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
+    title: String? = null,
     content: @Composable () -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -1053,36 +1167,53 @@ private fun NavigatorMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
     ) {
-        Column(modifier = Modifier.widthIn(min = 150.dp).padding(vertical = tokens.spacing.xs)) {
+        Column(modifier = Modifier.widthIn(min = 180.dp).padding(vertical = tokens.spacing.xs)) {
+            title?.let {
+                Text(
+                    text = it.uppercase(),
+                    color = tokens.colors.label,
+                    fontSize = tokens.typography.microSize,
+                    lineHeight = tokens.typography.compactLineHeight,
+                    letterSpacing = tokens.typography.compactLetterSpacing,
+                    fontWeight = FontWeight.Medium,
+                    fontFamily = TerminalFontFamily,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs),
+                )
+                NavigatorMenuDivider()
+            }
             content()
         }
     }
 }
 
 @Composable
+private fun NavigatorMenuDivider() {
+    val tokens = LocalTerminalDesignTokens.current
+    HorizontalDivider(
+        color = tokens.colors.panelBorder,
+        thickness = tokens.dimensions.borderWidth,
+    )
+}
+
+@Composable
 private fun NavigatorMenuItem(
     label: String,
     destructive: Boolean = false,
+    icon: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = tokens.spacing.xs)
-            .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
-            .background(if (hovered) tokens.colors.panelHeaderSurface else Color.Transparent)
-            .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null) { onClick() }
-            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    TerminalMenuItem(onClick = onClick) {
+        icon?.let {
+            it()
+            Spacer(Modifier.width(tokens.spacing.sm))
+        }
         Text(
             text = label,
             color = if (destructive) MaterialTheme.colorScheme.error
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.9f),
+            else MaterialTheme.colorScheme.onSurface,
             fontSize = tokens.typography.compactSize,
             lineHeight = tokens.typography.controlLineHeight,
             fontFamily = TerminalFontFamily,
@@ -1114,38 +1245,6 @@ private fun NavigatorActionButton(
 }
 
 @Composable
-private fun RowActionDots(visible: Boolean, onClick: () -> Unit) {
-    val tokens = LocalTerminalDesignTokens.current
-    val interaction = remember { MutableInteractionSource() }
-    val hovered by interaction.collectIsHoveredAsState()
-    Box(
-        modifier = Modifier
-            .size(16.dp)
-            .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
-            .background(if (hovered) tokens.colors.panelBorder.copy(alpha = 0.4f) else Color.Transparent)
-            .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null) { onClick() },
-        contentAlignment = Alignment.Center,
-    ) {
-        DotsGlyph(color = if (visible) tokens.colors.label else Color.Transparent, size = 12.dp)
-    }
-}
-
-private fun highlightedName(name: String, range: IntRange?, accent: Color): AnnotatedString {
-    if (range == null || range.isEmpty()) return AnnotatedString(name)
-    return buildAnnotatedString {
-        append(name)
-        if (range.first in name.indices) {
-            addStyle(
-                SpanStyle(color = accent, fontWeight = FontWeight.Medium),
-                range.first,
-                (range.last + 1).coerceAtMost(name.length),
-            )
-        }
-    }
-}
-
-@Composable
 private fun ChevronGlyph(collapsed: Boolean, color: Color) {
     // База — шеврон «>» (смотрит на папку). Открытая папка — «v» (поворот +90°).
     val rotation by animateFloatAsState(if (collapsed) 0f else 90f, label = "navigator-chevron")
@@ -1163,22 +1262,66 @@ private fun ChevronGlyph(collapsed: Boolean, color: Color) {
     }
 }
 
+/**
+ * Контур папки в сетке 24×24 (как в иконочных наборах): закрытая — тело с
+ * ушком, открытая — задняя стенка с ушком и передний карман со скосом.
+ */
+private fun navigatorFolderPath(open: Boolean, ox: Float, oy: Float, scale: Float): Path {
+    fun x(v: Float) = ox + v * scale
+    fun y(v: Float) = oy + v * scale
+    return Path().apply {
+        if (!open) {
+            moveTo(x(20f), y(20f))
+            quadraticTo(x(22f), y(20f), x(22f), y(18f))
+            lineTo(x(22f), y(8f))
+            quadraticTo(x(22f), y(6f), x(20f), y(6f))
+            lineTo(x(12.1f), y(6f))
+            quadraticTo(x(11f), y(6.05f), x(10.41f), y(5.1f))
+            lineTo(x(9.6f), y(3.9f))
+            quadraticTo(x(9f), y(3.1f), x(7.93f), y(3f))
+            lineTo(x(4f), y(3f))
+            quadraticTo(x(2f), y(3f), x(2f), y(5f))
+            lineTo(x(2f), y(18f))
+            quadraticTo(x(2f), y(20f), x(4f), y(20f))
+            close()
+        } else {
+            moveTo(x(6f), y(14f))
+            lineTo(x(7.45f), y(11.1f))
+            quadraticTo(x(8.1f), y(10f), x(9.24f), y(10f))
+            lineTo(x(20f), y(10f))
+            quadraticTo(x(21.9f), y(10.3f), x(21.94f), y(12.5f))
+            lineTo(x(20.39f), y(18.5f))
+            quadraticTo(x(20.2f), y(20f), x(18.45f), y(20f))
+            lineTo(x(4f), y(20f))
+            quadraticTo(x(2f), y(20f), x(2f), y(18f))
+            lineTo(x(2f), y(5f))
+            quadraticTo(x(2f), y(3f), x(4f), y(3f))
+            lineTo(x(7.93f), y(3f))
+            quadraticTo(x(8.7f), y(3.05f), x(9.59f), y(3.9f))
+            lineTo(x(10.41f), y(5.1f))
+            quadraticTo(x(11.1f), y(6f), x(12.07f), y(6f))
+            lineTo(x(18f), y(6f))
+            quadraticTo(x(20f), y(6f), x(20f), y(8f))
+            lineTo(x(20f), y(10f))
+        }
+    }
+}
+
 @Composable
-private fun FolderGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 13.dp) {
+private fun FolderGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 13.dp, open: Boolean = false) {
     Canvas(modifier = Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        drawRoundRect(
+        val frame = this.size
+        val scale = frame.minDimension / 24f
+        val ox = (frame.width - 24f * scale) / 2f
+        val oy = (frame.height - 24f * scale) / 2f
+        drawPath(
+            path = navigatorFolderPath(open, ox, oy, scale),
             color = color,
-            topLeft = Offset(w * 0.06f, h * 0.08f),
-            size = Size(w * 0.5f, h * 0.34f),
-            cornerRadius = CornerRadius(h * 0.12f, h * 0.12f),
-        )
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(0f, h * 0.28f),
-            size = Size(w, h * 0.64f),
-            cornerRadius = CornerRadius(h * 0.14f, h * 0.14f),
+            style = Stroke(
+                width = (1.9f * scale).coerceAtLeast(1f),
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round,
+            ),
         )
     }
 }
@@ -1186,24 +1329,17 @@ private fun FolderGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 13.dp)
 @Composable
 private fun FolderPlusGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 14.dp) {
     Canvas(modifier = Modifier.size(size)) {
-        val w = this.size.width
-        val h = this.size.height
-        drawRoundRect(
+        val frame = this.size
+        val scale = frame.minDimension / 24f
+        val stroke = (1.9f * scale).coerceAtLeast(1f)
+        drawPath(
+            path = navigatorFolderPath(false, 0f, 0f, scale),
             color = color,
-            topLeft = Offset(w * 0.06f, h * 0.08f),
-            size = Size(w * 0.44f, h * 0.3f),
-            cornerRadius = CornerRadius(h * 0.11f, h * 0.11f),
+            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(0f, h * 0.26f),
-            size = Size(w * 0.78f, h * 0.58f),
-            cornerRadius = CornerRadius(h * 0.13f, h * 0.13f),
-        )
-        val stroke = 1.2.dp.toPx()
-        val plusX = w * 0.82f
-        val plusY = h * 0.74f
-        val arm = w * 0.16f
+        val plusX = frame.width * 0.5f
+        val plusY = frame.height * (13.5f / 24f)
+        val arm = frame.minDimension * (3.4f / 24f)
         drawLine(
             color = color,
             start = Offset(plusX - arm, plusY),
@@ -1222,20 +1358,32 @@ private fun FolderPlusGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 14
 }
 
 @Composable
-private fun PlusGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 12.dp) {
-    Canvas(modifier = Modifier.size(size)) {
-        val stroke = 1.3.dp.toPx()
+fun PlusGlyph(color: Color, glyphSize: androidx.compose.ui.unit.Dp = 14.dp) {
+    Canvas(modifier = Modifier.size(glyphSize)) {
+        val w = this.size.width
+        val h = this.size.height
+        val stroke = 1.1.dp.toPx()
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.06f, h * 0.06f),
+            size = Size(w * 0.88f, h * 0.88f),
+            cornerRadius = CornerRadius(w * 0.18f, w * 0.18f),
+            style = Stroke(stroke),
+        )
+        val plusX = w * 0.5f
+        val plusY = h * 0.5f
+        val arm = w * 0.18f
         drawLine(
             color = color,
-            start = Offset(this.size.width * 0.5f, this.size.height * 0.15f),
-            end = Offset(this.size.width * 0.5f, this.size.height * 0.85f),
+            start = Offset(plusX - arm, plusY),
+            end = Offset(plusX + arm, plusY),
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
         drawLine(
             color = color,
-            start = Offset(this.size.width * 0.15f, this.size.height * 0.5f),
-            end = Offset(this.size.width * 0.85f, this.size.height * 0.5f),
+            start = Offset(plusX, plusY - arm),
+            end = Offset(plusX, plusY + arm),
             strokeWidth = stroke,
             cap = StrokeCap.Round,
         )
@@ -1243,31 +1391,83 @@ private fun PlusGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 12.dp) {
 }
 
 @Composable
-private fun DotsGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 12.dp) {
-    Canvas(modifier = Modifier.size(size)) {
-        val radius = 1.1.dp.toPx()
-        listOf(0.25f, 0.5f, 0.75f).forEach { fraction ->
-            drawCircle(
-                color = color,
-                radius = radius,
-                center = Offset(this.size.width * fraction, this.size.height * 0.5f),
-            )
-        }
+private fun PencilGlyph(color: Color, glyphSize: androidx.compose.ui.unit.Dp = 12.dp) {
+    Canvas(modifier = Modifier.size(glyphSize)) {
+        val stroke = 1.1.dp.toPx()
+        drawLine(
+            color = color,
+            start = Offset(this.size.width * 0.18f, this.size.height * 0.82f),
+            end = Offset(this.size.width * 0.78f, this.size.height * 0.22f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(this.size.width * 0.62f, this.size.height * 0.38f),
+            end = Offset(this.size.width * 0.86f, this.size.height * 0.62f),
+            strokeWidth = stroke * 2f,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
 @Composable
-private fun SearchGlyph(color: Color) {
-    Canvas(modifier = Modifier.size(12.dp)) {
-        val stroke = 1.2.dp.toPx()
-        val radius = size.minDimension * 0.32f
-        val center = Offset(size.width * 0.4f, size.height * 0.4f)
-        drawCircle(color = color, radius = radius, center = center, style = Stroke(stroke))
+private fun CopyGlyph(color: Color, glyphSize: androidx.compose.ui.unit.Dp = 12.dp) {
+    Canvas(modifier = Modifier.size(glyphSize)) {
+        val stroke = 1.1.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
+        val corner = CornerRadius(w * 0.16f, w * 0.16f)
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.28f, h * 0.06f),
+            size = Size(w * 0.66f, h * 0.66f),
+            cornerRadius = corner,
+            style = Stroke(stroke),
+        )
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.06f, h * 0.28f),
+            size = Size(w * 0.66f, h * 0.66f),
+            cornerRadius = corner,
+            style = Stroke(stroke),
+        )
+    }
+}
+
+@Composable
+private fun TrashGlyph(color: Color, glyphSize: androidx.compose.ui.unit.Dp = 12.dp) {
+    Canvas(modifier = Modifier.size(glyphSize)) {
+        val stroke = 1.1.dp.toPx()
+        val w = this.size.width
+        val h = this.size.height
         drawLine(
             color = color,
-            start = Offset(center.x + radius * 0.7f, center.y + radius * 0.7f),
-            end = Offset(size.width * 0.92f, size.height * 0.92f),
+            start = Offset(w * 0.12f, h * 0.2f),
+            end = Offset(w * 0.88f, h * 0.2f),
             strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.38f, h * 0.2f),
+            end = Offset(w * 0.42f, h * 0.06f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.62f, h * 0.2f),
+            end = Offset(w * 0.58f, h * 0.06f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.2f, h * 0.28f),
+            size = Size(w * 0.6f, h * 0.62f),
+            cornerRadius = CornerRadius(w * 0.1f, w * 0.1f),
+            style = Stroke(stroke),
         )
     }
 }
@@ -1296,10 +1496,25 @@ private fun MosaicGlyph(color: Color, size: androidx.compose.ui.unit.Dp = 12.dp)
     Canvas(modifier = Modifier.size(size)) {
         val w = this.size.width
         val h = this.size.height
-        val radius = CornerRadius(w * 0.14f, w * 0.14f)
-        drawRoundRect(color, Offset(w * 0.06f, h * 0.04f), Size(w * 0.36f, h * 0.5f), radius)
-        drawRoundRect(color, Offset(w * 0.06f, h * 0.64f), Size(w * 0.36f, h * 0.32f), radius)
-        drawRoundRect(color, Offset(w * 0.56f, h * 0.04f), Size(w * 0.38f, h * 0.32f), radius)
-        drawRoundRect(color, Offset(w * 0.56f, h * 0.46f), Size(w * 0.38f, h * 0.5f), radius)
+        val stroke = 1.1.dp.toPx()
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.06f, h * 0.06f),
+            size = Size(w * 0.88f, h * 0.88f),
+            cornerRadius = CornerRadius(w * 0.16f, w * 0.16f),
+            style = Stroke(stroke),
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.06f),
+            end = Offset(w * 0.5f, h * 0.94f),
+            strokeWidth = stroke,
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.06f, h * 0.5f),
+            end = Offset(w * 0.94f, h * 0.5f),
+            strokeWidth = stroke,
+        )
     }
 }

@@ -19,9 +19,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,11 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusModifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.key.Key
@@ -49,9 +49,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -519,7 +516,7 @@ fun SymbolExplorerContent(
         ).collectAsState(initial = emptyList())
 
     val activeList = activeListId?.let { id -> watchlists.firstOrNull { it.id == id } }
-    val favouritesList = watchlists.firstOrNull { it.name.equals("Favourites", ignoreCase = true) }
+    val favouritesList = watchlists.favouritesWatchlist()
     val starSymbols: Set<String> = (activeList ?: favouritesList)?.symbols?.toSet().orEmpty()
 
     val scope = rememberCoroutineScope()
@@ -530,10 +527,26 @@ fun SymbolExplorerContent(
             scope.launch {
                 try {
                     val target = list
-                        ?: runCatching { repo.create("Favourites") }.getOrNull()
-                        ?: repo.lists.value.firstOrNull { it.name.equals("Favourites", ignoreCase = true) }
+                        ?: runCatching { repo.create(FAVOURITES_LIST_NAME) }.getOrNull()
+                        ?: repo.lists.value.favouritesWatchlist()
                         ?: return@launch
                     repo.toggleSymbol(target.id, symbol)
+                    onListError?.invoke(null)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    onListError?.invoke(e.message)
+                }
+            }
+        }
+    }
+
+    val reorderWatchlists: (List<String>) -> Unit = { ids ->
+        val repo = watchlistRepository
+        if (repo != null) {
+            scope.launch {
+                try {
+                    repo.reorder(ids)
                     onListError?.invoke(null)
                 } catch (e: CancellationException) {
                     throw e
@@ -568,6 +581,7 @@ fun SymbolExplorerContent(
     Column(
         modifier = modifier
             .fillMaxWidth()
+            .then(if (listHeight == null) Modifier.fillMaxSize() else Modifier)
             .onPreviewKeyEvent { event ->
                 if (event.type == KeyEventType.KeyDown && event.key == Key.K &&
                     (event.isCtrlPressed || event.isMetaPressed)
@@ -579,108 +593,25 @@ fun SymbolExplorerContent(
                 }
             },
     ) {
-        // ── Табы (ALL + watchlists) + хвост владельца ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-        ) {
-            ExplorerTab("ALL", active = activeListId == null) { onActiveListIdChange(null) }
-            watchlists.forEach { list ->
-                ExplorerTab(
-                    label = list.name.uppercase(),
-                    active = activeListId == list.id,
-                ) { onActiveListIdChange(list.id) }
-            }
-            Spacer(Modifier.weight(1f))
-            tabsTrailing?.invoke(this)
-        }
+        // ── Табы (ALL + Favourites + дропдаун списков) + хвост владельца ──
+        ExplorerTabsRow(
+            watchlists = watchlists,
+            activeListId = activeListId,
+            onActiveListIdChange = onActiveListIdChange,
+            onReorderWatchlists = reorderWatchlists,
+            trailing = tabsTrailing,
+        )
 
         HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
 
         // ── Поиск ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm)
-                .height(26.dp)
-                .background(
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                    RoundedCornerShape(tokens.cornerRadii.smallCard),
-                )
-                .border(
-                    tokens.dimensions.borderWidth,
-                    tokens.colors.panelBorder,
-                    RoundedCornerShape(tokens.cornerRadii.smallCard),
-                )
-                .padding(horizontal = tokens.spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Canvas(modifier = Modifier.size(12.dp)) {
-                val stroke = 1.2.dp.toPx()
-                val radius = size.minDimension * 0.32f
-                val center = Offset(size.width * 0.4f, size.height * 0.4f)
-                val color = tokens.colors.label
-                drawCircle(
-                    color = color,
-                    radius = radius,
-                    center = center,
-                    style = Stroke(stroke),
-                )
-                drawLine(
-                    color = color,
-                    start = Offset(center.x + radius * 0.7f, center.y + radius * 0.7f),
-                    end = Offset(size.width * 0.92f, size.height * 0.92f),
-                    strokeWidth = stroke,
-                )
-            }
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Box(modifier = Modifier.weight(1f)) {
-                if (query.isEmpty()) {
-                    Text(
-                        text = "Search symbol, market or contract",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                        maxLines = 1,
-                    )
-                }
-                BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
-                    singleLine = true,
-                    textStyle = TextStyle(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 11.sp,
-                        fontFamily = TerminalFontFamily,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(searchFocusRequester),
-                )
-            }
-            Spacer(Modifier.width(tokens.spacing.sm))
-            Text(
-                text = "⌘ K",
-                color = tokens.colors.label,
-                fontSize = 9.sp,
-                fontFamily = TerminalFontFamily,
-                modifier = Modifier
-                    .background(
-                        tokens.colors.panelHeaderSurface,
-                        RoundedCornerShape(3.dp),
-                    )
-                    .border(
-                        tokens.dimensions.borderWidth,
-                        tokens.colors.panelBorder,
-                        RoundedCornerShape(3.dp),
-                    )
-                    .padding(horizontal = tokens.spacing.xs, vertical = 1.dp),
-            )
-        }
+        TerminalSearchField(
+            query = query,
+            onQueryChange = onQueryChange,
+            placeholder = "Search symbol, market or contract",
+            focusRequester = searchFocusRequester,
+            modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
+        )
 
         // ── Фильтры: perpetuals / quote / биржа + сортировка ──
         Row(
@@ -766,6 +697,17 @@ fun SymbolExplorerContent(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (rows.isEmpty()) {
+                    item {
+                        Box(modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.padding(tokens.spacing.lg),
+                                strokeWidth = tokens.dimensions.borderWidth * 2,
+                            )
+                        }
+                    }
+                }
                 if (result.matches.isEmpty()) {
                     item {
                         Text(
@@ -889,25 +831,6 @@ private fun ExplorerScrollTopGlyph(color: Color) {
             cap = StrokeCap.Round,
         )
     }
-}
-
-@Composable
-private fun ExplorerTab(label: String, active: Boolean, onClick: () -> Unit) {
-    val tokens = LocalTerminalDesignTokens.current
-    Text(
-        text = label,
-        color = if (active) MaterialTheme.colorScheme.surface else tokens.colors.label,
-        fontSize = 10.sp,
-        fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
-        fontFamily = TerminalFontFamily,
-        letterSpacing = 0.5.sp,
-        maxLines = 1,
-        modifier = Modifier
-            .clip(RoundedCornerShape(tokens.cornerRadii.smallCard))
-            .background(if (active) tokens.colors.accent else Color.Transparent)
-            .clickable(onClick = onClick)
-            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-    )
 }
 
 @Composable
@@ -1090,7 +1013,7 @@ private fun ExplorerRowItem(
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = highlightedSymbol(row.displaySymbol, matchRange, tokens.colors.accent),
+                    text = highlightedMatch(row.displaySymbol, matchRange, tokens.colors.accent),
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -1142,28 +1065,6 @@ private fun ExplorerRowItem(
         }
     }
     HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-}
-
-/** Подсветка совпавшего фрагмента символа цветом поиска (как в Market Watch). */
-fun highlightedSymbol(symbol: String, matchRange: IntRange?, highlightColor: Color) = buildAnnotatedString {
-    val range = matchRange
-    if (range == null || range.isEmpty() || range.first !in symbol.indices) {
-        append(symbol)
-        return@buildAnnotatedString
-    }
-    val start = range.first.coerceIn(0, symbol.length)
-    val endExclusive = (range.last + 1).coerceIn(start, symbol.length)
-    append(symbol.substring(0, start))
-    pushStyle(
-        SpanStyle(
-            background = highlightColor.copy(alpha = 0.24f),
-            color = highlightColor,
-            fontWeight = FontWeight.Bold,
-        )
-    )
-    append(symbol.substring(start, endExclusive))
-    pop()
-    append(symbol.substring(endExclusive))
 }
 
 @Composable

@@ -6,29 +6,27 @@
 package com.aandios.nous_platform.ui.terminalLayout
 
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.aandios.nous.core.ui.component.TerminalPanelHeader
 import com.aandios.nous.core.ui.component.TerminalResizeGrip
+import com.aandios.nous.core.ui.component.ToolPanelTitleBar
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.workspace.WorkspaceConfig
 import org.jetbrains.compose.resources.painterResource
@@ -83,28 +81,20 @@ fun ToolDetailsPanel(
                     modifier = Modifier.Companion.fillMaxSize()
                 ) {
                     // Заголовок панели
-                    TerminalPanelHeader {
-                        Row(
-                            modifier = Modifier.Companion.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Companion.CenterVertically
+                    Surface(
+                        color = tokens.colors.panelHeaderSurface,
+                        modifier = Modifier.Companion.fillMaxWidth(),
+                    ) {
+                        ToolPanelTitleBar(
+                            title = when (type) {
+                                ToolPanelType.SYMBOLS -> "Market Watch"
+                                ToolPanelType.INDICATORS -> "Indicators"
+                                ToolPanelType.TIMEFRAMES -> "Timeframes"
+                                ToolPanelType.DRAWINGS -> "Drawing Tools"
+                                ToolPanelType.STRATEGIES -> "Strategies"
+                                ToolPanelType.WORKSPACES -> "Workspaces"
+                            },
                         ) {
-                            Text(
-                                text = when (type) {
-                                    ToolPanelType.SYMBOLS -> "Market Watch"
-                                    ToolPanelType.INDICATORS -> "Indicators"
-                                    ToolPanelType.TIMEFRAMES -> "Timeframes"
-                                    ToolPanelType.DRAWINGS -> "Drawing Tools"
-                                    ToolPanelType.STRATEGIES -> "Strategies"
-                                    ToolPanelType.WORKSPACES -> "Workspaces"
-                                },
-                                fontSize = tokens.typography.controlSize,
-                                fontFamily = com.aandios.nous.core.ui.theme.TerminalFontFamily,
-                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                            )
-
                             IconButton(
                                 onClick = onClose,
                                 modifier = Modifier.Companion.size(tokens.dimensions.compactControlHeight)
@@ -118,6 +108,10 @@ fun ToolDetailsPanel(
                             }
                         }
                     }
+                    HorizontalDivider(
+                        color = tokens.colors.panelBorder,
+                        thickness = tokens.dimensions.dividerThickness,
+                    )
 
                     // Контент в зависимости от типа
                     when (type) {
