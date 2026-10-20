@@ -173,7 +173,7 @@ fun PanelHeader(
 
                 if (onSplitH != null || onSplitV != null) {
                     Box {
-                        PanelAddButton(onClick = { addMenuExpanded = true })
+                        PanelAddButton(tokens.colors.label, onClick = { addMenuExpanded = true })
                         TerminalDropdownMenu(
                             expanded = addMenuExpanded,
                             onDismissRequest = { addMenuExpanded = false },
@@ -315,13 +315,13 @@ private fun CloseGlyph(color: Color, glyphSize: Dp) {
 
 /** Кнопка «+» в тайтле: тёмный круг с акцентным плюсом по центру (прототип). */
 @Composable
-private fun PanelAddButton(onClick: () -> Unit) {
+private fun PanelAddButton(color: Color, onClick: () -> Unit) {
     Box(
         modifier = Modifier
             .size(20.dp)
             .clickable { onClick() },
     ) {
-        PlusGlyph(color = MaterialTheme.colorScheme.onSurfaceVariant, glyphSize = 20.dp)
+        PlusGlyph(color = color, glyphSize = 20.dp)
     }
 }
 

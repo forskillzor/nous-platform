@@ -246,9 +246,9 @@ fun WorkspaceView(
                             )
                         }
 
-                        PanelType.DOM -> PanelTitleLabel(text = "DOM", stream = true)
-                        PanelType.TRADES -> PanelTitleLabel(text = "Trades", glyph = "⇥")
-                        PanelType.TRADING -> PanelTitleLabel(text = "Trading")
+                        PanelType.DOM -> PanelTitleLabel(text = pc.symbol)
+                        PanelType.TRADES -> PanelTitleLabel(text = pc.symbol)
+                        PanelType.TRADING -> PanelTitleLabel(text = pc.symbol)
                     }
                 }
             },
