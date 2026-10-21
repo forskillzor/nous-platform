@@ -238,12 +238,22 @@ private fun ChartWindowContent(
     }
 
     val designTokens = LocalTerminalDesignTokens.current
-    val chartConfig = remember(uiState.fpAggregation, uiState.currentSymbolFormatter, designTokens) {
+    val chartConfig = remember(
+        uiState.fpAggregation,
+        uiState.fpProfileScale,
+        uiState.fpRingWidth,
+        uiState.fpRingDiameter,
+        uiState.currentSymbolFormatter,
+        designTokens,
+    ) {
         DefaultChartConfig.withTheme(designTokens).let { themed ->
             themed.copy(
                 footprintConfig = themed.footprintConfig.copy(
                     aggregationLevel = uiState.fpAggregation,
-                    tickSize = uiState.currentSymbolFormatter.tickSize
+                    tickSize = uiState.currentSymbolFormatter.tickSize,
+                    profileScale = uiState.fpProfileScale,
+                    ringWidth = uiState.fpRingWidth,
+                    ringDiameter = uiState.fpRingDiameter,
                 ),
                 priceFormatter = uiState.currentSymbolFormatter
             )

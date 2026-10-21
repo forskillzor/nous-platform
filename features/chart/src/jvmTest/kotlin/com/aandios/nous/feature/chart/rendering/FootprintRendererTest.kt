@@ -6,6 +6,8 @@
 package com.aandios.nous.feature.chart.rendering
 
 import com.aandios.nous.api.market.model.FootprintLevel
+import com.aandios.nous.feature.chart.ui.FootprintRingDiameter
+import com.aandios.nous.feature.chart.ui.FootprintRingWidth
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -68,6 +70,79 @@ class FootprintRendererTest {
         assertFalse(footprintLevelVisible(price = 80f, nextPrice = 90f, visibleMin = 100f, visibleMax = 110f))
         assertFalse(footprintLevelVisible(price = 120f, nextPrice = 130f, visibleMin = 100f, visibleMax = 110f))
         assertFalse(footprintLevelVisible(price = Float.NaN, nextPrice = 105f, visibleMin = 100f, visibleMax = 110f))
+    }
+
+    @Test
+    fun `profile scale uses the selected percentile`() {
+        val scale = computeProfileVolumeScale(
+            floatArrayOf(1f, 2f, 3f, 4f),
+            percentileFraction = 0.9f,
+        )
+
+        assertEquals(3.7f, scale.linearMax, absoluteTolerance = 0.0001f)
+        assertTrue(scale.isOutlier(4f))
+        assertFalse(scale.isOutlier(3f))
+    }
+
+    @Test
+    fun `profile scale MAX includes the largest level`() {
+        val scale = computeProfileVolumeScale(
+            floatArrayOf(1f, 2f, 3f, 100f),
+            percentileFraction = 1f,
+        )
+
+        assertEquals(100f, scale.linearMax)
+        assertFalse(scale.isOutlier(100f))
+    }
+
+    @Test
+    fun `profile scale stays linear for uniform volumes`() {
+        val scale = computeProfileVolumeScale(
+            floatArrayOf(10f, 20f, 30f, 40f),
+            percentileFraction = 1f,
+        )
+
+        assertEquals(40f, scale.linearMax)
+        assertFalse(scale.isOutlier(40f))
+    }
+
+    @Test
+    fun `profile scale ignores stale tail values`() {
+        val values = floatArrayOf(1f, 2f, 3f, 100f, -1f, -1f, -1f, -1f)
+
+        val scale = computeProfileVolumeScale(values, count = 4)
+
+        assertTrue(scale.linearMax < 100f)
+        assertTrue(scale.isOutlier(100f))
+    }
+
+    @Test
+    fun `profile bar clamps outliers to full width`() {
+        val scale = ProfileVolumeScale(linearMax = 3f, outlierThreshold = 3f)
+
+        assertEquals(10f, profileBarWidth(100f, scale, maxBarWidth = 10f))
+        assertEquals(6.6666665f, profileBarWidth(2f, scale, maxBarWidth = 10f), absoluteTolerance = 0.0001f)
+        assertEquals(0f, profileBarWidth(0f, scale, maxBarWidth = 10f))
+        assertEquals(1f, profileBarAlpha(100f, scale, minAlpha = 0.12f))
+    }
+
+    @Test
+    fun `profile ring diameter scales from candle width`() {
+        assertEquals(20f, profileRingDiameter(20f, FootprintRingDiameter.X1))
+        assertEquals(30f, profileRingDiameter(20f, FootprintRingDiameter.X1_5))
+        assertEquals(50f, profileRingDiameter(20f, FootprintRingDiameter.X2_5))
+        assertEquals(60f, profileRingDiameter(20f, FootprintRingDiameter.X3))
+        assertEquals(100f, profileRingDiameter(20f, FootprintRingDiameter.X5))
+        assertEquals(200f, profileRingDiameter(20f, FootprintRingDiameter.X10))
+    }
+
+    @Test
+    fun `profile ring presets support the extended range`() {
+        assertEquals(5f, FootprintRingWidth.FIVE.width.value)
+        assertEquals(FootprintRingWidth.FIVE, FootprintRingWidth.fromString("5"))
+        assertEquals(10f, FootprintRingDiameter.X10.ratio)
+        assertEquals(FootprintRingDiameter.X10, FootprintRingDiameter.fromString("10x"))
+        assertEquals(FootprintRingDiameter.X5, FootprintRingDiameter.fromString("500%"))
     }
 
     @Test

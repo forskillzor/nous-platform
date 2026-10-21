@@ -191,9 +191,11 @@ fun computeExplorerRows(
     query: String,
     sort: SymbolExplorerSort,
     descending: Boolean,
+    availableSymbols: Set<String>? = null,
 ): SymbolExplorerSearchResult {
     val filtered = rows.filter { row ->
-        (activeListSymbols == null || row.symbol in activeListSymbols) &&
+        (availableSymbols == null || row.symbol in availableSymbols) &&
+            (activeListSymbols == null || row.symbol in activeListSymbols) &&
             (!perpetualsOnly || row.isPerpetual) &&
             (quote == null || row.quoteAsset == quote) &&
             (exchangeId == null || row.exchangeId == exchangeId)
@@ -318,12 +320,14 @@ fun SymbolExplorerDropdown(
     onSelect: (SymbolExplorerRow) -> Unit,
     modifier: Modifier = Modifier,
     onManageWatchlist: (() -> Unit)? = null,
+    footprintSymbols: Set<String>? = null,
     menuWidth: androidx.compose.ui.unit.Dp = 380.dp,
 ) {
     val tokens = LocalTerminalDesignTokens.current
 
     var expanded by remember { mutableStateOf(false) }
     var activeListId by remember { mutableStateOf<String?>(null) }
+    var footprintOnly by remember { mutableStateOf(false) }
     var perpetualsOnly by remember { mutableStateOf(true) }
     var quoteFilter by remember { mutableStateOf<String?>("USDT") }
     var exchangeFilter by remember { mutableStateOf<String?>(null) }
@@ -396,6 +400,9 @@ fun SymbolExplorerDropdown(
             currentExchangeId = currentExchangeId,
             activeListId = activeListId,
             onActiveListIdChange = { activeListId = it },
+            footprintOnly = footprintOnly,
+            onFootprintOnlyChange = { footprintOnly = it },
+            footprintSymbols = footprintSymbols,
             perpetualsOnly = perpetualsOnly,
             onPerpetualsOnlyChange = { perpetualsOnly = it },
             quoteFilter = quoteFilter,
@@ -499,6 +506,9 @@ fun SymbolExplorerContent(
     query: String,
     onQueryChange: (String) -> Unit,
     onSelect: (SymbolExplorerRow) -> Unit,
+    footprintOnly: Boolean = false,
+    onFootprintOnlyChange: (Boolean) -> Unit = {},
+    footprintSymbols: Set<String>? = null,
     modifier: Modifier = Modifier,
     listState: LazyListState = rememberLazyListState(),
     listWidth: Dp? = null,
@@ -557,25 +567,38 @@ fun SymbolExplorerContent(
         }
     }
 
-    val quoteOptions = remember(rows) { explorerQuoteOptions(rows) }
-    val exchangeOptions = remember(rows) { explorerExchangeOptions(rows) }
+    val scopedRows = remember(rows, footprintOnly, footprintSymbols) {
+        if (footprintOnly && footprintSymbols != null) {
+            rows.filter { it.symbol in footprintSymbols }
+        } else {
+            rows
+        }
+    }
+    val quoteOptions = remember(scopedRows) { explorerQuoteOptions(scopedRows) }
+    val exchangeOptions = remember(scopedRows) { explorerExchangeOptions(scopedRows) }
     val effectiveQuote = quoteFilter?.takeIf { it in quoteOptions }
     val effectiveExchange = exchangeFilter?.takeIf { id -> exchangeOptions.any { it.first == id } }
 
     val result = remember(
-        rows, activeListId, watchlists, perpetualsOnly,
+        rows, activeListId, watchlists, footprintOnly, footprintSymbols, perpetualsOnly,
         effectiveQuote, effectiveExchange, query, sort, descending,
     ) {
         computeExplorerRows(
             rows = rows,
-            activeListSymbols = activeList?.symbols?.toSet(),
+            activeListSymbols = if (footprintOnly) null else activeList?.symbols?.toSet(),
             perpetualsOnly = perpetualsOnly,
             quote = effectiveQuote,
             exchangeId = effectiveExchange,
             query = query,
             sort = sort,
             descending = descending,
+            availableSymbols = if (footprintOnly) footprintSymbols else null,
         )
+    }
+
+    val selectList: (String?) -> Unit = { id ->
+        if (footprintOnly) onFootprintOnlyChange(false)
+        onActiveListIdChange(id)
     }
 
     Column(
@@ -597,8 +620,11 @@ fun SymbolExplorerContent(
         ExplorerTabsRow(
             watchlists = watchlists,
             activeListId = activeListId,
-            onActiveListIdChange = onActiveListIdChange,
+            onActiveListIdChange = selectList,
             onReorderWatchlists = reorderWatchlists,
+            showFootprintTab = footprintSymbols != null,
+            footprintActive = footprintOnly,
+            onFootprintClick = { onFootprintOnlyChange(true) },
             trailing = tabsTrailing,
         )
 

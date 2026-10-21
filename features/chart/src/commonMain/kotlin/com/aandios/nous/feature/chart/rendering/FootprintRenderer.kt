@@ -25,6 +25,7 @@ import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.ui.ChartConfig
+import com.aandios.nous.feature.chart.ui.FootprintRingDiameter
 import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
 import com.aandios.nous.feature.chart.utils.priceFromY
 import com.aandios.nous.feature.chart.utils.priceToY
@@ -32,12 +33,101 @@ import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import kotlin.math.abs
 import kotlin.math.min
 
+/**
+ * Масштаб Profile-баров по выбранному перцентилю объёмов видимого окна.
+ *
+ * Бары до [linearMax] масштабируются линейно. Всё выше [outlierThreshold]
+ * рисуется полной шириной и обводится цветом своей стороны, но не участвует
+ * в расчёте масштаба.
+ */
+data class ProfileVolumeScale(
+    val linearMax: Float,
+    val outlierThreshold: Float,
+) {
+    fun isOutlier(volume: Float): Boolean =
+        volume.isFinite() && volume > outlierThreshold
+
+    companion object {
+        val DEFAULT = ProfileVolumeScale(linearMax = 1f, outlierThreshold = Float.MAX_VALUE)
+    }
+}
+
+data class ProfileOutlierMarker(
+    val center: Offset,
+    val diameter: Float,
+    val color: Color,
+)
+
+/**
+ * Сортирует [values] на месте (хвост за [count] заполняется +Infinity) и
+ * возвращает масштаб по [percentileFraction] (0.90 = P90, 1.0 = MAX).
+ */
+internal fun computeProfileVolumeScale(
+    values: FloatArray,
+    count: Int = values.size,
+    percentileFraction: Float = 0.95f,
+): ProfileVolumeScale {
+    val n = count.coerceIn(0, values.size)
+    if (n == 0) return ProfileVolumeScale.DEFAULT
+
+    for (i in n until values.size) values[i] = Float.POSITIVE_INFINITY
+    values.sort()
+
+    val fraction = percentileFraction.coerceIn(0f, 1f)
+    val value = percentile(values, n, fraction)
+    val linearMax = if (value.isFinite() && value > 0f) value else 1f
+
+    return ProfileVolumeScale(
+        linearMax = linearMax,
+        outlierThreshold = linearMax,
+    )
+}
+
+private fun percentile(sorted: FloatArray, count: Int, fraction: Float): Float {
+    if (count <= 0) return 0f
+    if (count == 1) return sorted[0]
+    val position = (count - 1) * fraction
+    val lower = position.toInt()
+    val upper = min(lower + 1, count - 1)
+    val weight = position - lower
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * weight
+}
+
+internal fun profileBarWidth(
+    volume: Float,
+    scale: ProfileVolumeScale,
+    maxBarWidth: Float,
+): Float {
+    if (!volume.isFinite() || volume <= 0f || maxBarWidth <= 0f) return 0f
+    val linearMax = if (scale.linearMax > 0f) scale.linearMax else 1f
+    val maxBarWidthNormalize = maxOf(1.0f, maxBarWidth)
+    return (volume / linearMax * maxBarWidth).coerceIn(1.0f, maxBarWidthNormalize)
+}
+
+internal fun profileBarAlpha(
+    volume: Float,
+    scale: ProfileVolumeScale,
+    minAlpha: Float,
+): Float {
+    if (!volume.isFinite() || volume <= 0f) return minAlpha
+    if (scale.isOutlier(volume)) return 1f
+    val linearMax = if (scale.linearMax > 0f) scale.linearMax else 1f
+    val ratio = (volume / linearMax).coerceIn(0f, 1f)
+    return (minAlpha + (1f - minAlpha) * ratio).coerceIn(minAlpha, 1f)
+}
+
+internal fun profileRingDiameter(
+    candleWidth: Float,
+    diameter: FootprintRingDiameter,
+): Float = candleWidth * diameter.ratio
+
 fun DrawScope.drawFootprintChart(
     candles: List<FootprintCandle>,
     priceRange: PriceRange,
     config: ChartConfig,
     chartArea: Rect,
     textMeasurer: TextMeasurer,
+    profileVolumeScale: ProfileVolumeScale = ProfileVolumeScale.DEFAULT,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
     visibleStartIndex: Int = 0,
@@ -55,32 +145,33 @@ fun DrawScope.drawFootprintChart(
         val fpSpacing = candleMetrics.spacing
         val totalW = fpWidth + fpSpacing
         val fpMetrics = CandleMetrics(fpWidth * 2f, fpSpacing) // 2x wider
-
-        // Viewport max volume for gradient normalization
-        var viewportMaxVol = 0f
-        for (i in visibleStartIndex until visibleEndIndex) {
-            if (i in candles.indices) {
-                val v = candles[i].maxVolume
-                if (v > viewportMaxVol) viewportMaxVol = v
-            }
-        }
-        if (viewportMaxVol <= 0f) viewportMaxVol = 1f
+        val outlierMarkers = mutableListOf<ProfileOutlierMarker>()
 
         for (i in visibleStartIndex until visibleEndIndex) {
             if (i in candles.indices) {
                 val x = i * totalW - scrollOffset + fpWidth / 2
-                drawFootprintCandle(
+                outlierMarkers += drawFootprintCandle(
                     candle = candles[i],
                     centerX = x,
                     priceRange = priceRange,
                     metrics = fpMetrics,
                     config = config,
                     chartHeight = chartArea.height,
-                    viewportMaxVol = viewportMaxVol,
+                    profileVolumeScale = profileVolumeScale,
                     tickSize = config.footprintConfig.tickSize,
                     aggregatedLevels = aggregatedLevelsProvider?.invoke(candles[i]),
                 )
             }
+        }
+
+        val markerStroke = config.footprintConfig.ringWidth.width.toPx()
+        for (marker in outlierMarkers) {
+            drawCircle(
+                color = marker.color,
+                radius = marker.diameter / 2f,
+                center = marker.center,
+                style = Stroke(width = markerStroke),
+            )
         }
     }
 }
@@ -103,23 +194,25 @@ fun DrawScope.drawFootprintCandle(
     metrics: CandleMetrics,
     config: ChartConfig,
     chartHeight: Float,
-    viewportMaxVol: Float = 1f,
+    profileVolumeScale: ProfileVolumeScale = ProfileVolumeScale.DEFAULT,
     tickSize: Double = 0.01,
     aggregatedLevels: List<FootprintLevel>? = null,
-) {
+): List<ProfileOutlierMarker> {
     val levels = aggregatedLevels ?: if (config.footprintConfig.aggregationLevel != AggregationLevel.BaseTick && tickSize > 0.0) {
         aggregateLevels(candle.levels, config.footprintConfig.aggregationLevel, tickSize)
     } else {
         candle.levels
     }
-    if (levels.isEmpty()) return
+    if (levels.isEmpty()) return emptyList()
 
     val halfWidth = metrics.width / 2
     val maxBarWidth = halfWidth
+    val ringDiameter = profileRingDiameter(halfWidth, config.footprintConfig.ringDiameter)
     val minAlpha = 0.12f
 
     val visibleMin = priceRange.visibleMin
     val visibleMax = priceRange.visibleMax
+    val outlierMarkers = mutableListOf<ProfileOutlierMarker>()
 
     for (i in levels.indices) {
         val level = levels[i]
@@ -139,26 +232,42 @@ fun DrawScope.drawFootprintCandle(
         val levelHeight = abs(nextPriceY - priceY).coerceAtLeast(1f)
         val topY = minOf(priceY, nextPriceY)
 
-        val bidWidth = (bidVolume / viewportMaxVol * maxBarWidth).coerceAtLeast(if (bidVolume > 0f) 1f else 0f)
-        val askWidth = (askVolume / viewportMaxVol * maxBarWidth).coerceAtLeast(if (askVolume > 0f) 1f else 0f)
+        val bidWidth = profileBarWidth(bidVolume, profileVolumeScale, maxBarWidth)
+        val askWidth = profileBarWidth(askVolume, profileVolumeScale, maxBarWidth)
 
         if (askWidth > 0f) {
-            val alpha = (minAlpha + (1f - minAlpha) * (askVolume / viewportMaxVol)).coerceIn(minAlpha, 1f)
+            val alpha = profileBarAlpha(askVolume, profileVolumeScale, minAlpha)
             drawRect(
                 color = config.footprintConfig.askColor.copy(alpha = alpha),
-                topLeft = Offset(centerX - halfWidth + (maxBarWidth - askWidth), topY),
+                topLeft = Offset(centerX - askWidth, topY),
                 size = Size(askWidth, levelHeight)
             )
+            if (profileVolumeScale.isOutlier(askVolume)) {
+                outlierMarkers += ProfileOutlierMarker(
+                    center = Offset(centerX - askWidth / 2f, topY + levelHeight / 2f),
+                    diameter = ringDiameter,
+                    color = config.footprintConfig.askColor,
+                )
+            }
         }
         if (bidWidth > 0f) {
-            val alpha = (minAlpha + (1f - minAlpha) * (bidVolume / viewportMaxVol)).coerceIn(minAlpha, 1f)
+            val alpha = profileBarAlpha(bidVolume, profileVolumeScale, minAlpha)
             drawRect(
                 color = config.footprintConfig.bidColor.copy(alpha = alpha),
-                topLeft = Offset(centerX + halfWidth - maxBarWidth, topY),
+                topLeft = Offset(centerX, topY),
                 size = Size(bidWidth, levelHeight)
             )
+            if (profileVolumeScale.isOutlier(bidVolume)) {
+                outlierMarkers += ProfileOutlierMarker(
+                    center = Offset(centerX + bidWidth / 2f, topY + levelHeight / 2f),
+                    diameter = ringDiameter,
+                    color = config.footprintConfig.bidColor,
+                )
+            }
         }
     }
+
+    return outlierMarkers
 }
 
 /**

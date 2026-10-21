@@ -213,6 +213,9 @@ class ChartViewModel(
             is ChartIntent.ToggleChartMode -> toggleChartMode()
             is ChartIntent.SelectChartMode -> selectChartMode(intent.mode)
             is ChartIntent.SetFpAggregation -> setFpAggregation(intent.level)
+            is ChartIntent.SetFpProfileScale -> setFpProfileScale(intent.scale)
+            is ChartIntent.SetFpRingWidth -> setFpRingWidth(intent.width)
+            is ChartIntent.SetFpRingDiameter -> setFpRingDiameter(intent.diameter)
             is ChartIntent.LoadChart -> loadChart(
                 ticker = intent.symbol ?: _state.value.currentSymbol,
                 timeframe = intent.timeframe ?: _state.value.currentTimeframe,
@@ -416,7 +419,22 @@ class ChartViewModel(
 
     private fun setFpAggregation(level: AggregationLevel) {
         _state.update { it.copy(fpAggregation = level) }
-        saveState()
+        saveFootprintState()
+    }
+
+    private fun setFpProfileScale(scale: FootprintProfileScale) {
+        _state.update { it.copy(fpProfileScale = scale) }
+        saveFootprintState()
+    }
+
+    private fun setFpRingWidth(width: FootprintRingWidth) {
+        _state.update { it.copy(fpRingWidth = width) }
+        saveFootprintState()
+    }
+
+    private fun setFpRingDiameter(diameter: FootprintRingDiameter) {
+        _state.update { it.copy(fpRingDiameter = diameter) }
+        saveFootprintState()
     }
 
     // ── Chart trading ──
@@ -917,9 +935,21 @@ class ChartViewModel(
                 symbol = current.currentSymbol,
                 timeframe = current.currentTimeframe,
                 chartMode = current.chartMode,
-                fpAggregation = current.fpAggregation,
                 providerId = activeProviderId,
                 contractType = current.contractType,
+            )
+        }
+    }
+
+    private fun saveFootprintState() {
+        val persistor = persistor ?: return
+        val current = _state.value
+        viewModelScope.launch {
+            persistor.saveFootprint(
+                fpAggregation = current.fpAggregation,
+                fpProfileScale = current.fpProfileScale,
+                fpRingWidth = current.fpRingWidth,
+                fpRingDiameter = current.fpRingDiameter,
             )
         }
     }
@@ -943,6 +973,9 @@ class ChartViewModel(
                     currentTimeframe = saved.timeframe ?: s.currentTimeframe,
                     chartMode = saved.chartMode ?: s.chartMode,
                     fpAggregation = saved.fpAggregation ?: s.fpAggregation,
+                    fpProfileScale = saved.fpProfileScale ?: s.fpProfileScale,
+                    fpRingWidth = saved.fpRingWidth ?: s.fpRingWidth,
+                    fpRingDiameter = saved.fpRingDiameter ?: s.fpRingDiameter,
                     currentProviderId = activeProviderId,
                 )
             }
@@ -961,7 +994,8 @@ class ChartViewModel(
         val persistor = persistor ?: return
         viewModelScope.launch {
             val saved = persistor.restore()
-            // Тип контрактов — тоже часть персиста графика
+            applyFootprintSettings(saved)
+            // Контракт всегда восстанавливаем — только в паре с провайдером
             saved.contractType?.let { savedType ->
                 if (_state.value.contractType != savedType) {
                     _state.update { it.copy(contractType = savedType) }
@@ -972,6 +1006,17 @@ class ChartViewModel(
                 ?: return@launch
             if (activeProviderId == targetId) return@launch
             selectProvider(targetId)
+        }
+    }
+
+    private fun applyFootprintSettings(saved: ChartStatePersistor.SavedState) {
+        _state.update { current ->
+            current.copy(
+                fpAggregation = saved.fpAggregation ?: current.fpAggregation,
+                fpProfileScale = saved.fpProfileScale ?: current.fpProfileScale,
+                fpRingWidth = saved.fpRingWidth ?: current.fpRingWidth,
+                fpRingDiameter = saved.fpRingDiameter ?: current.fpRingDiameter,
+            )
         }
     }
 

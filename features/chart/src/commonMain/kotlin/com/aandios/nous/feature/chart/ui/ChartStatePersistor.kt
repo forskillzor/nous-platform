@@ -15,22 +15,28 @@ import com.aandios.nous.feature.dom.domain.model.AggregationLevel
  * Сохранение и восстановление состояния графика (символ, таймфрейм, режим, агрегация).
  * Ключи совместимы с прежним форматом ChartViewModel.
  *
- * [tradingPrefix] — префикс ключей торговых настроек: каждая панель графика
- * хранит свои настройки (trading/paper/order type/show orders/positions)
- * отдельно (chart_{workspace}_{panel}_...).
+ * [panelPrefix] — префикс ключей панельных настроек: каждая панель графика
+ * хранит свои настройки (trading/paper/order type/show orders/positions и
+ * footprint) отдельно (chart_{workspace}_{panel}_...).
  */
 class ChartStatePersistor(
     private val store: StateStore,
-    private val tradingPrefix: String = "",
+    private val panelPrefix: String = "",
 ) {
 
-    private fun tKey(key: String) = tradingPrefix + key
+    private fun panelKey(key: String) = panelPrefix + key
+
+    private suspend fun panelOrLegacy(key: String): String? =
+        store.getString(panelKey(key)) ?: store.getString(key)
 
     data class SavedState(
         val symbol: String? = null,
         val timeframe: String? = null,
         val chartMode: ChartMode? = null,
         val fpAggregation: AggregationLevel? = null,
+        val fpProfileScale: FootprintProfileScale? = null,
+        val fpRingWidth: FootprintRingWidth? = null,
+        val fpRingDiameter: FootprintRingDiameter? = null,
         val zoomLevel: Float? = null,
         val providerId: String? = null,
         val contractType: ContractType? = null,
@@ -62,36 +68,36 @@ class ChartStatePersistor(
         showPositions: Boolean,
         panelCollapsed: Boolean,
     ) {
-        store.putString(tKey(KEY_TRADING_ENABLED), if (enabled) "1" else "0")
-        store.putString(tKey(KEY_CONFIRM_ORDERS), if (confirmOrders) "1" else "0")
-        store.putString(tKey(KEY_TRADING_QUANTITY), quantity?.toString() ?: "")
-        store.putString(tKey(KEY_ORDER_TYPE), orderType.name)
-        store.putString(tKey(KEY_REDUCE_ONLY), if (reduceOnly) "1" else "0")
-        store.putString(tKey(KEY_LEVERAGE), leverage?.toString() ?: "")
-        store.putString(tKey(KEY_MARGIN_MODE), marginMode.toString())
-        store.putString(tKey(KEY_SHOW_ORDERS), if (showOrders) "1" else "0")
-        store.putString(tKey(KEY_SHOW_POSITIONS), if (showPositions) "1" else "0")
-        store.putString(tKey(KEY_PANEL_COLLAPSED), if (panelCollapsed) "1" else "0")
+        store.putString(panelKey(KEY_TRADING_ENABLED), if (enabled) "1" else "0")
+        store.putString(panelKey(KEY_CONFIRM_ORDERS), if (confirmOrders) "1" else "0")
+        store.putString(panelKey(KEY_TRADING_QUANTITY), quantity?.toString() ?: "")
+        store.putString(panelKey(KEY_ORDER_TYPE), orderType.name)
+        store.putString(panelKey(KEY_REDUCE_ONLY), if (reduceOnly) "1" else "0")
+        store.putString(panelKey(KEY_LEVERAGE), leverage?.toString() ?: "")
+        store.putString(panelKey(KEY_MARGIN_MODE), marginMode.toString())
+        store.putString(panelKey(KEY_SHOW_ORDERS), if (showOrders) "1" else "0")
+        store.putString(panelKey(KEY_SHOW_POSITIONS), if (showPositions) "1" else "0")
+        store.putString(panelKey(KEY_PANEL_COLLAPSED), if (panelCollapsed) "1" else "0")
     }
 
     suspend fun restoreTrading(): TradingState {
-        val enabled = store.getString(tKey(KEY_TRADING_ENABLED)) == "1"
-        val confirm = store.getString(tKey(KEY_CONFIRM_ORDERS)) == "1"
-        val quantity = store.getString(tKey(KEY_TRADING_QUANTITY))?.toDoubleOrNull()?.takeIf { it > 0 }
-        val orderType = store.getString(tKey(KEY_ORDER_TYPE))?.let { raw ->
+        val enabled = store.getString(panelKey(KEY_TRADING_ENABLED)) == "1"
+        val confirm = store.getString(panelKey(KEY_CONFIRM_ORDERS)) == "1"
+        val quantity = store.getString(panelKey(KEY_TRADING_QUANTITY))?.toDoubleOrNull()?.takeIf { it > 0 }
+        val orderType = store.getString(panelKey(KEY_ORDER_TYPE))?.let { raw ->
             try {
                 OrderType.valueOf(raw)
             } catch (e: Exception) {
                 OrderType.LIMIT
             }
         } ?: OrderType.LIMIT
-        val reduceOnly = store.getString(tKey(KEY_REDUCE_ONLY)) == "1"
-        val leverage = store.getString(tKey(KEY_LEVERAGE))?.toIntOrNull()?.takeIf { it > 0 }
-        val marginMode = store.getString(tKey(KEY_MARGIN_MODE))?.toIntOrNull()?.takeIf { it == 1 || it == 2 } ?: 2
+        val reduceOnly = store.getString(panelKey(KEY_REDUCE_ONLY)) == "1"
+        val leverage = store.getString(panelKey(KEY_LEVERAGE))?.toIntOrNull()?.takeIf { it > 0 }
+        val marginMode = store.getString(panelKey(KEY_MARGIN_MODE))?.toIntOrNull()?.takeIf { it == 1 || it == 2 } ?: 2
         // Изначально выключены (как trading/paper); включаются только вручную
-        val showOrders = store.getString(tKey(KEY_SHOW_ORDERS)) == "1"
-        val showPositions = store.getString(tKey(KEY_SHOW_POSITIONS)) == "1"
-        val panelCollapsed = store.getString(tKey(KEY_PANEL_COLLAPSED)) == "1"
+        val showOrders = store.getString(panelKey(KEY_SHOW_ORDERS)) == "1"
+        val showPositions = store.getString(panelKey(KEY_SHOW_POSITIONS)) == "1"
+        val panelCollapsed = store.getString(panelKey(KEY_PANEL_COLLAPSED)) == "1"
         return TradingState(
             enabled, confirm, quantity, orderType, reduceOnly, leverage, marginMode,
             showOrders, showPositions, panelCollapsed,
@@ -100,17 +106,16 @@ class ChartStatePersistor(
 
     /** Персист глобального тумблера Paper (демо-торговля). */
     suspend fun savePaperEnabled(enabled: Boolean) {
-        store.putString(tKey(PaperTrading.STORE_KEY), if (enabled) "1" else "0")
+        store.putString(panelKey(PaperTrading.STORE_KEY), if (enabled) "1" else "0")
     }
 
     suspend fun restorePaperEnabled(): Boolean =
-        store.getString(tKey(PaperTrading.STORE_KEY)) == "1"
+        store.getString(panelKey(PaperTrading.STORE_KEY)) == "1"
 
     suspend fun save(
         symbol: String,
         timeframe: String,
         chartMode: ChartMode,
-        fpAggregation: AggregationLevel,
         providerId: String,
         contractType: ContractType,
     ) {
@@ -119,11 +124,23 @@ class ChartStatePersistor(
         store.putString(KEY_CHART_MODE, chartMode.name)
         store.putString(KEY_PROVIDER_ID, providerId)
         store.putString(KEY_CONTRACT_TYPE, contractType.name)
-        store.putString(KEY_FP_AGGREGATION, when (fpAggregation) {
+    }
+
+    /** Footprint-настройки панели: префикс не даёт им перетекать между chart-панелями. */
+    suspend fun saveFootprint(
+        fpAggregation: AggregationLevel,
+        fpProfileScale: FootprintProfileScale,
+        fpRingWidth: FootprintRingWidth,
+        fpRingDiameter: FootprintRingDiameter,
+    ) {
+        store.putString(panelKey(KEY_FP_AGGREGATION), when (fpAggregation) {
             AggregationLevel.BaseTick -> "BaseTick"
             AggregationLevel.TenTick -> "TenTick"
             AggregationLevel.HundredTick -> "HundredTick"
         })
+        store.putString(panelKey(KEY_FP_PROFILE_SCALE), fpProfileScale.name)
+        store.putString(panelKey(KEY_FP_RING_WIDTH), fpRingWidth.name)
+        store.putString(panelKey(KEY_FP_RING_DIAMETER), fpRingDiameter.name)
     }
 
     /** Зум живёт в UI-слое и сохраняется отдельно. */
@@ -142,18 +159,27 @@ class ChartStatePersistor(
                 ChartMode.CANDLESTICK
             }
         }
-        val aggregation = store.getString(KEY_FP_AGGREGATION)?.let { raw ->
+        val aggregation = panelOrLegacy(KEY_FP_AGGREGATION)?.let { raw ->
             try {
                 AggregationLevel.fromString(raw)
             } catch (e: Exception) {
                 AggregationLevel.BaseTick
             }
         }
+        val profileScale = panelOrLegacy(KEY_FP_PROFILE_SCALE)
+            ?.let { FootprintProfileScale.fromString(it) }
+        val ringWidth = panelOrLegacy(KEY_FP_RING_WIDTH)
+            ?.let { FootprintRingWidth.fromString(it) }
+        val ringDiameter = panelOrLegacy(KEY_FP_RING_DIAMETER)
+            ?.let { FootprintRingDiameter.fromString(it) }
         return SavedState(
             symbol = store.getString(KEY_SYMBOL),
             timeframe = store.getString(KEY_TIMEFRAME),
             chartMode = mode,
             fpAggregation = aggregation,
+            fpProfileScale = profileScale,
+            fpRingWidth = ringWidth,
+            fpRingDiameter = ringDiameter,
             providerId = store.getString(KEY_PROVIDER_ID),
             contractType = store.getString(KEY_CONTRACT_TYPE)?.let { raw ->
                 runCatching { ContractType.valueOf(raw) }.getOrNull()
@@ -168,6 +194,9 @@ class ChartStatePersistor(
         const val KEY_PROVIDER_ID = "chart_provider_id"
         const val KEY_CONTRACT_TYPE = "chart_contract_type"
         const val KEY_FP_AGGREGATION = "fp_aggregation"
+        const val KEY_FP_PROFILE_SCALE = "fp_profile_scale"
+        const val KEY_FP_RING_WIDTH = "fp_ring_width"
+        const val KEY_FP_RING_DIAMETER = "fp_ring_diameter"
         const val KEY_ZOOM = "chart_zoom"
         const val KEY_TRADING_ENABLED = "chart_trading_enabled"
         const val KEY_CONFIRM_ORDERS = "chart_confirm_orders"

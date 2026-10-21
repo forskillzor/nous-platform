@@ -80,6 +80,9 @@ internal fun ExplorerTabsRow(
     onActiveListIdChange: (String?) -> Unit,
     onReorderWatchlists: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
+    showFootprintTab: Boolean = false,
+    footprintActive: Boolean = false,
+    onFootprintClick: () -> Unit = {},
     trailing: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -96,19 +99,24 @@ internal fun ExplorerTabsRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
     ) {
-        ExplorerTab("ALL", active = activeListId == null) { onActiveListIdChange(null) }
+        ExplorerTab("ALL", active = !footprintActive && activeListId == null) {
+            onActiveListIdChange(null)
+        }
         if (favourites != null) {
             ExplorerTab(
                 label = favourites.name.uppercase(),
-                active = activeListId == favourites.id,
+                active = !footprintActive && activeListId == favourites.id,
             ) { onActiveListIdChange(favourites.id) }
         }
         if (dropdownLists.isNotEmpty()) {
             TerminalBoxDropdown(
                 text = activeDropdownList?.name?.uppercase() ?: "LISTS",
                 modifier = Modifier.widthIn(max = ExplorerListsTriggerMaxWidth),
-                style = if (activeDropdownList != null) TerminalBoxStyle.ACCENT
-                else TerminalBoxStyle.NORMAL,
+                style = if (!footprintActive && activeDropdownList != null) {
+                    TerminalBoxStyle.ACCENT
+                } else {
+                    TerminalBoxStyle.NORMAL
+                },
                 menuWidth = ExplorerListsMenuWidth,
             ) { dismiss ->
                 ExplorerListsMenuContent(
@@ -122,6 +130,9 @@ internal fun ExplorerTabsRow(
                     onReorderWatchlists = onReorderWatchlists,
                 )
             }
+        }
+        if (showFootprintTab) {
+            ExplorerTab("FOOTPRINT", active = footprintActive) { onFootprintClick() }
         }
         Spacer(Modifier.weight(1f))
         trailing?.invoke(this)

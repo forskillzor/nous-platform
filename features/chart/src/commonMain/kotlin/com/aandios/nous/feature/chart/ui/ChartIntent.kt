@@ -22,6 +22,9 @@ sealed interface ChartIntent {
     data object ToggleChartMode : ChartIntent
     data class SelectChartMode(val mode: ChartMode) : ChartIntent
     data class SetFpAggregation(val level: AggregationLevel) : ChartIntent
+    data class SetFpProfileScale(val scale: FootprintProfileScale) : ChartIntent
+    data class SetFpRingWidth(val width: FootprintRingWidth) : ChartIntent
+    data class SetFpRingDiameter(val diameter: FootprintRingDiameter) : ChartIntent
 
     /** null — оставить текущие значения. */
     data class LoadChart(val symbol: String? = null, val timeframe: String? = null) : ChartIntent

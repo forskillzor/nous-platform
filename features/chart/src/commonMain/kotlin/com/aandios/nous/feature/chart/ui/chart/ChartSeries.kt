@@ -10,7 +10,9 @@ import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.FootprintLevel
 import com.aandios.nous.feature.chart.model.PriceRange
+import com.aandios.nous.feature.chart.rendering.ProfileVolumeScale
 import com.aandios.nous.feature.chart.rendering.aggregateLevels
+import com.aandios.nous.feature.chart.rendering.computeProfileVolumeScale
 import com.aandios.nous.feature.chart.rendering.drawChart
 import com.aandios.nous.feature.chart.rendering.drawFootprintChart
 import com.aandios.nous.feature.chart.ui.ChartConfig
@@ -72,6 +74,11 @@ class FootprintSeries(
 ) : ChartSeries {
 
     private val aggregatedLevelsCache = mutableMapOf<Long, List<FootprintLevel>>()
+    private var profileScaleValues = FloatArray(64)
+    private var profileScaleCount = 0
+    private var profileScaleStart = -1
+    private var profileScaleEnd = -1
+    private var profileScale = ProfileVolumeScale.DEFAULT
 
     /**
      * Диапазон — по уровням bid/ask, а не по каркасным свечам:
@@ -92,6 +99,37 @@ class FootprintSeries(
         }
     }
 
+    private fun profileScaleFor(visibleStart: Int, visibleEnd: Int): ProfileVolumeScale {
+        if (visibleStart == profileScaleStart && visibleEnd == profileScaleEnd) {
+            return profileScale
+        }
+        val start = visibleStart.coerceIn(0, footprintCandles.size)
+        val end = visibleEnd.coerceIn(start, footprintCandles.size)
+        profileScaleCount = 0
+        for (i in start until end) {
+            for (level in levelsFor(footprintCandles[i])) {
+                val volume = maxOf(level.bidVolumeFloat, level.askVolumeFloat)
+                if (!volume.isFinite() || volume <= 0f) continue
+                if (profileScaleCount == profileScaleValues.size) {
+                    profileScaleValues = profileScaleValues.copyOf(maxOf(64, profileScaleValues.size * 2))
+                }
+                profileScaleValues[profileScaleCount++] = volume
+            }
+        }
+        val targetCapacity = maxOf(64, profileScaleCount * 2)
+        if (profileScaleValues.size > targetCapacity * 2) {
+            profileScaleValues = profileScaleValues.copyOf(targetCapacity)
+        }
+        profileScale = computeProfileVolumeScale(
+            values = profileScaleValues,
+            count = profileScaleCount,
+            percentileFraction = config.footprintConfig.profileScale.percentile,
+        )
+        profileScaleStart = visibleStart
+        profileScaleEnd = visibleEnd
+        return profileScale
+    }
+
     override fun draw(scope: DrawScope, canvas: ChartCanvas) {
         scope.drawFootprintChart(
             candles = footprintCandles,
@@ -99,6 +137,7 @@ class FootprintSeries(
             config = config,
             chartArea = canvas.layout.chartMainArea,
             textMeasurer = canvas.textMeasurer,
+            profileVolumeScale = profileScaleFor(canvas.visibleStartIndex, canvas.visibleEndIndex),
             scrollOffset = canvas.scrollOffset,
             zoomLevel = canvas.zoomLevel,
             visibleStartIndex = canvas.visibleStartIndex,

@@ -29,6 +29,9 @@ class ChartUiStateTest {
         assertEquals(ChartMode.CANDLESTICK, state.chartMode)
         assertTrue(state.symbolsWithFootprint.isEmpty())
         assertEquals(AggregationLevel.BaseTick, state.fpAggregation)
+        assertEquals(FootprintProfileScale.P99, state.fpProfileScale)
+        assertEquals(FootprintRingWidth.TWO, state.fpRingWidth)
+        assertEquals(FootprintRingDiameter.X3, state.fpRingDiameter)
         assertTrue(state.hasMoreFootprintHistory)
     }
 

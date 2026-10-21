@@ -70,10 +70,12 @@ Mind this when writing paths.
   `chart_{workspace}_{panel}_...`. Keys cover trading enabled, confirm, qty,
   order type, reduce-only, leverage, margin mode, show-orders, show-positions,
   panel collapsed, and paper mode (`PaperTrading.STORE_KEY` in the same prefix).
-  Symbol/timeframe/provider state (`chart_symbol`, `chart_provider_id`, ...) is
-  saved globally (no prefix); in the workspace the symbol/timeframe come from
-  `PanelConfig`, so `ChartWindow` only restores the provider via
-  `ChartViewModel.restoreProvider()`.
+  Symbol/timeframe/provider state (`chart_symbol`, `chart_provider_id`,
+  `fp_aggregation`, `fp_profile_scale`, `fp_ring_width`, `fp_ring_diameter`, ...)
+  is saved globally (no prefix); in the workspace the symbol/timeframe come
+  from `PanelConfig`, and `ChartWindow` restores the provider plus footprint
+  settings via `ChartViewModel.restoreProvider()` (standalone restores them
+  through `RestoreState`).
 - DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`,
   `dom_contract_{panelId}` (USDT_M / COIN_M) and the order panel settings
   persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
@@ -197,6 +199,14 @@ Mind this when writing paths.
   add it to the previous candle).
 - `FootprintSeries` caches `aggregateLevels` per candle; `LocalStorage` DB work
   is serialized on `Dispatchers.IO` through a `Mutex` (`withDb`).
+- Profile bar width is normalized by a user-selected percentile
+  (`FootprintProfileScale` P90/P95/P99/MAX, default P99) over aggregated
+  `max(bid, ask)` volumes in the visible range, cached per visible range in
+  `FootprintSeries`. Levels above the percentile clamp to full half-candle
+  width and get a side-colored ring whose width (0.5-5dp in 0.5dp steps,
+  default 2dp) and diameter (1x-10x in 0.5x steps, default 3x) are dropdown
+  settings in the chart gear menu; never normalize aggregated bars against
+  unaggregated `candle.maxVolume`.
 - Chart text uses `rememberTextMeasurer(cacheSize = 128)` — the default 8-slot
   cache thrashes on price/time-scale labels. Trades UI samples `state` and
   `filteredBuffer` at 50 ms (20 Hz), memoizes `TradeRow` formatted strings, and
@@ -412,16 +422,19 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `outlineVariant` ring + accent plus drawn in Canvas; split menu; SPLIT RIGHT →
   `onSplitH` → Row, SPLIT DOWN → `onSplitV` → Column) and a 20dp Canvas ×
   glyph close matching the plus button. The
-  chart title hosts `ChartTitleToolbar`: mode rounded box dropdown
-  (`TerminalBoxStyle.ACCENT` — `surfaceVariant` fill, accent text), symbol
-  explorer box (see below; its closed trigger shows the exchange label in
-  small accent text before the symbol — provider switching happens by
-  picking a row of another exchange, there is no separate exchange
-  dropdown in the chart title), solid-accent timeframe chip
-  (`TerminalBoxStyle.SELECTED`, dark
-  text, no chevron), a footprint-only aggregation dropdown (1x/10x/100x),
-  Trading on/off button; chart options (Type, Paper, Show orders/positions)
-  live in the gear menu (`ChartSettingsMenu`). DOM/Trades/Trading titles are plain
+  chart title hosts `ChartTitleToolbar`: symbol explorer box (see below; its
+  closed trigger shows the exchange label in small accent text before the
+  symbol — provider switching happens by picking a row of another exchange,
+  there is no separate exchange dropdown in the chart title), then the
+  solid-accent timeframe chip (`TerminalBoxStyle.SELECTED`, dark text, no
+  chevron) immediately after it, mode rounded box dropdown
+  (`TerminalBoxStyle.ACCENT`; the closed trigger is a 14dp Canvas glyph for
+  candles/footprint instead of text, the menu shows glyph + label),
+  footprint-only aggregation (1x/10x/100x) and Profile percentile
+  (P90/P95/P99/MAX) dropdowns, Trading on/off button; chart options
+  (Type, Paper, Show orders/positions) and footprint-only ring width/diameter
+  dropdowns live in the gear menu (`ChartSettingsMenu`). DOM/Trades/Trading
+  titles are plain
   `PanelTitleLabel`s (DOM shows a `STREAM` dot; the Trades glyph is accent);
   their ⚙ menu closes the panel. In workspace tiles `ChartWindow` hides its own
   toolbar (standalone previews keep `TerminalPanelHeader`-wrapped version).

@@ -136,23 +136,25 @@ fun TerminalBoxDropdown(
                 ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                leading?.let {
-                    it()
-                    Spacer(Modifier.width(tokens.spacing.xs))
+                leading?.let { it() }
+                if (text.isNotEmpty()) {
+                    if (leading != null) Spacer(Modifier.width(tokens.spacing.xs))
+                    Text(
+                        text = text,
+                        color = textColor,
+                        fontSize = tokens.typography.compactSize,
+                        lineHeight = tokens.typography.controlLineHeight,
+                        fontWeight = if (style == TerminalBoxStyle.SELECTED) FontWeight.Bold
+                        else FontWeight.Medium,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
-                Text(
-                    text = text,
-                    color = textColor,
-                    fontSize = tokens.typography.compactSize,
-                    lineHeight = tokens.typography.controlLineHeight,
-                    fontWeight = if (style == TerminalBoxStyle.SELECTED) FontWeight.Bold
-                    else FontWeight.Medium,
-                    fontFamily = TerminalFontFamily,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
                 if (style != TerminalBoxStyle.SELECTED) {
-                    Spacer(Modifier.width(tokens.spacing.xs))
+                    if (leading != null || text.isNotEmpty()) {
+                        Spacer(Modifier.width(tokens.spacing.xs))
+                    }
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = null,

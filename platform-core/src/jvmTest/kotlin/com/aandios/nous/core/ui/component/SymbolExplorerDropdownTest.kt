@@ -74,6 +74,24 @@ class SymbolExplorerDropdownTest {
     }
 
     @Test
+    fun `footprint availability filters symbols before search`() {
+        val result = computeExplorerRows(
+            rows = listOf(row("BTCUSDT"), row("ETHUSDT"), row("SOLUSDT")),
+            activeListSymbols = null,
+            perpetualsOnly = true,
+            quote = "USDT",
+            exchangeId = null,
+            query = "USDT",
+            sort = SymbolExplorerSort.VOLUME,
+            descending = true,
+            availableSymbols = setOf("BTCUSDT", "SOLUSDT"),
+        )
+
+        assertEquals(listOf("BTCUSDT", "SOLUSDT"), result.matches.map { it.row.symbol })
+        assertNull(result.error)
+    }
+
+    @Test
     fun `search matches display symbol and reports highlight range`() {
         val result = computeExplorerRows(
             rows = listOf(row("WBTCUSDT"), row("BTCUSDT"), row("ETHUSDT")),

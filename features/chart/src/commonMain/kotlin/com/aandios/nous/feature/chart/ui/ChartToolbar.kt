@@ -19,9 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -50,6 +54,88 @@ private fun aggregationLabel(level: AggregationLevel): String = when (level) {
     AggregationLevel.HundredTick -> "100x"
 }
 
+@Composable
+private fun ChartModeGlyph(
+    mode: ChartMode,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val label = if (mode == ChartMode.CANDLESTICK) "Candles" else "Footprint"
+    Canvas(
+        modifier = modifier
+            .size(14.dp)
+            .semantics { contentDescription = label },
+    ) {
+        when (mode) {
+            ChartMode.CANDLESTICK -> {
+                val candleWidth = size.width * 0.18f
+                val corner = CornerRadius(candleWidth * 0.25f)
+                val wickWidth = 1.dp.toPx()
+                fun candle(
+                    centerX: Float,
+                    wickTop: Float,
+                    wickBottom: Float,
+                    bodyTop: Float,
+                    bodyBottom: Float,
+                ) {
+                    drawLine(
+                        color = color,
+                        start = Offset(centerX, size.height * wickTop),
+                        end = Offset(centerX, size.height * wickBottom),
+                        strokeWidth = wickWidth,
+                    )
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(
+                            centerX - candleWidth / 2f,
+                            size.height * bodyTop,
+                        ),
+                        size = Size(
+                            candleWidth,
+                            size.height * (bodyBottom - bodyTop),
+                        ),
+                        cornerRadius = corner,
+                    )
+                }
+
+                candle(size.width * 0.22f, 0.22f, 0.90f, 0.38f, 0.76f)
+                candle(size.width * 0.50f, 0.06f, 0.62f, 0.20f, 0.48f)
+                candle(size.width * 0.78f, 0.32f, 1.00f, 0.50f, 0.86f)
+            }
+            ChartMode.FOOTPRINT -> {
+                val rows = 4
+                val rowHeight = size.height * 0.16f
+                val gap = size.height * 0.08f
+                val totalHeight = rowHeight * rows + gap * (rows - 1)
+                val top = (size.height - totalHeight) / 2f
+                val centerX = size.width / 2f
+                val maxBarWidth = size.width * 0.46f
+                val corner = CornerRadius(rowHeight / 2f)
+                val bidFractions = floatArrayOf(0.30f, 0.44f, 0.36f, 0.22f)
+                val askFractions = floatArrayOf(0.18f, 0.34f, 0.46f, 0.26f)
+
+                for (index in 0 until rows) {
+                    val y = top + index * (rowHeight + gap)
+                    val bidWidth = maxBarWidth * bidFractions[index]
+                    val askWidth = maxBarWidth * askFractions[index]
+                    drawRoundRect(
+                        color = color.copy(alpha = 0.55f),
+                        topLeft = Offset(centerX - bidWidth, y),
+                        size = Size(bidWidth, rowHeight),
+                        cornerRadius = corner,
+                    )
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(centerX, y),
+                        size = Size(askWidth, rowHeight),
+                        cornerRadius = corner,
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * Компактные контролы графика для верхнего тайтла панели: символ с биржей
  * (расширенный explorer-список — закрытый триггер показывает биржу мелким
@@ -70,9 +156,12 @@ fun ChartToolbar(
     onChartModeChange: (ChartMode) -> Unit = {},
     fpAggregation: AggregationLevel = AggregationLevel.BaseTick,
     onFpAggregationChange: (AggregationLevel) -> Unit = {},
+    fpProfileScale: FootprintProfileScale = FootprintProfileScale.P99,
+    onFpProfileScaleChange: (FootprintProfileScale) -> Unit = {},
     tradingEnabled: Boolean = false,
     onTradingToggle: (Boolean) -> Unit = {},
     onManageWatchlist: (() -> Unit)? = null,
+    footprintSymbols: Set<String>? = null,
     modifier: Modifier = Modifier,
     settingsMenu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
 ) {
@@ -88,6 +177,18 @@ fun ChartToolbar(
             rows = explorerRows,
             onSelect = onExplorerRowSelected,
             onManageWatchlist = onManageWatchlist,
+            footprintSymbols = footprintSymbols,
+        )
+
+        Spacer(Modifier.width(tokens.spacing.sm))
+
+        TerminalBoxDropdown(
+            current = currentTimeframe,
+            options = timeframes,
+            optionLabel = { it },
+            onSelect = onTimeframeChange,
+            style = TerminalBoxStyle.SELECTED,
+            menuWidth = 90.dp,
         )
 
         Box(
@@ -99,13 +200,43 @@ fun ChartToolbar(
         )
 
         TerminalBoxDropdown(
-            current = chartMode,
-            options = chartModes.map { it.first },
-            optionLabel = { mode -> chartModes.firstOrNull { it.first == mode }?.second ?: "Candles" },
-            onSelect = onChartModeChange,
+            text = "",
             style = TerminalBoxStyle.ACCENT,
-            menuWidth = 130.dp,
-        )
+            menuWidth = 120.dp,
+            leading = {
+                ChartModeGlyph(
+                    mode = chartMode,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            },
+        ) { dismiss ->
+            chartModes.forEach { (mode, label) ->
+                TerminalMenuItem(
+                    onClick = {
+                        onChartModeChange(mode)
+                        dismiss()
+                    },
+                    selected = mode == chartMode,
+                ) {
+                    ChartModeGlyph(
+                        mode = mode,
+                        color = if (mode == chartMode) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(tokens.spacing.sm))
+                    Text(
+                        text = label,
+                        color = if (mode == chartMode) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
+                        fontSize = tokens.typography.compactSize,
+                        lineHeight = tokens.typography.controlLineHeight,
+                        fontWeight = if (mode == chartMode) FontWeight.Bold else FontWeight.Medium,
+                        fontFamily = TerminalFontFamily,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
 
         if (chartMode == ChartMode.FOOTPRINT) {
             Spacer(Modifier.width(tokens.spacing.sm))
@@ -117,18 +248,16 @@ fun ChartToolbar(
                 style = TerminalBoxStyle.NORMAL,
                 menuWidth = 90.dp,
             )
+            Spacer(Modifier.width(tokens.spacing.sm))
+            TerminalBoxDropdown(
+                current = fpProfileScale,
+                options = FootprintProfileScale.entries,
+                optionLabel = { it.label },
+                onSelect = onFpProfileScaleChange,
+                style = TerminalBoxStyle.NORMAL,
+                menuWidth = 80.dp,
+            )
         }
-
-        Spacer(Modifier.width(tokens.spacing.md))
-
-        TerminalBoxDropdown(
-            current = currentTimeframe,
-            options = timeframes,
-            optionLabel = { it },
-            onSelect = onTimeframeChange,
-            style = TerminalBoxStyle.SELECTED,
-            menuWidth = 90.dp,
-        )
 
         Spacer(Modifier.width(tokens.spacing.lg))
 
@@ -184,9 +313,12 @@ fun ChartTitleToolbar(
         onChartModeChange = { chartViewModel.dispatch(ChartIntent.SelectChartMode(it)) },
         fpAggregation = uiState.fpAggregation,
         onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
+        fpProfileScale = uiState.fpProfileScale,
+        onFpProfileScaleChange = { chartViewModel.dispatch(ChartIntent.SetFpProfileScale(it)) },
         tradingEnabled = tradingEnabled,
         onTradingToggle = { chartViewModel.setTradingEnabled(it) },
         onManageWatchlist = onManageWatchlist,
+        footprintSymbols = uiState.symbolsWithFootprint,
         modifier = modifier,
         settingsMenu = settingsMenu,
     )
@@ -209,6 +341,20 @@ fun ChartSettingsMenu(chartViewModel: ChartViewModel, dismiss: () -> Unit) {
         selected = uiState.contractType,
         onSelect = { chartViewModel.dispatch(ChartIntent.SelectContractType(it)) },
     )
+    if (uiState.chartMode == ChartMode.FOOTPRINT) {
+        OptionDropdownRow(
+            label = "Ring",
+            options = FootprintRingWidth.entries.map { it to it.label },
+            selected = uiState.fpRingWidth,
+            onSelect = { chartViewModel.dispatch(ChartIntent.SetFpRingWidth(it)) },
+        )
+        OptionDropdownRow(
+            label = "Diameter",
+            options = FootprintRingDiameter.entries.map { it to it.label },
+            selected = uiState.fpRingDiameter,
+            onSelect = { chartViewModel.dispatch(ChartIntent.SetFpRingDiameter(it)) },
+        )
+    }
     OptionSwitchRow("Paper", paperEnabled) { chartViewModel.setPaperEnabled(it) }
     OptionSwitchRow("Show orders", showOrders) { chartViewModel.setShowOrders(it) }
     OptionSwitchRow("Show positions", showPositions) { chartViewModel.setShowPositions(it) }
@@ -298,7 +444,37 @@ private fun <T> OptionChoiceRow(
     }
 }
 
-/** Строка Options: label + компактный свич (клик по строке тоже переключает). */
+/** Строка Options: label + компактный dropdown для длинного списка значений. */
+@Composable
+private fun <T> OptionDropdownRow(
+    label: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    val tokens = LocalTerminalDesignTokens.current
+    TerminalMenuItem(onClick = {}) {
+        Text(
+            text = label,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 12.sp,
+            lineHeight = tokens.typography.controlLineHeight,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        TerminalBoxDropdown(
+            current = selected,
+            options = options.map { it.first },
+            optionLabel = { value ->
+                options.firstOrNull { it.first == value }?.second ?: value.toString()
+            },
+            onSelect = onSelect,
+            style = TerminalBoxStyle.ACCENT,
+            menuWidth = 88.dp,
+        )
+    }
+}
+
 @Composable
 private fun OptionSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     val tokens = LocalTerminalDesignTokens.current

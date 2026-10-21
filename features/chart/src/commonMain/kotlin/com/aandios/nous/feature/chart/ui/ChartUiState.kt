@@ -36,6 +36,9 @@ data class ChartUiState(
     val chartMode: ChartMode = ChartMode.CANDLESTICK,
     val symbolsWithFootprint: Set<String> = emptySet(),
     val fpAggregation: AggregationLevel = AggregationLevel.BaseTick,
+    val fpProfileScale: FootprintProfileScale = FootprintProfileScale.P99,
+    val fpRingWidth: FootprintRingWidth = FootprintRingWidth.TWO,
+    val fpRingDiameter: FootprintRingDiameter = FootprintRingDiameter.X3,
     val hasMoreFootprintHistory: Boolean = true,
     /** Тип контрактов панели: USDT-M / COIN-M (фильтр списка символов). */
     val contractType: ContractType = ContractType.USDT_M,
