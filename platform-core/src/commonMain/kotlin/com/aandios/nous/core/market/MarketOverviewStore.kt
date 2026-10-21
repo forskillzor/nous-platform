@@ -56,7 +56,7 @@ data class MarketOverviewState(
  */
 class MarketOverviewStore(
     private val registry: ProviderRegistry,
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Default + SupervisorJob()),
     private val refreshIntervalMs: Long = DEFAULT_REFRESH_INTERVAL_MS,
 ) {
     companion object {
