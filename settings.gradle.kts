@@ -39,3 +39,4 @@ include("providers:bybit-provider")
 include(":bidasker-web")
 
 include("providers:mexc-provider")
+include("features:research")
