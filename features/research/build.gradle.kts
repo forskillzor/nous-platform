@@ -11,14 +11,12 @@ plugins {
 kotlin {
 
     sourceSets {
-        jvmMain.dependencies {
-            implementation(project(":platform-core"))
+        commonMain.dependencies {
             implementation(project(":public-api:api-market"))
-            implementation(libs.ta4j.core) // org.ta4j:ta4j-core:0.27.0
-
-            implementation(libs.koin.core)
-            implementation(libs.kotlinx.coroutines.core)
             implementation(libs.kotlinx.serialization.json)
+        }
+        jvmMain.dependencies {
+            implementation(libs.ta4j.core)
         }
         jvmTest.dependencies {
             implementation(libs.kotlin.test)

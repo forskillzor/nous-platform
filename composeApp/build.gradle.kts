@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import org.gradle.jvm.toolchain.JavaLanguageVersion
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -13,6 +14,7 @@ plugins {
 }
 
 kotlin {
+    jvmToolchain(25)
     jvm()
 
     sourceSets {
@@ -83,6 +85,9 @@ kotlin {
 
 compose.desktop {
     application {
+        javaHome = javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+        }.get().metadata.installationPath.asFile.absolutePath
         mainClass = "com.aandios.nous_platform.MainKt"
         // macOS: тёмный тайтл-бар следует системной теме (официальный JVM-флаг)
         jvmArgs += "-Dapple.awt.application.appearance=system"
@@ -94,7 +99,7 @@ compose.desktop {
 
             buildTypes.release.proguard {
                 isEnabled = false
-                version.set("7.5.0")
+                version.set("7.8.0")
                 obfuscate.set(true)
                 optimize.set(false)
 

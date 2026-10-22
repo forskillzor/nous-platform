@@ -3,8 +3,23 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import org.gradle.api.tasks.testing.Test
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
+
 allprojects {
     version = "0.1.0"
+}
+
+subprojects {
+    pluginManager.withPlugin("java-base") {
+        val jdk25Launcher = extensions.getByType<JavaToolchainService>().launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(25))
+        }
+        tasks.withType<Test>().configureEach {
+            javaLauncher.set(jdk25Launcher)
+        }
+    }
 }
 
 plugins {
