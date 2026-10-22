@@ -19,6 +19,10 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.domain.cache.CandleCacheStore
+import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.IndicatorPaneLayout
+import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.effectivePaneHeightDp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -192,6 +196,256 @@ class ChartViewModelCacheTest {
                 cache.writes.count { it.symbol == "BTCUSDT" } >= 2,
                 "ожидали flush предыдущего снапшота при смене символа",
             )
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `indicator intents add overlays and pane tabs`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            vm.dispatch(ChartIntent.AddIndicatorOverlay(IndicatorType.SMA))
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            advanceUntilIdle()
+
+            val indicators = vm.state.value.indicators
+            assertEquals(1, indicators.overlays.size)
+            assertEquals(IndicatorType.SMA, indicators.overlays.single().type)
+
+            val rsiPane = indicators.panes.single { pane ->
+                pane.indicators.any { it.type == IndicatorType.RSI }
+            }
+            assertEquals(rsiPane.id, indicators.activePaneId)
+            assertEquals(14.0, rsiPane.indicators.single().params["period"])
+
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `indicator params are clamped and empty panes are removed`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            advanceUntilIdle()
+            val rsiPane = vm.state.value.indicators.panes.single { pane ->
+                pane.indicators.any { it.type == IndicatorType.RSI }
+            }
+            val rsi = rsiPane.indicators.single { it.type == IndicatorType.RSI }
+
+            vm.dispatch(ChartIntent.UpdateIndicatorParams(rsi.id, mapOf("period" to 1000.0)))
+            advanceUntilIdle()
+            val updated = vm.state.value.indicators.panes
+                .single { it.id == rsiPane.id }
+                .indicators
+                .single { it.id == rsi.id }
+            assertEquals(500.0, updated.params["period"])
+
+            vm.dispatch(ChartIntent.SelectIndicatorPane(IndicatorDefinitions.LIQUIDATIONS_PANE_ID))
+            vm.dispatch(ChartIntent.RemoveIndicator(rsi.id))
+            advanceUntilIdle()
+
+            val indicators = vm.state.value.indicators
+            assertTrue(indicators.panes.none { it.id == rsiPane.id })
+            assertEquals(IndicatorDefinitions.LIQUIDATIONS_PANE_ID, indicators.activePaneId)
+
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `indicator panes keep layout height and order`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.MACD, createPane = true))
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.ATR, createPane = true))
+            vm.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.STACKED))
+            advanceUntilIdle()
+
+            val panes = vm.state.value.indicators.panes
+            val first = panes.first { pane -> pane.indicators.any { it.type == IndicatorType.RSI } }
+
+            vm.dispatch(ChartIntent.SetIndicatorPaneHeight(first.id, 999f, persist = false))
+            advanceUntilIdle()
+            assertEquals(240f, vm.state.value.indicators.panes.first { it.id == first.id }.heightDp)
+
+            vm.dispatch(ChartIntent.SetIndicatorPaneHeight(first.id, 10f))
+            advanceUntilIdle()
+            assertEquals(40f, vm.state.value.indicators.panes.first { it.id == first.id }.heightDp)
+
+            assertEquals(IndicatorPaneLayout.STACKED, vm.state.value.indicators.paneLayout)
+
+            val lastPane = vm.state.value.indicators.panes.last()
+            vm.dispatch(ChartIntent.MoveIndicatorPane(lastPane.id, 0))
+            advanceUntilIdle()
+            assertEquals(lastPane.id, vm.state.value.indicators.panes.first().id)
+
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `tab layout shares one height while stacked keeps per pane heights`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.MACD, createPane = true))
+            advanceUntilIdle()
+            val rsiPane = vm.state.value.indicators.panes.first { pane ->
+                pane.indicators.any { it.type == IndicatorType.RSI }
+            }
+            val macdPane = vm.state.value.indicators.panes.first { pane ->
+                pane.indicators.any { it.type == IndicatorType.MACD }
+            }
+
+            vm.dispatch(ChartIntent.SetIndicatorPaneHeight(rsiPane.id, 130f))
+            advanceUntilIdle()
+            assertEquals(130f, vm.state.value.indicators.tabsHeightDp)
+            assertEquals(130f, vm.state.value.indicators.effectivePaneHeightDp(rsiPane.id))
+            assertEquals(80f, vm.state.value.indicators.panes.first { it.id == rsiPane.id }.heightDp)
+
+            vm.dispatch(ChartIntent.SelectIndicatorPane(macdPane.id))
+            advanceUntilIdle()
+            assertEquals(130f, vm.state.value.indicators.effectivePaneHeightDp(macdPane.id))
+
+            vm.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.STACKED))
+            vm.dispatch(ChartIntent.SetIndicatorPaneHeight(rsiPane.id, 150f))
+            vm.dispatch(ChartIntent.SetIndicatorPaneHeight(macdPane.id, 90f))
+            advanceUntilIdle()
+            assertEquals(130f, vm.state.value.indicators.tabsHeightDp)
+            assertEquals(150f, vm.state.value.indicators.effectivePaneHeightDp(rsiPane.id))
+            assertEquals(90f, vm.state.value.indicators.effectivePaneHeightDp(macdPane.id))
+
+            vm.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.TABS))
+            advanceUntilIdle()
+            assertEquals(130f, vm.state.value.indicators.effectivePaneHeightDp(rsiPane.id))
+            assertEquals(130f, vm.state.value.indicators.effectivePaneHeightDp(macdPane.id))
+
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `applying preset replaces indicators but keeps layout and heights`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            advanceUntilIdle()
+            val rsiPane = vm.state.value.indicators.panes.first { pane ->
+                pane.indicators.any { it.type == IndicatorType.RSI }
+            }
+            vm.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.STACKED))
+            vm.dispatch(ChartIntent.SetIndicatorPaneHeight(rsiPane.id, 120f))
+            advanceUntilIdle()
+
+            val preset = IndicatorPreset(
+                id = "preset-1",
+                name = "Scalp",
+                overlays = listOf(IndicatorDefinitions.create(IndicatorType.EMA, "ema-preset")),
+                panes = listOf(
+                    IndicatorPresetPane(
+                        listOf(IndicatorDefinitions.create(IndicatorType.RSI, "rsi-preset")),
+                    ),
+                    IndicatorPresetPane(
+                        listOf(IndicatorDefinitions.create(IndicatorType.MACD, "macd-preset")),
+                    ),
+                ),
+                activePaneIndex = 1,
+            )
+            vm.dispatch(ChartIntent.ApplyIndicatorPreset(preset))
+            advanceUntilIdle()
+
+            val indicators = vm.state.value.indicators
+            assertEquals(IndicatorPaneLayout.STACKED, indicators.paneLayout)
+            assertEquals(listOf(80f, 120f), indicators.panes.map { it.heightDp })
+            assertEquals("ema-preset", indicators.overlays.single().id)
+            assertEquals(1, indicators.panes.indexOfFirst { it.id == indicators.activePaneId })
+
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `selecting an existing indicator pane updates the active pane`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            val defaultPane = vm.state.value.indicators.panes.single()
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            advanceUntilIdle()
+            vm.dispatch(ChartIntent.SelectIndicatorPane(defaultPane.id))
+            advanceUntilIdle()
+            assertEquals(defaultPane.id, vm.state.value.indicators.activePaneId)
+
+            vm.dispatch(ChartIntent.SelectIndicatorPane("missing-pane"))
+            advanceUntilIdle()
+            assertEquals(defaultPane.id, vm.state.value.indicators.activePaneId)
+
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
+    fun `indicator line colors are set and reset to the theme default`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            val vm = createViewModel(FakeCandleCacheStore(), emptyMap(), dispatcher)
+
+            vm.dispatch(ChartIntent.AddIndicatorToPane(IndicatorType.RSI, createPane = true))
+            advanceUntilIdle()
+            val pane = vm.state.value.indicators.panes.first { pane ->
+                pane.indicators.any { it.type == IndicatorType.RSI }
+            }
+            val instance = pane.indicators.single()
+
+            vm.dispatch(ChartIntent.SetIndicatorLineColor(instance.id, "rsi", 0xFFFF0000L))
+            advanceUntilIdle()
+            assertEquals(
+                mapOf("rsi" to 0xFFFF0000L),
+                vm.state.value.indicators.panes.first { it.id == pane.id }
+                    .indicators.single().lineColors,
+            )
+
+            vm.dispatch(ChartIntent.SetIndicatorLineColor(instance.id, "rsi", null))
+            advanceUntilIdle()
+            assertTrue(
+                vm.state.value.indicators.panes.first { it.id == pane.id }
+                    .indicators.single().lineColors.isEmpty(),
+            )
+
             vm.dispose()
         } finally {
             Dispatchers.resetMain()

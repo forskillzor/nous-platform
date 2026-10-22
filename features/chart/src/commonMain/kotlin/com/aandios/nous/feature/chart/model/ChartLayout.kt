@@ -16,5 +16,10 @@ data class ChartLayout(
     val timeScaleHeight: Float = 20f,
     val chartMainArea: Rect,
     val timeScaleArea: Rect,
-    val indicatorAreas: List<Rect> = emptyList()
+    /** Tab strip above the visible indicator panes; null when there are no panes. */
+    val indicatorTabsArea: Rect? = null,
+    /** Per-pane title/legend rows; same order as [indicatorAreas]. */
+    val indicatorHeaderAreas: List<Rect> = emptyList(),
+    /** Drawable plot rectangles of the visible indicator panes. */
+    val indicatorAreas: List<Rect> = emptyList(),
 )

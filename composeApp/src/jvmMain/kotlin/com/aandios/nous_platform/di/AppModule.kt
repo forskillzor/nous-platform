@@ -17,6 +17,7 @@ import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
 import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.ui.ChartViewModel
+import com.aandios.nous.feature.chart.ui.IndicatorPresetRepository
 import com.aandios.nous.feature.dom.ui.DomViewModel
 import com.aandios.nous.feature.trades.ui.TradesViewModel
 import com.aandios.nous.feature.trading.ui.PaperModeState
@@ -86,6 +87,7 @@ val appModule = module {
     single<LocalStorage> { LocalStorage() }
     single<StateStore> { get<LocalStorage>() }
     single { SymbolWatchlistRepository(get()) }
+    single { IndicatorPresetRepository(get()) }
     single<CandleCacheStore> { get<LocalStorage>() }
     single<FootprintCacheStore> { get<LocalStorage>() }
 

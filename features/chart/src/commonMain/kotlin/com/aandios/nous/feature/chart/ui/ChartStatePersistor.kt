@@ -10,6 +10,8 @@ import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
+import com.aandios.nous.research.indicator.IndicatorState
+import kotlinx.serialization.json.Json
 
 /**
  * Сохранение и восстановление состояния графика (символ, таймфрейм, режим, агрегация).
@@ -40,6 +42,7 @@ class ChartStatePersistor(
         val zoomLevel: Float? = null,
         val providerId: String? = null,
         val contractType: ContractType? = null,
+        val indicators: IndicatorState? = null,
     )
 
     data class TradingState(
@@ -143,6 +146,15 @@ class ChartStatePersistor(
         store.putString(panelKey(KEY_FP_RING_DIAMETER), fpRingDiameter.name)
     }
 
+    suspend fun saveIndicators(indicators: IndicatorState) {
+        store.putString(panelKey(KEY_INDICATORS), indicatorsJson.encodeToString(indicators))
+    }
+
+    suspend fun restoreIndicators(): IndicatorState? =
+        store.getString(panelKey(KEY_INDICATORS))?.let { raw ->
+            runCatching { indicatorsJson.decodeFromString<IndicatorState>(raw) }.getOrNull()
+        }
+
     /** Зум живёт в UI-слое и сохраняется отдельно. */
     suspend fun saveZoom(zoomLevel: Float) {
         store.putString(KEY_ZOOM, zoomLevel.toString())
@@ -184,10 +196,16 @@ class ChartStatePersistor(
             contractType = store.getString(KEY_CONTRACT_TYPE)?.let { raw ->
                 runCatching { ContractType.valueOf(raw) }.getOrNull()
             },
+            indicators = restoreIndicators(),
         )
     }
 
     companion object {
+        private val indicatorsJson = Json {
+            ignoreUnknownKeys = true
+            encodeDefaults = true
+        }
+
         const val KEY_SYMBOL = "chart_symbol"
         const val KEY_TIMEFRAME = "chart_timeframe"
         const val KEY_CHART_MODE = "chart_mode"
@@ -208,5 +226,6 @@ class ChartStatePersistor(
         const val KEY_SHOW_ORDERS = "chart_show_orders"
         const val KEY_SHOW_POSITIONS = "chart_show_positions"
         const val KEY_PANEL_COLLAPSED = "chart_panel_collapsed"
+        const val KEY_INDICATORS = "chart_indicators"
     }
 }

@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.rendering
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.text.AnnotatedString
@@ -26,9 +27,9 @@ import com.aandios.nous.feature.chart.utils.priceFromY
 /**
  * Рисует перекрестие (crosshair) при наведении мыши на график.
  *
- * Crosshair всегда включён (TradingView-стиль): две линии через область графика
- * и проекции на шкалы — badge цены на ценовой шкале (значение под курсором)
- * и badge времени на шкале времени (ближайшая свеча).
+ * Crosshair всегда включён (TradingView-стиль): вертикальная линия через
+ * главный график и панели индикаторов, горизонтальная — в области под курсором,
+ * плюс badge значения на правой шкале и badge времени внизу.
  */
 fun DrawScope.drawCrosshair(
     mousePosition: Offset,
@@ -39,6 +40,8 @@ fun DrawScope.drawCrosshair(
     textMeasurer: TextMeasurer,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
+    /** Value ranges of the visible indicator panes, same order as their areas. */
+    indicatorValueRanges: List<Pair<Float, Float>?> = emptyList(),
     /** Trading ON: горизонтальная линия красится цветом будущей стороны. */
     tradingEnabled: Boolean = false,
     /** Опорная цена (last) для определения long/short под курсором. */
@@ -46,56 +49,88 @@ fun DrawScope.drawCrosshair(
 ) {
     val mainArea = chartLayout.chartMainArea
 
-    // Проверяем находится ли курсор в области графика (без шкалы времени)
-    if (mousePosition.x < mainArea.left ||
-        mousePosition.x > mainArea.right ||
-        mousePosition.y < mainArea.top ||
-        mousePosition.y > mainArea.bottom) {
-        return // Курсор вне области графика
+    // Курсор должен быть над plot-областью главного графика или индикатора.
+    if (mousePosition.x < mainArea.left || mousePosition.x > mainArea.right) return
+    val inMainArea = mousePosition.y >= mainArea.top && mousePosition.y <= mainArea.bottom
+    val paneIndex = chartLayout.indicatorAreas.indexOfFirst { area ->
+        mousePosition.y >= area.top && mousePosition.y <= area.bottom
     }
+    if (!inMainArea && paneIndex < 0) return
 
-    // Цена под курсором (нужна и для бейджа, и для цвета линии в трейдинге)
-    val priceAtCursor = priceFromY(
-        y = mousePosition.y,
-        priceRange = priceRange,
-        chartHeight = mainArea.height
-    )
-
-    // Вертикальная линия через весь график
+    val crosshairBottom = chartLayout.indicatorAreas.lastOrNull()?.bottom ?: mainArea.bottom
     drawLine(
         color = config.crosshairColor.copy(alpha = 0.7f),
         start = Offset(mousePosition.x, mainArea.top),
-        end = Offset(mousePosition.x, mainArea.bottom),
+        end = Offset(mousePosition.x, crosshairBottom),
         strokeWidth = 1f
     )
 
-    // Горизонтальная линия через весь график.
-    // Во время трейдинга она сплошная и цветом стороны, которая будет
-    // размещена по клику: ниже last — Long (зелёный), выше — Short (красный).
-    val horizontalColor = if (tradingEnabled) {
-        val reference = currentPrice?.takeIf { it > 0f }
-        when {
-            reference == null -> config.crosshairColor
-            priceAtCursor <= reference -> config.candleStyle.bullishColor
-            else -> config.candleStyle.bearishColor
-        }
-    } else {
-        config.crosshairColor.copy(alpha = 0.7f)
-    }
-    drawLine(
-        color = horizontalColor,
-        start = Offset(mainArea.left, mousePosition.y),
-        end = Offset(mainArea.right, mousePosition.y),
-        strokeWidth = if (tradingEnabled) 1.5f else 1f
-    )
+    if (inMainArea) {
+        // Цена под курсором (нужна и для бейджа, и для цвета линии в трейдинге)
+        val priceAtCursor = priceFromY(
+            y = mousePosition.y,
+            priceRange = priceRange,
+            chartHeight = mainArea.height
+        )
 
-    drawPriceBadgeOnScale(
-        price = priceAtCursor,
-        mouseY = mousePosition.y,
-        chartLayout = chartLayout,
-        textMeasurer = textMeasurer,
-        config = config
-    )
+        // Во время трейдинга линия сплошная и цветом стороны, которая будет
+        // размещена по клику: ниже last — Long (зелёный), выше — Short (красный).
+        val horizontalColor = if (tradingEnabled) {
+            val reference = currentPrice?.takeIf { it > 0f }
+            when {
+                reference == null -> config.crosshairColor
+                priceAtCursor <= reference -> config.candleStyle.bullishColor
+                else -> config.candleStyle.bearishColor
+            }
+        } else {
+            config.crosshairColor.copy(alpha = 0.7f)
+        }
+        drawLine(
+            color = horizontalColor,
+            start = Offset(mainArea.left, mousePosition.y),
+            end = Offset(mainArea.right, mousePosition.y),
+            strokeWidth = if (tradingEnabled) 1.5f else 1f
+        )
+
+        drawPriceBadgeOnScale(
+            price = priceAtCursor,
+            mouseY = mousePosition.y,
+            chartLayout = chartLayout,
+            textMeasurer = textMeasurer,
+            config = config
+        )
+    } else {
+        val paneArea = chartLayout.indicatorAreas[paneIndex]
+        drawLine(
+            color = config.crosshairColor.copy(alpha = 0.7f),
+            start = Offset(paneArea.left, mousePosition.y),
+            end = Offset(paneArea.right, mousePosition.y),
+            strokeWidth = 1f
+        )
+
+        val range = indicatorValueRanges.getOrNull(paneIndex)
+        if (range != null) {
+            drawIndicatorValueBadge(
+                value = indicatorValueAtY(
+                    y = mousePosition.y,
+                    area = paneArea,
+                    minValue = range.first,
+                    maxValue = range.second,
+                ),
+                rangeMin = range.first,
+                rangeMax = range.second,
+                mouseY = mousePosition.y,
+                scaleArea = Rect(
+                    left = chartLayout.priceScaleArea.left,
+                    top = paneArea.top,
+                    right = chartLayout.priceScaleArea.right,
+                    bottom = paneArea.bottom,
+                ),
+                config = config,
+                textMeasurer = textMeasurer,
+            )
+        }
+    }
 
     // Проекция на шкалу времени: ближайшая свеча к позиции курсора по X
     val candleIndex = findNearestCandleIndex(

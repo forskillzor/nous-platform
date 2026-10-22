@@ -5,7 +5,6 @@
 
 package com.aandios.nous.feature.chart.footprint
 
-import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation

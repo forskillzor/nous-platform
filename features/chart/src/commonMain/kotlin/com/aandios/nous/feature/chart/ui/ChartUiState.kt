@@ -11,6 +11,8 @@ import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
+import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.IndicatorState
 
 /**
  * Единое UI-состояние графика. Заменяет набор из 17 отдельных StateFlow
@@ -42,6 +44,8 @@ data class ChartUiState(
     val hasMoreFootprintHistory: Boolean = true,
     /** Тип контрактов панели: USDT-M / COIN-M (фильтр списка символов). */
     val contractType: ContractType = ContractType.USDT_M,
+    /** Per-panel indicator configuration (overlays + bottom pane tabs). */
+    val indicators: IndicatorState = IndicatorDefinitions.defaultState(),
 )
 
 sealed interface ChartState {

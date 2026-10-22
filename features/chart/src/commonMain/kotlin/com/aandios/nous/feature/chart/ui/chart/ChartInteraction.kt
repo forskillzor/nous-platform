@@ -84,8 +84,13 @@ fun CandleStickChartInteraction(
     onNeedMoreHistory: () -> Unit = {},
     hasMoreHistory: Boolean = true,
     footprintCandles: List<FootprintCandle>? = null,
+    overlayRenderers: List<DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit> = emptyList(),
     indicatorRenderers: List<DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit> = emptyList(),
-    indicatorHeightDp: Dp = 80.dp,
+    indicatorHeightsDp: List<Dp> = emptyList(),
+    indicatorValueRanges: List<Pair<Float, Float>?> = emptyList(),
+    indicatorTabsHeightDp: Dp = 18.dp,
+    indicatorHeaderHeightDp: Dp = 18.dp,
+    onLayoutChanged: ((ChartLayout) -> Unit)? = null,
     drawingHistory: DrawingHistory? = null,
     activeDrawingTool: DrawingToolType = DrawingToolType.NONE,
     onActiveDrawingToolChange: (DrawingToolType) -> Unit = {},
@@ -491,26 +496,52 @@ fun CandleStickChartInteraction(
         val density = LocalDensity.current
 
         val layout =
-            remember(config.priceScaleWidth, canvasWidth, canvasHeight, indicatorRenderers.size, indicatorHeightDp) {
+            remember(
+                config.priceScaleWidth,
+                canvasWidth,
+                canvasHeight,
+                indicatorRenderers.size,
+                indicatorHeightsDp,
+                indicatorTabsHeightDp,
+                indicatorHeaderHeightDp,
+            ) {
                 val widthPx = with(density) { canvasWidth.toPx() }
                 val heightPx = with(density) { canvasHeight.toPx() }
                 val chartPadding = 8f
+                val plotRight = widthPx - with(density) { config.priceScaleWidth.toPx() } - chartPadding
 
                 val timeScaleHeight = (heightPx * 0.04f).coerceAtLeast(20f).coerceAtMost(40f)
+                val priceScaleWidthPx = with(density) { config.priceScaleWidth.toPx() }
 
-                val priceScaleWidthPx = with(density) {
-                    config.priceScaleWidth.toPx()
+                val paneCount = indicatorRenderers.size
+                val requestTabsH = if (paneCount == 0) 0f else with(density) { indicatorTabsHeightDp.toPx() }
+                val requestHeaderH = if (paneCount == 0) 0f else with(density) { indicatorHeaderHeightDp.toPx() }
+                val minPlotH = with(density) { 24.dp.toPx() }
+                val requestedPlotHeights = List(paneCount) { index ->
+                    with(density) { indicatorHeightsDp.getOrElse(index) { 80.dp }.toPx() }
+                        .coerceAtLeast(minPlotH)
                 }
 
-                val indicatorH = with(density) { indicatorHeightDp.toPx() }
-                val indicatorTotalH = indicatorH * indicatorRenderers.size
+                // Keep at least ~80dp for the main chart; if panes are too tall,
+                // shrink their plot areas proportionally (headers/tabs stay fixed).
+                val minChartMainH = with(density) { 80.dp.toPx() }
+                val availableChromeH = (heightPx - timeScaleHeight - minChartMainH).coerceAtLeast(0f)
+                val fixedChromeH = requestTabsH + requestHeaderH * paneCount
+                val requestedPlotTotal = requestedPlotHeights.sum()
+                val plotScale = if (requestedPlotTotal <= 0f) {
+                    1f
+                } else {
+                    val availablePlotH = (availableChromeH - fixedChromeH).coerceAtLeast(0f)
+                    (availablePlotH / requestedPlotTotal).coerceIn(0f, 1f)
+                }
+                val effectivePlotHeights = requestedPlotHeights.map { it * plotScale }
+                val indicatorChromeH = fixedChromeH + effectivePlotHeights.sum()
 
-                // Единое Y-пространство для серии, crosshair и шкалы цен: chartMainArea
                 val chartMainArea = Rect(
                     left = 0f,
                     top = 0f,
-                    right = widthPx - priceScaleWidthPx - chartPadding,
-                    bottom = heightPx - timeScaleHeight - indicatorTotalH
+                    right = plotRight,
+                    bottom = (heightPx - timeScaleHeight - indicatorChromeH).coerceAtLeast(0f)
                 )
 
                 val priceScaleArea = Rect(
@@ -523,17 +554,38 @@ fun CandleStickChartInteraction(
                 val timeScaleArea = Rect(
                     left = 0f,
                     top = heightPx - timeScaleHeight,
-                    right = widthPx - priceScaleWidthPx - chartPadding,
+                    right = plotRight,
                     bottom = heightPx
                 )
 
-                val indicatorAreas = (0 until indicatorRenderers.size).map { i ->
+                val indicatorTabsArea = if (paneCount == 0) {
+                    null
+                } else {
                     Rect(
                         left = 0f,
-                        top = chartMainArea.bottom + i * indicatorH,
-                        right = widthPx - priceScaleWidthPx - chartPadding,
-                        bottom = chartMainArea.bottom + (i + 1) * indicatorH
+                        top = chartMainArea.bottom,
+                        right = plotRight,
+                        bottom = chartMainArea.bottom + requestTabsH,
                     )
+                }
+                val headerAreas = ArrayList<Rect>(paneCount)
+                val indicatorAreas = ArrayList<Rect>(paneCount)
+                var cursorY = indicatorTabsArea?.bottom ?: chartMainArea.bottom
+                for (index in 0 until paneCount) {
+                    headerAreas += Rect(
+                        left = 0f,
+                        top = cursorY,
+                        right = plotRight,
+                        bottom = cursorY + requestHeaderH,
+                    )
+                    cursorY += requestHeaderH
+                    indicatorAreas += Rect(
+                        left = 0f,
+                        top = cursorY,
+                        right = plotRight,
+                        bottom = cursorY + effectivePlotHeights[index],
+                    )
+                    cursorY += effectivePlotHeights[index]
                 }
 
                 ChartLayout(
@@ -545,9 +597,14 @@ fun CandleStickChartInteraction(
                     timeScaleHeight = timeScaleHeight,
                     chartMainArea = chartMainArea,
                     timeScaleArea = timeScaleArea,
-                    indicatorAreas = indicatorAreas
+                    indicatorTabsArea = indicatorTabsArea,
+                    indicatorHeaderAreas = headerAreas,
+                    indicatorAreas = indicatorAreas,
                 )
             }
+
+        val currentOnLayoutChanged by rememberUpdatedState(onLayoutChanged)
+        SideEffect { currentOnLayoutChanged?.invoke(layout) }
 
         // Метрики свечей и скролл — из TimeScale
         chartWidthPx = layout.chartMainArea.width
@@ -659,6 +716,11 @@ fun CandleStickChartInteraction(
             /** 1. Серия (свечи или footprint) */
             series.draw(this, chartCanvas)
 
+            /** 1b. Индикаторы поверх графика (SMA/EMA/Bollinger/VWAP/Keltner) */
+            overlayRenderers.forEach { renderer ->
+                renderer(this, layout.chartMainArea, candles, priceRange, clampedOffset, timeScale.zoomLevel)
+            }
+
             /** 2. Пунктирная линия текущей цены в footprint-режиме */
             val footprintData = series.footprintCandles
             if (footprintData != null && visibleCurrentPrice != null) {
@@ -719,7 +781,26 @@ fun CandleStickChartInteraction(
                 )
             }
 
-            /** 5b. Проекции линейки/трендовой на шкалу цен (под тиками шкалы) */
+            /** 5b. Right-side value scale for each indicator pane */
+            if (config.showPriceScale) {
+                layout.indicatorAreas.forEachIndexed { idx, area ->
+                    val range = indicatorValueRanges.getOrNull(idx) ?: return@forEachIndexed
+                    drawIndicatorValueScale(
+                        scaleArea = Rect(
+                            left = layout.priceScaleArea.left,
+                            top = area.top,
+                            right = layout.priceScaleArea.right,
+                            bottom = area.bottom,
+                        ),
+                        rangeMin = range.first,
+                        rangeMax = range.second,
+                        config = config,
+                        textMeasurer = textMeasurer,
+                    )
+                }
+            }
+
+            /** 5c. Проекции линейки/трендовой на шкалу цен (под тиками шкалы) */
             projectionTrends.forEach { trend ->
                 drawDrawingProjections(
                     drawing = trend,
@@ -828,6 +909,7 @@ fun CandleStickChartInteraction(
                     textMeasurer = textMeasurer,
                     scrollOffset = clampedOffset,
                     zoomLevel = timeScale.zoomLevel,
+                    indicatorValueRanges = indicatorValueRanges,
                     tradingEnabled = onChartTradingClick != null,
                     currentPrice = currentPrice ?: candles.lastOrNull()?.close,
                 )

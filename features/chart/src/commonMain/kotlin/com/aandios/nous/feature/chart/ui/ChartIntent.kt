@@ -7,6 +7,8 @@ package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
+import com.aandios.nous.research.indicator.IndicatorPaneLayout
+import com.aandios.nous.research.indicator.IndicatorType
 
 /**
  * Пользовательские намерения графика (MVI).
@@ -25,6 +27,34 @@ sealed interface ChartIntent {
     data class SetFpProfileScale(val scale: FootprintProfileScale) : ChartIntent
     data class SetFpRingWidth(val width: FootprintRingWidth) : ChartIntent
     data class SetFpRingDiameter(val diameter: FootprintRingDiameter) : ChartIntent
+
+    data class AddIndicatorOverlay(val type: IndicatorType) : ChartIntent
+    data class AddIndicatorToPane(
+        val type: IndicatorType,
+        val paneId: String? = null,
+        val createPane: Boolean = false,
+    ) : ChartIntent
+    data class RemoveIndicator(val instanceId: String) : ChartIntent
+    data class UpdateIndicatorParams(
+        val instanceId: String,
+        val params: Map<String, Double>,
+    ) : ChartIntent
+    data class SetIndicatorLineColor(
+        val instanceId: String,
+        val lineId: String,
+        /** ARGB override; `null` restores the theme color. */
+        val colorArgb: Long?,
+    ) : ChartIntent
+    data class SelectIndicatorPane(val paneId: String?) : ChartIntent
+    data class SetIndicatorPaneLayout(val layout: IndicatorPaneLayout) : ChartIntent
+    data class SetIndicatorPaneHeight(
+        val paneId: String,
+        val heightDp: Float,
+        /** Live resize passes false; the final drag value persists. */
+        val persist: Boolean = true,
+    ) : ChartIntent
+    data class MoveIndicatorPane(val paneId: String, val targetIndex: Int) : ChartIntent
+    data class ApplyIndicatorPreset(val preset: IndicatorPreset) : ChartIntent
 
     /** null — оставить текущие значения. */
     data class LoadChart(val symbol: String? = null, val timeframe: String? = null) : ChartIntent

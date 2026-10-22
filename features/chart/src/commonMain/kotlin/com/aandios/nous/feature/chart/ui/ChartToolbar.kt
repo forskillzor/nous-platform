@@ -163,6 +163,7 @@ fun ChartToolbar(
     onManageWatchlist: (() -> Unit)? = null,
     footprintSymbols: Set<String>? = null,
     modifier: Modifier = Modifier,
+    indicatorMenu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
     settingsMenu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -259,6 +260,11 @@ fun ChartToolbar(
             )
         }
 
+        if (indicatorMenu != null) {
+            Spacer(Modifier.width(tokens.spacing.sm))
+            ChartIndicatorButton(indicatorMenu)
+        }
+
         Spacer(Modifier.width(tokens.spacing.lg))
 
         Text(
@@ -297,6 +303,7 @@ fun ChartTitleToolbar(
     modifier: Modifier = Modifier,
     onManageWatchlist: (() -> Unit)? = null,
     settingsMenu: (@Composable (dismiss: () -> Unit) -> Unit)? = null,
+    indicatorPresetRepository: IndicatorPresetRepository? = null,
 ) {
     val uiState by chartViewModel.state.collectAsState()
     val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
@@ -320,6 +327,9 @@ fun ChartTitleToolbar(
         onManageWatchlist = onManageWatchlist,
         footprintSymbols = uiState.symbolsWithFootprint,
         modifier = modifier,
+        indicatorMenu = { dismiss ->
+            ChartIndicatorMenu(chartViewModel, dismiss, indicatorPresetRepository)
+        },
         settingsMenu = settingsMenu,
     )
 }

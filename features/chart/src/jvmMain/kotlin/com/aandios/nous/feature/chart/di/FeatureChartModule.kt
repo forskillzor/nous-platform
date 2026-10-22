@@ -16,6 +16,7 @@ import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.ui.ChartViewModel
+import com.aandios.nous.feature.chart.ui.IndicatorPresetRepository
 import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import org.koin.core.context.startKoin
@@ -64,6 +65,7 @@ val featureChartModule = module {
     single<StateStore> { get<LocalStorage>() }
     single<CandleCacheStore> { get<LocalStorage>() }
     single<FootprintCacheStore> { get<LocalStorage>() }
+    single { IndicatorPresetRepository(get()) }
 
     // 4. ViewModel — адаптеры резолвятся из реестра по выбранному провайдеру
     factory {

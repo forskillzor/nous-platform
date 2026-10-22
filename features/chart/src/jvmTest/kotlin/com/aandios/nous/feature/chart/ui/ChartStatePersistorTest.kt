@@ -8,6 +8,11 @@ package com.aandios.nous.feature.chart.ui
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
+import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.IndicatorPaneLayout
+import com.aandios.nous.research.indicator.IndicatorPaneState
+import com.aandios.nous.research.indicator.IndicatorState
+import com.aandios.nous.research.indicator.IndicatorType
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -198,6 +203,79 @@ class ChartStatePersistorTest {
         val persistor = ChartStatePersistor(store)
 
         assertEquals(AggregationLevel.TenTick, persistor.restore().fpAggregation)
+    }
+
+    @Test
+    fun `indicator state roundtrips per panel`() = runTest {
+        val store = FakeStateStore()
+        val left = ChartStatePersistor(store, "chart_ws_left_")
+        val right = ChartStatePersistor(store, "chart_ws_right_")
+        val indicators = IndicatorState(
+            overlays = listOf(
+                IndicatorDefinitions.create(IndicatorType.EMA, "ema-1").copy(
+                    lineColors = mapOf("ema" to 0xFF00FF00L),
+                ),
+            ),
+            panes = listOf(
+                IndicatorPaneState(
+                    id = "pane-rsi",
+                    indicators = listOf(IndicatorDefinitions.create(IndicatorType.RSI, "rsi-1")),
+                    heightDp = 132f,
+                ),
+            ),
+            activePaneId = "pane-rsi",
+            paneLayout = IndicatorPaneLayout.STACKED,
+            tabsHeightDp = 150f,
+        )
+
+        left.saveIndicators(indicators)
+
+        assertEquals(indicators, left.restoreIndicators())
+        assertEquals(indicators, left.restore().indicators)
+        assertNull(right.restoreIndicators())
+    }
+
+    @Test
+    fun `legacy indicator JSON gets pane layout defaults`() = runTest {
+        val store = FakeStateStore()
+        store.data[ChartStatePersistor.KEY_INDICATORS] =
+            """{"overlays":[],"panes":[{"id":"pane-rsi","indicators":[]}],"activePaneId":"pane-rsi"}"""
+        val persistor = ChartStatePersistor(store)
+
+        val restored = persistor.restoreIndicators()
+
+        assertEquals(IndicatorPaneLayout.TABS, restored?.paneLayout)
+        assertNull(restored?.tabsHeightDp)
+        assertEquals(80f, restored?.panes?.single()?.heightDp)
+    }
+
+    @Test
+    fun `missing indicator state restores null`() = runTest {
+        val persistor = ChartStatePersistor(FakeStateStore())
+
+        assertNull(persistor.restoreIndicators())
+        assertNull(persistor.restore().indicators)
+    }
+
+    @Test
+    fun `empty indicator state stays empty instead of falling back to liquidations`() = runTest {
+        val store = FakeStateStore()
+        val persistor = ChartStatePersistor(store)
+
+        persistor.saveIndicators(IndicatorState())
+
+        assertEquals(IndicatorState(), persistor.restoreIndicators())
+        assertEquals(true, store.data.containsKey(ChartStatePersistor.KEY_INDICATORS))
+    }
+
+    @Test
+    fun `invalid indicator JSON restores null`() = runTest {
+        val store = FakeStateStore()
+        store.data[ChartStatePersistor.KEY_INDICATORS] = "{not-json"
+        val persistor = ChartStatePersistor(store)
+
+        assertNull(persistor.restoreIndicators())
+        assertNull(persistor.restore().indicators)
     }
 
     @Test

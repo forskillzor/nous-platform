@@ -14,6 +14,10 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -27,9 +31,16 @@ import androidx.compose.ui.awt.v2.SwingWindow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.application
@@ -37,6 +48,7 @@ import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
+import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
@@ -49,16 +61,33 @@ import com.aandios.nous.core.ui.window.applyWindowBackground
 import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
+import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.model.toSkeletonCandle
 import com.aandios.nous.feature.chart.tools.DrawingHistory
 import com.aandios.nous.feature.chart.tools.DrawingRepository
 import com.aandios.nous.feature.chart.tools.DrawingToolType
 import com.aandios.nous.feature.chart.ui.chart.CandleStickChart
-import com.aandios.nous.feature.chart.ui.chart.drawLiquidationHistogram
+import com.aandios.nous.feature.chart.ui.chart.IndicatorChartColors
+import com.aandios.nous.feature.chart.ui.chart.IndicatorComputePipeline
+import com.aandios.nous.feature.chart.ui.chart.IndicatorPaneHeader
+import com.aandios.nous.feature.chart.ui.chart.indicatorChartColors
+import com.aandios.nous.feature.chart.ui.chart.indicatorPaneRange
+import com.aandios.nous.feature.chart.ui.chart.overlayIndicatorRenderer
+import com.aandios.nous.feature.chart.ui.chart.paneIndicatorRenderer
+import com.aandios.nous.feature.chart.ui.chart.withLineColors
 import com.aandios.nous.feature.chart.ui.withTheme
+import com.aandios.nous.research.indicator.IndicatorInstance
+import com.aandios.nous.research.indicator.IndicatorOutput
+import com.aandios.nous.research.indicator.IndicatorPaneLayout
+import com.aandios.nous.research.indicator.IndicatorState
+import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.Ta4jIndicatorEngine
+import com.aandios.nous.research.indicator.effectivePaneHeightDp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.awt.Cursor
+import kotlin.math.roundToInt
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.context.stopKoin
@@ -140,6 +169,7 @@ private fun ChartWindowContent(
 ) {
     val uiState by chartViewModel.state.collectAsState()
     val registry: ProviderRegistry = koinInject()
+    val indicatorPresetRepository: IndicatorPresetRepository = koinInject()
 
     // Chart trading
     val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
@@ -270,21 +300,7 @@ private fun ChartWindowContent(
     }
 
     val liqOrders = liquidationState.orders
-    val indicatorRenderers = remember(liqOrders, designTokens.colors.bullish, designTokens.colors.bearish) {
-        listOf<DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit>(
-            { area, candles, _, scroll, zoom ->
-                drawLiquidationHistogram(
-                    area = area,
-                    candles = candles,
-                    orders = liqOrders,
-                    scrollOffset = scroll,
-                    zoomLevel = zoom,
-                    longColor = designTokens.colors.bullish,
-                    shortColor = designTokens.colors.bearish,
-                )
-            }
-        )
-    }
+    val indicatorColors = remember(designTokens) { indicatorChartColors(designTokens.colors) }
 
     // Drawings: привязаны к workspace+panel и сохраняются на диск
     val drawingStore: StateStore? = remember {
@@ -321,6 +337,7 @@ private fun ChartWindowContent(
                 ChartTitleToolbar(
                     chartViewModel = chartViewModel,
                     settingsMenu = { dismiss -> ChartSettingsMenu(chartViewModel, dismiss) },
+                    indicatorPresetRepository = indicatorPresetRepository,
                 )
             }
         }
@@ -410,19 +427,21 @@ private fun ChartWindowContent(
                             }
                         }
                         is ChartState.Success -> {
-                            CandleStickChart(
+                            ChartCanvas(
                                 candles = state.candles,
                                 currentPrice = state.currentPrice,
-                                config = chartConfig,
-                                indicatorRenderers = indicatorRenderers,
-                                onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
-                                hasMoreHistory = uiState.hasMoreHistory,
+                                footprintCandles = null,
+                                seriesKey = "${uiState.currentProviderId}|${uiState.currentSymbol}|" +
+                                    "${uiState.currentTimeframe}|CANDLESTICK",
+                                indicators = uiState.indicators,
+                                colors = indicatorColors,
+                                liquidationOrders = liqOrders,
+                                chartConfig = chartConfig,
+                                initialZoomLevel = initialZoomLevel,
+                                onZoomChange = onZoomChange,
                                 drawingHistory = drawingHistory,
                                 activeDrawingTool = activeDrawingTool,
                                 onActiveDrawingToolChange = { activeDrawingTool = it },
-                                modifier = Modifier.fillMaxSize(),
-                                initialZoomLevel = initialZoomLevel,
-                                onZoomChange = onZoomChange,
                                 tradingOrders = if (showOrders) tradingOrders else emptyList(),
                                 tradingPositions = if (showPositions) tradingPositions else emptyList(),
                                 symbolBase = if (uiState.currentSymbolInfo?.isInverse == true) {
@@ -432,22 +451,11 @@ private fun ChartWindowContent(
                                 },
                                 contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
                                 inverse = uiState.currentSymbolInfo?.isInverse == true,
-                                onChartTradingClick = if (tradingEnabled) {
-                                    { price -> chartViewModel.placeChartOrder(price) }
-                                } else null,
-                                // Trading off — бейджи только для просмотра
-                                onCancelTradingOrder = if (tradingEnabled) {
-                                    { chartViewModel.cancelChartOrder(it.orderId) }
-                                } else null,
-                                onMoveTradingOrder = if (tradingEnabled) {
-                                    { order, price -> chartViewModel.moveChartOrder(order, price) }
-                                } else null,
-                                onResizeTradingOrder = if (tradingEnabled) {
-                                    { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
-                                } else null,
-                                onCloseTradingPosition = if (tradingEnabled) {
-                                    { position -> chartViewModel.closeChartPosition(position) }
-                                } else null,
+                                tradingEnabled = tradingEnabled,
+                                chartViewModel = chartViewModel,
+                                onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
+                                hasMoreHistory = uiState.hasMoreHistory,
+                                modifier = Modifier.fillMaxSize(),
                             )
                         }
                     }
@@ -506,45 +514,37 @@ private fun ChartWindowContent(
                                 }
                             }
                         }
-                        CandleStickChart(
+                        ChartCanvas(
                             candles = fpToCandle,
                             currentPrice = uiState.footprintCurrentPrice ?: fpToCandle.lastOrNull()?.close,
-                            config = chartConfig,
-                            indicatorRenderers = indicatorRenderers,
                             footprintCandles = allFp,
-                            onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory) },
-                            hasMoreHistory = uiState.hasMoreFootprintHistory,
+                            seriesKey = "${uiState.currentProviderId}|${uiState.currentSymbol}|" +
+                                "${uiState.currentTimeframe}|FOOTPRINT",
+                            indicators = uiState.indicators,
+                            colors = indicatorColors,
+                            liquidationOrders = liqOrders,
+                            chartConfig = chartConfig,
+                            initialZoomLevel = initialZoomLevel,
+                            onZoomChange = onZoomChange,
                             drawingHistory = drawingHistory,
                             activeDrawingTool = activeDrawingTool,
                             onActiveDrawingToolChange = { activeDrawingTool = it },
-                            modifier = Modifier.fillMaxSize(),
-                            initialZoomLevel = initialZoomLevel,
-                            onZoomChange = onZoomChange,
                             tradingOrders = if (showOrders) tradingOrders else emptyList(),
                             tradingPositions = if (showPositions) tradingPositions else emptyList(),
                             symbolBase = if (uiState.currentSymbolInfo?.isInverse == true) {
-                        "cont"
-                    } else {
-                        uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol
-                    },
-                    contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
-                    inverse = uiState.currentSymbolInfo?.isInverse == true,
-                            onChartTradingClick = if (tradingEnabled) {
-                                { price -> chartViewModel.placeChartOrder(price) }
-                            } else null,
-                            // Trading off — бейджи только для просмотра
-                            onCancelTradingOrder = if (tradingEnabled) {
-                                { chartViewModel.cancelChartOrder(it.orderId) }
-                            } else null,
-                            onMoveTradingOrder = if (tradingEnabled) {
-                                { order, price -> chartViewModel.moveChartOrder(order, price) }
-                            } else null,
-                            onResizeTradingOrder = if (tradingEnabled) {
-                                { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
-                            } else null,
-                            onCloseTradingPosition = if (tradingEnabled) {
-                                { position -> chartViewModel.closeChartPosition(position) }
-                            } else null,
+                                "cont"
+                            } else {
+                                uiState.currentSymbolInfo?.baseAsset ?: uiState.currentSymbol
+                            },
+                            contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
+                            inverse = uiState.currentSymbolInfo?.isInverse == true,
+                            tradingEnabled = tradingEnabled,
+                            chartViewModel = chartViewModel,
+                            onNeedMoreHistory = {
+                                chartViewModel.dispatch(ChartIntent.LoadMoreFootprintHistory)
+                            },
+                            hasMoreHistory = uiState.hasMoreFootprintHistory,
+                            modifier = Modifier.fillMaxSize(),
                         )
                     }
                 }
@@ -665,6 +665,243 @@ private fun ChartWindowContent(
     }
 }
 
+private val IndicatorTabsHeight = 20.dp
+private val IndicatorHeaderHeight = 18.dp
+
+@Composable
+private fun ChartCanvas(
+    candles: List<Candle>,
+    currentPrice: Float?,
+    footprintCandles: List<FootprintCandle>?,
+    seriesKey: String,
+    indicators: IndicatorState,
+    colors: IndicatorChartColors,
+    liquidationOrders: List<LiquidationOrder>,
+    chartConfig: ChartConfig,
+    initialZoomLevel: Float,
+    onZoomChange: ((Float) -> Unit)?,
+    drawingHistory: DrawingHistory,
+    activeDrawingTool: DrawingToolType,
+    onActiveDrawingToolChange: (DrawingToolType) -> Unit,
+    tradingOrders: List<com.aandios.nous.api.market.model.trading.Order>,
+    tradingPositions: List<com.aandios.nous.api.market.model.trading.Position>,
+    symbolBase: String?,
+    contractSize: Double,
+    inverse: Boolean,
+    tradingEnabled: Boolean,
+    chartViewModel: ChartViewModel,
+    onNeedMoreHistory: () -> Unit,
+    hasMoreHistory: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val visuals = rememberIndicatorRenderers(
+        candles = candles,
+        indicators = indicators,
+        seriesKey = seriesKey,
+        colors = colors,
+        liquidationOrders = liquidationOrders,
+    )
+    val activePaneId = indicators.activePaneId
+        ?.takeIf { id -> indicators.panes.any { it.id == id } }
+        ?: indicators.panes.firstOrNull()?.id
+    val visiblePanes = when (indicators.paneLayout) {
+        IndicatorPaneLayout.TABS -> visuals.panes.filter { it.paneId == activePaneId }
+        IndicatorPaneLayout.STACKED -> visuals.panes
+    }
+    val paneHeights = visiblePanes.map { visual ->
+        indicators.effectivePaneHeightDp(visual.paneId)
+    }
+
+    var chartLayout by remember { mutableStateOf<ChartLayout?>(null) }
+    val density = LocalDensity.current
+
+    Box(modifier) {
+        CandleStickChart(
+            candles = candles,
+            currentPrice = currentPrice,
+            config = chartConfig,
+            overlayRenderers = visuals.overlays,
+            indicatorRenderers = visiblePanes.map { it.renderer },
+            indicatorHeightsDp = paneHeights.map { it.dp },
+            indicatorValueRanges = visiblePanes.map { it.valueRange },
+            indicatorTabsHeightDp = IndicatorTabsHeight,
+            indicatorHeaderHeightDp = IndicatorHeaderHeight,
+            onLayoutChanged = { chartLayout = it },
+            footprintCandles = footprintCandles,
+            onNeedMoreHistory = onNeedMoreHistory,
+            hasMoreHistory = hasMoreHistory,
+            drawingHistory = drawingHistory,
+            activeDrawingTool = activeDrawingTool,
+            onActiveDrawingToolChange = onActiveDrawingToolChange,
+            modifier = Modifier.fillMaxSize(),
+            initialZoomLevel = initialZoomLevel,
+            onZoomChange = onZoomChange,
+            tradingOrders = tradingOrders,
+            tradingPositions = tradingPositions,
+            symbolBase = symbolBase,
+            contractSize = contractSize,
+            inverse = inverse,
+            onChartTradingClick = if (tradingEnabled) {
+                { price -> chartViewModel.placeChartOrder(price) }
+            } else null,
+            // Trading off — бейджи только для просмотра
+            onCancelTradingOrder = if (tradingEnabled) {
+                { chartViewModel.cancelChartOrder(it.orderId) }
+            } else null,
+            onMoveTradingOrder = if (tradingEnabled) {
+                { order, price -> chartViewModel.moveChartOrder(order, price) }
+            } else null,
+            onResizeTradingOrder = if (tradingEnabled) {
+                { order, qty -> chartViewModel.resizeChartOrder(order, qty) }
+            } else null,
+            onCloseTradingPosition = if (tradingEnabled) {
+                { position -> chartViewModel.closeChartPosition(position) }
+            } else null,
+        )
+
+        val layout = chartLayout
+        if (layout != null && visiblePanes.isNotEmpty()) {
+            layout.indicatorTabsArea?.let { area ->
+                IndicatorPaneTabs(
+                    state = indicators,
+                    onSelectPane = {
+                        chartViewModel.dispatch(ChartIntent.SelectIndicatorPane(it))
+                    },
+                    onMovePane = { paneId, targetIndex ->
+                        chartViewModel.dispatch(ChartIntent.MoveIndicatorPane(paneId, targetIndex))
+                    },
+                    modifier = Modifier
+                        .chartArea(area, density)
+                        .blockChartPointerInput(),
+                )
+            }
+            visiblePanes.forEachIndexed { index, visual ->
+                val pane = indicators.panes.firstOrNull { it.id == visual.paneId } ?: return@forEachIndexed
+                layout.indicatorHeaderAreas.getOrNull(index)?.let { area ->
+                    IndicatorPaneHeader(
+                        outputs = visual.outputs,
+                        includeLiquidations = visual.includeLiquidations,
+                        colors = colors,
+                        liquidationLongColor = visual.liquidationLongColor,
+                        liquidationShortColor = visual.liquidationShortColor,
+                        modifier = Modifier
+                            .chartArea(area, density)
+                            .blockChartPointerInput(),
+                    )
+                }
+            }
+            visiblePanes.forEachIndexed { index, visual ->
+                if (indicators.panes.none { it.id == visual.paneId }) return@forEachIndexed
+                val header = layout.indicatorHeaderAreas.getOrNull(index) ?: return@forEachIndexed
+                val halfHit = with(density) { 6.dp.toPx() }
+                IndicatorPaneResizeBoundary(
+                    paneId = visual.paneId,
+                    heightDp = paneHeights[index],
+                    onHeightChange = { height ->
+                        chartViewModel.dispatch(
+                            ChartIntent.SetIndicatorPaneHeight(
+                                paneId = visual.paneId,
+                                heightDp = height,
+                                persist = false,
+                            ),
+                        )
+                    },
+                    onHeightCommit = {
+                        val height = chartViewModel.state.value.indicators
+                            .effectivePaneHeightDp(visual.paneId)
+                        chartViewModel.dispatch(
+                            ChartIntent.SetIndicatorPaneHeight(
+                                paneId = visual.paneId,
+                                heightDp = height,
+                                persist = true,
+                            ),
+                        )
+                    },
+                    modifier = Modifier.chartArea(
+                        Rect(
+                            left = header.left,
+                            top = header.top - halfHit,
+                            right = header.right,
+                            bottom = header.top + halfHit,
+                        ),
+                        density,
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun IndicatorPaneResizeBoundary(
+    paneId: String,
+    heightDp: Float,
+    onHeightChange: (Float) -> Unit,
+    onHeightCommit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = LocalTerminalDesignTokens.current
+    val currentHeight by rememberUpdatedState(heightDp)
+    val currentOnChange by rememberUpdatedState(onHeightChange)
+    val currentOnCommit by rememberUpdatedState(onHeightCommit)
+    val interactionSource = remember { MutableInteractionSource() }
+    val hovered by interactionSource.collectIsHoveredAsState()
+    var dragging by remember { mutableStateOf(false) }
+    val active = hovered || dragging
+    val resizeCursor = remember {
+        PointerIcon(Cursor.getPredefinedCursor(Cursor.N_RESIZE_CURSOR))
+    }
+
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(12.dp)
+            .pointerHoverIcon(resizeCursor)
+            .hoverable(interactionSource)
+            .pointerInput(paneId) {
+                var startHeight = currentHeight
+                var totalDy = 0f
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        dragging = true
+                        startHeight = currentHeight
+                        totalDy = 0f
+                    },
+                    onDragCancel = {
+                        dragging = false
+                        currentOnCommit()
+                    },
+                    onDragEnd = {
+                        dragging = false
+                        currentOnCommit()
+                    },
+                    onVerticalDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDy += dragAmount
+                        currentOnChange(startHeight - totalDy / density)
+                    },
+                )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        if (active) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(2.dp)
+                    .background(tokens.colors.accent.copy(alpha = 0.5f)),
+            )
+        }
+    }
+}
+
+private fun Modifier.chartArea(area: Rect, density: Density): Modifier = this
+    .offset { IntOffset(area.left.roundToInt(), area.top.roundToInt()) }
+    .size(
+        width = with(density) { area.width.toDp() },
+        height = with(density) { area.height.toDp() },
+    )
+
 /** Snackbar чарта: слайд из-под тулбара, таймаут ~4.5с, крестик для закрытия. */
 @Composable
 private fun ChartNotificationItem(
@@ -732,6 +969,100 @@ private fun ChartNotificationItem(
             )
         }
     }
+}
+
+private typealias ChartIndicatorRenderer =
+    DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit
+
+private data class ChartPaneVisual(
+    val paneId: String,
+    val outputs: List<IndicatorOutput>,
+    val includeLiquidations: Boolean,
+    val liquidationLongColor: Color?,
+    val liquidationShortColor: Color?,
+    val valueRange: Pair<Float, Float>?,
+    val renderer: ChartIndicatorRenderer,
+)
+
+private data class ChartIndicatorVisuals(
+    val overlays: List<ChartIndicatorRenderer>,
+    val panes: List<ChartPaneVisual>,
+)
+
+@Composable
+private fun rememberIndicatorRenderers(
+    candles: List<Candle>,
+    indicators: IndicatorState,
+    seriesKey: String,
+    colors: IndicatorChartColors,
+    liquidationOrders: List<LiquidationOrder>,
+): ChartIndicatorVisuals {
+    val instances = remember(indicators) {
+        buildList<IndicatorInstance> {
+            addAll(indicators.overlays)
+            indicators.panes.forEach { addAll(it.indicators) }
+        }
+    }
+    val engine = remember { Ta4jIndicatorEngine() }
+    val scope = rememberCoroutineScope()
+    val pipeline = remember(engine, scope, seriesKey) { IndicatorComputePipeline(engine, scope) }
+    DisposableEffect(pipeline) {
+        onDispose { pipeline.close() }
+    }
+    LaunchedEffect(
+        pipeline,
+        candles.size,
+        candles.firstOrNull()?.timestamp,
+        candles.lastOrNull(),
+        instances,
+    ) {
+        pipeline.submit(candles, instances)
+    }
+    val outputs by pipeline.outputs.collectAsState()
+
+    val overlayOutputs = indicators.overlays.mapNotNull { instance ->
+        outputs[instance.id]?.withLineColors(instance.lineColors)
+    }
+    val overlayRenderers = remember(overlayOutputs, colors) {
+        if (overlayOutputs.isEmpty()) {
+            emptyList()
+        } else {
+            listOf(overlayIndicatorRenderer(overlayOutputs, colors))
+        }
+    }
+    val paneVisuals = remember(indicators.panes, outputs, colors, liquidationOrders) {
+        indicators.panes.map { pane ->
+            val paneOutputs = pane.indicators.mapNotNull { instance ->
+                outputs[instance.id]?.withLineColors(instance.lineColors)
+            }
+            val liquidationInstance = pane.indicators.firstOrNull {
+                it.type == IndicatorType.LIQUIDATIONS
+            }
+            val includeLiquidations = liquidationInstance != null
+            val liquidationLongColor = liquidationInstance?.lineColors
+                ?.get("long")
+                ?.let { Color(it) }
+            val liquidationShortColor = liquidationInstance?.lineColors
+                ?.get("short")
+                ?.let { Color(it) }
+            ChartPaneVisual(
+                paneId = pane.id,
+                outputs = paneOutputs,
+                includeLiquidations = includeLiquidations,
+                liquidationLongColor = liquidationLongColor,
+                liquidationShortColor = liquidationShortColor,
+                valueRange = paneOutputs.takeIf { it.isNotEmpty() }?.let(::indicatorPaneRange),
+                renderer = paneIndicatorRenderer(
+                    outputs = paneOutputs,
+                    colors = colors,
+                    liquidationOrders = if (includeLiquidations) liquidationOrders else emptyList(),
+                    liquidationLongColor = liquidationLongColor,
+                    liquidationShortColor = liquidationShortColor,
+                ),
+            )
+        }
+    }
+    return ChartIndicatorVisuals(overlayRenderers, paneVisuals)
 }
 
 @OptIn(ExperimentalComposeUiApi::class)

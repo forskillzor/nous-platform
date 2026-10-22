@@ -37,11 +37,24 @@ import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.footprint.FootprintController
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
+import com.aandios.nous.research.indicator.DEFAULT_INDICATOR_PANE_HEIGHT_DP
+import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.IndicatorInstance
+import com.aandios.nous.research.indicator.IndicatorPaneLayout
+import com.aandios.nous.research.indicator.IndicatorPaneState
+import com.aandios.nous.research.indicator.IndicatorPlacement
+import com.aandios.nous.research.indicator.IndicatorState
+import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.effectiveTabsHeightDp
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.math.roundToInt
 
 /** Уведомление chart-трейдинга (snackbar поверх графика под тулбаром). */
+private const val INDICATOR_PANE_MIN_HEIGHT_DP = 40f
+private const val INDICATOR_PANE_MAX_HEIGHT_DP = 240f
+
 data class ChartNotification(val id: Long, val text: String)
 
 class ChartViewModel(
@@ -193,10 +206,14 @@ class ChartViewModel(
             "chart_${workspaceId}_${panelId}_"
         } else ""
         persistor = ChartStatePersistor(store, prefix)
-        viewModelScope.launch { restoreTradingState() }
+        viewModelScope.launch {
+            restoreTradingState()
+            restoreIndicatorState()
+        }
     }
 
     override fun dispose() {
+        flushIndicatorState()
         flushCache()
         candleStateJob?.cancel()
         candleController?.dispose()
@@ -216,6 +233,20 @@ class ChartViewModel(
             is ChartIntent.SetFpProfileScale -> setFpProfileScale(intent.scale)
             is ChartIntent.SetFpRingWidth -> setFpRingWidth(intent.width)
             is ChartIntent.SetFpRingDiameter -> setFpRingDiameter(intent.diameter)
+            is ChartIntent.AddIndicatorOverlay -> addIndicatorOverlay(intent.type)
+            is ChartIntent.AddIndicatorToPane ->
+                addIndicatorToPane(intent.type, intent.paneId, intent.createPane)
+            is ChartIntent.RemoveIndicator -> removeIndicator(intent.instanceId)
+            is ChartIntent.UpdateIndicatorParams ->
+                updateIndicatorParams(intent.instanceId, intent.params)
+            is ChartIntent.SetIndicatorLineColor ->
+                setIndicatorLineColor(intent.instanceId, intent.lineId, intent.colorArgb)
+            is ChartIntent.SelectIndicatorPane -> selectIndicatorPane(intent.paneId)
+            is ChartIntent.SetIndicatorPaneLayout -> setIndicatorPaneLayout(intent.layout)
+            is ChartIntent.SetIndicatorPaneHeight ->
+                setIndicatorPaneHeight(intent.paneId, intent.heightDp, intent.persist)
+            is ChartIntent.MoveIndicatorPane -> moveIndicatorPane(intent.paneId, intent.targetIndex)
+            is ChartIntent.ApplyIndicatorPreset -> applyIndicatorPreset(intent.preset)
             is ChartIntent.LoadChart -> loadChart(
                 ticker = intent.symbol ?: _state.value.currentSymbol,
                 timeframe = intent.timeframe ?: _state.value.currentTimeframe,
@@ -435,6 +466,241 @@ class ChartViewModel(
     private fun setFpRingDiameter(diameter: FootprintRingDiameter) {
         _state.update { it.copy(fpRingDiameter = diameter) }
         saveFootprintState()
+    }
+
+    // ── Индикаторы ──
+
+    private var indicatorSequence = 0L
+
+    private fun addIndicatorOverlay(type: IndicatorType) {
+        if (IndicatorDefinitions.definition(type).placement != IndicatorPlacement.OVERLAY) return
+        val instance = IndicatorDefinitions.create(type, newIndicatorId(type))
+        updateIndicators { state -> state.copy(overlays = state.overlays + instance) }
+    }
+
+    private fun addIndicatorToPane(
+        type: IndicatorType,
+        paneId: String?,
+        createPane: Boolean,
+    ) {
+        if (IndicatorDefinitions.definition(type).placement != IndicatorPlacement.PANE) return
+        val instance = IndicatorDefinitions.create(type, newIndicatorId(type))
+        updateIndicators { state ->
+            val activePaneId = state.activePaneId
+            val targetPaneId = when {
+                createPane -> newPaneId()
+                paneId != null -> paneId
+                activePaneId != null -> activePaneId
+                state.panes.isNotEmpty() -> state.panes.last().id
+                else -> newPaneId()
+            }
+            val paneExists = state.panes.any { it.id == targetPaneId }
+            val panes = if (paneExists) {
+                state.panes.map { pane ->
+                    if (pane.id == targetPaneId) {
+                        pane.copy(indicators = pane.indicators + instance)
+                    } else {
+                        pane
+                    }
+                }
+            } else {
+                state.panes + IndicatorPaneState(
+                    id = targetPaneId,
+                    indicators = listOf(instance),
+                )
+            }
+            state.copy(panes = panes, activePaneId = targetPaneId)
+        }
+    }
+
+    private fun removeIndicator(instanceId: String) {
+        updateIndicators { state ->
+            val overlays = state.overlays.filterNot { it.id == instanceId }
+            val panes = state.panes.mapNotNull { pane ->
+                val remaining = pane.indicators.filterNot { it.id == instanceId }
+                when {
+                    remaining.size == pane.indicators.size -> pane
+                    remaining.isEmpty() -> null
+                    else -> pane.copy(indicators = remaining)
+                }
+            }
+            val activePaneId = state.activePaneId
+                ?.takeIf { id -> panes.any { it.id == id } }
+                ?: panes.firstOrNull()?.id
+            state.copy(
+                overlays = overlays,
+                panes = panes,
+                activePaneId = activePaneId,
+            )
+        }
+    }
+
+    private fun updateIndicatorParams(instanceId: String, params: Map<String, Double>) {
+        fun update(list: List<IndicatorInstance>): List<IndicatorInstance> = list.map { instance ->
+            if (instance.id == instanceId) {
+                instance.copy(params = mergeIndicatorParams(instance, params))
+            } else {
+                instance
+            }
+        }
+        updateIndicators { state ->
+            state.copy(
+                overlays = update(state.overlays),
+                panes = state.panes.map { pane ->
+                    pane.copy(indicators = update(pane.indicators))
+                },
+            )
+        }
+    }
+
+    private fun setIndicatorLineColor(instanceId: String, lineId: String, colorArgb: Long?) {
+        fun update(list: List<IndicatorInstance>): List<IndicatorInstance> = list.map { instance ->
+            if (instance.id != instanceId) return@map instance
+            val colors = instance.lineColors.toMutableMap()
+            if (colorArgb == null) colors.remove(lineId) else colors[lineId] = colorArgb
+            if (colors == instance.lineColors) instance else instance.copy(lineColors = colors)
+        }
+        updateIndicators { state ->
+            state.copy(
+                overlays = update(state.overlays),
+                panes = state.panes.map { pane ->
+                    pane.copy(indicators = update(pane.indicators))
+                },
+            )
+        }
+    }
+
+    private fun selectIndicatorPane(paneId: String?) {
+        val indicators = _state.value.indicators
+        if (paneId != null && indicators.panes.none { it.id == paneId }) return
+        updateIndicators { state ->
+            val tabsHeight = if (state.paneLayout == IndicatorPaneLayout.TABS) {
+                state.effectiveTabsHeightDp()
+            } else {
+                state.tabsHeightDp
+            }
+            state.copy(activePaneId = paneId, tabsHeightDp = tabsHeight)
+        }
+    }
+
+    private fun setIndicatorPaneLayout(layout: IndicatorPaneLayout) {
+        val indicators = _state.value.indicators
+        if (indicators.paneLayout == layout) return
+        val tabsHeight = indicators.effectiveTabsHeightDp()
+        updateIndicators { state ->
+            state.copy(paneLayout = layout, tabsHeightDp = tabsHeight)
+        }
+    }
+
+    private fun setIndicatorPaneHeight(paneId: String, heightDp: Float, persist: Boolean) {
+        val clamped = heightDp.coerceIn(INDICATOR_PANE_MIN_HEIGHT_DP, INDICATOR_PANE_MAX_HEIGHT_DP)
+        val indicators = _state.value.indicators
+        val pane = indicators.panes.firstOrNull { it.id == paneId } ?: return
+        val current = if (indicators.paneLayout == IndicatorPaneLayout.TABS) {
+            indicators.effectiveTabsHeightDp()
+        } else {
+            pane.heightDp
+        }
+        if (current == clamped) {
+            if (persist) saveIndicatorState()
+            return
+        }
+        updateIndicators(persist) { state ->
+            if (state.paneLayout == IndicatorPaneLayout.TABS) {
+                state.copy(tabsHeightDp = clamped)
+            } else {
+                state.copy(
+                    panes = state.panes.map { paneState ->
+                        if (paneState.id == paneId) {
+                            paneState.copy(heightDp = clamped)
+                        } else {
+                            paneState
+                        }
+                    },
+                )
+            }
+        }
+    }
+
+    private fun moveIndicatorPane(paneId: String, targetIndex: Int) {
+        updateIndicators { state ->
+            val from = state.panes.indexOfFirst { it.id == paneId }
+            if (from < 0) return@updateIndicators state
+            val target = targetIndex.coerceIn(0, state.panes.lastIndex)
+            if (from == target) return@updateIndicators state
+            val panes = state.panes.toMutableList()
+            val pane = panes.removeAt(from)
+            panes.add(target, pane)
+            state.copy(panes = panes)
+        }
+    }
+
+    private fun applyIndicatorPreset(preset: IndicatorPreset) {
+        updateIndicators { state ->
+            val heights = state.panes.map { it.heightDp }
+            val panes = preset.panes.mapIndexed { index, pane ->
+                IndicatorPaneState(
+                    id = newPaneId(),
+                    indicators = pane.indicators,
+                    heightDp = heights.getOrElse(index) { DEFAULT_INDICATOR_PANE_HEIGHT_DP },
+                )
+            }
+            state.copy(
+                overlays = preset.overlays,
+                panes = panes,
+                activePaneId = panes.getOrNull(preset.activePaneIndex)?.id
+                    ?: panes.firstOrNull()?.id,
+            )
+        }
+    }
+
+    private fun mergeIndicatorParams(
+        instance: IndicatorInstance,
+        overrides: Map<String, Double>,
+    ): Map<String, Double> {
+        val definition = IndicatorDefinitions.definition(instance.type)
+        val merged = instance.params + overrides
+        return definition.parameters.associate { spec ->
+            val raw = merged[spec.key] ?: spec.defaultValue
+            val value = raw.coerceIn(spec.minValue, spec.maxValue)
+            spec.key to if (spec.integer) value.roundToInt().toDouble() else value
+        }
+    }
+
+    private fun newIndicatorId(type: IndicatorType): String =
+        "${type.name.lowercase()}-${currentTimeMillis().toString(36)}-${indicatorSequence++}"
+
+    private fun newPaneId(): String =
+        "pane-${currentTimeMillis().toString(36)}-${indicatorSequence++}"
+
+    private fun updateIndicators(
+        persist: Boolean = true,
+        transform: (IndicatorState) -> IndicatorState,
+    ) {
+        val before = _state.value.indicators
+        _state.update { state ->
+            state.copy(indicators = transform(state.indicators))
+        }
+        if (persist && _state.value.indicators != before) saveIndicatorState()
+    }
+
+    private fun saveIndicatorState() {
+        val persistor = persistor ?: return
+        val indicators = _state.value.indicators
+        viewModelScope.launch {
+            persistor.saveIndicators(indicators)
+        }
+    }
+
+    private fun flushIndicatorState() {
+        val persistor = persistor ?: return
+        val indicators = _state.value.indicators
+        cacheScope.launch { persistor.saveIndicators(indicators) }
+    }
+
+    private suspend fun restoreIndicatorState() {
+        val restored = persistor?.restoreIndicators() ?: return
+        _state.update { it.copy(indicators = restored) }
     }
 
     // ── Chart trading ──
@@ -977,6 +1243,7 @@ class ChartViewModel(
                     fpRingWidth = saved.fpRingWidth ?: s.fpRingWidth,
                     fpRingDiameter = saved.fpRingDiameter ?: s.fpRingDiameter,
                     currentProviderId = activeProviderId,
+                    indicators = saved.indicators ?: s.indicators,
                 )
             }
             // Торговые настройки панели (включая paper/показ) — panel-scoped
@@ -995,6 +1262,9 @@ class ChartViewModel(
         viewModelScope.launch {
             val saved = persistor.restore()
             applyFootprintSettings(saved)
+            saved.indicators?.let { restored ->
+                _state.update { it.copy(indicators = restored) }
+            }
             // Контракт всегда восстанавливаем — только в паре с провайдером
             saved.contractType?.let { savedType ->
                 if (_state.value.contractType != savedType) {

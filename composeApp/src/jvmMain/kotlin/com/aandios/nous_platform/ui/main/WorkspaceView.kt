@@ -42,6 +42,7 @@ import com.aandios.nous.feature.chart.ui.ChartSettingsMenu
 import com.aandios.nous.feature.chart.ui.ChartTitleToolbar
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.ChartWindow
+import com.aandios.nous.feature.chart.ui.IndicatorPresetRepository
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.ui.DomViewModel
@@ -243,6 +244,7 @@ fun WorkspaceView(
                             ChartTitleToolbar(
                                 chartViewModel = vm,
                                 onManageWatchlist = onManageWatchlist,
+                                indicatorPresetRepository = koinInject(),
                             )
                         }
 
