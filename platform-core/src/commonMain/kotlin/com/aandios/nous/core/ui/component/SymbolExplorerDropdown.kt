@@ -1094,7 +1094,7 @@ private fun ExplorerRowItem(
 }
 
 @Composable
-private fun ExplorerStar(starred: Boolean) {
+fun ExplorerStar(starred: Boolean) {
     val tokens = LocalTerminalDesignTokens.current
     Canvas(modifier = Modifier.size(16.dp)) {
         val outer = size.minDimension * 0.5f

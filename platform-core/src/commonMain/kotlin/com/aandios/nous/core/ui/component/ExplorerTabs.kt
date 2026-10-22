@@ -236,7 +236,7 @@ private class ExplorerListDrag(
 }
 
 @Composable
-private fun ExplorerTab(label: String, active: Boolean, onClick: () -> Unit) {
+fun ExplorerTab(label: String, active: Boolean, onClick: () -> Unit) {
     val tokens = LocalTerminalDesignTokens.current
     Text(
         text = label,
