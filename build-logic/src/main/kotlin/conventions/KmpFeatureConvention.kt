@@ -25,8 +25,8 @@ class KmpFeatureConvention : Plugin<Project> {
                 .named("libs")
 
             extensions.configure<KotlinMultiplatformExtension> {
+                jvmToolchain(25)
                 jvm()
-                js(IR) { browser() }
 
                 sourceSets {
                     val commonMain by getting

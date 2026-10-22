@@ -20,8 +20,8 @@ class KmpLibraryConvention : Plugin<Project> {
             }
 
             extensions.configure<KotlinMultiplatformExtension> {
+                jvmToolchain(25)
                 jvm()
-                js(IR) { browser() }
             }
         }
     }

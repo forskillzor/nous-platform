@@ -11,6 +11,7 @@ plugins {
 kotlin {
     sourceSets {
         commonMain.dependencies {
+            api(project(":features:research"))
             implementation(project(":platform-core"))
             implementation(project(":public-api:api-market"))
             implementation(project(":providers:binance-provider"))
@@ -28,9 +29,6 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             implementation(project(":features:localstorage"))
-        }
-
-        wasmJsMain.dependencies {
         }
 
         jvmTest.dependencies {
