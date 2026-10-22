@@ -9,6 +9,9 @@ import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -397,16 +400,19 @@ private fun PositionModeButton(hedge: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Кнопка действия панели (обводка в цвет, как Cancel All / Close All в DOM). */
+/** Компактная текстовая кнопка панели (Cancel All / Close All). */
 @Composable
 private fun ActionButton(label: String, color: Color, onClick: () -> Unit) {
     val tokens = LocalTerminalDesignTokens.current
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
     Box(
         modifier = Modifier
             .clip(RoundedCornerShape(tokens.cornerRadii.card))
-            .border(tokens.dimensions.borderWidth, color.copy(alpha = 0.85f), RoundedCornerShape(tokens.cornerRadii.card))
+            .background(if (hovered) tokens.colors.selection else Color.Transparent)
+            .hoverable(interaction)
             .clickableNoIndication(onClick)
-            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
+            .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs),
         contentAlignment = Alignment.Center,
     ) {
         Text(
