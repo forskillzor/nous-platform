@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,15 +55,18 @@ import com.aandios.nous.core.ui.component.ExplorerTab
 import com.aandios.nous.core.ui.component.TerminalBoxDropdown
 import com.aandios.nous.core.ui.component.TerminalBoxStyle
 import com.aandios.nous.core.ui.component.TerminalDropdownMenu
+import com.aandios.nous.core.ui.component.TerminalExplorerPopupContent
 import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
-import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.IndicatorDefinition
 import com.aandios.nous.research.indicator.IndicatorInstance
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorParamSpec
 import com.aandios.nous.research.indicator.IndicatorPlacement
+import com.aandios.nous.research.indicator.IndicatorRegistry
 import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.indicatorDefinition
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -115,6 +119,8 @@ fun ChartIndicatorMenu(
     var tab by remember { mutableStateOf(IndicatorMenuTab.ALL) }
     var saveNameOpen by remember { mutableStateOf(false) }
     var renamingPresetId by remember { mutableStateOf<String?>(null) }
+    var query by remember { mutableStateOf("") }
+    val searchFocus = remember { FocusRequester() }
     val libraryFlow = remember(repository) {
         repository?.state ?: MutableStateFlow(IndicatorLibrary())
     }
@@ -129,205 +135,233 @@ fun ChartIndicatorMenu(
         }
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-    ) {
-        ExplorerTab("ALL", active = tab == IndicatorMenuTab.ALL) {
-            tab = IndicatorMenuTab.ALL
-        }
-        ExplorerTab("FAVOURITES", active = tab == IndicatorMenuTab.FAVOURITES) {
-            tab = IndicatorMenuTab.FAVOURITES
-        }
-        repository?.let { repo ->
-            TerminalBoxDropdown(
-                text = "LISTS",
-                menuWidth = 230.dp,
-                style = TerminalBoxStyle.NORMAL,
-            ) { dropdownDismiss ->
-                IndicatorPresetListMenu(
-                    presets = library.presets,
-                    onApply = { preset ->
-                        chartViewModel.dispatch(ChartIntent.ApplyIndicatorPreset(preset))
-                        dropdownDismiss()
-                        dismiss()
-                    },
-                    onRename = { preset ->
-                        renamingPresetId = preset.id
+    TerminalExplorerPopupContent(
+        tabs = {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            ) {
+                ExplorerTab("ALL", active = tab == IndicatorMenuTab.ALL) {
+                    tab = IndicatorMenuTab.ALL
+                }
+                ExplorerTab("FAVOURITES", active = tab == IndicatorMenuTab.FAVOURITES) {
+                    tab = IndicatorMenuTab.FAVOURITES
+                }
+                repository?.let { repo ->
+                    TerminalBoxDropdown(
+                        text = "LISTS",
+                        menuWidth = 230.dp,
+                        style = TerminalBoxStyle.NORMAL,
+                    ) { dropdownDismiss ->
+                        IndicatorPresetListMenu(
+                            presets = library.presets,
+                            onApply = { preset ->
+                                chartViewModel.dispatch(ChartIntent.ApplyIndicatorPreset(preset))
+                                dropdownDismiss()
+                                dismiss()
+                            },
+                            onRename = { preset ->
+                                renamingPresetId = preset.id
+                                saveNameOpen = false
+                                dropdownDismiss()
+                            },
+                            onDelete = { preset ->
+                                scope.launch { repo.deletePreset(preset.id) }
+                            },
+                            onSaveCurrent = {
+                                saveNameOpen = true
+                                renamingPresetId = null
+                                dropdownDismiss()
+                            },
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+            }
+        },
+        query = query,
+        onQueryChange = { query = it },
+        searchPlaceholder = "Search indicators",
+        searchFocusRequester = searchFocus,
+        autoFocusSearch = true,
+        dividerAfterTabs = false,
+        header = {
+            if (saveNameOpen) {
+                IndicatorPresetNameRow(
+                    initial = "",
+                    onCommit = { name ->
+                        repository?.let { repo ->
+                            scope.launch { repo.savePreset(name, uiState.indicators) }
+                        }
                         saveNameOpen = false
-                        dropdownDismiss()
                     },
-                    onDelete = { preset ->
-                        scope.launch { repo.deletePreset(preset.id) }
-                    },
-                    onSaveCurrent = {
-                        saveNameOpen = true
+                    onCancel = { saveNameOpen = false },
+                )
+            }
+            library.presets.firstOrNull { it.id == renamingPresetId }?.let { preset ->
+                IndicatorPresetNameRow(
+                    initial = preset.name,
+                    onCommit = { name ->
+                        repository?.let { repo ->
+                            scope.launch { repo.renamePreset(preset.id, name) }
+                        }
                         renamingPresetId = null
-                        dropdownDismiss()
+                    },
+                    onCancel = { renamingPresetId = null },
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = tokens.spacing.md, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
+            ) {
+                Text(
+                    text = "PANE LAYOUT",
+                    color = tokens.colors.label,
+                    fontSize = 8.sp,
+                    lineHeight = 10.sp,
+                    fontFamily = TerminalFontFamily,
+                    modifier = Modifier.weight(1f),
+                )
+                ExplorerTab("TABS", active = indicators.paneLayout == IndicatorPaneLayout.TABS) {
+                    chartViewModel.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.TABS))
+                }
+                ExplorerTab("STACKED", active = indicators.paneLayout == IndicatorPaneLayout.STACKED) {
+                    chartViewModel.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.STACKED))
+                }
+            }
+        },
+    ) {
+        val allDefinitions = IndicatorRegistry.all.map { it.definition }
+        val definitions = filterIndicatorDefinitions(
+            definitions = when (tab) {
+                IndicatorMenuTab.ALL -> allDefinitions
+                IndicatorMenuTab.FAVOURITES -> allDefinitions.filter { it.type in favourites }
+            },
+            query = query,
+        )
+        val overlays = definitions.filter { it.placement == IndicatorPlacement.OVERLAY }
+        val panes = definitions.filter { it.placement == IndicatorPlacement.PANE }
+
+        if (definitions.isEmpty()) {
+            IndicatorMenuHint(
+                if (tab == IndicatorMenuTab.FAVOURITES) "No favourites" else "No indicators",
+            )
+        }
+        if (overlays.isNotEmpty()) {
+            IndicatorMenuSection("OVERLAYS")
+            overlays.forEach { definition ->
+                IndicatorDefinitionRow(
+                    label = definition.label,
+                    starred = definition.type in favourites,
+                    onToggleFavourite = { toggleFavourite(definition.type) },
+                    onAdd = {
+                        chartViewModel.dispatch(ChartIntent.AddIndicatorOverlay(definition.type))
                     },
                 )
             }
         }
-        Spacer(Modifier.weight(1f))
-    }
-
-    if (saveNameOpen) {
-        IndicatorPresetNameRow(
-            initial = "",
-            onCommit = { name ->
-                repository?.let { repo ->
-                    scope.launch { repo.savePreset(name, uiState.indicators) }
-                }
-                saveNameOpen = false
-            },
-            onCancel = { saveNameOpen = false },
-        )
-    }
-    library.presets.firstOrNull { it.id == renamingPresetId }?.let { preset ->
-        IndicatorPresetNameRow(
-            initial = preset.name,
-            onCommit = { name ->
-                repository?.let { repo ->
-                    scope.launch { repo.renamePreset(preset.id, name) }
-                }
-                renamingPresetId = null
-            },
-            onCancel = { renamingPresetId = null },
-        )
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = tokens.spacing.md, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-    ) {
-        Text(
-            text = "PANE LAYOUT",
-            color = tokens.colors.label,
-            fontSize = 8.sp,
-            lineHeight = 10.sp,
-            fontFamily = TerminalFontFamily,
-            modifier = Modifier.weight(1f),
-        )
-        ExplorerTab("TABS", active = indicators.paneLayout == IndicatorPaneLayout.TABS) {
-            chartViewModel.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.TABS))
+        if (panes.isNotEmpty()) {
+            if (overlays.isNotEmpty()) IndicatorMenuDivider()
+            IndicatorMenuSection("BOTTOM PANE")
+            panes.forEach { definition ->
+                IndicatorDefinitionRow(
+                    label = definition.label,
+                    starred = definition.type in favourites,
+                    onToggleFavourite = { toggleFavourite(definition.type) },
+                    onAdd = {
+                        chartViewModel.dispatch(ChartIntent.AddIndicatorToPane(definition.type))
+                    },
+                    trailing = {
+                        Text(
+                            text = "NEW TAB",
+                            color = tokens.colors.label,
+                            fontSize = 8.sp,
+                            fontFamily = TerminalFontFamily,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .clickable {
+                                    chartViewModel.dispatch(
+                                        ChartIntent.AddIndicatorToPane(
+                                            definition.type,
+                                            createPane = true,
+                                        ),
+                                    )
+                                }
+                                .background(tokens.colors.selection)
+                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                        )
+                    },
+                )
+            }
         }
-        ExplorerTab("STACKED", active = indicators.paneLayout == IndicatorPaneLayout.STACKED) {
-            chartViewModel.dispatch(ChartIntent.SetIndicatorPaneLayout(IndicatorPaneLayout.STACKED))
-        }
-    }
+        if (overlays.isNotEmpty() || panes.isNotEmpty()) IndicatorMenuDivider()
 
-    val definitions = when (tab) {
-        IndicatorMenuTab.ALL -> IndicatorDefinitions.all
-        IndicatorMenuTab.FAVOURITES ->
-            IndicatorDefinitions.all.filter { it.type in favourites }
-    }
-    val overlays = definitions.filter { it.placement == IndicatorPlacement.OVERLAY }
-    val panes = definitions.filter { it.placement == IndicatorPlacement.PANE }
-
-    if (definitions.isEmpty()) {
-        IndicatorMenuHint(
-            if (tab == IndicatorMenuTab.FAVOURITES) "No favourites" else "No indicators",
-        )
-    }
-    if (overlays.isNotEmpty()) {
-        IndicatorMenuSection("OVERLAYS")
-        overlays.forEach { definition ->
-            IndicatorDefinitionRow(
-                label = definition.label,
-                starred = definition.type in favourites,
-                onToggleFavourite = { toggleFavourite(definition.type) },
-                onAdd = {
-                    chartViewModel.dispatch(ChartIntent.AddIndicatorOverlay(definition.type))
-                },
+        IndicatorMenuSection("ON CHART")
+        val instances = indicators.overlays + indicators.panes.flatMap { it.indicators }
+        if (instances.isEmpty()) {
+            Text(
+                text = "No indicators",
+                color = LocalTerminalDesignTokens.current.colors.label,
+                fontSize = 9.sp,
+                fontFamily = TerminalFontFamily,
+                modifier = Modifier.padding(
+                    start = LocalTerminalDesignTokens.current.spacing.md,
+                    top = 2.dp,
+                    bottom = 4.dp,
+                ),
             )
         }
-    }
-    if (panes.isNotEmpty()) {
-        IndicatorMenuSection("BOTTOM PANE")
-        panes.forEach { definition ->
-            IndicatorDefinitionRow(
-                label = definition.label,
-                starred = definition.type in favourites,
-                onToggleFavourite = { toggleFavourite(definition.type) },
-                onAdd = {
-                    chartViewModel.dispatch(ChartIntent.AddIndicatorToPane(definition.type))
+        instances.forEach { instance ->
+            IndicatorInstanceRow(
+                instance = instance,
+                expanded = editingId == instance.id,
+                onToggle = {
+                    editingId = if (editingId == instance.id) null else instance.id
                 },
-                trailing = {
-                    Text(
-                        text = "NEW TAB",
-                        color = tokens.colors.label,
-                        fontSize = 8.sp,
-                        fontFamily = TerminalFontFamily,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(3.dp))
-                            .clickable {
-                                chartViewModel.dispatch(
-                                    ChartIntent.AddIndicatorToPane(
-                                        definition.type,
-                                        createPane = true,
-                                    ),
-                                )
-                            }
-                            .background(tokens.colors.selection)
-                            .padding(horizontal = 5.dp, vertical = 2.dp),
+                onRemove = {
+                    chartViewModel.dispatch(ChartIntent.RemoveIndicator(instance.id))
+                    if (editingId == instance.id) editingId = null
+                },
+                onParamChange = { key, value ->
+                    chartViewModel.dispatch(
+                        ChartIntent.UpdateIndicatorParams(instance.id, mapOf(key to value)),
+                    )
+                },
+                onColorChange = { lineId, colorArgb ->
+                    chartViewModel.dispatch(
+                        ChartIntent.SetIndicatorLineColor(instance.id, lineId, colorArgb),
                     )
                 },
             )
         }
-    }
 
-    IndicatorMenuSection("ON CHART")
-    val instances = indicators.overlays + indicators.panes.flatMap { it.indicators }
-    if (instances.isEmpty()) {
-        Text(
-            text = "No indicators",
-            color = LocalTerminalDesignTokens.current.colors.label,
-            fontSize = 9.sp,
-            fontFamily = TerminalFontFamily,
-            modifier = Modifier.padding(
-                start = LocalTerminalDesignTokens.current.spacing.md,
-                top = 2.dp,
-                bottom = 4.dp,
-            ),
-        )
+        TerminalMenuItem(onClick = dismiss) {
+            Text(
+                text = "CLOSE",
+                color = LocalTerminalDesignTokens.current.colors.label,
+                fontSize = 9.sp,
+                fontFamily = TerminalFontFamily,
+            )
+        }
     }
-    instances.forEach { instance ->
-        IndicatorInstanceRow(
-            instance = instance,
-            expanded = editingId == instance.id,
-            onToggle = {
-                editingId = if (editingId == instance.id) null else instance.id
-            },
-            onRemove = {
-                chartViewModel.dispatch(ChartIntent.RemoveIndicator(instance.id))
-                if (editingId == instance.id) editingId = null
-            },
-            onParamChange = { key, value ->
-                chartViewModel.dispatch(
-                    ChartIntent.UpdateIndicatorParams(instance.id, mapOf(key to value)),
-                )
-            },
-            onColorChange = { lineId, colorArgb ->
-                chartViewModel.dispatch(
-                    ChartIntent.SetIndicatorLineColor(instance.id, lineId, colorArgb),
-                )
-            },
-        )
-    }
+}
 
-    TerminalMenuItem(onClick = dismiss) {
-        Text(
-            text = "CLOSE",
-            color = LocalTerminalDesignTokens.current.colors.label,
-            fontSize = 9.sp,
-            fontFamily = TerminalFontFamily,
-        )
+internal fun filterIndicatorDefinitions(
+    definitions: List<IndicatorDefinition>,
+    query: String,
+): List<IndicatorDefinition> {
+    val term = query.trim()
+    if (term.isEmpty()) return definitions
+    return definitions.filter {
+        it.label.contains(term, ignoreCase = true) ||
+            it.type.name.replace('_', ' ').contains(term, ignoreCase = true)
     }
 }
 
@@ -346,6 +380,15 @@ private fun IndicatorMenuSection(title: String) {
             top = tokens.spacing.sm,
             bottom = 2.dp,
         ),
+    )
+}
+
+@Composable
+private fun IndicatorMenuDivider() {
+    val tokens = LocalTerminalDesignTokens.current
+    HorizontalDivider(
+        color = tokens.colors.panelBorder,
+        thickness = tokens.dimensions.borderWidth,
     )
 }
 
@@ -562,8 +605,8 @@ private fun IndicatorInstanceRow(
     onColorChange: (String, Long?) -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
-    val definition = IndicatorDefinitions.definition(instance.type)
-    val colorTargets = IndicatorDefinitions.colorTargets[instance.type].orEmpty()
+    val definition = indicatorDefinition(instance.type)
+    val colorTargets = definition.lines.filter { it.colorLabel != null }
     val hasSettings = definition.parameters.isNotEmpty() || colorTargets.isNotEmpty()
     TerminalMenuItem(onClick = { if (hasSettings) onToggle() }) {
         Text(
@@ -608,14 +651,14 @@ private fun IndicatorInstanceRow(
         if (colorTargets.isNotEmpty()) {
             IndicatorMenuSection("COLORS")
             val chartColors = remember(tokens.colors) { indicatorChartColors(tokens.colors) }
-            colorTargets.forEach { target ->
-                val override = instance.lineColors[target.key]
+            colorTargets.forEach { line ->
+                val override = instance.lineColors[line.id]
                 IndicatorColorRow(
-                    label = target.label,
+                    label = line.colorLabel ?: line.label,
                     color = override?.let { indicatorColorFromArgb(it) }
-                        ?: chartColors.color(target.defaultRole),
+                        ?: chartColors.color(line.colorRole),
                     custom = override != null,
-                    onColorSelected = { colorArgb -> onColorChange(target.key, colorArgb) },
+                    onColorSelected = { colorArgb -> onColorChange(line.id, colorArgb) },
                 )
             }
         }

@@ -27,18 +27,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
-import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.IndicatorInstance
 import com.aandios.nous.research.indicator.IndicatorLineStyle
 import com.aandios.nous.research.indicator.IndicatorOutput
+import com.aandios.nous.research.indicator.indicatorDefinition
 
 /** Compact pane legend: one chip per rendered line, colors match the renderer. */
 @Composable
 fun IndicatorPaneHeader(
     outputs: List<IndicatorOutput>,
-    includeLiquidations: Boolean,
+    instances: List<IndicatorInstance>,
     colors: IndicatorChartColors,
-    liquidationLongColor: Color? = null,
-    liquidationShortColor: Color? = null,
     modifier: Modifier = Modifier,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -58,15 +57,20 @@ fun IndicatorPaneHeader(
                     else -> colors.color(line.colorRole)
                 }
                 IndicatorLegendChip(
-                    label = line.label.ifBlank { IndicatorDefinitions.definition(output.type).label },
+                    label = line.label.ifBlank { indicatorDefinition(output.type).label },
                     color = color,
                     tokens = tokens,
                 )
             }
         }
-        if (includeLiquidations) {
-            IndicatorLegendChip("LONG", liquidationLongColor ?: colors.bullish, tokens)
-            IndicatorLegendChip("SHORT", liquidationShortColor ?: colors.bearish, tokens)
+        val rendered = outputs.filter { it.lines.isNotEmpty() }
+            .mapTo(mutableSetOf()) { it.instanceId }
+        instances.filter { it.id !in rendered }.forEach { instance ->
+            IndicatorLegendChip(
+                label = indicatorDefinition(instance.type).label,
+                color = colors.neutral,
+                tokens = tokens,
+            )
         }
     }
 }

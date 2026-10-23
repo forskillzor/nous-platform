@@ -38,18 +38,19 @@ import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.feature.chart.footprint.FootprintController
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.research.indicator.DEFAULT_INDICATOR_PANE_HEIGHT_DP
-import com.aandios.nous.research.indicator.IndicatorDefinitions
 import com.aandios.nous.research.indicator.IndicatorInstance
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorPaneState
 import com.aandios.nous.research.indicator.IndicatorPlacement
 import com.aandios.nous.research.indicator.IndicatorState
 import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.createIndicator
 import com.aandios.nous.research.indicator.effectiveTabsHeightDp
+import com.aandios.nous.research.indicator.indicatorDefinition
+import com.aandios.nous.research.indicator.mergeIndicatorParams
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.math.roundToInt
 
 /** Уведомление chart-трейдинга (snackbar поверх графика под тулбаром). */
 private const val INDICATOR_PANE_MIN_HEIGHT_DP = 40f
@@ -473,8 +474,8 @@ class ChartViewModel(
     private var indicatorSequence = 0L
 
     private fun addIndicatorOverlay(type: IndicatorType) {
-        if (IndicatorDefinitions.definition(type).placement != IndicatorPlacement.OVERLAY) return
-        val instance = IndicatorDefinitions.create(type, newIndicatorId(type))
+        if (indicatorDefinition(type).placement != IndicatorPlacement.OVERLAY) return
+        val instance = createIndicator(type, newIndicatorId(type))
         updateIndicators { state -> state.copy(overlays = state.overlays + instance) }
     }
 
@@ -483,8 +484,8 @@ class ChartViewModel(
         paneId: String?,
         createPane: Boolean,
     ) {
-        if (IndicatorDefinitions.definition(type).placement != IndicatorPlacement.PANE) return
-        val instance = IndicatorDefinitions.create(type, newIndicatorId(type))
+        if (indicatorDefinition(type).placement != IndicatorPlacement.PANE) return
+        val instance = createIndicator(type, newIndicatorId(type))
         updateIndicators { state ->
             val activePaneId = state.activePaneId
             val targetPaneId = when {
@@ -538,7 +539,13 @@ class ChartViewModel(
     private fun updateIndicatorParams(instanceId: String, params: Map<String, Double>) {
         fun update(list: List<IndicatorInstance>): List<IndicatorInstance> = list.map { instance ->
             if (instance.id == instanceId) {
-                instance.copy(params = mergeIndicatorParams(instance, params))
+                instance.copy(
+                    params = mergeIndicatorParams(
+                        indicatorDefinition(instance.type),
+                        instance.params,
+                        params,
+                    ),
+                )
             } else {
                 instance
             }
@@ -651,19 +658,6 @@ class ChartViewModel(
                 activePaneId = panes.getOrNull(preset.activePaneIndex)?.id
                     ?: panes.firstOrNull()?.id,
             )
-        }
-    }
-
-    private fun mergeIndicatorParams(
-        instance: IndicatorInstance,
-        overrides: Map<String, Double>,
-    ): Map<String, Double> {
-        val definition = IndicatorDefinitions.definition(instance.type)
-        val merged = instance.params + overrides
-        return definition.parameters.associate { spec ->
-            val raw = merged[spec.key] ?: spec.defaultValue
-            val value = raw.coerceIn(spec.minValue, spec.maxValue)
-            spec.key to if (spec.integer) value.roundToInt().toDouble() else value
         }
     }
 

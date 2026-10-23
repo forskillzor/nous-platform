@@ -6,16 +6,18 @@
 package com.aandios.nous.research.indicator
 
 import com.aandios.nous.api.market.model.Candle
+import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.research.indicator.calculators.SmaCalculator
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-class Ta4jIndicatorEngineTest {
+class DefaultIndicatorEngineTest {
 
     @Test
     fun smaMatchesSimpleAverage() {
-        val values = compute(IndicatorType.SMA, mapOf("period" to 3.0), candles(10))
+        val values = compute(IndicatorType.SMA, mapOf("period" to 3.0), testCandles(10))
             .lines.single().values
 
         assertEquals(100.5f, values[2], 0.01f)
@@ -24,7 +26,7 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun emaWarmsUpAndStaysFinite() {
-        val values = compute(IndicatorType.EMA, mapOf("period" to 10.0), candles(80))
+        val values = compute(IndicatorType.EMA, mapOf("period" to 10.0), testCandles(80))
             .lines.single().values
 
         assertFalse(values.last().isNaN())
@@ -33,7 +35,11 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun bollingerBandsAreOrdered() {
-        val output = compute(IndicatorType.BOLLINGER_BANDS, mapOf("period" to 20.0), candles(80))
+        val output = compute(
+            IndicatorType.BOLLINGER_BANDS,
+            mapOf("period" to 20.0),
+            testCandles(80),
+        )
         val upper = output.lines.first { it.id == "upper" }.values
         val middle = output.lines.first { it.id == "middle" }.values
         val lower = output.lines.first { it.id == "lower" }.values
@@ -46,7 +52,7 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun vwapTracksVolumeWeightedPrice() {
-        val values = compute(IndicatorType.VWAP, mapOf("period" to 20.0), candles(80))
+        val values = compute(IndicatorType.VWAP, mapOf("period" to 20.0), testCandles(80))
             .lines.single().values
 
         assertFalse(values.last().isNaN())
@@ -55,19 +61,26 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun keltnerChannelsAreOrdered() {
-        val output = compute(IndicatorType.KELTNER_CHANNELS, mapOf("period" to 20.0), candles(80))
+        val output = compute(
+            IndicatorType.KELTNER_CHANNELS,
+            mapOf("period" to 20.0),
+            testCandles(80),
+        )
         val upper = output.lines.first { it.id == "upper" }.values
         val middle = output.lines.first { it.id == "middle" }.values
         val lower = output.lines.first { it.id == "lower" }.values
 
         assertTrue(upper[50] > middle[50])
         assertTrue(middle[50] > lower[50])
-        assertEquals(IndicatorBandFill("upper", "lower", IndicatorColorRole.SECONDARY), output.bandFill)
+        assertEquals(
+            IndicatorBandFill("upper", "lower", IndicatorColorRole.SECONDARY),
+            output.bandFill,
+        )
     }
 
     @Test
     fun rsiIsHighForMonotonicRise() {
-        val output = compute(IndicatorType.RSI, mapOf("period" to 14.0), candles(80))
+        val output = compute(IndicatorType.RSI, mapOf("period" to 14.0), testCandles(80))
         val values = output.lines.single().values
 
         assertTrue(values.last() > 99f)
@@ -77,7 +90,7 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun macdHasThreeLinesAndSymmetricRange() {
-        val output = compute(IndicatorType.MACD, candles = candles(120))
+        val output = compute(IndicatorType.MACD, candles = testCandles(120))
 
         assertEquals(3, output.lines.size)
         assertTrue(output.zeroLine)
@@ -88,7 +101,7 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun atrIsPositiveAndIncludesZero() {
-        val output = compute(IndicatorType.ATR, mapOf("period" to 14.0), candles(80))
+        val output = compute(IndicatorType.ATR, mapOf("period" to 14.0), testCandles(80))
         val values = output.lines.single().values
 
         assertTrue(values.last() > 0f)
@@ -100,7 +113,7 @@ class Ta4jIndicatorEngineTest {
         val output = compute(
             IndicatorType.STOCHASTIC,
             mapOf("kPeriod" to 14.0, "dPeriod" to 3.0),
-            candles(80),
+            testCandles(80),
         )
 
         val k = output.lines.first { it.id == "k" }.values
@@ -115,7 +128,7 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun volumeUsesCandleVolumes() {
-        val source = candles(40)
+        val source = testCandles(40)
         val output = compute(IndicatorType.VOLUME, mapOf("period" to 5.0), source)
         val volume = output.lines.first { it.id == "volume" }
 
@@ -128,7 +141,7 @@ class Ta4jIndicatorEngineTest {
 
     @Test
     fun adxStaysWithinFixedRange() {
-        val output = compute(IndicatorType.ADX, mapOf("period" to 14.0), candles(80))
+        val output = compute(IndicatorType.ADX, mapOf("period" to 14.0), testCandles(80))
         val adx = output.lines.first { it.id == "adx" }.values.last()
 
         assertEquals(3, output.lines.size)
@@ -138,82 +151,89 @@ class Ta4jIndicatorEngineTest {
     }
 
     @Test
-    fun definitionsExposeEveryTypeAndDefaults() {
-        assertEquals(
-            IndicatorType.entries.toSet(),
-            IndicatorDefinitions.all.map { it.type }.toSet(),
-        )
-
-        for (definition in IndicatorDefinitions.all) {
-            for (param in definition.parameters) {
-                assertTrue(param.defaultValue in param.minValue..param.maxValue)
-            }
-            val instance = IndicatorDefinitions.create(definition.type, "test")
-            assertEquals(definition.type, instance.type)
-            assertEquals(
-                definition.parameters.map { it.key }.toSet(),
-                instance.params.keys,
-            )
-        }
-    }
-
-    @Test
-    fun defaultStateContainsLiquidationsPane() {
-        val state = IndicatorDefinitions.defaultState()
-
-        assertEquals(IndicatorDefinitions.LIQUIDATIONS_PANE_ID, state.activePaneId)
-        assertEquals(
-            listOf(IndicatorType.LIQUIDATIONS),
-            state.panes.single().indicators.map { it.type },
-        )
-    }
-
-    @Test
-    fun liquidationsAreNotComputedByTheEngine() {
-        val instance = IndicatorInstance(
-            id = "test",
+    fun liquidationsAreComputedFromFeed() {
+        val candles = testCandles(10)
+        val output = compute(
             type = IndicatorType.LIQUIDATIONS,
+            candles = candles,
+            liquidations = listOf(
+                testLiquidation(candles.first().timestamp, 2.5, TradeSide.SELL),
+                testLiquidation(candles.last().timestamp, 1.5, TradeSide.BUY),
+            ),
         )
 
-        assertTrue(
-            Ta4jIndicatorEngine().compute(candles(10), listOf(instance)).isEmpty(),
+        val line = output.lines.single()
+        assertEquals("liq", line.id)
+        assertEquals(IndicatorLineStyle.HISTOGRAM, line.style)
+        assertEquals(2.5f, line.values.first(), 0.001f)
+        assertEquals(-1.5f, line.values.last(), 0.001f)
+        assertTrue(output.range.min < 0f)
+        assertTrue(output.range.max > 0f)
+    }
+
+    @Test
+    fun emptyFeedSkipsLiquidationsOutput() {
+        val instance = createIndicator(IndicatorType.LIQUIDATIONS, "liq")
+        val outputs = DefaultIndicatorEngine(StaticIndicatorInputSource())
+            .compute(testCandles(10), listOf(instance))
+
+        assertTrue(outputs.isEmpty())
+    }
+
+    @Test
+    fun oneFailingCalculatorDoesNotHideOthers() {
+        val engine = DefaultIndicatorEngine(
+            inputSource = StaticIndicatorInputSource(),
+            calculators = listOf(SmaCalculator(), ThrowingEmaCalculator()),
         )
+        val instances = listOf(
+            createIndicator(IndicatorType.SMA, "sma"),
+            createIndicator(IndicatorType.EMA, "ema"),
+        )
+
+        val outputs = engine.compute(testCandles(40), instances)
+
+        assertTrue(outputs.containsKey("sma"))
+        assertFalse(outputs.containsKey("ema"))
     }
 
     @Test
     fun emptyCandlesProduceNoOutput() {
-        val instance = IndicatorDefinitions.create(IndicatorType.SMA, "test")
+        val instance = createIndicator(IndicatorType.SMA, "test")
 
-        assertTrue(Ta4jIndicatorEngine().compute(emptyList(), listOf(instance)).isEmpty())
+        assertTrue(
+            DefaultIndicatorEngine(StaticIndicatorInputSource())
+                .compute(emptyList(), listOf(instance))
+                .isEmpty(),
+        )
     }
 
     private fun compute(
         type: IndicatorType,
         overrides: Map<String, Double> = emptyMap(),
-        candles: List<Candle> = candles(80),
+        candles: List<Candle> = testCandles(80),
+        liquidations: List<com.aandios.nous.api.market.model.liquidation.LiquidationOrder> = emptyList(),
     ): IndicatorOutput {
-        val instance = IndicatorInstance(
-            id = "test",
-            type = type,
-            params = IndicatorDefinitions.defaultParams(type) + overrides,
+        val instance = createIndicator(type, "test").copy(
+            params = defaultIndicatorParams(type) + overrides,
         )
-        return Ta4jIndicatorEngine()
+        return DefaultIndicatorEngine(StaticIndicatorInputSource(liquidations))
             .compute(candles, listOf(instance))
             .getValue("test")
     }
+}
 
-    private fun candles(count: Int): List<Candle> {
-        val start = 1_700_000_000_000L
-        return List(count) { index ->
-            val close = 100f + index * 0.5f
-            Candle(
-                open = close - 0.25f,
-                high = close + 1f,
-                low = close - 1f,
-                close = close,
-                timestamp = start + index * 300_000L,
-                volume = 1_000f + index,
-            )
-        }
-    }
+private class ThrowingEmaCalculator : IndicatorCalculator {
+    override val type = IndicatorType.EMA
+    override val definition = IndicatorDefinition(
+        type = type,
+        label = "EMA",
+        placement = IndicatorPlacement.PANE,
+    )
+    override val requiredInputs: Set<InputKind> = emptySet()
+
+    override fun compute(
+        input: IndicatorInput,
+        params: Map<String, Double>,
+    ): IndicatorComputation = error("boom")
 }

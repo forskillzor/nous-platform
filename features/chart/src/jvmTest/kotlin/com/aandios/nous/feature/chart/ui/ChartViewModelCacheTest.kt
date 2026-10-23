@@ -19,7 +19,8 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.domain.cache.CandleCacheStore
-import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.LIQUIDATIONS_PANE_ID
+import com.aandios.nous.research.indicator.createIndicator
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorType
 import com.aandios.nous.research.indicator.effectivePaneHeightDp
@@ -251,13 +252,13 @@ class ChartViewModelCacheTest {
                 .single { it.id == rsi.id }
             assertEquals(500.0, updated.params["period"])
 
-            vm.dispatch(ChartIntent.SelectIndicatorPane(IndicatorDefinitions.LIQUIDATIONS_PANE_ID))
+            vm.dispatch(ChartIntent.SelectIndicatorPane(LIQUIDATIONS_PANE_ID))
             vm.dispatch(ChartIntent.RemoveIndicator(rsi.id))
             advanceUntilIdle()
 
             val indicators = vm.state.value.indicators
             assertTrue(indicators.panes.none { it.id == rsiPane.id })
-            assertEquals(IndicatorDefinitions.LIQUIDATIONS_PANE_ID, indicators.activePaneId)
+            assertEquals(LIQUIDATIONS_PANE_ID, indicators.activePaneId)
 
             vm.dispose()
         } finally {
@@ -367,13 +368,13 @@ class ChartViewModelCacheTest {
             val preset = IndicatorPreset(
                 id = "preset-1",
                 name = "Scalp",
-                overlays = listOf(IndicatorDefinitions.create(IndicatorType.EMA, "ema-preset")),
+                overlays = listOf(createIndicator(IndicatorType.EMA, "ema-preset")),
                 panes = listOf(
                     IndicatorPresetPane(
-                        listOf(IndicatorDefinitions.create(IndicatorType.RSI, "rsi-preset")),
+                        listOf(createIndicator(IndicatorType.RSI, "rsi-preset")),
                     ),
                     IndicatorPresetPane(
-                        listOf(IndicatorDefinitions.create(IndicatorType.MACD, "macd-preset")),
+                        listOf(createIndicator(IndicatorType.MACD, "macd-preset")),
                     ),
                 ),
                 activePaneIndex = 1,

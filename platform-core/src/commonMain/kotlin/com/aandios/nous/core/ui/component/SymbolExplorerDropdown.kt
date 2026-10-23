@@ -38,17 +38,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -58,9 +52,7 @@ import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
-import com.aandios.nous.core.ui.workspace.LocalPanelSize
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.abs
@@ -337,14 +329,13 @@ fun SymbolExplorerDropdown(
     var listHeight by remember { mutableStateOf(EXPLORER_ROW_HEIGHT * 5) }
 
     val density = LocalDensity.current
-    val panelSize = LocalPanelSize.current
-    // Верхняя граница высоты списка — высота панели-хозяина (chart/DOM/
-    // Trades) за вычетом хрома попапа, чтобы список не вылезал за панель.
-    // Вне workspace-панели (standalone окна) размера нет — без границы.
-    val maxListHeight = remember(panelSize, density) {
-        if (panelSize.height > 0) {
+    val windowHeightPx = LocalWindowInfo.current.containerSize.height
+    // Верхняя граница высоты списка — высота окна приложения за вычетом
+    // хрома попапа: explorer можно растянуть почти на всё окно.
+    val maxListHeight = remember(windowHeightPx, density) {
+        if (windowHeightPx > 0) {
             with(density) {
-                (panelSize.height.toDp() - EXPLORER_POPUP_CHROME_HEIGHT)
+                (windowHeightPx.toDp() - EXPLORER_POPUP_CHROME_HEIGHT)
                     .coerceAtLeast(EXPLORER_MIN_LIST_HEIGHT)
             }
         } else {
@@ -359,12 +350,6 @@ fun SymbolExplorerDropdown(
 
     LaunchedEffect(expanded) {
         if (!expanded) query = ""
-    }
-    LaunchedEffect(expanded) {
-        if (expanded) {
-            delay(80)
-            runCatching { searchFocus.requestFocus() }
-        }
     }
 
     val currentExchangeLabel = currentExchangeId?.let { id ->
@@ -424,6 +409,7 @@ fun SymbolExplorerDropdown(
             listWidth = menuWidth,
             listHeight = cappedListHeight,
             searchFocusRequester = searchFocus,
+            autoFocusSearch = true,
             tabsTrailing = {
                 Text(
                     text = "✕",
@@ -475,7 +461,7 @@ private val EXPLORER_MIN_LIST_HEIGHT = EXPLORER_ROW_HEIGHT * 2
 
 /**
  * Хром попапа (табы + поиск + фильтры + шапка + футер с отступами), который
- * вычитается из высоты панели при ограничении ресайза списка.
+ * вычитается из высоты окна при ограничении ресайза списка.
  */
 private val EXPLORER_POPUP_CHROME_HEIGHT = 180.dp
 
@@ -514,6 +500,7 @@ fun SymbolExplorerContent(
     listWidth: Dp? = null,
     listHeight: Dp? = null,
     searchFocusRequester: FocusRequester = remember { FocusRequester() },
+    autoFocusSearch: Boolean = false,
     tabsTrailing: (@Composable RowScope.() -> Unit)? = null,
     footerTrailing: (@Composable RowScope.() -> Unit)? = null,
     rowMenu: (@Composable (SymbolExplorerRow, dismiss: () -> Unit) -> Unit)? = null,
@@ -601,52 +588,26 @@ fun SymbolExplorerContent(
         onActiveListIdChange(id)
     }
 
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .then(if (listHeight == null) Modifier.fillMaxSize() else Modifier)
-            .onPreviewKeyEvent { event ->
-                if (event.type == KeyEventType.KeyDown && event.key == Key.K &&
-                    (event.isCtrlPressed || event.isMetaPressed)
-                ) {
-                    runCatching { searchFocusRequester.requestFocus() }
-                    true
-                } else {
-                    false
-                }
-            },
-    ) {
-        // ── Табы (ALL + Favourites + дропдаун списков) + хвост владельца ──
-        ExplorerTabsRow(
-            watchlists = watchlists,
-            activeListId = activeListId,
-            onActiveListIdChange = selectList,
-            onReorderWatchlists = reorderWatchlists,
-            showFootprintTab = footprintSymbols != null,
-            footprintActive = footprintOnly,
-            onFootprintClick = { onFootprintOnlyChange(true) },
-            trailing = tabsTrailing,
-        )
-
-        HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-
-        // ── Поиск ──
-        TerminalSearchField(
-            query = query,
-            onQueryChange = onQueryChange,
-            placeholder = "Search symbol, market or contract",
-            focusRequester = searchFocusRequester,
-            modifier = Modifier.padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-        )
-
-        // ── Фильтры: perpetuals / quote / биржа + сортировка ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(tokens.spacing.sm),
-        ) {
+    TerminalExplorerPopupContent(
+        modifier = modifier.then(if (listHeight == null) Modifier.fillMaxSize() else Modifier),
+        tabs = {
+            ExplorerTabsRow(
+                watchlists = watchlists,
+                activeListId = activeListId,
+                onActiveListIdChange = selectList,
+                onReorderWatchlists = reorderWatchlists,
+                showFootprintTab = footprintSymbols != null,
+                footprintActive = footprintOnly,
+                onFootprintClick = { onFootprintOnlyChange(true) },
+                trailing = tabsTrailing,
+            )
+        },
+        query = query,
+        onQueryChange = onQueryChange,
+        searchPlaceholder = "Search symbol, market or contract",
+        searchFocusRequester = searchFocusRequester,
+        autoFocusSearch = autoFocusSearch,
+        filters = {
             ExplorerFilterChip(
                 label = "PERPETUALS",
                 active = perpetualsOnly,
@@ -683,17 +644,8 @@ fun SymbolExplorerContent(
                     }
                 },
             )
-        }
-
-        HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-
-        // ── Шапка списка ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        },
+        listHeader = {
             Text(
                 text = "CONTRACT",
                 color = tokens.colors.label,
@@ -711,9 +663,19 @@ fun SymbolExplorerContent(
                 fontFamily = TerminalFontFamily,
                 letterSpacing = 1.sp,
             )
-        }
-
-        // ── Список (ленивый; фиксированные ширина/высота нужны попапу) ──
+        },
+        footer = {
+            Text(
+                text = explorerFooterText(result.matches.size, sort),
+                color = tokens.colors.label,
+                fontSize = 9.sp,
+                fontFamily = TerminalFontFamily,
+                letterSpacing = 0.5.sp,
+                modifier = Modifier.weight(1f),
+            )
+            footerTrailing?.invoke(this)
+        },
+    ) {
         Box(
             modifier = Modifier
                 .then(if (listWidth != null) Modifier.width(listWidth) else Modifier.fillMaxWidth())
@@ -773,26 +735,6 @@ fun SymbolExplorerContent(
                     .align(Alignment.BottomEnd)
                     .padding(end = tokens.spacing.md, bottom = tokens.spacing.sm),
             )
-        }
-
-        HorizontalDivider(color = tokens.colors.panelBorder, thickness = tokens.dimensions.borderWidth)
-
-        // ── Футер ──
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.sm),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = explorerFooterText(result.matches.size, sort),
-                color = tokens.colors.label,
-                fontSize = 9.sp,
-                fontFamily = TerminalFontFamily,
-                letterSpacing = 0.5.sp,
-                modifier = Modifier.weight(1f),
-            )
-            footerTrailing?.invoke(this)
         }
     }
 }

@@ -16,7 +16,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.unit.dp
 import com.aandios.nous.api.market.model.Candle
-import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
 import com.aandios.nous.core.ui.theme.TerminalSemanticColors
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
@@ -61,14 +60,6 @@ fun indicatorChartColors(colors: TerminalSemanticColors): IndicatorChartColors =
         grid = colors.gridLine,
     )
 
-fun IndicatorOutput.withLineColors(overrides: Map<String, Long>): IndicatorOutput {
-    if (overrides.isEmpty()) return this
-    val updated = lines.map { line ->
-        overrides[line.id]?.let { argb -> line.copy(colorArgb = argb) } ?: line
-    }
-    return if (updated == lines) this else copy(lines = updated)
-}
-
 fun indicatorLineColor(line: IndicatorLine, colors: IndicatorChartColors): Color =
     line.colorArgb?.let { Color(it) } ?: colors.color(line.colorRole)
 
@@ -83,22 +74,8 @@ fun overlayIndicatorRenderer(
 fun paneIndicatorRenderer(
     outputs: List<IndicatorOutput>,
     colors: IndicatorChartColors,
-    liquidationOrders: List<LiquidationOrder> = emptyList(),
-    liquidationLongColor: Color? = null,
-    liquidationShortColor: Color? = null,
 ): DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit =
     { area, candles, _, scrollOffset, zoomLevel ->
-        if (liquidationOrders.isNotEmpty()) {
-            drawLiquidationHistogram(
-                area = area,
-                candles = candles,
-                orders = liquidationOrders,
-                scrollOffset = scrollOffset,
-                zoomLevel = zoomLevel,
-                longColor = liquidationLongColor ?: colors.bullish,
-                shortColor = liquidationShortColor ?: colors.bearish,
-            )
-        }
         if (outputs.isNotEmpty()) {
             drawIndicatorPane(area, candles, outputs, colors, scrollOffset, zoomLevel)
         }

@@ -26,13 +26,13 @@ SQLite state store.
 | `providers/binance-provider` | Binance USDT-M. Market data is real; `trading` is a stub that returns fake success with `TEST-<timestamp>` ids and tracks nothing — never use it to validate real order behaviour. |
 | `providers/bybit-provider` | Bybit V5 USDT linear perpetual market data and trading: public candles, order book, trades, best bid/ask, symbol info, live liquidations, signed private REST, and private account WebSocket. Credentials are `ProviderConfig.apiKey/secretKey` or `BYBIT_API_KEY` / `BYBIT_SECRET_KEY`; historical liquidations are not exposed by the documented public API. Margin mode is account-wide on UTA and must match the order's requested mode; the adapter never switches it implicitly. |
 | `providers/mexc-provider` | MEXC USDT-M Futures Contract API v1: signed REST client, rate gate, WS hub (public + personal), adapters, contract-size aware trading adapter. |
-| `features/chart` | Chart panel: rendering (candles/footprint), `ChartViewModel`, panel-scoped persistence (`ChartStatePersistor`), chart trading (order/position badges, TP/SL, drag = cancel+replace), indicators (off-main compute, TABS/STACKED panes, per-line colors, global favorites/presets). JVM UI: `ChartWindow`, `ChartTradingPanel`. |
+| `features/chart` | Chart panel: rendering (candles/footprint), `ChartViewModel`, panel-scoped persistence (`ChartStatePersistor`), chart trading (order/position badges, TP/SL, drag = cancel+replace), indicators (off-main compute, feed source, TABS/STACKED panes, per-line colors, global favorites/presets). JVM UI: `ChartWindow`, `ChartTradingPanel`. |
 | `features/dom` | DOM depth ladder: `DomViewModel` (order book, click-to-place, order chips with resize/drag/cancel, position plates, margin chip), `DomWindow` (jvm), `content/LevelRow` + `DomSection`, `footer/OrderPlacementPanel`. |
 | `features/trading` | Docked trading panel (tabs Positions/Orders/Balance/History), `TradingViewModel`, `PaperSettingsController`, `PaperPersistenceService` (persists the shared paper account). |
 | `features/trades` | Time & sales panel. |
 | `features/localstorage` | SQLite-backed `StateStore` — key-value per-panel persistence. |
 | `features/settings` | App settings surfaces. |
-| `features/research` | TA4J-backed indicator research: common `IndicatorType`/`IndicatorState`/`IndicatorOutput`/`IndicatorEngine` contracts and the JVM-only `Ta4jIndicatorEngine` (SMA, EMA, Bollinger, VWAP, Keltner, RSI, MACD, ATR, Stochastic, Volume, ADX). Chart consumes only the common API. |
+| `features/research` | TA4J-backed indicator engine: common `IndicatorType`/`IndicatorState`/`IndicatorOutput`/`IndicatorEngine`/`IndicatorCalculator`/`IndicatorInputSource`/`IndicatorDefinition` contracts, `DefaultIndicatorEngine` + `IndicatorOutputBuilder`, and the JVM-only `IndicatorRegistry` calculators (SMA, EMA, Bollinger, VWAP, Keltner, RSI, MACD, ATR, Stochastic, Volume, ADX, Liquidations). Chart consumes only the common API. |
 | `build-logic` | Gradle convention plugins: `conventions.kmp-application`, `conventions.kmp-feature`, `conventions.kmp-library` (classes `Kmp*Convention.kt`). New feature modules apply the feature convention. All JVM targets compile with `jvmToolchain(25)`. |
 
 Gotcha: some module source trees use dot-separated folder names for packages,
@@ -181,18 +181,34 @@ Mind this when writing paths.
   `OrderResponse.message` surface as panel snackbars (chart and DOM).
 
 ### Chart indicators
-- Contracts live in `features/research` `commonMain` (`IndicatorType`,
-  `IndicatorState`, `IndicatorEngine`, `IndicatorOutput`,
-  `IndicatorDefinitions`); TA4J 0.27 is JVM-only (`Ta4jIndicatorEngine`).
-  Chart `commonMain` consumes only the common API; `ChartWindow` (jvmMain)
-  owns the engine and computes outputs off the UI thread
-  (`Dispatchers.Default`), keyed by series identity + last candle, never per
-  redraw.
+- Feeding a new indicator requires only `IndicatorType`, a JVM calculator in
+  `calculators/`, `IndicatorRegistry.all`, and (for a new feed) a field in
+  `IndicatorInput`/`ChartIndicatorInputSource`. Renderer, legend, menu, labels,
+  pane chrome and engine are definition-driven.
+- Contracts live in `features/research` `commonMain`: `IndicatorDefinition`
+  (static metadata + `IndicatorLineSpec`), `IndicatorCalculator`
+  (`requiredInputs` + `compute`), `IndicatorInput`/`InputKind` (candles,
+  liquidations, funding, open interest), `IndicatorInputSource`
+  (`snapshot`/`updates`), `IndicatorOutputBuilder`, `DefaultIndicatorEngine`.
+  TA4J 0.27 is JVM-only; `IndicatorRegistry` is `expect object` in common with
+  the JVM `actual` owning the calculators.
+- `DefaultIndicatorEngine` unions `requiredInputs`, takes one snapshot per
+  compute, skips unsupported feeds and isolates calculator failures per
+  instance. `IndicatorOutputBuilder` requires exact line-id keys, applies
+  `titleTemplate`/`labelTemplate`, line colors and range precedence
+  (`computation.range` → `fixedRange` → auto-range with `includeZero`).
+- Chart feed source: `ChartIndicatorInputSource` (chart common) owns the
+  liquidation `TimeSeriesController`/`LiquidationSeriesSource`; `ChartWindow`
+  calls `setMarket(symbol, provider.liquidation)` on symbol/provider changes and
+  closes it on dispose. `snapshot` is lock-free; `setMarket` is suspend +
+  mutex + generation-guarded. Feed updates emit `updates()`; `ChartWindow`
+  collects them into `IndicatorComputePipeline.refresh()`.
 - Indicator config is per chart panel: `ChartStatePersistor` stores JSON under
   `chart_{workspace}_{panel}_chart_indicators` (`KEY_INDICATORS`).
-  Missing/invalid payload → `IndicatorDefinitions.defaultState()`; an
-  explicitly saved empty state stays empty. Default is one Liquidations tab;
-  Liquidations is a normal removable pane indicator.
+  Missing/invalid payload → `defaultIndicatorState()`; an explicitly saved
+  empty state stays empty. Default is one Liquidations tab; Liquidations is a
+  normal removable pane indicator with one signed `liq` histogram line
+  (`SELL > 0`, `BUY < 0`), `SIGN` colors and `includeZero`.
 - Overlay set: SMA, EMA, Bollinger Bands, VWAP, Keltner Channels. Pane set:
   RSI, MACD, ATR, Stochastic, Volume, ADX, Liquidations.
 - Pane layout is global per chart panel (`IndicatorState.paneLayout`: `TABS`
@@ -212,12 +228,13 @@ Mind this when writing paths.
 - `ChartInteraction` draws `overlayRenderers` after the candle/footprint
   series inside `chartMainArea`; `indicatorRenderers` is the list of visible
   pane slots. `overlayIndicatorRenderer` / `paneIndicatorRenderer` in
-  `IndicatorRenderer.kt` draw line/band/histogram/level outputs and reuse
-  `drawLiquidationHistogram`. Legend chips use the same line color roles,
-  neutral for histograms, LONG/SHORT for Liquidations.
+  `IndicatorRenderer.kt` draw line/band/histogram/level outputs. Legend chips
+  come from `output.lines` and use the same colors/roles; instances without
+  output get a neutral `definition.label` fallback chip (no LONG/SHORT
+  special case).
 - Each visible pane has a right-side value axis. `ChartWindow` stores
-  `ChartPaneVisual.valueRange` from `indicatorPaneRange(outputs)` (null for a
-  Liquidations-only pane); `ChartInteraction` draws it through
+  `ChartPaneVisual.valueRange` from `indicatorPaneRange(outputs)`; an empty
+  pane gets null. `ChartInteraction` draws it through
   `drawIndicatorValueScale` in that pane's slice of `priceScaleArea`.
   `formatIndicatorValue` adapts decimals to the pane range and uses compact
   volume for large magnitudes. Crosshair vertical line spans the main chart
@@ -226,12 +243,17 @@ Mind this when writing paths.
 - Indicator computation runs off the UI thread through
   `IndicatorComputePipeline`: `Channel.CONFLATED`, one lazy worker on
   `Dispatchers.Default`, `StateFlow` outputs; the newest request wins and
-  errors keep the last good output. `ChartWindow` keys the pipeline by series
-  identity and submits once per candle/instance change, never per redraw.
+  errors keep the last good output. `submit` remembers the last request;
+  `refresh()` (feed update) re-enqueues it and is a no-op before the first
+  submit. `ChartWindow` keys the pipeline by series identity and submits once
+  per candle/instance change, never per redraw.
 - `?x` (`ChartIndicatorButton` / `ChartIndicatorMenu`) lives in `ChartToolbar`
   (so `ChartTitleToolbar` gets it too): `ALL` / `FAVOURITES` tabs plus a
-  `LISTS` preset dropdown, overlay/pane sections, `NEW TAB`, and the active
-  instances. Definition rows lead with the explorer-style star. Stars are global
+  `LISTS` preset dropdown, search (case-insensitive label/type filter),
+  overlay/pane/on-chart sections separated by horizontal dividers, `NEW TAB`,
+  and the active instances. It uses the shared `TerminalExplorerPopupContent`
+  shell (the same as symbol explorer) with its own tabs/header/body slots.
+  Definition rows lead with the explorer-style star. Stars are global
   through `IndicatorPresetRepository`
   (StateStore key `indicator_library`); presets store overlays, pane grouping,
   params, line colors and active pane index, not heights/layout. Applying a
@@ -239,15 +261,17 @@ Mind this when writing paths.
   the current `paneLayout`. Parameter
   values are editable (Enter/blur commits, Esc/invalid reverts,
   `parseIndicatorParam` clamps to the spec). Labels use
-  `indicatorInstanceTitle` / `indicatorPaneTitle` and `plainDecimalFixed` (no
-  scientific notation).
+  `indicatorInstanceTitle` / `indicatorPaneTitle` via definition
+  `titleTemplate` (`MACD {shortPeriod}/{longPeriod}/{signalPeriod}`) and
+  `formatTemplateValue` / `plainDecimalFixed` (no scientific notation).
 - Per-line colors: `IndicatorInstance.lineColors` stores ARGB overrides keyed
-  by output line id and ships with presets; `IndicatorLine.colorArgb` wins in
-  renderer and legend, absent keys fall back to `IndicatorColorRole`. Expanded
-  active rows expose `IndicatorDefinitions.colorTargets` (Liquidations:
-  long/short): `IndicatorColorRow` opens an 18-color theme palette,
-  `THEME DEFAULT`, and custom RGB sliders plus hex `APPLY`. Changes go through
-  `ChartIntent.SetIndicatorLineColor` (null resets) and persist with the panel.
+  by output line id and ships with presets; `IndicatorOutputBuilder` applies
+  them to `IndicatorLine.colorArgb`, which wins in renderer and legend, absent
+  keys fall back to `IndicatorColorRole`. Expanded active rows expose
+  `definition.lines` with `colorLabel`: `IndicatorColorRow` opens an 18-color
+  theme palette, `THEME DEFAULT`, and custom RGB sliders plus hex `APPLY`.
+  Changes go through `ChartIntent.SetIndicatorLineColor` (null resets) and
+  persist with the panel.
 
 ### Chart/footprint performance invariants (JFR-guided)
 - `ChartTradingPanel` owns the best bid/ask subscription (limit price
@@ -434,12 +458,16 @@ from the IDE and tests visually; agents verify via compilation and tests.
   explorer selection (provider switch + pending symbol, contract-type sync).
 - `features/chart/src/jvmTest` — chart state/persistence/rendering +
   explorer selection (`ChartExplorerRowsTest`), indicator labels/pane steps
-  (`IndicatorLabelsTest`), indicator view-model intents
+  (`IndicatorLabelsTest`), indicator search (`IndicatorMenuSearchTest`),
+  indicator view-model intents
   (`ChartViewModelCacheTest`), color parsing (`IndicatorColorPickerTest`),
   pane value mapping/formatting (`IndicatorValueScaleTest`), conflated compute
   (`IndicatorComputePipelineTest`) and global favorites/presets
   (`IndicatorPresetRepositoryTest`); no commonTest.
-- `features/research/src/jvmTest` — TA4J indicator math (`Ta4jIndicatorEngineTest`).
+- `features/research/src/jvmTest` — TA4J calculators/registry through
+  `DefaultIndicatorEngineTest`, `IndicatorRegistryTest`,
+  `IndicatorOutputBuilderTest`, `CandlesExtTest`; chart feed source lives in
+  `features/chart/src/jvmTest` (`ChartIndicatorInputSourceTest`).
 - `providers/mexc-provider/src/jvmTest`, `providers/binance-provider/src/jvmTest`.
 - `features/trading`, `features/trades`, `features/settings` have no tests
   (`:features:trading:jvmTest` exists but is empty).
@@ -527,6 +555,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   its popup body is the shared `SymbolExplorerContent` (hoisted state params,
   optional `rowMenu` per-row context menu hook) — Market Watch renders the
   same composable inline, so keep new explorer features inside the content;
+  both explorer and indicator menus build on `TerminalExplorerPopupContent`
+  (tabs/search/filters/list-header/footer slots), so keep shared popup chrome
+  there instead of duplicating it;
   tabs ALL + Favourites uppercased; other watchlists live in the uppercased
   LISTS dropdown trigger showing the active list (stars write into an
   auto-created `Favourites` list), search field with hit highlight and
@@ -539,8 +570,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `IntrinsicSize.Max`, and a SubcomposeLayout cannot answer intrinsic queries
   unless it has a specified size — never `fillMaxWidth()` there; the height is
   resizable via `TerminalResizeGrip` in the footer (vertical drag, right of
-  MANAGE WATCHLIST; min 2 rows; max = `LocalPanelSize.height` minus popup
-  chrome, so it never exceeds the host panel); scroll-to-top FAB over the list;
+  MANAGE WATCHLIST; min 2 rows; max = app window height minus popup chrome, so
+  it can grow almost to the whole window); scroll-to-top FAB over the list;
   star, `SYMBOL.P` for
   perpetuals, `EXCHANGE · PERP · VOL $3.84B`, last price, 24h %), footer
   `N CONTRACTS · SORTED BY <sort>` + MANAGE WATCHLIST, which opens the Market
@@ -697,7 +728,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
   height) use the shared `TerminalResizeGrip` (diagonal 45° two-way arrow,
   `TerminalResizeOrientation.HORIZONTAL`/`VERTICAL`). `LayoutRenderer` leaves
   publish their size via `LocalPanelSize` (IntSize; zero outside a workspace
-  panel); popups use it to cap their height to the host panel.
+  panel); explorer popups cap their height to the app window via
+  `LocalWindowInfo` instead of the host panel.
 - DOM ladder and order-entry colors should come from
   `LocalTerminalDesignTokens.current`; preserve strong white-on-side-color and
   dark-on-quantity-input contrast.

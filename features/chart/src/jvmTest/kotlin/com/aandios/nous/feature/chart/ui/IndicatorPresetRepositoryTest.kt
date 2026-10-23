@@ -6,7 +6,7 @@
 package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.core.storage.StateStore
-import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.createIndicator
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorPaneState
 import com.aandios.nous.research.indicator.IndicatorState
@@ -30,19 +30,19 @@ class IndicatorPresetRepositoryTest {
 
     private fun indicators() = IndicatorState(
         overlays = listOf(
-            IndicatorDefinitions.create(IndicatorType.EMA, "ema-1").copy(
+            createIndicator(IndicatorType.EMA, "ema-1").copy(
                 lineColors = mapOf("ema" to 0xFF123456L),
             ),
         ),
         panes = listOf(
             IndicatorPaneState(
                 id = "pane-rsi",
-                indicators = listOf(IndicatorDefinitions.create(IndicatorType.RSI, "rsi-1")),
+                indicators = listOf(createIndicator(IndicatorType.RSI, "rsi-1")),
                 heightDp = 140f,
             ),
             IndicatorPaneState(
                 id = "pane-macd",
-                indicators = listOf(IndicatorDefinitions.create(IndicatorType.MACD, "macd-1")),
+                indicators = listOf(createIndicator(IndicatorType.MACD, "macd-1")),
             ),
         ),
         activePaneId = "pane-macd",

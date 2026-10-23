@@ -6,51 +6,20 @@
 package com.aandios.nous.feature.chart.ui
 
 import com.aandios.nous.core.ui.format.plainDecimalFixed
-import com.aandios.nous.research.indicator.IndicatorDefinitions
 import com.aandios.nous.research.indicator.IndicatorInstance
 import com.aandios.nous.research.indicator.IndicatorPaneState
 import com.aandios.nous.research.indicator.IndicatorParamSpec
-import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.indicatorDefinition
+import com.aandios.nous.research.indicator.renderIndicatorTemplate
 import kotlin.math.roundToInt
 
 fun indicatorInstanceTitle(instance: IndicatorInstance): String {
-    val definition = IndicatorDefinitions.definition(instance.type)
-    fun value(key: String): Double? = instance.params[key]
-    fun period(key: String = "period"): Int? = value(key)?.roundToInt()
-    return when (instance.type) {
-        IndicatorType.SMA,
-        IndicatorType.EMA,
-        IndicatorType.VWAP,
-        IndicatorType.RSI,
-        IndicatorType.ATR,
-        IndicatorType.ADX,
-        IndicatorType.VOLUME,
-        -> period()?.let { "${definition.label} $it" } ?: definition.label
-
-        IndicatorType.BOLLINGER_BANDS ->
-            period()?.let { "${definition.label} $it · ${formatIndicatorParam(value("stdDev") ?: 2.0, false)}" }
-                ?: definition.label
-
-        IndicatorType.KELTNER_CHANNELS ->
-            period()?.let {
-                "${definition.label} $it · ${formatIndicatorParam(value("multiplier") ?: 2.0, false)}"
-            } ?: definition.label
-
-        IndicatorType.MACD -> {
-            val fast = period("shortPeriod") ?: 12
-            val slow = period("longPeriod") ?: 26
-            val signal = period("signalPeriod") ?: 9
-            "${definition.label} $fast/$slow/$signal"
-        }
-
-        IndicatorType.STOCHASTIC -> {
-            val k = period("kPeriod") ?: 14
-            val d = period("dPeriod") ?: 3
-            "${definition.label} $k/$d"
-        }
-
-        IndicatorType.LIQUIDATIONS -> definition.label
-    }
+    val definition = indicatorDefinition(instance.type)
+    return renderIndicatorTemplate(
+        template = definition.titleTemplate,
+        params = instance.params,
+        parameters = definition.parameters,
+    ).ifBlank { definition.label }
 }
 
 fun indicatorPaneTitle(pane: IndicatorPaneState): String =

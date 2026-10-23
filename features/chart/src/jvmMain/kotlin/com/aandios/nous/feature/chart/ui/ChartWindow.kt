@@ -29,7 +29,6 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.v2.SwingWindow
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
@@ -48,7 +47,6 @@ import androidx.compose.ui.window.v2.rememberWindowStateWithBounds
 import com.aandios.nous.api.market.Provider
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
-import com.aandios.nous.api.market.model.liquidation.LiquidationOrder
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.storage.StateStore
@@ -60,7 +58,7 @@ import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.window.applyWindowBackground
 import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.feature.chart.di.initKoinForPreview
-import com.aandios.nous.feature.chart.indicator.LiquidationViewModel
+import com.aandios.nous.feature.chart.indicator.ChartIndicatorInputSource
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.model.toSkeletonCandle
@@ -75,16 +73,15 @@ import com.aandios.nous.feature.chart.ui.chart.indicatorChartColors
 import com.aandios.nous.feature.chart.ui.chart.indicatorPaneRange
 import com.aandios.nous.feature.chart.ui.chart.overlayIndicatorRenderer
 import com.aandios.nous.feature.chart.ui.chart.paneIndicatorRenderer
-import com.aandios.nous.feature.chart.ui.chart.withLineColors
 import com.aandios.nous.feature.chart.ui.withTheme
+import com.aandios.nous.research.indicator.DefaultIndicatorEngine
 import com.aandios.nous.research.indicator.IndicatorInstance
 import com.aandios.nous.research.indicator.IndicatorOutput
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorState
-import com.aandios.nous.research.indicator.IndicatorType
-import com.aandios.nous.research.indicator.Ta4jIndicatorEngine
 import com.aandios.nous.research.indicator.effectivePaneHeightDp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import java.awt.Cursor
 import kotlin.math.roundToInt
@@ -170,6 +167,22 @@ private fun ChartWindowContent(
     val uiState by chartViewModel.state.collectAsState()
     val registry: ProviderRegistry = koinInject()
     val indicatorPresetRepository: IndicatorPresetRepository = koinInject()
+
+    // Feed-backed indicators (liquidations today, funding/OI later) live
+    // outside the chart canvas so provider/symbol changes resubscribe once.
+    val inputScope = rememberCoroutineScope()
+    val indicatorInputSource = remember(inputScope) {
+        ChartIndicatorInputSource(inputScope)
+    }
+    LaunchedEffect(indicatorInputSource, uiState.currentSymbol, uiState.currentProviderId) {
+        indicatorInputSource.setMarket(
+            symbol = uiState.currentSymbol,
+            adapter = registry.get(uiState.currentProviderId)?.liquidation,
+        )
+    }
+    DisposableEffect(indicatorInputSource) {
+        onDispose { indicatorInputSource.close() }
+    }
 
     // Chart trading
     val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
@@ -259,14 +272,6 @@ private fun ChartWindowContent(
         chartViewModel.refreshOpenOrders()
     }
 
-    // Ликвидации — от адаптера АКТИВНОГО провайдера (у MEXC его нет → null)
-    val liquidationViewModel = remember(registry) {
-        LiquidationViewModel(registry.get(uiState.currentProviderId)?.liquidation)
-    }
-    LaunchedEffect(uiState.currentProviderId) {
-        liquidationViewModel.setAdapter(registry.get(uiState.currentProviderId)?.liquidation)
-    }
-
     val designTokens = LocalTerminalDesignTokens.current
     val chartConfig = remember(
         uiState.fpAggregation,
@@ -290,16 +295,6 @@ private fun ChartWindowContent(
         }
     }
 
-    // Liquidation state
-    val liquidationState by liquidationViewModel.state.collectAsState()
-    LaunchedEffect(uiState.currentSymbol) {
-        liquidationViewModel.subscribe(uiState.currentSymbol)
-    }
-    DisposableEffect(Unit) {
-        onDispose { liquidationViewModel.clear() }
-    }
-
-    val liqOrders = liquidationState.orders
     val indicatorColors = remember(designTokens) { indicatorChartColors(designTokens.colors) }
 
     // Drawings: привязаны к workspace+panel и сохраняются на диск
@@ -435,7 +430,7 @@ private fun ChartWindowContent(
                                     "${uiState.currentTimeframe}|CANDLESTICK",
                                 indicators = uiState.indicators,
                                 colors = indicatorColors,
-                                liquidationOrders = liqOrders,
+                                inputSource = indicatorInputSource,
                                 chartConfig = chartConfig,
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
@@ -522,7 +517,7 @@ private fun ChartWindowContent(
                                 "${uiState.currentTimeframe}|FOOTPRINT",
                             indicators = uiState.indicators,
                             colors = indicatorColors,
-                            liquidationOrders = liqOrders,
+                            inputSource = indicatorInputSource,
                             chartConfig = chartConfig,
                             initialZoomLevel = initialZoomLevel,
                             onZoomChange = onZoomChange,
@@ -676,7 +671,7 @@ private fun ChartCanvas(
     seriesKey: String,
     indicators: IndicatorState,
     colors: IndicatorChartColors,
-    liquidationOrders: List<LiquidationOrder>,
+    inputSource: ChartIndicatorInputSource,
     chartConfig: ChartConfig,
     initialZoomLevel: Float,
     onZoomChange: ((Float) -> Unit)?,
@@ -699,7 +694,7 @@ private fun ChartCanvas(
         indicators = indicators,
         seriesKey = seriesKey,
         colors = colors,
-        liquidationOrders = liquidationOrders,
+        inputSource = inputSource,
     )
     val activePaneId = indicators.activePaneId
         ?.takeIf { id -> indicators.panes.any { it.id == id } }
@@ -780,10 +775,8 @@ private fun ChartCanvas(
                 layout.indicatorHeaderAreas.getOrNull(index)?.let { area ->
                     IndicatorPaneHeader(
                         outputs = visual.outputs,
-                        includeLiquidations = visual.includeLiquidations,
+                        instances = pane.indicators,
                         colors = colors,
-                        liquidationLongColor = visual.liquidationLongColor,
-                        liquidationShortColor = visual.liquidationShortColor,
                         modifier = Modifier
                             .chartArea(area, density)
                             .blockChartPointerInput(),
@@ -977,9 +970,6 @@ private typealias ChartIndicatorRenderer =
 private data class ChartPaneVisual(
     val paneId: String,
     val outputs: List<IndicatorOutput>,
-    val includeLiquidations: Boolean,
-    val liquidationLongColor: Color?,
-    val liquidationShortColor: Color?,
     val valueRange: Pair<Float, Float>?,
     val renderer: ChartIndicatorRenderer,
 )
@@ -995,7 +985,7 @@ private fun rememberIndicatorRenderers(
     indicators: IndicatorState,
     seriesKey: String,
     colors: IndicatorChartColors,
-    liquidationOrders: List<LiquidationOrder>,
+    inputSource: ChartIndicatorInputSource,
 ): ChartIndicatorVisuals {
     val instances = remember(indicators) {
         buildList<IndicatorInstance> {
@@ -1003,11 +993,14 @@ private fun rememberIndicatorRenderers(
             indicators.panes.forEach { addAll(it.indicators) }
         }
     }
-    val engine = remember { Ta4jIndicatorEngine() }
+    val engine = remember(inputSource) { DefaultIndicatorEngine(inputSource) }
     val scope = rememberCoroutineScope()
     val pipeline = remember(engine, scope, seriesKey) { IndicatorComputePipeline(engine, scope) }
     DisposableEffect(pipeline) {
         onDispose { pipeline.close() }
+    }
+    LaunchedEffect(pipeline, inputSource) {
+        inputSource.updates().collect { pipeline.refresh() }
     }
     LaunchedEffect(
         pipeline,
@@ -1020,9 +1013,7 @@ private fun rememberIndicatorRenderers(
     }
     val outputs by pipeline.outputs.collectAsState()
 
-    val overlayOutputs = indicators.overlays.mapNotNull { instance ->
-        outputs[instance.id]?.withLineColors(instance.lineColors)
-    }
+    val overlayOutputs = indicators.overlays.mapNotNull { outputs[it.id] }
     val overlayRenderers = remember(overlayOutputs, colors) {
         if (overlayOutputs.isEmpty()) {
             emptyList()
@@ -1030,34 +1021,16 @@ private fun rememberIndicatorRenderers(
             listOf(overlayIndicatorRenderer(overlayOutputs, colors))
         }
     }
-    val paneVisuals = remember(indicators.panes, outputs, colors, liquidationOrders) {
+    val paneVisuals = remember(indicators.panes, outputs, colors) {
         indicators.panes.map { pane ->
-            val paneOutputs = pane.indicators.mapNotNull { instance ->
-                outputs[instance.id]?.withLineColors(instance.lineColors)
-            }
-            val liquidationInstance = pane.indicators.firstOrNull {
-                it.type == IndicatorType.LIQUIDATIONS
-            }
-            val includeLiquidations = liquidationInstance != null
-            val liquidationLongColor = liquidationInstance?.lineColors
-                ?.get("long")
-                ?.let { Color(it) }
-            val liquidationShortColor = liquidationInstance?.lineColors
-                ?.get("short")
-                ?.let { Color(it) }
+            val paneOutputs = pane.indicators.mapNotNull { outputs[it.id] }
             ChartPaneVisual(
                 paneId = pane.id,
                 outputs = paneOutputs,
-                includeLiquidations = includeLiquidations,
-                liquidationLongColor = liquidationLongColor,
-                liquidationShortColor = liquidationShortColor,
                 valueRange = paneOutputs.takeIf { it.isNotEmpty() }?.let(::indicatorPaneRange),
                 renderer = paneIndicatorRenderer(
                     outputs = paneOutputs,
                     colors = colors,
-                    liquidationOrders = if (includeLiquidations) liquidationOrders else emptyList(),
-                    liquidationLongColor = liquidationLongColor,
-                    liquidationShortColor = liquidationShortColor,
                 ),
             )
         }

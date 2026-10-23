@@ -41,6 +41,8 @@ class IndicatorComputePipeline(
 
     private val requests = Channel<Request>(Channel.CONFLATED)
 
+    private var lastRequest: Request? = null
+
     private val worker: Job = scope.launch(
         dispatcher,
         start = CoroutineStart.LAZY,
@@ -65,7 +67,17 @@ class IndicatorComputePipeline(
     }
 
     fun submit(candles: List<Candle>, instances: List<IndicatorInstance>) {
-        requests.trySend(Request(candles, instances))
+        val request = Request(candles, instances)
+        lastRequest = request
+        requests.trySend(request)
+    }
+
+    /**
+     * Recomputes the last request, for example after a feed update. Before the
+     * first [submit] this is a no-op: that submit snapshots the fresh input.
+     */
+    fun refresh() {
+        lastRequest?.let { requests.trySend(it) }
     }
 
     fun close() {

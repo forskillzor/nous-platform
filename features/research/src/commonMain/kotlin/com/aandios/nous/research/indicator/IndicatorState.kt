@@ -19,19 +19,37 @@ data class IndicatorParamSpec(
     val integer: Boolean = true,
 )
 
+/** One rendered line of an indicator definition. */
+data class IndicatorLineSpec(
+    val id: String,
+    val label: String,
+    val labelTemplate: String? = null,
+    val style: IndicatorLineStyle = IndicatorLineStyle.LINE,
+    val colorRole: IndicatorColorRole = IndicatorColorRole.PRIMARY,
+    val histogramColor: HistogramColorMode = HistogramColorMode.SIGN,
+    /** Human label of the editable color slot; null uses [label]. */
+    val colorLabel: String? = null,
+)
+
 /** Static metadata for one indicator type. */
-@Serializable
 data class IndicatorDefinition(
     val type: IndicatorType,
     val label: String,
     val placement: IndicatorPlacement,
     val parameters: List<IndicatorParamSpec> = emptyList(),
+    val lines: List<IndicatorLineSpec> = emptyList(),
+    val levels: List<IndicatorLevel> = emptyList(),
+    val zeroLine: Boolean = false,
+    val bandFill: IndicatorBandFill? = null,
+    val fixedRange: IndicatorValueRange? = null,
+    val includeZero: Boolean = false,
+    val titleTemplate: String = "",
     val canOverlayInPane: Boolean = placement == IndicatorPlacement.PANE,
 )
 
 /**
  * Configured indicator instance. [params] is keyed by [IndicatorParamSpec.key].
- * [lineColors] maps an output line id (see [IndicatorDefinitions.colorTargets])
+ * [lineColors] maps an output line id (see [IndicatorDefinition.lines])
  * to a user-selected ARGB value; missing entries keep the theme default.
  */
 @Serializable

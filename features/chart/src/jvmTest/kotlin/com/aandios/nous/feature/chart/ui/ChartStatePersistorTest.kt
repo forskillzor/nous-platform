@@ -8,7 +8,7 @@ package com.aandios.nous.feature.chart.ui
 import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
-import com.aandios.nous.research.indicator.IndicatorDefinitions
+import com.aandios.nous.research.indicator.createIndicator
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorPaneState
 import com.aandios.nous.research.indicator.IndicatorState
@@ -212,14 +212,14 @@ class ChartStatePersistorTest {
         val right = ChartStatePersistor(store, "chart_ws_right_")
         val indicators = IndicatorState(
             overlays = listOf(
-                IndicatorDefinitions.create(IndicatorType.EMA, "ema-1").copy(
+                createIndicator(IndicatorType.EMA, "ema-1").copy(
                     lineColors = mapOf("ema" to 0xFF00FF00L),
                 ),
             ),
             panes = listOf(
                 IndicatorPaneState(
                     id = "pane-rsi",
-                    indicators = listOf(IndicatorDefinitions.create(IndicatorType.RSI, "rsi-1")),
+                    indicators = listOf(createIndicator(IndicatorType.RSI, "rsi-1")),
                     heightDp = 132f,
                 ),
             ),

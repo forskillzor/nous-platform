@@ -11,6 +11,5 @@ import androidx.compose.ui.unit.IntSize
 /**
  * Размер текущей workspace-панели в пикселях (ставится LayoutRenderer'ом на
  * листе). [IntSize.Zero] вне панели (standalone-окна, попапы вне workspace).
- * Используется попапами панели для ограничения высоты по высоте панели.
  */
 val LocalPanelSize = compositionLocalOf { IntSize.Zero }

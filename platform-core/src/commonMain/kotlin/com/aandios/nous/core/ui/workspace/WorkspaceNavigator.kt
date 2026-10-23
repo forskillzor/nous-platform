@@ -280,6 +280,20 @@ fun WorkspaceNavigator(
             )
         }
 
+        newFolderName?.let { name ->
+            NavigatorNewFolderRow(
+                value = name,
+                onValueChange = { newFolderName = it },
+                onSubmit = { value ->
+                    val trimmed = value.trim()
+                    newFolderName = null
+                    if (trimmed.isNotEmpty() && trimmed != NAVIGATOR_UNSORTED_LABEL) onCreateFolder(trimmed)
+                },
+                onCancel = { newFolderName = null },
+                modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
+            )
+        }
+
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -446,20 +460,6 @@ fun WorkspaceNavigator(
                     onCollapsedFoldersChange(tree.folders.map { it.rawGroup }.toSet())
                 })
             }
-        }
-
-        newFolderName?.let { name ->
-            NavigatorNewFolderRow(
-                value = name,
-                onValueChange = { newFolderName = it },
-                onSubmit = { value ->
-                    val trimmed = value.trim()
-                    newFolderName = null
-                    if (trimmed.isNotEmpty() && trimmed != NAVIGATOR_UNSORTED_LABEL) onCreateFolder(trimmed)
-                },
-                onCancel = { newFolderName = null },
-                modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
-            )
         }
 
         HorizontalDivider(

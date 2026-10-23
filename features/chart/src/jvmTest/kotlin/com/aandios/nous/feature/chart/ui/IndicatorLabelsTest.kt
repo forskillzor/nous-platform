@@ -5,9 +5,10 @@
 
 package com.aandios.nous.feature.chart.ui
 
-import com.aandios.nous.research.indicator.IndicatorDefinitions
 import com.aandios.nous.research.indicator.IndicatorParamSpec
 import com.aandios.nous.research.indicator.IndicatorType
+import com.aandios.nous.research.indicator.createIndicator
+import com.aandios.nous.research.indicator.defaultIndicatorState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -16,10 +17,10 @@ class IndicatorLabelsTest {
 
     @Test
     fun titlesIncludeDefaultParameters() {
-        val macd = IndicatorDefinitions.create(IndicatorType.MACD, "macd")
-        val bollinger = IndicatorDefinitions.create(IndicatorType.BOLLINGER_BANDS, "bb")
-        val stochastic = IndicatorDefinitions.create(IndicatorType.STOCHASTIC, "stoch")
-        val sma = IndicatorDefinitions.create(IndicatorType.SMA, "sma")
+        val macd = createIndicator(IndicatorType.MACD, "macd")
+        val bollinger = createIndicator(IndicatorType.BOLLINGER_BANDS, "bb")
+        val stochastic = createIndicator(IndicatorType.STOCHASTIC, "stoch")
+        val sma = createIndicator(IndicatorType.SMA, "sma")
 
         assertEquals("MACD 12/26/9", indicatorInstanceTitle(macd))
         assertEquals("Bollinger Bands 20 · 2.0", indicatorInstanceTitle(bollinger))
@@ -28,8 +29,25 @@ class IndicatorLabelsTest {
     }
 
     @Test
+    fun titlesUseInstanceParameters() {
+        val macd = createIndicator(IndicatorType.MACD, "macd").copy(
+            params = mapOf(
+                "shortPeriod" to 8.0,
+                "longPeriod" to 21.0,
+                "signalPeriod" to 5.0,
+            ),
+        )
+        val bollinger = createIndicator(IndicatorType.BOLLINGER_BANDS, "bb").copy(
+            params = mapOf("period" to 10.0, "stdDev" to 1.5),
+        )
+
+        assertEquals("MACD 8/21/5", indicatorInstanceTitle(macd))
+        assertEquals("Bollinger Bands 10 · 1.5", indicatorInstanceTitle(bollinger))
+    }
+
+    @Test
     fun paneTitleJoinsIndicatorTitles() {
-        val pane = IndicatorDefinitions.defaultState().panes.single()
+        val pane = defaultIndicatorState().panes.single()
 
         assertEquals("Liquidations", indicatorPaneTitle(pane))
     }
