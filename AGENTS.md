@@ -691,8 +691,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
   for option rows (bidasker-web is a separate web prototype, exempt).
 - Search-match highlighting is the shared `highlightedMatch` (platform-core
   `SearchHighlight.kt`): accent 24% fill + accent bold text. Use it for every
-  regex-match label (explorer, Market Watch, Workspaces navigator) instead of
-  ad-hoc SpanStyles.
+  regex-match label (explorer, Market Watch, Workspaces navigator, indicator
+  menu) instead of ad-hoc SpanStyles. Matching and the highlight range come
+  from the shared `compileSearchRegex`/`matchSymbol` in
+  `SymbolExplorerDropdown.kt`, so filtering and highlighting cannot diverge.
 - Search inputs are the shared `TerminalSearchField` (platform-core): 28dp
   bordered box with search glyph, placeholder, CTRL K hint and × clear (Esc
   clears too). Used by the Workspaces navigator and the explorer/Market Watch

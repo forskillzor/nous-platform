@@ -31,8 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusModifier
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -207,12 +205,12 @@ fun computeExplorerRows(
     val matched = filtered.mapNotNull { row ->
         val match = matchSymbol(
             displaySymbol = row.displaySymbol,
+            regex = regex,
             metaFields = buildList {
                 add(row.exchangeLabel)
                 if (row.isPerpetual) add("PERP")
                 row.quoteAsset?.let { add(it) }
             },
-            regex = regex,
         ) ?: return@mapNotNull null
         row to match
     }
@@ -238,13 +236,13 @@ fun computeExplorerRows(
     )
 }
 
-/** Компиляция поискового regex (регистронезависимо) для Market Watch и explorer. */
-internal sealed interface SearchRegexResult {
+/** Компиляция поискового regex (регистронезависимо) для Market Watch, explorer и indicators. */
+sealed interface SearchRegexResult {
     data class Ok(val regex: Regex) : SearchRegexResult
     data class Invalid(val message: String) : SearchRegexResult
 }
 
-internal fun compileSearchRegex(query: String): SearchRegexResult = try {
+fun compileSearchRegex(query: String): SearchRegexResult = try {
     SearchRegexResult.Ok(Regex(query, RegexOption.IGNORE_CASE))
 } catch (e: IllegalArgumentException) {
     SearchRegexResult.Invalid(e.message ?: "Invalid regular expression")
@@ -256,10 +254,10 @@ internal fun compileSearchRegex(query: String): SearchRegexResult = try {
  * 2 подстрока → 3 пустой матч), затем мета-поля (биржа/PERP/quote) без
  * подсветки (score 4). null — кандидат не совпал.
  */
-internal fun matchSymbol(
+fun matchSymbol(
     displaySymbol: String,
-    metaFields: List<String>,
     regex: Regex,
+    metaFields: List<String>?,
 ): SymbolMatch? {
     val symbolMatch = regex.find(displaySymbol)
     if (symbolMatch != null) {
@@ -277,7 +275,7 @@ internal fun matchSymbol(
             matchLength = if (range == null) Int.MAX_VALUE else range.last - range.first,
         )
     }
-    return metaFields.firstNotNullOfOrNull { regex.find(it) }?.let {
+    return metaFields?.firstNotNullOfOrNull { regex.find(it) }?.let {
         SymbolMatch(matchRange = null, score = 4, position = Int.MAX_VALUE, matchLength = Int.MAX_VALUE)
     }
 }
@@ -286,7 +284,7 @@ internal fun matchSymbol(
  * Матч кандидата: [matchRange] — диапазон подсветки в символе (null —
  * совпало мета-поле); [score]/[position]/[matchLength] — ключи релевантности.
  */
-internal data class SymbolMatch(
+data class SymbolMatch(
     val matchRange: IntRange?,
     val score: Int,
     val position: Int,

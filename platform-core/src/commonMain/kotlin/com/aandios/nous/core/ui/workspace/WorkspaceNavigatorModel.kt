@@ -102,15 +102,15 @@ fun buildNavigatorTree(
         val folderMatch = regex.containsMatchIn(name)
         val entries = if (folderMatch) {
             items.sortedWith(navigatorWorkspaceComparator).map { ws ->
-                NavigatorWorkspaceEntry(ws, matchSymbol(ws.name, emptyList(), regex)?.matchRange)
+                NavigatorWorkspaceEntry(ws, matchSymbol(ws.name, regex, emptyList())?.matchRange)
             }
         } else {
             items
                 .mapNotNull { ws ->
                     matchSymbol(
                         displaySymbol = ws.name,
-                        metaFields = listOf(name, navigatorExchangeLabel(ws), navigatorPanelSymbol(ws)),
                         regex = regex,
+                        metaFields = listOf(name, navigatorExchangeLabel(ws), navigatorPanelSymbol(ws)),
                     )?.let { match -> NavigatorWorkspaceEntry(ws, match.matchRange) to match }
                 }
                 .sortedWith(compareBy({ it.second.score }, { it.second.position }, { it.second.matchLength }))

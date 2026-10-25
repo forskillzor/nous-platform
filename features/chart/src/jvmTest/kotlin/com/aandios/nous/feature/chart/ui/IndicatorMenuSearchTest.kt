@@ -17,29 +17,48 @@ class IndicatorMenuSearchTest {
 
     @Test
     fun blankQueryKeepsEveryDefinition() {
-        assertEquals(definitions, filterIndicatorDefinitions(definitions, ""))
-        assertEquals(definitions, filterIndicatorDefinitions(definitions, "   "))
+        assertEquals(definitions, searchIndicatorDefinitions(definitions, "").map { it.definition })
+        assertEquals(definitions, searchIndicatorDefinitions(definitions, "   ").map { it.definition })
+        assertTrue(searchIndicatorDefinitions(definitions, "").all { it.matchRange == null })
     }
 
     @Test
     fun searchMatchesLabelsCaseInsensitively() {
-        val macd = filterIndicatorDefinitions(definitions, "mAcD")
-        val bollinger = filterIndicatorDefinitions(definitions, "bollinger")
+        val macd = searchIndicatorDefinitions(definitions, "mAcD")
+        val bollinger = searchIndicatorDefinitions(definitions, "bollinger")
 
-        assertEquals(listOf(IndicatorType.MACD), macd.map { it.type })
-        assertEquals(listOf(IndicatorType.BOLLINGER_BANDS), bollinger.map { it.type })
+        assertEquals(listOf(IndicatorType.MACD), macd.map { it.definition.type })
+        assertEquals(listOf(IndicatorType.BOLLINGER_BANDS), bollinger.map { it.definition.type })
+        assertEquals(0..3, macd.single().matchRange)
+        assertEquals(0..8, bollinger.single().matchRange)
     }
 
     @Test
     fun queryIsTrimmedBeforeMatching() {
-        val sma = filterIndicatorDefinitions(definitions, "  SMa  ")
+        val sma = searchIndicatorDefinitions(definitions, "  SMa  ")
 
-        assertTrue(sma.any { it.type == IndicatorType.SMA })
-        assertTrue(sma.all { it.label.contains("sma", ignoreCase = true) })
+        assertTrue(sma.any { it.definition.type == IndicatorType.SMA })
+        assertTrue(sma.all { it.definition.label.contains("sma", ignoreCase = true) })
+        assertTrue(sma.all { it.matchRange != null })
+    }
+
+    @Test
+    fun regexQueryHighlightsOnlyMatchedFragment() {
+        val bands = searchIndicatorDefinitions(definitions, "bands$")
+
+        assertEquals(listOf(IndicatorType.BOLLINGER_BANDS), bands.map { it.definition.type })
+        assertEquals(10..14, bands.single().matchRange)
+    }
+
+    @Test
+    fun invalidRegexFallsBackToLiteralSearch() {
+        val matches = searchIndicatorDefinitions(definitions, "[")
+
+        assertTrue(matches.isEmpty())
     }
 
     @Test
     fun unmatchedQueryReturnsEmptyList() {
-        assertEquals(emptyList(), filterIndicatorDefinitions(definitions, "no-such-indicator"))
+        assertEquals(emptyList(), searchIndicatorDefinitions(definitions, "no-such-indicator"))
     }
 }

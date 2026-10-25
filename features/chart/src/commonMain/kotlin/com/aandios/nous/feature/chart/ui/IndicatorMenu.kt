@@ -9,7 +9,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,6 +42,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -52,11 +52,15 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.feature.chart.ui.chart.indicatorChartColors
 import com.aandios.nous.core.ui.component.ExplorerStar
 import com.aandios.nous.core.ui.component.ExplorerTab
+import com.aandios.nous.core.ui.component.SearchRegexResult
 import com.aandios.nous.core.ui.component.TerminalBoxDropdown
 import com.aandios.nous.core.ui.component.TerminalBoxStyle
 import com.aandios.nous.core.ui.component.TerminalDropdownMenu
 import com.aandios.nous.core.ui.component.TerminalExplorerPopupContent
 import com.aandios.nous.core.ui.component.TerminalMenuItem
+import com.aandios.nous.core.ui.component.compileSearchRegex
+import com.aandios.nous.core.ui.component.highlightedMatch
+import com.aandios.nous.core.ui.component.matchSymbol
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.research.indicator.IndicatorDefinition
@@ -239,26 +243,27 @@ fun ChartIndicatorMenu(
         },
     ) {
         val allDefinitions = IndicatorRegistry.all.map { it.definition }
-        val definitions = filterIndicatorDefinitions(
+        val matches = searchIndicatorDefinitions(
             definitions = when (tab) {
                 IndicatorMenuTab.ALL -> allDefinitions
                 IndicatorMenuTab.FAVOURITES -> allDefinitions.filter { it.type in favourites }
             },
             query = query,
         )
-        val overlays = definitions.filter { it.placement == IndicatorPlacement.OVERLAY }
-        val panes = definitions.filter { it.placement == IndicatorPlacement.PANE }
+        val overlays = matches.filter { it.definition.placement == IndicatorPlacement.OVERLAY }
+        val panes = matches.filter { it.definition.placement == IndicatorPlacement.PANE }
 
-        if (definitions.isEmpty()) {
+        if (matches.isEmpty()) {
             IndicatorMenuHint(
                 if (tab == IndicatorMenuTab.FAVOURITES) "No favourites" else "No indicators",
             )
         }
         if (overlays.isNotEmpty()) {
             IndicatorMenuSection("OVERLAYS")
-            overlays.forEach { definition ->
+            overlays.forEach { match ->
+                val definition = match.definition
                 IndicatorDefinitionRow(
-                    label = definition.label,
+                    label = highlightedMatch(definition.label, match.matchRange, tokens.colors.accent),
                     starred = definition.type in favourites,
                     onToggleFavourite = { toggleFavourite(definition.type) },
                     onAdd = {
@@ -270,9 +275,10 @@ fun ChartIndicatorMenu(
         if (panes.isNotEmpty()) {
             if (overlays.isNotEmpty()) IndicatorMenuDivider()
             IndicatorMenuSection("BOTTOM PANE")
-            panes.forEach { definition ->
+            panes.forEach { match ->
+                val definition = match.definition
                 IndicatorDefinitionRow(
-                    label = definition.label,
+                    label = highlightedMatch(definition.label, match.matchRange, tokens.colors.accent),
                     starred = definition.type in favourites,
                     onToggleFavourite = { toggleFavourite(definition.type) },
                     onAdd = {
@@ -353,15 +359,28 @@ fun ChartIndicatorMenu(
     }
 }
 
-internal fun filterIndicatorDefinitions(
+internal data class IndicatorDefinitionMatch(
+    val definition: IndicatorDefinition,
+    val matchRange: IntRange?,
+)
+
+internal fun searchIndicatorDefinitions(
     definitions: List<IndicatorDefinition>,
     query: String,
-): List<IndicatorDefinition> {
+): List<IndicatorDefinitionMatch> {
     val term = query.trim()
-    if (term.isEmpty()) return definitions
-    return definitions.filter {
-        it.label.contains(term, ignoreCase = true) ||
-            it.type.name.replace('_', ' ').contains(term, ignoreCase = true)
+    if (term.isEmpty()) return definitions.map { IndicatorDefinitionMatch(it, null) }
+    val regex = when (val compiled = compileSearchRegex(term)) {
+        is SearchRegexResult.Ok -> compiled.regex
+        is SearchRegexResult.Invalid -> Regex(Regex.escape(term), RegexOption.IGNORE_CASE)
+    }
+    return definitions.mapNotNull { definition ->
+        val match = matchSymbol(
+            displaySymbol = definition.label,
+            regex = regex,
+            metaFields = listOf(definition.type.name.replace('_', ' ')),
+        ) ?: return@mapNotNull null
+        IndicatorDefinitionMatch(definition, match.matchRange)
     }
 }
 
@@ -410,7 +429,7 @@ private fun IndicatorMenuHint(text: String) {
 
 @Composable
 private fun IndicatorDefinitionRow(
-    label: String,
+    label: AnnotatedString,
     starred: Boolean,
     onToggleFavourite: () -> Unit,
     onAdd: () -> Unit,
@@ -583,7 +602,7 @@ private fun IndicatorPresetNameRow(
 }
 
 @Composable
-private fun IndicatorMenuLabel(text: String) {
+private fun IndicatorMenuLabel(text: AnnotatedString) {
     Text(
         text = text,
         color = androidx.compose.material3.MaterialTheme.colorScheme.onSurface,
