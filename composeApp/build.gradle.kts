@@ -172,7 +172,7 @@ compose.desktop {
             linux {
                 shortcut = true
                 includeAllModules = true
-                iconFile.set(project.file("src/jvmMain/resources/icon-logo.png"))
+                iconFile.set(project.file("src/jvmMain/resources/nous-logo.png"))
             }
         }
     }
