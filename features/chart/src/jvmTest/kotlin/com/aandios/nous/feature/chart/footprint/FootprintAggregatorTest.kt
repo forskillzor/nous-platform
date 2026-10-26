@@ -16,13 +16,13 @@ class FootprintAggregatorTest {
     @Test
     fun `resolveFootprintSourceTimeframe for all display timeframes`() {
         assertEquals("1m" to 1, FootprintAggregator.resolveFootprintSourceTimeframe("1m"))
-        assertEquals("1m" to 5, FootprintAggregator.resolveFootprintSourceTimeframe("5m"))
+        assertEquals("5m" to 1, FootprintAggregator.resolveFootprintSourceTimeframe("5m"))
         assertEquals("15m" to 1, FootprintAggregator.resolveFootprintSourceTimeframe("15m"))
         assertEquals("15m" to 2, FootprintAggregator.resolveFootprintSourceTimeframe("30m"))
-        assertEquals("15m" to 4, FootprintAggregator.resolveFootprintSourceTimeframe("1h"))
-        assertEquals("15m" to 16, FootprintAggregator.resolveFootprintSourceTimeframe("4h"))
-        assertEquals("15m" to 96, FootprintAggregator.resolveFootprintSourceTimeframe("1d"))
-        assertEquals("15m" to 672, FootprintAggregator.resolveFootprintSourceTimeframe("1w"))
+        assertEquals("1h" to 1, FootprintAggregator.resolveFootprintSourceTimeframe("1h"))
+        assertEquals("4h" to 1, FootprintAggregator.resolveFootprintSourceTimeframe("4h"))
+        assertEquals("1d" to 1, FootprintAggregator.resolveFootprintSourceTimeframe("1d"))
+        assertEquals("1d" to 7, FootprintAggregator.resolveFootprintSourceTimeframe("1w"))
     }
 
     @Test
@@ -119,8 +119,100 @@ class FootprintAggregatorTest {
     @Test
     fun `sourceTimeframeMs returns duration of source timeframe`() {
         assertEquals(60_000L, FootprintAggregator.sourceTimeframeMs("1m"))
+        assertEquals(300_000L, FootprintAggregator.sourceTimeframeMs("5m"))
         assertEquals(900_000L, FootprintAggregator.sourceTimeframeMs("15m"))
+        assertEquals(1_800_000L, FootprintAggregator.sourceTimeframeMs("30m"))
+        assertEquals(3_600_000L, FootprintAggregator.sourceTimeframeMs("1h"))
+        assertEquals(14_400_000L, FootprintAggregator.sourceTimeframeMs("4h"))
+        assertEquals(86_400_000L, FootprintAggregator.sourceTimeframeMs("1d"))
+        assertEquals(604_800_000L, FootprintAggregator.sourceTimeframeMs("1w"))
         assertEquals(60_000L, FootprintAggregator.sourceTimeframeMs("unknown"))
+    }
+
+    @Test
+    fun `formingSourceTimeframes uses largest sources first`() {
+        assertEquals(
+            listOf("15m", "5m", "1m"),
+            FootprintAggregator.formingSourceTimeframes("1h"),
+        )
+        assertEquals(
+            listOf("4h", "1h", "15m", "5m", "1m"),
+            FootprintAggregator.formingSourceTimeframes("1d"),
+        )
+        assertEquals(
+            listOf("1d", "4h", "1h", "15m", "5m", "1m"),
+            FootprintAggregator.formingSourceTimeframes("1w"),
+        )
+        assertTrue(FootprintAggregator.formingSourceTimeframes("1m").isEmpty())
+        assertTrue(FootprintAggregator.formingSourceTimeframes("5m").isEmpty())
+    }
+
+    @Test
+    fun `assembleFormingCandle fills hour from 15m 5m and 1m`() {
+        val minute = 60_000L
+        val fifteen = 15 * minute
+        val five = 5 * minute
+        val hour = 60 * minute
+        val sources = mapOf(
+            "15m" to listOf(
+                candle(0L, fifteen, level("100.0", "1", "1", bidCount = 1)),
+                candle(fifteen, 2 * fifteen, level("100.0", "1", "1", bidCount = 1)),
+                candle(2 * fifteen, 3 * fifteen, level("100.0", "1", "1", bidCount = 1)),
+            ),
+            "5m" to listOf(
+                candle(45 * minute, 50 * minute, level("100.0", "1", "1", bidCount = 1)),
+                candle(50 * minute, 55 * minute, level("100.0", "1", "1", bidCount = 1)),
+            ),
+            "1m" to (55 until 60).map { m ->
+                candle(m * minute, (m + 1) * minute, level("100.0", "1", "1", bidCount = 1))
+            },
+        )
+
+        val agg = FootprintAggregator.assembleFormingCandle("1h", 0L, hour, sources)
+
+        requireNotNull(agg)
+        assertEquals("1h", agg.timeframe)
+        assertEquals(0L, agg.startTime)
+        assertEquals(hour, agg.endTime)
+        assertEquals(10L, agg.totalTicks)
+        assertEquals("100.0", agg.minPrice)
+        assertEquals("100.0", agg.maxPrice)
+        val level = agg.levels.single()
+        assertEquals(10, level.bidCount)
+        assertEquals(10.0f, level.bidVolumeFloat)
+    }
+
+    @Test
+    fun `assembleFormingCandle skips unavailable larger source`() {
+        val minute = 60_000L
+        val fifteen = 15 * minute
+        val sources = mapOf(
+            "5m" to listOf(
+                candle(5 * minute, 10 * minute, level("100.0", "1", "1", bidCount = 1)),
+                candle(10 * minute, 15 * minute, level("100.0", "1", "1", bidCount = 1)),
+            ),
+            "1m" to (0 until 5).map { m ->
+                candle(m * minute, (m + 1) * minute, level("100.0", "1", "1", bidCount = 1))
+            },
+        )
+
+        val agg = FootprintAggregator.assembleFormingCandle("15m", 0L, fifteen, sources)
+
+        requireNotNull(agg)
+        assertEquals(5L, agg.totalTicks)
+        assertEquals(0L, agg.startTime)
+        assertEquals(fifteen, agg.endTime)
+    }
+
+    @Test
+    fun `assembleFormingCandle returns null when bucket has no sources`() {
+        val agg = FootprintAggregator.assembleFormingCandle(
+            displayTimeframe = "1h",
+            bucketStart = 0L,
+            bucketEnd = 3_600_000L,
+            sourceCandles = emptyMap(),
+        )
+        assertEquals(null, agg)
     }
 
     @Test

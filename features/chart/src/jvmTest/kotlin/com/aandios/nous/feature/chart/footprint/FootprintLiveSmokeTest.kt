@@ -17,10 +17,8 @@ import kotlin.test.assertEquals
 
 /**
  * Живой smoke-тест схемы footprint:
- *  1m — с сервера как есть;
- *  5m — агрегация из 1m на клиенте;
- *  15m — с сервера как есть;
- *  всё что выше 15m — агрегация из 15m на клиенте.
+ *  1m/5m/15m/1h/4h — с сервера нативно;
+ *  30m — 15m×2; batch API — источник для формирующейся свечи.
  *
  * При недоступном market-data-server тест пропускается (assumeTrue),
  * поэтому в CI он не падает, а локально доказывает рабочий конвейер.
@@ -52,31 +50,53 @@ class FootprintLiveSmokeTest {
             val m1 = api.getFootprint(symbol = symbol, timeframe = "1m", limit = 5)
             assumeTrue(m1.isNotEmpty(), "no 1m data on server")
 
-            // 2) 5m — собирается из 1m на клиенте
-            val raw1m = api.getFootprint(symbol = symbol, timeframe = "1m", limit = 100)
-            val m5 = FootprintAggregator.aggregateFootprintCandles(raw1m, 5, 60_000L)
-            assumeTrue(m5.isNotEmpty(), "5m aggregation produced nothing")
-            m5.forEach { assertEquals(0L, it.startTime % 300_000L, "5m bucket misaligned: ${it.startTime}") }
+            // 2) 5m/15m/1h/4h — с сервера нативно
+            val m5 = api.getFootprint(symbol = symbol, timeframe = "5m", limit = 10)
+            assumeTrue(m5.isNotEmpty(), "no 5m data on server")
+            m5.forEach {
+                assertEquals("5m", it.timeframe)
+                assertEquals(0L, it.startTime % 300_000L, "5m bucket misaligned: ${it.startTime}")
+            }
 
-            // 3) 15m — с сервера нативно
             val m15 = api.getFootprint(symbol = symbol, timeframe = "15m", limit = 10)
             assumeTrue(m15.isNotEmpty(), "no 15m data on server")
 
-            // 4) 1h — из 15m на клиенте
-            val h1 = FootprintAggregator.aggregateFootprintCandles(
-                api.getFootprint(symbol = symbol, timeframe = "15m", limit = 4 * 20),
-                4, 900_000L
-            )
-            assumeTrue(h1.isNotEmpty(), "1h aggregation produced nothing")
-            h1.forEach { assertEquals(0L, it.startTime % 3_600_000L, "1h bucket misaligned: ${it.startTime}") }
+            val h1 = api.getFootprint(symbol = symbol, timeframe = "1h", limit = 10)
+            assumeTrue(h1.isNotEmpty(), "no 1h data on server")
+            h1.forEach {
+                assertEquals("1h", it.timeframe)
+                assertEquals(0L, it.startTime % 3_600_000L, "1h bucket misaligned: ${it.startTime}")
+            }
 
-            // 5) 4h — из 15m на клиенте
-            val h4 = FootprintAggregator.aggregateFootprintCandles(
-                api.getFootprint(symbol = symbol, timeframe = "15m", limit = 16 * 20),
-                16, 900_000L
+            val h4 = api.getFootprint(symbol = symbol, timeframe = "4h", limit = 10)
+            assumeTrue(h4.isNotEmpty(), "no 4h data on server")
+            h4.forEach {
+                assertEquals("4h", it.timeframe)
+                assertEquals(0L, it.startTime % 14_400_000L, "4h bucket misaligned: ${it.startTime}")
+            }
+
+            // 3) 30m — агрегация 15m×2
+            val m30 = FootprintAggregator.aggregateFootprintCandles(m15, 2, 900_000L, "30m")
+            assumeTrue(m30.isNotEmpty(), "30m aggregation produced nothing")
+            m30.forEach {
+                assertEquals("30m", it.timeframe)
+                assertEquals(0L, it.startTime % 1_800_000L, "30m bucket misaligned: ${it.startTime}")
+            }
+
+            // 4) Batch API — источник для формирующейся свечи
+            val batch = api.getBatchFootprint(
+                symbol = symbol,
+                queries = listOf(
+                    BatchFootprintQuery("1m", limit = 2, order = "asc"),
+                    BatchFootprintQuery("5m", limit = 2, order = "asc"),
+                    BatchFootprintQuery("15m", limit = 2, order = "asc"),
+                ),
             )
-            assumeTrue(h4.isNotEmpty(), "4h aggregation produced nothing")
-            h4.forEach { assertEquals(0L, it.startTime % 14_400_000L, "4h bucket misaligned: ${it.startTime}") }
+            assertEquals(3, batch.results.size)
+            val byTimeframe = batch.results.associate { it.timeframe to it.candles }
+            assertEquals(2, byTimeframe.getValue("1m").size)
+            assertEquals(2, byTimeframe.getValue("5m").size)
+            assertEquals(2, byTimeframe.getValue("15m").size)
         } finally {
             client.close()
         }

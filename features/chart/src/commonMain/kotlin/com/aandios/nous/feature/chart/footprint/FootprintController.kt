@@ -103,7 +103,7 @@ class FootprintController(
         }
 
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
-        val isLiveTrades = sourceTf == "1m" && tradesAdapter != null
+        val isLiveTrades = (displayTimeframe == "1m" || displayTimeframe == "5m") && tradesAdapter != null
         val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
 
         footprintJob = scope.launch {
@@ -115,9 +115,7 @@ class FootprintController(
 
                 if (isLiveTrades) {
                     // ---- Live trade accumulation (1m or 5m) ----
-                    val displayMs = when (displayTimeframe) {
-                        "1m" -> 60_000L; "5m" -> 300_000L; else -> 60_000L
-                    }
+                    val displayMs = sourceMs * aggCount
 
                     var liveCandle: MutableFootprintCandle? = null
                     var lastCandleStart = 0L
@@ -133,8 +131,8 @@ class FootprintController(
                                 _state.update { it.copy(candles = it.candles + completed) }
                                 saveToCache(listOf(completed))
 
-                                // For 1m display: fetch authoritative version from server
-                                // For 5m: local trade accumulation is authoritative (no server override)
+                                // 1m and 5m are persisted natively; replace the
+                                // locally accumulated candle with the server one.
                                 if (aggCount == 1) {
                                     val serverCandle = fetchCompletedCandle(lastCandleStart, candleStart)
                                     if (serverCandle != null && serverCandle.levels.isNotEmpty()) {
@@ -173,48 +171,6 @@ class FootprintController(
                             }
                         }
                     }
-                } else {
-                    // ---- Server polling (15m, 30m, 1h, 4h) ----
-                    while (isActive) {
-                        delay(sourceMs)
-
-                        val now = currentTimeMillis()
-                        val displayEnd = FootprintAggregator.bucketStart(now, sourceMs, aggCount)
-                        val displayStart = displayEnd - sourceMs * aggCount
-
-                        // Fetch exact range of source candles covering the display window
-                        if (footprintApiClient != null) {
-                            val raw = footprintApiClient.getFootprint(
-                                symbol = this@FootprintController.symbol,
-                                timeframe = sourceTf,
-                                from = displayStart - sourceMs, // margin
-                                to = displayEnd,
-                                limit = aggCount + 2
-                            ).reversed()
-
-                            if (raw.isNotEmpty()) {
-                                // Find the exact chunk that aligns with the display window
-                                for (i in 0..raw.size - aggCount) {
-                                    val chunk = raw.subList(i, i + aggCount)
-                                    val chunkStart = chunk.firstOrNull()?.startTime ?: continue
-                                    if (chunkStart >= displayStart - sourceMs && chunkStart <= displayStart + sourceMs) {
-                                        val agg = FootprintAggregator.aggregateFootprintCandles(chunk, aggCount, sourceMs).firstOrNull() ?: continue
-                                        _state.update { s ->
-                                            val list = s.candles.toMutableList()
-                                            val existIdx = list.indexOfFirst { it.startTime == agg.startTime }
-                                            if (existIdx >= 0) list[existIdx] = agg else list.add(agg)
-                                            s.copy(
-                                                candles = list.sortedBy { it.startTime },
-                                                liveCandle = if (s.liveCandle?.startTime == agg.startTime) null else s.liveCandle,
-                                            )
-                                        }
-                                        saveToCache(listOf(agg))
-                                        break // one display candle per poll cycle
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             } catch (e: CancellationException) {
                 // normal stop
@@ -224,36 +180,39 @@ class FootprintController(
             }
         }
 
-        // Periodic server polling for latest completed candle (1m display only, not aggregated)
-        if (sourceTf == "1m" && aggCount == 1) {
+        // Periodically refresh the latest *closed* display candle from the
+        // server. Covers native 1m/5m replacement and corrects the partial
+        // candle persisted at a 15m/30m/1h/4h/1d/1w boundary.
+        if (footprintApiClient != null) {
             pollingJob = scope.launch {
                 while (isActive) {
                     delay(60_000)
                     val now = currentTimeMillis()
-                    val completedStart = (now / 60_000 * 60_000) - 60_000
-                    val completedEnd = completedStart + 60_000
+                    val displayMs = sourceMs * aggCount
+                    val completedStart = (now / displayMs * displayMs) - displayMs
+                    val completedEnd = completedStart + displayMs
                     val serverCandle = fetchCompletedCandle(completedStart, completedEnd)
                     if (serverCandle != null && serverCandle.levels.isNotEmpty()) {
                         _state.update { s ->
                             val list = s.candles.toMutableList()
-                            if (list.isNotEmpty() && list.last().startTime == completedStart) {
-                                list[list.lastIndex] = serverCandle
-                            } else {
-                                list.add(serverCandle)
-                            }
-                            s.copy(candles = list)
+                            val index = list.indexOfFirst { it.startTime == completedStart }
+                            if (index >= 0) list[index] = serverCandle else list.add(serverCandle)
+                            s.copy(candles = list.sortedBy { it.startTime })
                         }
+                        saveToCache(listOf(serverCandle))
                     }
                 }
             }
         }
 
         // Формирующаяся (незакрытая) свеча для старших таймфреймов: живёт в liveCandle
-        if (!isLiveTrades) {
+        if (!isLiveTrades && footprintApiClient != null &&
+            FootprintAggregator.formingSourceTimeframes(displayTimeframe).isNotEmpty()
+        ) {
             formingJob = scope.launch {
                 while (isActive) {
+                    updateFormingCandle(displayTimeframe)
                     delay(FORMING_POLL_INTERVAL_MS)
-                    updateFormingCandle(sourceTf, aggCount, sourceMs)
                 }
             }
         }
@@ -261,60 +220,63 @@ class FootprintController(
 
     /**
      * Обновляет формирующуюся свечу текущего display-бакета для 15m+.
-     * Свеча собирается из МЕНЬШЕГО таймфрейма: сервер отдаёт только закрытые
-     * агрегаты, поэтому текущий бакет мержим из 1m-свечей (для гигантских
-     * бакетов — из source-свечей). Результат кладётся в liveCandle; при
+     * Сервер отдаёт только закрытые свечи, поэтому текущий бакет собирается
+     * mixed-запросом: сначала крупный нижний TF (15m/1h/4h/1d), затем 5m и 1m
+     * добирают хвост до текущего момента. Результат кладётся в liveCandle; при
      * закрытии бакета полная свеча уходит в историю, а нативный агрегат
      * заменит её позже по polling.
      */
-    private suspend fun updateFormingCandle(sourceTf: String, aggCount: Int, sourceMs: Long) {
+    private suspend fun updateFormingCandle(timeframe: String) {
         val api = footprintApiClient ?: return
+        val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(timeframe)
+        val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
+        val bucketMs = sourceMs * aggCount
         val now = currentTimeMillis()
         val bucketStart = FootprintAggregator.bucketStart(now, sourceMs, aggCount)
-        val bucketMs = sourceMs * aggCount
 
-        // Бакет уже закрылся (или история уже содержит его) — финализируем живую свечу
-        val closed = now - bucketStart >= bucketMs ||
-            (_state.value.candles.isNotEmpty() && _state.value.candles.last().startTime >= bucketStart)
-        if (closed) {
-            val lc = _state.value.liveCandle
-            if (lc?.startTime == bucketStart) {
-                // Формирующаяся свеча полная (собрана из закрытых 1m) —
-                // кладём её в историю, чтобы не было дыры до прихода
-                // нативного агрегата по polling.
-                _state.update { s ->
-                    val list = s.candles.toMutableList()
-                    if (list.none { it.startTime == lc.startTime }) list.add(lc)
-                    s.copy(candles = list.sortedBy { it.startTime }, liveCandle = null)
-                }
-                saveToCache(listOf(lc))
+        val previousLive = _state.value.liveCandle
+        if (previousLive != null && previousLive.startTime < bucketStart) {
+            _state.update { s ->
+                val list = s.candles.toMutableList()
+                if (list.none { it.startTime == previousLive.startTime }) list.add(previousLive)
+                s.copy(candles = list.sortedBy { it.startTime }, liveCandle = null)
             }
+            saveToCache(listOf(previousLive))
+        }
+
+        val historyAlreadyHasBucket = _state.value.candles.lastOrNull()
+            ?.let { it.startTime >= bucketStart } == true
+        if (historyAlreadyHasBucket) {
+            _state.update { it.copy(liveCandle = null) }
             return
         }
 
         try {
-            // Источник для формирующейся свечи: до 1d — 1m; крупнее — source-ТФ
-            val (formTf, formMs, formCount) = if (bucketMs <= 86_400_000L) {
-                Triple("1m", 60_000L, (bucketMs / 60_000L).toInt())
-            } else {
-                Triple(sourceTf, sourceMs, aggCount)
+            val sources = FootprintAggregator.formingSourceTimeframes(timeframe)
+            if (sources.isEmpty()) return
+
+            val queries = sources.map { source ->
+                val step = FootprintAggregator.sourceTimeframeMs(source)
+                val limit = ((bucketMs + step - 1) / step)
+                    .toInt()
+                    .coerceIn(1, FORMING_SOURCE_LIMIT_MAX)
+                BatchFootprintQuery(
+                    timeframe = source,
+                    start = bucketStart,
+                    end = now,
+                    limit = limit,
+                    order = "asc",
+                )
             }
+            val response = api.getBatchFootprint(symbol = symbol, queries = queries)
+            val byTimeframe = response.results.associate { it.timeframe to it.candles }
+            val agg = FootprintAggregator.assembleFormingCandle(
+                displayTimeframe = timeframe,
+                bucketStart = bucketStart,
+                bucketEnd = bucketStart + bucketMs,
+                sourceCandles = byTimeframe,
+            ) ?: return
 
-            val raw = api.getFootprint(
-                symbol = symbol,
-                timeframe = formTf,
-                from = bucketStart - formMs, // margin для выравнивания
-                to = now,
-                limit = formCount + 2,
-            ).reversed()
-
-            val bucketCandles = raw.filter {
-                it.startTime >= bucketStart && it.startTime < bucketStart + bucketMs
-            }
-            if (bucketCandles.isEmpty()) return
-
-            val agg = FootprintAggregator.aggregateFootprintCandles(bucketCandles, formCount, formMs).firstOrNull()
-                ?: return
             _state.update {
                 it.copy(
                     liveCandle = agg,
@@ -361,7 +323,16 @@ class FootprintController(
                     return@launch
                 }
 
-                val aggregated = if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(historical, aggCount, sourceMs) else historical
+                val aggregated = if (aggCount > 1) {
+                    FootprintAggregator.aggregateFootprintCandles(
+                        historical,
+                        aggCount,
+                        sourceMs,
+                        displayTimeframe,
+                    )
+                } else {
+                    historical
+                }
                 _state.update { s ->
                     s.copy(candles = (aggregated + s.candles).distinctBy { it.startTime })
                 }
@@ -390,13 +361,18 @@ class FootprintController(
             val raw = footprintApiClient.getFootprint(
                 symbol = symbol,
                 timeframe = sourceTf,
-                limit = when (sourceTf) {
-                    "1m" -> 20 * aggCount
-                    "15m" -> 20 * aggCount
-                    else -> 20
-                }
+                limit = 20 * aggCount,
             ).reversed() // server returns DESC, we store ASC
-            if (aggCount > 1) FootprintAggregator.aggregateFootprintCandles(raw, aggCount, sourceMs) else raw
+            if (aggCount > 1) {
+                FootprintAggregator.aggregateFootprintCandles(
+                    raw,
+                    aggCount,
+                    sourceMs,
+                    displayTimeframe,
+                )
+            } else {
+                raw
+            }
         } catch (e: Exception) {
             emptyList()
         }
@@ -408,9 +384,9 @@ class FootprintController(
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(displayTimeframe)
         val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
 
-        // Always request the source candles covering the display-tf window:
-        // For 1m → 1 source candle; for 5m → 5 source 1m candles; for 1h → 4 source 15m candles
-        val from = startTime - sourceMs * (aggCount - 1)
+        // Always request the source candles covering the display-tf window.
+        // One source bar before the window is enough to locate the aligned chunk.
+        val from = startTime - sourceMs
         val to = endTime
         val limit = aggCount + 2 // margin for alignment
 
@@ -434,7 +410,12 @@ class FootprintController(
                 val chunk = raw.subList(i, i + aggCount)
                 val chunkStart = chunk.firstOrNull()?.startTime ?: continue
                 if (chunkStart >= startTime && chunkStart < startTime + sourceMs) {
-                    return FootprintAggregator.aggregateFootprintCandles(chunk, aggCount, sourceMs).firstOrNull()
+                    return FootprintAggregator.aggregateFootprintCandles(
+                        chunk,
+                        aggCount,
+                        sourceMs,
+                        displayTimeframe,
+                    ).firstOrNull()
                 }
             }
             null
@@ -480,5 +461,6 @@ class FootprintController(
         private const val CACHE_LIMIT = 200
         private const val FORMING_POLL_INTERVAL_MS = 30_000L
         private const val LIVE_SNAPSHOT_INTERVAL_MS = 100L
+        private const val FORMING_SOURCE_LIMIT_MAX = 300
     }
 }

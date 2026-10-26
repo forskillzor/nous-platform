@@ -6,6 +6,7 @@
 package com.aandios.nous.bidasker.web
 
 import com.aandios.nous.api.market.model.FootprintCandle
+import com.aandios.nous.feature.chart.footprint.FootprintAggregator
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 
 suspend fun loadCandles(
@@ -21,11 +22,24 @@ suspend fun loadCandles(
             maxHours <= 0 -> 200
             else -> maxOf(10, maxHours * 60 / timeframeToMinutes(timeframe))
         }
-        val candles = apiClient.getFootprint(
+        val (sourceTimeframe, aggregateCount) =
+            FootprintAggregator.resolveFootprintSourceTimeframe(timeframe)
+        val sourceLimit = limit * aggregateCount
+        val sourceCandles = apiClient.getFootprint(
             symbol = symbol,
-            timeframe = timeframe,
-            limit = limit
+            timeframe = sourceTimeframe,
+            limit = sourceLimit
         )
+        val candles = if (aggregateCount > 1) {
+            FootprintAggregator.aggregateFootprintCandles(
+                sourceCandles,
+                aggregateCount,
+                FootprintAggregator.sourceTimeframeMs(sourceTimeframe),
+                timeframe,
+            ).take(limit)
+        } else {
+            sourceCandles
+        }
         onResult(candles)
     } catch (e: Exception) {
         onResult(emptyList())

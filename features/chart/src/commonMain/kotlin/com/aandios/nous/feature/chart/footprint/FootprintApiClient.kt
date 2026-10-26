@@ -10,6 +10,8 @@ import com.aandios.nous.api.market.model.FootprintLevel
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 
 class FootprintApiClient(
     private val httpClient: HttpClient,
@@ -53,6 +55,23 @@ class FootprintApiClient(
             parameter("exchange", exchange)
         }.body()
     }
+
+    suspend fun getBatchFootprint(
+        exchange: String = "Binance",
+        symbol: String,
+        queries: List<BatchFootprintQuery>,
+    ): BatchFootprintResponse {
+        return httpClient.post("$baseUrl/api/footprint/batch") {
+            contentType(ContentType.Application.Json)
+            setBody(
+                BatchFootprintRequest(
+                    exchange = exchange,
+                    symbol = symbol,
+                    queries = queries,
+                )
+            )
+        }.body()
+    }
 }
 
 @kotlinx.serialization.Serializable
@@ -61,4 +80,33 @@ data class InstrumentSummary(
     val start: Long,
     val end: Long,
     val candles: Long
+)
+
+@kotlinx.serialization.Serializable
+data class BatchFootprintQuery(
+    val timeframe: String,
+    val start: Long? = null,
+    val end: Long? = null,
+    val limit: Int = 20,
+    val order: String = "desc",
+)
+
+@kotlinx.serialization.Serializable
+data class BatchFootprintRequest(
+    val exchange: String,
+    val symbol: String,
+    val queries: List<BatchFootprintQuery>,
+)
+
+@kotlinx.serialization.Serializable
+data class BatchFootprintResult(
+    val timeframe: String = "",
+    val candles: List<FootprintCandle> = emptyList(),
+)
+
+@kotlinx.serialization.Serializable
+data class BatchFootprintResponse(
+    val exchange: String = "",
+    val symbol: String = "",
+    val results: List<BatchFootprintResult> = emptyList(),
 )
