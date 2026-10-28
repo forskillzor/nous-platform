@@ -16,6 +16,8 @@ import com.aandios.nous.feature.dom.domain.model.DepthLimit
  * [provider] — id провайдера из ProviderRegistry (только реально
  * реализованные провайдеры; UI выбирает из реестра).
  * [contractType] — USDT-M / COIN-M: фильтр списка символов.
+ * [depth] — число АГРЕГИРОВАННЫХ уровней в лесенке.
+ * [aggregation] — размер корзины агрегации цены.
  * [freqMs] — частота эмитов структуры уровней из DOM-модели (мс).
  */
 data class DomOptions(
@@ -35,8 +37,15 @@ data class DomOptions(
     }
     
     /**
-     * Ключ для подписки: комбинация provider + symbol + depth.
+     * Глубина подписки на «сырые» уровни книги с учётом агрегации:
+     * `depth × multiplier` (например, agg 10× и depth 20 → 200 уровней).
+     * UI показывает до [depth] агрегированных уровней.
+     */
+    val rawDepth: Int get() = (depth.value * aggregation.multiplier).toInt()
+
+    /**
+     * Ключ для подписки: provider + symbol + фактическая (сырая) глубина.
      * При изменении любого из этих параметров — переподписка.
      */
-    val subscriptionKey: String get() = "$provider:${symbol.symbol}:${depth.value}"
+    val subscriptionKey: String get() = "$provider:${symbol.symbol}:$rawDepth"
 }

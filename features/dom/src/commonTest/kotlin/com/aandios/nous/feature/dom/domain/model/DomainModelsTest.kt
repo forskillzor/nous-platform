@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.dom.domain.model
 
+import com.aandios.nous.feature.dom.domain.DomOptions
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -33,6 +34,28 @@ class DomainModelsTest {
         assertTrue(DepthLimit.create(10).isStandard())
         assertTrue(DepthLimit.create(20).isStandard())
         assertFalse(DepthLimit(15).isStandard())
+    }
+
+    @Test
+    fun `rawDepth multiplies depth by aggregation and drives subscription key`() {
+        fun raw(depth: Int, aggregation: AggregationLevel): Int =
+            DomOptions.default().copy(
+                depth = DepthLimit.create(depth),
+                aggregation = aggregation,
+            ).rawDepth
+
+        assertEquals(5, raw(5, AggregationLevel.BaseTick))
+        assertEquals(50, raw(5, AggregationLevel.TenTick))
+        assertEquals(500, raw(5, AggregationLevel.HundredTick))
+        assertEquals(20, raw(20, AggregationLevel.BaseTick))
+        assertEquals(200, raw(20, AggregationLevel.TenTick))
+        assertEquals(2000, raw(20, AggregationLevel.HundredTick))
+
+        val options = DomOptions.default().copy(
+            depth = DepthLimit.create(20),
+            aggregation = AggregationLevel.TenTick,
+        )
+        assertEquals("binance-nous-0.0.1:BTCUSDT:200", options.subscriptionKey)
     }
 
     @Test

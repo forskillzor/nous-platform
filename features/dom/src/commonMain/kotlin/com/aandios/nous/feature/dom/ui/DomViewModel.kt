@@ -238,7 +238,8 @@ class DomViewModel(
     fun updateDomOptions(newOptions: DomOptions) {
         val oldOptions = _domOptions.value
         if (oldOptions != newOptions) {
-            val aggChanged = oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
+            val aggregationChanged =
+                oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
             val contractTypeChanged = oldOptions.contractType != newOptions.contractType
             val collapsedChanged = oldOptions.collapsed != newOptions.collapsed
             val freqChanged = oldOptions.freqMs != newOptions.freqMs
@@ -246,10 +247,13 @@ class DomViewModel(
             updateAggMultiplier()
 
             val providerChanged = oldOptions.provider != newOptions.provider
+            // Глубина подписки = depth × aggregation: смена агрегации тоже
+            // требует переподписки на более широкое/узкое окно.
             val subscriptionChanged =
                 providerChanged ||
                 oldOptions.symbol != newOptions.symbol ||
-                oldOptions.depth != newOptions.depth
+                oldOptions.depth != newOptions.depth ||
+                aggregationChanged
 
             if (subscriptionChanged) {
                 restartSubscription(newOptions)
@@ -276,9 +280,6 @@ class DomViewModel(
             } else if (oldOptions.symbol != newOptions.symbol) {
                 qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
-            }
-            if (aggChanged && !subscriptionChanged) {
-                rebuildLevelsFromWindow()
             }
             if (collapsedChanged) {
                 stateStore?.let { store ->
@@ -377,7 +378,7 @@ class DomViewModel(
 
         repository.subscribeToDomEvents(
             symbol = options.symbol.symbol,
-            depth = options.depth.value
+            depth = options.rawDepth
         ).catch { e ->
             println("❌ DOM Events Error: ${e.message}")
             e.printStackTrace()

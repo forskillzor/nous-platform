@@ -78,6 +78,11 @@ class BybitMarketMappingTest {
         assertEquals(1, bybitBookDepth(1))
         assertEquals(50, bybitBookDepth(20))
         assertEquals(200, bybitBookDepth(120))
+        assertEquals(200, bybitBookDepth(200))
+        assertEquals(1000, bybitBookDepth(500))
+        assertEquals(1000, bybitBookDepth(1000))
+        // depth × agg может превысить native-максимум Bybit.
+        assertEquals(1000, bybitBookDepth(2000))
     }
 
     @Test

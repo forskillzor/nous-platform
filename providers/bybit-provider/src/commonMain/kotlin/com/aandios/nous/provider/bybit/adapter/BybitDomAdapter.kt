@@ -23,7 +23,9 @@ class BybitDomAdapter internal constructor(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun subscribeToBookWindow(symbol: String, depth: Int): Flow<BookWindowLevels> {
-        val exchangeDepth = bybitBookDepth(depth)
+        // Глубина уже с учётом агрегации; Bybit отдаёт не больше 1000 уровней.
+        val requestedDepth = depth.coerceIn(1, MAX_DEPTH)
+        val exchangeDepth = bybitBookDepth(requestedDepth)
         val topic = "orderbook.$exchangeDepth.$symbol"
         return flow {
             val bids = mutableMapOf<Double, Double>()
@@ -40,9 +42,13 @@ class BybitDomAdapter internal constructor(
                 }
                 applyLevels(data["b"]?.asArray(), bids)
                 applyLevels(data["a"]?.asArray(), asks)
-                emit(bybitBookWindow(bids, asks, depth.coerceAtLeast(1)))
+                emit(bybitBookWindow(bids, asks, requestedDepth))
             }
         }
+    }
+
+    private companion object {
+        const val MAX_DEPTH = 1000
     }
 
     private fun applyLevels(

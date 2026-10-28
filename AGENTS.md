@@ -115,6 +115,16 @@ Mind this when writing paths.
   persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
   `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId);
   `dom_freq_{panelId}` stores the DOM level-emission frequency (100–300 ms).
+- DOM depth is expressed in **aggregated levels**: the subscription requests
+  `depth × aggregation.multiplier` raw levels (agg 10× + depth 20 → 200 raw →
+  20 aggregated; agg 100× + depth 20 → 2000). Changing aggregation therefore
+  resubscribes. `DomAdapter` always exposes snapshot-style `BookWindowLevels`
+  windows regardless of the provider's internal mode: Binance uses native
+  partial streams for raw depth 5/10/20 and a local diff-book
+  (`@depth@100ms` + REST `/fapi/v1/depth` snapshot) above that; Bybit folds
+  snapshot/delta locally; MEXC folds `sub.depth` increments. Binance/Bybit are
+  capped at 1000 raw levels (20×100 shows ~10 aggregated levels), MEXC can serve
+  the full requested window.
 - Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`, shared),
   `trading_provider_{panelId}`, `trading_contract_{panelId}` (per panel). The window top bar
   Paper switch writes the same `paper_enabled` flag through the shared

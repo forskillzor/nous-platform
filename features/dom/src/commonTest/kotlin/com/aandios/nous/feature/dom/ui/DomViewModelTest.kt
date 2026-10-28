@@ -194,6 +194,50 @@ class DomViewModelTest {
     }
 
     @Test
+    fun `subscription depth accounts for aggregation`() = testScope.runTest {
+        viewModel.updateDomOptions(
+            DomOptions.default().copy(
+                depth = DepthLimit.create(20),
+                aggregation = AggregationLevel.TenTick,
+            )
+        )
+        advanceUntilIdle()
+        assertEquals(200, fakeDomAdapter.lastSubscribedDepth)
+
+        viewModel.updateDomOptions(
+            viewModel.domOptions.value.copy(aggregation = AggregationLevel.HundredTick)
+        )
+        advanceUntilIdle()
+        assertEquals(2000, fakeDomAdapter.lastSubscribedDepth)
+    }
+
+    @Test
+    fun `twenty aggregated levels are built from two hundred raw levels`() = testScope.runTest {
+        fakeSymbolInfoAdapter.tickSize = 1.0
+        advanceTimeBy(600)
+        advanceUntilIdle()
+
+        viewModel.updateDomOptions(
+            DomOptions.default().copy(
+                depth = DepthLimit.create(20),
+                aggregation = AggregationLevel.TenTick,
+            )
+        )
+        advanceUntilIdle()
+        assertEquals(200, fakeDomAdapter.lastSubscribedDepth)
+
+        // 20 корзин по 10 тиков: 50000..50009, 49990..49999, ...
+        val bids = (0 until 20).flatMap { bucket ->
+            val base = 50000.0 - bucket * 10.0
+            (0 until 10).map { offset -> PriceUpdate(base + offset, 1.0) }
+        }
+        fakeDomAdapter.windowFlow.emit(BookWindowLevels(bids = bids, asks = emptyList()))
+        advanceUntilIdle()
+
+        assertEquals(20, viewModel.sortedLevels.size)
+    }
+
+    @Test
     fun `selectPrice works only with confirm on and toggles`() = testScope.runTest {
         // ��� Confirm ���� �� ������ �� �������� ����
         viewModel.selectPrice(50000.0)

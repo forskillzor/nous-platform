@@ -6,11 +6,14 @@
 package com.aandios.nous.feature.dom.domain.model
 
 /**
- * Ограничение глубины отображения книги заявок (количество уровней).
+ * Ограничение глубины отображения книги заявок — число АГРЕГИРОВАННЫХ уровней.
  * Диапазон значений: от 5 до 20 уровней.
  *
- * Binance Futures partial-стримы (`depth<levels>@100ms`) существуют только
- * для уровней 5/10/20 — для большей глубины частичного стрима нет.
+ * Фактическая подписка шире: `depth × aggregation.multiplier`
+ * (см. DomOptions.rawDepth). Binance Futures partial-стримы
+ * (`depth<levels>@100ms`) существуют только для 5/10/20, поэтому для большей
+ * сырой глубины используется локальная diff-книга; Binance/Bybit отдают
+ * максимум 1000 сырых уровней.
  */
 data class DepthLimit(
     val value: Int

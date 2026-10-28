@@ -35,7 +35,9 @@ class BinanceProvider(
     private val streamHub: BinanceStreamHub = BinanceStreamHub(binanceHttpClient, config)
 
     override val trades by lazy { BinanceTradesAdapter(binanceHttpClient, config, streamHub) }
-    override val dom: DomAdapter by lazy { BinanceDomAdapter(binanceHttpClient, config, streamHub) }
+    override val dom: DomAdapter by lazy {
+        BinanceDomAdapter(binanceHttpClient, config, streamHub, restGate)
+    }
     override val bookTicker: BookTickerAdapter by lazy { BinanceBookTickerAdapter(binanceHttpClient, config, restGate, streamHub) }
     override val chart: ChartAdapter by lazy { BinanceChartAdapter(binanceHttpClient, config, restGate, streamHub) }
     override val trading: TradingAdapter by lazy { BinanceTradingAdapter(binanceHttpClient, config) }
