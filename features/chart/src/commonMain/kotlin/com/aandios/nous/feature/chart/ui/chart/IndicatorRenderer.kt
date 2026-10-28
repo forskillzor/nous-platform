@@ -140,13 +140,18 @@ fun DrawScope.drawIndicatorPane(
     zoomLevel: Float,
 ) {
     if (area.width <= 0f || area.height <= 0f || candles.isEmpty() || outputs.isEmpty()) return
-    val (rangeMin, rangeMax) = indicatorPaneRange(outputs)
+    val metrics = calculateCandleMetrics(zoomLevel)
+    val totalWidth = metrics.width + metrics.spacing
+    val visibleStart = (scrollOffset / totalWidth).toInt()
+        .coerceIn(0, (candles.size - 1).coerceAtLeast(0))
+    val visibleEnd = ((scrollOffset + area.width) / totalWidth + 1)
+        .toInt()
+        .coerceIn(visibleStart + 1, candles.size)
+    val (rangeMin, rangeMax) = indicatorPaneRange(outputs, visibleStart, visibleEnd)
     val yAt: (Float) -> Float = { value ->
         val span = if (rangeMax <= rangeMin) 1f else rangeMax - rangeMin
         area.top + (1f - (value - rangeMin) / span) * area.height
     }
-    val metrics = calculateCandleMetrics(zoomLevel)
-    val totalWidth = metrics.width + metrics.spacing
     val xAt: (Int) -> Float = { index ->
         area.left + metrics.width / 2f + index * totalWidth - scrollOffset
     }
@@ -304,12 +309,39 @@ private fun DrawScope.drawHistogram(
     }
 }
 
-fun indicatorPaneRange(outputs: List<IndicatorOutput>): Pair<Float, Float> {
+fun indicatorPaneRange(
+    outputs: List<IndicatorOutput>,
+    startIndex: Int = 0,
+    endIndex: Int = Int.MAX_VALUE,
+): Pair<Float, Float> {
     var minValue = Float.POSITIVE_INFINITY
     var maxValue = Float.NEGATIVE_INFINITY
     for (output in outputs) {
-        if (output.range.min.isFinite()) minValue = minOf(minValue, output.range.min)
-        if (output.range.max.isFinite()) maxValue = maxOf(maxValue, output.range.max)
+        if (output.range.fixed) {
+            if (output.range.min.isFinite()) minValue = minOf(minValue, output.range.min)
+            if (output.range.max.isFinite()) maxValue = maxOf(maxValue, output.range.max)
+            continue
+        }
+
+        var hasVisibleValue = false
+        for (line in output.lines) {
+            val from = startIndex.coerceAtLeast(0)
+            val to = minOf(endIndex, line.values.size)
+            for (index in from until to) {
+                val value = line.values[index]
+                if (!value.isFinite()) continue
+                hasVisibleValue = true
+                minValue = minOf(minValue, value)
+                maxValue = maxOf(maxValue, value)
+            }
+        }
+        if (!hasVisibleValue) {
+            if (output.range.min.isFinite()) minValue = minOf(minValue, output.range.min)
+            if (output.range.max.isFinite()) maxValue = maxOf(maxValue, output.range.max)
+        } else if (output.range.min <= 0f && output.range.max >= 0f) {
+            minValue = minOf(minValue, 0f)
+            maxValue = maxOf(maxValue, 0f)
+        }
     }
     if (!minValue.isFinite() || !maxValue.isFinite()) return 0f to 1f
     if (maxValue <= minValue) maxValue = minValue + 1f

@@ -182,6 +182,7 @@ private fun ChartWindowContent(
         ChartIndicatorInputSource(inputScope, liquidationHistory)
     }
     val liquidationVisibleRange = remember { MutableStateFlow<LongRange?>(null) }
+    var visibleCandleRange by remember { mutableStateOf<IntRange?>(null) }
     LaunchedEffect(
         indicatorInputSource,
         uiState.currentSymbol,
@@ -461,6 +462,10 @@ private fun ChartWindowContent(
                                 onVisibleTimeRangeChanged = { from, to ->
                                     liquidationVisibleRange.value = from..to
                                 },
+                                visibleCandleRange = visibleCandleRange,
+                                onVisibleCandleRangeChanged = { start, end ->
+                                    visibleCandleRange = start..end
+                                },
                                 chartConfig = chartConfig,
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
@@ -560,6 +565,10 @@ private fun ChartWindowContent(
                             inputSource = indicatorInputSource,
                             onVisibleTimeRangeChanged = { from, to ->
                                 liquidationVisibleRange.value = from..to
+                            },
+                            visibleCandleRange = visibleCandleRange,
+                            onVisibleCandleRangeChanged = { start, end ->
+                                visibleCandleRange = start..end
                             },
                             chartConfig = chartConfig,
                             initialZoomLevel = initialZoomLevel,
@@ -716,6 +725,8 @@ private fun ChartCanvas(
     colors: IndicatorChartColors,
     inputSource: ChartIndicatorInputSource,
     onVisibleTimeRangeChanged: (Long, Long) -> Unit,
+    visibleCandleRange: IntRange?,
+    onVisibleCandleRangeChanged: (Int, Int) -> Unit,
     chartConfig: ChartConfig,
     initialZoomLevel: Float,
     onZoomChange: ((Float) -> Unit)?,
@@ -739,6 +750,8 @@ private fun ChartCanvas(
         seriesKey = seriesKey,
         colors = colors,
         inputSource = inputSource,
+        visibleStartIndex = visibleCandleRange?.first,
+        visibleEndIndex = visibleCandleRange?.last,
     )
     val activePaneId = indicators.activePaneId
         ?.takeIf { id -> indicators.panes.any { it.id == id } }
@@ -767,6 +780,7 @@ private fun ChartCanvas(
             indicatorHeaderHeightDp = IndicatorHeaderHeight,
             onLayoutChanged = { chartLayout = it },
             onVisibleTimeRangeChanged = onVisibleTimeRangeChanged,
+            onVisibleCandleRangeChanged = onVisibleCandleRangeChanged,
             footprintCandles = footprintCandles,
             onNeedMoreHistory = onNeedMoreHistory,
             hasMoreHistory = hasMoreHistory,
@@ -1031,6 +1045,8 @@ private fun rememberIndicatorRenderers(
     seriesKey: String,
     colors: IndicatorChartColors,
     inputSource: ChartIndicatorInputSource,
+    visibleStartIndex: Int? = null,
+    visibleEndIndex: Int? = null,
 ): ChartIndicatorVisuals {
     val instances = remember(indicators) {
         buildList<IndicatorInstance> {
@@ -1066,13 +1082,25 @@ private fun rememberIndicatorRenderers(
             listOf(overlayIndicatorRenderer(overlayOutputs, colors))
         }
     }
-    val paneVisuals = remember(indicators.panes, outputs, colors) {
+    val paneVisuals = remember(
+        indicators.panes,
+        outputs,
+        colors,
+        visibleStartIndex,
+        visibleEndIndex,
+    ) {
         indicators.panes.map { pane ->
             val paneOutputs = pane.indicators.mapNotNull { outputs[it.id] }
             ChartPaneVisual(
                 paneId = pane.id,
                 outputs = paneOutputs,
-                valueRange = paneOutputs.takeIf { it.isNotEmpty() }?.let(::indicatorPaneRange),
+                valueRange = paneOutputs.takeIf { it.isNotEmpty() }?.let { visibleOutputs ->
+                    indicatorPaneRange(
+                        outputs = visibleOutputs,
+                        startIndex = visibleStartIndex ?: 0,
+                        endIndex = visibleEndIndex ?: Int.MAX_VALUE,
+                    )
+                },
                 renderer = paneIndicatorRenderer(
                     outputs = paneOutputs,
                     colors = colors,

@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.rendering
 
 import androidx.compose.ui.geometry.Rect
 import com.aandios.nous.feature.chart.ui.chart.indicatorPaneRange
+import com.aandios.nous.research.indicator.IndicatorLine
 import com.aandios.nous.research.indicator.IndicatorOutput
 import com.aandios.nous.research.indicator.IndicatorType
 import com.aandios.nous.research.indicator.IndicatorValueRange
@@ -56,5 +57,42 @@ class IndicatorValueScaleTest {
 
         assertEquals(-2f to 8f, indicatorPaneRange(outputs))
         assertEquals(0f to 1f, indicatorPaneRange(emptyList()))
+    }
+
+    @Test
+    fun `indicator pane range uses visible values for auto ranges`() {
+        val output = IndicatorOutput(
+            instanceId = "liq",
+            type = IndicatorType.LIQUIDATIONS,
+            lines = listOf(
+                IndicatorLine(
+                    id = "liq",
+                    label = "Liquidations",
+                    values = floatArrayOf(-10f, 8f, -2f, 3f),
+                ),
+            ),
+            range = IndicatorValueRange(-10f, 8f),
+        )
+
+        assertEquals(-2f to 3f, indicatorPaneRange(listOf(output), startIndex = 2, endIndex = 4))
+        assertEquals(-10f to 8f, indicatorPaneRange(listOf(output)))
+    }
+
+    @Test
+    fun `fixed pane range ignores visible values`() {
+        val output = IndicatorOutput(
+            instanceId = "rsi",
+            type = IndicatorType.RSI,
+            lines = listOf(
+                IndicatorLine(
+                    id = "rsi",
+                    label = "RSI",
+                    values = floatArrayOf(20f, 80f),
+                ),
+            ),
+            range = IndicatorValueRange(0f, 100f, fixed = true),
+        )
+
+        assertEquals(0f to 100f, indicatorPaneRange(listOf(output), startIndex = 0, endIndex = 1))
     }
 }

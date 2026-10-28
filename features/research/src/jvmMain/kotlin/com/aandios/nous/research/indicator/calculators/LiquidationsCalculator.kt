@@ -52,8 +52,8 @@ class LiquidationsCalculator : IndicatorCalculator {
         for (order in input.liquidations) {
             val index = input.candles.indexOfBucket(order.timestamp, timeframe) ?: continue
             val signed = when (order.side) {
-                TradeSide.SELL -> order.quantity.toFloat()
-                TradeSide.BUY -> -order.quantity.toFloat()
+                TradeSide.SELL -> -order.quantity.toFloat()
+                TradeSide.BUY -> order.quantity.toFloat()
             }
             values[index] += signed
         }

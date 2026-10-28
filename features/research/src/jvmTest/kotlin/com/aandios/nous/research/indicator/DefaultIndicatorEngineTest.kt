@@ -183,7 +183,7 @@ class DefaultIndicatorEngineTest {
             )
 
             assertEquals(
-                2.0f,
+                -2.0f,
                 output.lines.single().values.last(),
                 0.001f,
                 "liquidation should be visible on interval $interval",
@@ -206,8 +206,8 @@ class DefaultIndicatorEngineTest {
         val line = output.lines.single()
         assertEquals("liq", line.id)
         assertEquals(IndicatorLineStyle.HISTOGRAM, line.style)
-        assertEquals(2.5f, line.values.first(), 0.001f)
-        assertEquals(-1.5f, line.values.last(), 0.001f)
+        assertEquals(-2.5f, line.values.first(), 0.001f)
+        assertEquals(1.5f, line.values.last(), 0.001f)
         assertTrue(output.range.min < 0f)
         assertTrue(output.range.max > 0f)
     }

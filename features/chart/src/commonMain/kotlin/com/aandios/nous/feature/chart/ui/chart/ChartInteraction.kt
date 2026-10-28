@@ -92,6 +92,7 @@ fun CandleStickChartInteraction(
     indicatorHeaderHeightDp: Dp = 18.dp,
     onLayoutChanged: ((ChartLayout) -> Unit)? = null,
     onVisibleTimeRangeChanged: ((Long, Long) -> Unit)? = null,
+    onVisibleCandleRangeChanged: ((Int, Int) -> Unit)? = null,
     drawingHistory: DrawingHistory? = null,
     activeDrawingTool: DrawingToolType = DrawingToolType.NONE,
     onActiveDrawingToolChange: (DrawingToolType) -> Unit = {},
@@ -660,12 +661,14 @@ fun CandleStickChartInteraction(
         val endIdx = ((clampedOffset + chartWidthPx) / totalW + 1).toInt().coerceIn(startIdx + 1, candles.size)
 
         val currentOnVisibleTimeRangeChanged by rememberUpdatedState(onVisibleTimeRangeChanged)
+        val currentOnVisibleCandleRangeChanged by rememberUpdatedState(onVisibleCandleRangeChanged)
         LaunchedEffect(candles, startIdx, endIdx) {
             if (candles.isNotEmpty() && endIdx > startIdx) {
                 currentOnVisibleTimeRangeChanged?.invoke(
                     candles[startIdx].timestamp,
                     candles[endIdx - 1].timestamp,
                 )
+                currentOnVisibleCandleRangeChanged?.invoke(startIdx, endIdx)
             }
         }
 
