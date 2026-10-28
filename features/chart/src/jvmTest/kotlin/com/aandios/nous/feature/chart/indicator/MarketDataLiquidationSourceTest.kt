@@ -24,7 +24,7 @@ import kotlin.test.assertTrue
 class MarketDataLiquidationSourceTest {
 
     @Test
-    fun `maps market-data liquidations to LiquidationOrder`() = runBlocking {
+    fun `maps aggregate buckets to synthetic liquidation orders`() = runBlocking {
         var path = ""
         val params = mutableMapOf<String, String?>()
         val engine = MockEngine { request ->
@@ -35,12 +35,18 @@ class MarketDataLiquidationSourceTest {
             respond(
                 content = """
                     [
-                      {"exchange":"Binance","symbol":"SOLUSDT","timestamp":1000,
-                       "price":"101.12000000","quantity":"2.53000000",
-                       "isLong":true,"orderType":"LIMIT"},
-                      {"exchange":"Binance","symbol":"SOLUSDT","timestamp":2000,
-                       "price":"101.00000000","quantity":"2.30000000",
-                       "isLong":false,"orderType":"MARKET"}
+                      {"exchange":"Binance","symbol":"SOLUSDT","timeframe":"15m",
+                       "startTime":1000,"endTime":901000,
+                       "longCount":22,"longVolume":"1113.51000000",
+                       "shortCount":0,"shortVolume":"0.00000000"},
+                      {"exchange":"Binance","symbol":"SOLUSDT","timeframe":"15m",
+                       "startTime":901000,"endTime":1801000,
+                       "longCount":0,"longVolume":"0.00000000",
+                       "shortCount":2,"shortVolume":"4.50000000"},
+                      {"exchange":"Binance","symbol":"SOLUSDT","timeframe":"15m",
+                       "startTime":1801000,"endTime":2701000,
+                       "longCount":0,"longVolume":"0.00000000",
+                       "shortCount":0,"shortVolume":"0.00000000"}
                     ]
                 """.trimIndent(),
                 status = HttpStatusCode.OK,
@@ -52,28 +58,36 @@ class MarketDataLiquidationSourceTest {
         }
         try {
             val source = MarketDataLiquidationSource(client, "http://test")
-            val orders = source.getLiquidations(
+            val buckets = source.getAggregates(
                 exchange = "Binance",
                 symbol = "SOLUSDT",
+                timeframe = "15m",
                 from = 100L,
-                to = 200L,
+                to = 3_000_000L,
                 limit = 1000,
             )
 
-            assertEquals("/api/liquidations", path)
+            assertEquals("/api/liquidation-aggregates", path)
             assertEquals("Binance", params["exchange"])
             assertEquals("SOLUSDT", params["symbol"])
+            assertEquals("15m", params["timeframe"])
             assertEquals("100", params["from"])
-            assertEquals("200", params["to"])
+            assertEquals("3000000", params["to"])
             assertEquals("1000", params["limit"])
+            assertEquals("asc", params["order"])
 
-            assertEquals(2, orders.size)
-            assertEquals(TradeSide.SELL, orders[0].side)
-            assertEquals(101.12, orders[0].price)
-            assertEquals(2.53, orders[0].quantity)
-            assertEquals("LIMIT", orders[0].orderType)
-            assertEquals(TradeSide.BUY, orders[1].side)
-            assertEquals("MARKET", orders[1].orderType)
+            assertEquals(2, buckets.size)
+            assertEquals(1000L, buckets[0].startTime)
+            assertEquals(901000L, buckets[0].endTime)
+            assertEquals(1, buckets[0].orders.size)
+            assertEquals(TradeSide.SELL, buckets[0].orders[0].side)
+            assertEquals(1113.51, buckets[0].orders[0].quantity)
+            assertEquals(1000L, buckets[0].orders[0].timestamp)
+            assertEquals("AGGREGATE", buckets[0].orders[0].orderType)
+
+            assertEquals(1, buckets[1].orders.size)
+            assertEquals(TradeSide.BUY, buckets[1].orders[0].side)
+            assertEquals(4.5, buckets[1].orders[0].quantity)
         } finally {
             client.close()
         }
@@ -94,7 +108,7 @@ class MarketDataLiquidationSourceTest {
         try {
             val source = MarketDataLiquidationSource(client, "http://test")
             val error = assertFailsWith<IllegalStateException> {
-                source.getLiquidations("Binance", "SOLUSDT", 0L, 1L, 10)
+                source.getAggregates("Binance", "SOLUSDT", "15m", 0L, 1L, 10)
             }
             assertTrue(error.message?.contains("HTTP 500") == true, error.message.orEmpty())
         } finally {

@@ -250,20 +250,25 @@ Mind this when writing paths.
   `titleTemplate`/`labelTemplate`, line colors and range precedence
   (`computation.range` → `fixedRange` → auto-range with `includeZero`).
 - Chart feed source: `ChartIndicatorInputSource` (chart common) owns the
-  liquidation `TimeSeriesController`/`LiquidationSeriesSource`; `ChartWindow`
-  calls `setMarket(symbol, provider.liquidation, exchange = provider display
-  name)` on symbol/provider changes and closes it on dispose. `snapshot` is
+  liquidation `LiquidationFeed`; `ChartWindow` calls
+  `setMarket(symbol, provider.liquidation, exchange = provider display name,
+  timeframe = current chart timeframe)` on symbol/provider/timeframe changes,
+  feeds it the visible time range from `ChartInteraction`
+  (`onVisibleTimeRangeChanged`), and closes it on dispose. `snapshot` is
   lock-free; `setMarket` is suspend + mutex + generation-guarded. Feed updates
   emit `updates()`; `ChartWindow` collects them into
   `IndicatorComputePipeline.refresh()`.
-- Liquidation history comes from market-data-server `GET /api/liquidations`
-  (`exchange/symbol/from/to/limit`, `isLong=true → SELL`, ASC-sorted after the
-  server's DESC response); live updates stay on the provider stream
-  (`@forceOrder`/`allLiquidation`). `LiquidationSeriesSource` reconciles with
-  the server on every closed minute (from last known event minus overlap),
-  dedups by `timestamp+price+quantity+side`, and keeps local history if the
-  server is unavailable. Binance `allForceOrders` is dead and must not be
-  called; `liveAdapter` is optional so history-only feeds (no MEXC live) work.
+- Liquidation history comes from market-data-server
+  `GET /api/liquidation-aggregates` with the **chart timeframe**
+  (`exchange/symbol/timeframe/from/to/limit/order=asc`). History is loaded only
+  for the visible chart range and grows as the user scrolls/zooms; aggregates
+  are returned only for non-empty buckets (`longVolume → SELL`,
+  `shortVolume → BUY`, timestamp = `startTime`). Live updates stay on the
+  provider stream (`@forceOrder`/`allLiquidation`); every minute recent
+  aggregates replace the corresponding closed buckets, removing live duplicates
+  and filling WS gaps. `liveAdapter` is optional so history-only feeds (no MEXC
+  live) work. Raw `/api/liquidations` and Binance `allForceOrders` are dead /
+  not used for history.
 - Indicator config is per chart panel: `ChartStatePersistor` stores JSON under
   `chart_{workspace}_{panel}_chart_indicators` (`KEY_INDICATORS`).
   Missing/invalid payload → `defaultIndicatorState()`; an explicitly saved

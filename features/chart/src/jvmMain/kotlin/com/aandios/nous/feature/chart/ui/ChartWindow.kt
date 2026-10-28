@@ -5,6 +5,7 @@
 
 package com.aandios.nous.feature.chart.ui
 
+import com.aandios.nous.core.domain.timeseries.Timeframes
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.animation.AnimatedVisibility
@@ -83,7 +84,8 @@ import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorState
 import com.aandios.nous.research.indicator.effectivePaneHeightDp
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.awt.Cursor
 import kotlin.math.roundToInt
@@ -179,13 +181,29 @@ private fun ChartWindowContent(
     val indicatorInputSource = remember(inputScope, liquidationHistory) {
         ChartIndicatorInputSource(inputScope, liquidationHistory)
     }
-    LaunchedEffect(indicatorInputSource, uiState.currentSymbol, uiState.currentProviderId) {
+    val liquidationVisibleRange = remember { MutableStateFlow<LongRange?>(null) }
+    LaunchedEffect(
+        indicatorInputSource,
+        uiState.currentSymbol,
+        uiState.currentProviderId,
+        uiState.currentTimeframe,
+    ) {
         val provider = registry.get(uiState.currentProviderId)
         indicatorInputSource.setMarket(
             symbol = uiState.currentSymbol,
             adapter = provider?.liquidation,
             exchange = provider?.config?.displayName,
+            timeframe = uiState.currentTimeframe,
         )
+    }
+    LaunchedEffect(indicatorInputSource, uiState.currentTimeframe) {
+        liquidationVisibleRange.collectLatest { range ->
+            val visible = range ?: return@collectLatest
+            indicatorInputSource.setVisibleRange(
+                from = visible.first,
+                to = visible.last + Timeframes.millis(uiState.currentTimeframe),
+            )
+        }
     }
     DisposableEffect(indicatorInputSource) {
         onDispose { indicatorInputSource.close() }
@@ -440,6 +458,9 @@ private fun ChartWindowContent(
                                 indicators = uiState.indicators,
                                 colors = indicatorColors,
                                 inputSource = indicatorInputSource,
+                                onVisibleTimeRangeChanged = { from, to ->
+                                    liquidationVisibleRange.value = from..to
+                                },
                                 chartConfig = chartConfig,
                                 initialZoomLevel = initialZoomLevel,
                                 onZoomChange = onZoomChange,
@@ -537,6 +558,9 @@ private fun ChartWindowContent(
                             indicators = uiState.indicators,
                             colors = indicatorColors,
                             inputSource = indicatorInputSource,
+                            onVisibleTimeRangeChanged = { from, to ->
+                                liquidationVisibleRange.value = from..to
+                            },
                             chartConfig = chartConfig,
                             initialZoomLevel = initialZoomLevel,
                             onZoomChange = onZoomChange,
@@ -691,6 +715,7 @@ private fun ChartCanvas(
     indicators: IndicatorState,
     colors: IndicatorChartColors,
     inputSource: ChartIndicatorInputSource,
+    onVisibleTimeRangeChanged: (Long, Long) -> Unit,
     chartConfig: ChartConfig,
     initialZoomLevel: Float,
     onZoomChange: ((Float) -> Unit)?,
@@ -741,6 +766,7 @@ private fun ChartCanvas(
             indicatorTabsHeightDp = IndicatorTabsHeight,
             indicatorHeaderHeightDp = IndicatorHeaderHeight,
             onLayoutChanged = { chartLayout = it },
+            onVisibleTimeRangeChanged = onVisibleTimeRangeChanged,
             footprintCandles = footprintCandles,
             onNeedMoreHistory = onNeedMoreHistory,
             hasMoreHistory = hasMoreHistory,
