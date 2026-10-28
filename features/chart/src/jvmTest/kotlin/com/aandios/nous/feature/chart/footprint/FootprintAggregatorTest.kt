@@ -144,7 +144,7 @@ class FootprintAggregatorTest {
             FootprintAggregator.formingSourceTimeframes("1w"),
         )
         assertTrue(FootprintAggregator.formingSourceTimeframes("1m").isEmpty())
-        assertTrue(FootprintAggregator.formingSourceTimeframes("5m").isEmpty())
+        assertEquals(listOf("1m"), FootprintAggregator.formingSourceTimeframes("5m"))
     }
 
     @Test

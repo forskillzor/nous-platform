@@ -184,6 +184,29 @@ class FootprintControllerTest {
     }
 
     @Test
+    fun `forming 5m is assembled from closed 1m`() = runBlocking {
+        val now = 4 * 60_000L
+        assertForming(
+            displayTimeframe = "5m",
+            historyTimeframe = "5m",
+            now = now,
+            history = listOf(candle(-300_000L, 0L, "5m")),
+            batch = BatchFootprintResponse(
+                exchange = "Bybit",
+                symbol = "BTCUSDT",
+                results = listOf(
+                    BatchFootprintResult(
+                        "1m",
+                        (0 until 4).map { m -> candle(m * 60_000L, (m + 1) * 60_000L, "1m") },
+                    ),
+                ),
+            ),
+            expectedStart = 0L,
+            expectedTicks = 4L,
+        )
+    }
+
+    @Test
     fun `forming 15m is assembled from 5m and 1m`() = runBlocking {
         val now = 14 * 60_000L
         assertForming(
@@ -249,9 +272,160 @@ class FootprintControllerTest {
     }
 
     @Test
-    fun `1m and 5m do not run the forming job`() = runBlocking {
+    fun `live trades extend the 15m forming candle`() = runBlocking {
+        val json = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+        }
+        val now = 10 * 60_000L
+        val history15m = listOf(candle(-900_000L, 0L, "15m"))
+        val batch = BatchFootprintResponse(
+            exchange = "Bybit",
+            symbol = "BTCUSDT",
+            results = listOf(
+                BatchFootprintResult(
+                    "5m",
+                    listOf(
+                        candle(0L, 300_000L, "5m"),
+                        candle(300_000L, 600_000L, "5m"),
+                    ),
+                ),
+            ),
+        )
+        val trades = MutableSharedFlow<Trade>(replay = 1, extraBufferCapacity = 8)
+        val engine = MockEngine { request ->
+            val payload = when {
+                request.method == HttpMethod.Get && request.url.encodedPath == "/api/footprint" ->
+                    if (request.url.parameters["timeframe"] == "15m") {
+                        json.encodeToString(history15m)
+                    } else {
+                        "[]"
+                    }
+
+                request.method == HttpMethod.Post && request.url.encodedPath == "/api/footprint/batch" ->
+                    json.encodeToString(batch)
+
+                else -> "{}"
+            }
+            respond(
+                content = payload,
+                status = if (payload == "{}") HttpStatusCode.NotFound else HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) { json(json) }
+        }
+        val controller = FootprintController(
+            footprintApiClient = FootprintApiClient(client, "http://test"),
+            tradesAdapter = FakeTradesAdapter(trades),
+            exchange = "Bybit",
+            clock = { now },
+        )
+        try {
+            controller.start("BTCUSDT", "15m")
+            trades.emit(
+                Trade(
+                    id = 1L,
+                    symbol = "BTCUSDT",
+                    price = 100.0,
+                    quantity = 1.0,
+                    timestamp = now + 10_000L,
+                    isBuyerMaker = false,
+                    side = TradeSide.BUY,
+                ),
+            )
+
+            val state = withTimeout(5_000) {
+                controller.state.first { s ->
+                    s.liveCandle?.totalTicks == 3L && s.liveCandle?.startTime == 0L
+                }
+            }
+            assertEquals(3L, state.liveCandle?.totalTicks)
+        } finally {
+            controller.dispose()
+            client.close()
+        }
+    }
+
+    @Test
+    fun `closed local 1m is replaced by the server candle`() = runBlocking {
+        val json = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+            encodeDefaults = true
+        }
+        var now = 30_000L
+        val serverCandle = candle(0L, 60_000L, "1m").copy(totalTicks = 10L)
+        val trades = MutableSharedFlow<Trade>(replay = 1, extraBufferCapacity = 8)
+        val engine = MockEngine { request ->
+            val payload = when {
+                request.method != HttpMethod.Get || request.url.encodedPath != "/api/footprint" -> "{}"
+                request.url.parameters["from"] != null || request.url.parameters["to"] != null ->
+                    json.encodeToString(listOf(serverCandle))
+                else -> "[]"
+            }
+            respond(
+                content = payload,
+                status = if (payload == "{}") HttpStatusCode.NotFound else HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) { json(json) }
+        }
+        val controller = FootprintController(
+            footprintApiClient = FootprintApiClient(client, "http://test"),
+            tradesAdapter = FakeTradesAdapter(trades),
+            exchange = "Bybit",
+            clock = { now },
+        )
+        try {
+            controller.start("BTCUSDT", "1m")
+            trades.emit(
+                Trade(
+                    id = 1L,
+                    symbol = "BTCUSDT",
+                    price = 100.0,
+                    quantity = 1.0,
+                    timestamp = 30_000L,
+                    isBuyerMaker = false,
+                    side = TradeSide.BUY,
+                ),
+            )
+            withTimeout(5_000) {
+                controller.state.first { it.liveCandle != null }
+            }
+
+            // New minute: local minute 0 is finalized, then server 1m replaces it.
+            now = 90_000L
+            trades.emit(
+                Trade(
+                    id = 2L,
+                    symbol = "BTCUSDT",
+                    price = 101.0,
+                    quantity = 1.0,
+                    timestamp = 90_000L,
+                    isBuyerMaker = false,
+                    side = TradeSide.BUY,
+                ),
+            )
+            val state = withTimeout(5_000) {
+                controller.state.first { s ->
+                    s.candles.any { it.startTime == 0L && it.totalTicks == 10L }
+                }
+            }
+            assertEquals(10L, state.candles.first { it.startTime == 0L }.totalTicks)
+        } finally {
+            controller.dispose()
+            client.close()
+        }
+    }
+
+    @Test
+    fun `1m does not run the forming job`() = runBlocking {
         assertNoForming("1m")
-        assertNoForming("5m")
     }
 
     private suspend fun assertForming(

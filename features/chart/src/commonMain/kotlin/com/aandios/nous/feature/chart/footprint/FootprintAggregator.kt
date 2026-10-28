@@ -53,6 +53,7 @@ object FootprintAggregator {
      * диапазона, мелкие добирают хвост до текущего момента.
      */
     fun formingSourceTimeframes(displayTimeframe: String): List<String> = when (displayTimeframe) {
+        "5m" -> listOf("1m")
         "15m" -> listOf("5m", "1m")
         "30m" -> listOf("15m", "5m", "1m")
         "1h" -> listOf("15m", "5m", "1m")
@@ -114,8 +115,11 @@ object FootprintAggregator {
         bucketStart: Long,
         bucketEnd: Long,
         sourceCandles: Map<String, List<FootprintCandle>>,
+        availableUntil: Long = bucketEnd,
     ): FootprintCandle? {
         if (bucketEnd <= bucketStart) return null
+        val limit = minOf(bucketEnd, availableUntil)
+        if (limit <= bucketStart) return null
 
         val selected = mutableListOf<FootprintCandle>()
         var cursor = bucketStart
@@ -127,13 +131,15 @@ object FootprintAggregator {
                 if (bar.startTime < cursor) continue
                 if (bar.startTime > cursor) break
                 if (bar.endTime <= bar.startTime) continue
-                if (bar.endTime > bucketEnd) break
+                // Только закрытые и ровно выровненные source-бары.
+                if (bar.endTime > limit) break
+                if (bar.endTime != cursor + step) break
 
                 selected += bar
-                cursor += step
-                if (cursor >= bucketEnd) break
+                cursor = bar.endTime
+                if (cursor >= limit) break
             }
-            if (cursor >= bucketEnd) break
+            if (cursor >= limit) break
         }
 
         if (selected.isEmpty()) return null
@@ -141,8 +147,23 @@ object FootprintAggregator {
             candles = selected,
             timeframe = displayTimeframe,
             startTime = bucketStart,
-            endTime = bucketEnd,
+            endTime = limit,
         )
+    }
+
+    /**
+     * Сливает закрытую часть display-бакета с live-хвостом текущей минуты.
+     * [startTime] — начало display-бакета, [endTime] — доступное «сейчас».
+     */
+    fun mergeForDisplay(
+        candles: List<FootprintCandle>,
+        timeframe: String,
+        startTime: Long,
+        endTime: Long,
+    ): FootprintCandle? {
+        val nonEmpty = candles.filter { it.levels.isNotEmpty() }
+        if (nonEmpty.isEmpty()) return null
+        return mergeCandles(nonEmpty, timeframe, startTime, endTime)
     }
 
     /**

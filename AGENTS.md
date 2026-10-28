@@ -339,6 +339,13 @@ Mind this when writing paths.
   `hasMoreHistory`; `latestCandleState` is applied when returning to
   CANDLESTICK. `chartLastPrice()` uses `footprintCurrentPrice` in footprint
   mode, and the candle mark price must not overwrite the footprint mark.
+- Footprint forming is hybrid for every display timeframe: `liveMinute` is the
+  current unclosed 1m built from trades (live price tail), `closedPrefix` is the
+  server-accurate closed part assembled from forming sources (`5m` uses closed
+  `1m`), and `liveCandle = closedPrefix + liveMinute`. A 1s tick refreshes on a
+  new minute; the server 1m replaces the local completed 1m when it arrives
+  (local fallback keeps the tail gap-free meanwhile). Never merge a partial
+  source into the closed part: `assembleFormingCandle` takes `availableUntil`.
 - `FootprintLevel`/`FootprintCandle` numeric caches are body `val`s (not
   getters); price-range scans are single-pass. `CandleSeriesSource.mergeItem`
   treats provider live volume as cumulative (`volume = update.volume`, never
