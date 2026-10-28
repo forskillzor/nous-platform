@@ -297,8 +297,8 @@ fun WorkspaceView(
                     )
                     PanelType.DOM -> DomPanel(
                         ws, pc, providerIdForPanel(pc, providerRegistry),
+                        providerDisplayName = providerRegistry::displayName,
                         onPanelConfigChange = ::updatePanelConfig,
-                        onProviderChange = ::updatePanelProvider,
                     )
                     PanelType.TRADES -> TradesPanel(
                         ws, pc, tradesWidths, providerIdForPanel(pc, providerRegistry),
@@ -448,23 +448,28 @@ private fun DomPanel(
     ws: WorkspaceViewModel,
     pc: PanelConfig,
     providerId: String?,
+    providerDisplayName: (String) -> String,
     onPanelConfigChange: (PanelConfig) -> Unit,
-    onProviderChange: (PanelConfig, String) -> Unit,
 ) {
     val vmKey = "${pc.id}_dom"
     val vm: DomViewModel =
         ws.liveViewModels.getOrPut(vmKey) { koinInject<DomViewModel>() } as DomViewModel
     val domState = pc.state as? PanelState.Dom
 
-    // Paper-режим DOM-панели персистится и восстанавливается по panelId
-    LaunchedEffect(pc.id, providerId) {
-        vm.attachPanel(pc.id, providerId)
+    // Paper-режим и все panel-scoped настройки DOM восстанавливаются по
+    // (workspace, panel). Провайдер применяет только attachPanel.
+    LaunchedEffect(ws.config.id, pc.id, providerId) {
+        vm.attachPanel(ws.config.id, pc.id, providerId)
     }
 
+    // Символ/глубина/агрегация — только ПОСЛЕ восстановления провайдера,
+    // иначе дефолтный Binance успевает перетереть сохранённую биржу.
     LaunchedEffect(pc.symbol, providerId) {
-        val targetProvider = providerId ?: vm.domOptions.value.provider
-        val ts = TradingSymbol.fallback(pc.symbol, targetProvider)
-        var opts = vm.domOptions.value.copy(symbol = ts, provider = targetProvider)
+        vm.providerRestored.first { it }
+        val current = vm.domOptions.value
+        var opts = current.copy(
+            symbol = TradingSymbol.fallback(pc.symbol, current.provider)
+        )
         val savedAgg = domState?.aggregation
         if (savedAgg != null) {
             try {
@@ -481,13 +486,12 @@ private fun DomPanel(
         vm.updateDomOptions(opts)
     }
 
+    // Один атомарный писатель PanelConfig: символ/настройки/провайдер.
+    // Два отдельных коллектора перетирали providerId устаревшим domPc.
     val domPc by rememberUpdatedState(pc)
     LaunchedEffect(Unit) {
-        var skipInitial = true
+        vm.providerRestored.first { it }
         vm.domOptions.collect { opts ->
-            if (skipInitial) {
-                skipInitial = false; return@collect
-            }
             val curState = domPc.state as? PanelState.Dom ?: PanelState.Dom()
             val aggStr = when (opts.aggregation) {
                 AggregationLevel.BaseTick -> "1x"
@@ -497,20 +501,14 @@ private fun DomPanel(
             onPanelConfigChange(
                 domPc.copy(
                     symbol = opts.symbol.symbol.ifEmpty { domPc.symbol },
+                    providerId = opts.provider,
+                    providerName = providerDisplayName(opts.provider),
                     state = curState.copy(
                         depth = opts.depth.value,
                         aggregation = aggStr
                     )
                 )
             )
-        }
-    }
-    LaunchedEffect(pc.id) {
-        vm.providerRestored.first { it }
-        var skipInitial = true
-        vm.domOptions.map { it.provider }.distinctUntilChanged().collect { id ->
-            if (skipInitial) { skipInitial = false; return@collect }
-            onProviderChange(domPc, id)
         }
     }
     key(ws.activationCount) { DomWindow(vm) }

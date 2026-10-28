@@ -110,11 +110,20 @@ Mind this when writing paths.
   provider into every panel at once. `navigatorExchangeLabel` prefers the first
   chart panel's `providerName` and falls back to `providers.first().name` for
   legacy configs.
-- DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`,
-  `dom_contract_{panelId}` (USDT_M / COIN_M) and the order panel settings
-  persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
-  `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId);
-  `dom_freq_{panelId}` stores the DOM level-emission frequency (100–300 ms).
+- DOM: all panel settings are **workspace-scoped** like chart:
+  `dom_paper_{workspaceId}_{panelId}`, `dom_trading_...`, `dom_provider_...`,
+  `dom_contract_...` (USDT_M / COIN_M), `dom_confirm_`, `dom_reduce_`,
+  `dom_order_type_`, `dom_leverage_`, `dom_margin_`, `dom_qty_`,
+  `dom_collapsed_`, `dom_freq_` (level-emission frequency 100–300 ms).
+  Legacy panel-only keys `dom_{field}_{panelId}` are read once on attach and
+  migrated into the scoped key, so duplicated workspaces that share panel ids
+  no longer share DOM state. DOM restore is gated: `DomPanel` must wait for
+  `providerRestored` before applying symbol/depth/aggregation, and the VM is the
+  single source of truth for the provider. On the first attach a stale default
+  `PanelConfig.providerId` is healed from the panel store
+  (`resolveRestoredProvider`); the restored provider is then mirrored back into
+  `PanelConfig` by the one atomic options collector (never by a second
+  provider-only collector, which used to overwrite it with a stale `domPc`).
 - DOM depth is expressed in **aggregated levels**: the subscription requests
   `depth × aggregation.multiplier` raw levels (agg 10× + depth 20 → 200 raw →
   20 aggregated; agg 100× + depth 20 → 2000). Changing aggregation therefore

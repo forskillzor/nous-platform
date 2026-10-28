@@ -681,7 +681,7 @@ class DomViewModelTest {
             coroutineDispatcher = testDispatcher,
             stateStore = store,
         )
-        vm.attachPanel("panel-1")
+        vm.attachPanel("ws-1", "panel-1")
         advanceUntilIdle()
 
         vm.setConfirmOrders(true)
@@ -699,7 +699,7 @@ class DomViewModelTest {
             coroutineDispatcher = testDispatcher,
             stateStore = store,
         )
-        restored.attachPanel("panel-1")
+        restored.attachPanel("ws-1", "panel-1")
         advanceUntilIdle()
 
         assertTrue(restored.confirmOrders.first())
@@ -710,6 +710,80 @@ class DomViewModelTest {
         assertEquals("2.5", restored.orderQuantity.first())
         assertTrue(restored.domOptions.value.collapsed)
         assertEquals(250, restored.domOptions.value.freqMs)
+    }
+
+    @Test
+    fun `stale default config is healed from legacy panel provider on first attach`() = testScope.runTest {
+        val store = FakeStateStore()
+        store.data["dom_provider_panel-1"] = "bybit-nous-0.0.1"
+        val bybit = FakeDomProvider(
+            domAdapter = FakeDomAdapter(),
+            bookTickerAdapter = FakeBookTickerAdapter(),
+            symbolInfoAdapter = FakeSymbolInfoAdapter(),
+            providerId = "bybit-nous-0.0.1",
+            displayName = "Bybit",
+        )
+        val vm = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(fakeProvider, bybit)),
+            coroutineDispatcher = testDispatcher,
+            stateStore = store,
+        )
+
+        vm.attachPanel("ws-1", "panel-1", preferredProviderId = "binance-nous-0.0.1")
+        advanceUntilIdle()
+
+        assertEquals("bybit-nous-0.0.1", vm.domOptions.value.provider)
+        // Legacy panel-only ключ мигрирует в workspace-scoped
+        assertEquals("bybit-nous-0.0.1", store.data["dom_provider_ws-1_panel-1"])
+
+        // После первого attach конфиг снова главный
+        vm.attachPanel("ws-1", "panel-1", preferredProviderId = "binance-nous-0.0.1")
+        advanceUntilIdle()
+        assertEquals("binance-nous-0.0.1", vm.domOptions.value.provider)
+    }
+
+    @Test
+    fun `dom provider and settings are workspace scoped after legacy migration`() = testScope.runTest {
+        val store = FakeStateStore()
+        store.data["dom_provider_panel-1"] = "bybit-nous-0.0.1"
+        val bybit = FakeDomProvider(
+            domAdapter = FakeDomAdapter(),
+            bookTickerAdapter = FakeBookTickerAdapter(),
+            symbolInfoAdapter = FakeSymbolInfoAdapter(),
+            providerId = "bybit-nous-0.0.1",
+            displayName = "Bybit",
+        )
+        val mexc = FakeDomProvider(
+            domAdapter = FakeDomAdapter(),
+            bookTickerAdapter = FakeBookTickerAdapter(),
+            symbolInfoAdapter = FakeSymbolInfoAdapter(),
+            providerId = "mexc-nous-0.0.1",
+            displayName = "MEXC",
+        )
+        fun newVm() = DomViewModel(
+            providerRegistry = ProviderRegistry(listOf(fakeProvider, bybit, mexc)),
+            coroutineDispatcher = testDispatcher,
+            stateStore = store,
+        )
+
+        val vm1 = newVm()
+        vm1.attachPanel("ws-1", "panel-1")
+        advanceUntilIdle()
+        assertEquals("bybit-nous-0.0.1", vm1.domOptions.value.provider)
+        vm1.setConfirmOrders(true)
+        vm1.updateOrderQuantity("2.5")
+        vm1.updateDomOptions(vm1.domOptions.value.copy(provider = "mexc-nous-0.0.1"))
+        advanceUntilIdle()
+        assertEquals("mexc-nous-0.0.1", store.data["dom_provider_ws-1_panel-1"])
+        assertEquals("1", store.data["dom_confirm_ws-1_panel-1"])
+
+        // Второй workspace с тем же panelId получает legacy-значение, а не ws-1
+        val vm2 = newVm()
+        vm2.attachPanel("ws-2", "panel-1")
+        advanceUntilIdle()
+        assertEquals("bybit-nous-0.0.1", vm2.domOptions.value.provider)
+        assertFalse(vm2.confirmOrders.value)
+        assertEquals("0.01", vm2.orderQuantity.value)
     }
 }
 

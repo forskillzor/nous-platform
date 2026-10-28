@@ -24,9 +24,11 @@ import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.component.toSymbolExplorerRow
 import com.aandios.nous.core.domain.repository.SymbolInfoRepository
+import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.dom.data.repository.DomRepositoryImpl
 import com.aandios.nous.feature.dom.domain.DomOptions
 import com.aandios.nous.feature.dom.domain.TradingSymbol
+import com.aandios.nous.feature.dom.domain.resolveRestoredProvider
 import com.aandios.nous.feature.dom.domain.model.OrderIntent
 import com.aandios.nous.feature.dom.ui.model.BestPricesState
 import com.aandios.nous.feature.dom.ui.model.DomLevel
@@ -102,6 +104,9 @@ class DomViewModel(
 
     /** id DOM-панели для panel-scoped персиста (paper). */
     private var panelKey: String? = null
+
+    /** id workspace: DOM-настройки scoped по workspace + panel. */
+    private var workspaceKey: String? = null
 
     // ── Ордера/позиции символа панели (для отображения в лесенке) ──
 
@@ -267,7 +272,7 @@ class DomViewModel(
                 setTradingEnabled(false)
                 // Биржа этой DOM-панели персистится (как paper/trading)
                 stateStore?.let { store ->
-                    viewModelScope.launch { store.putString(providerStoreKey(), newOptions.provider) }
+                    viewModelScope.launch { store.putString(storeKey("provider"), newOptions.provider) }
                 }
             } else if (contractTypeChanged) {
                 // Другой тип контрактов: перефильтровать список и, если текущий
@@ -275,7 +280,7 @@ class DomViewModel(
                 applyContractTypeFilter()
                 ensureSymbolMatchesContractType()
                 stateStore?.let { store ->
-                    viewModelScope.launch { store.putString(contractTypeStoreKey(), newOptions.contractType.name) }
+                    viewModelScope.launch { store.putString(storeKey("contract"), newOptions.contractType.name) }
                 }
             } else if (oldOptions.symbol != newOptions.symbol) {
                 qtyUserEdited = false
@@ -284,13 +289,13 @@ class DomViewModel(
             if (collapsedChanged) {
                 stateStore?.let { store ->
                     viewModelScope.launch {
-                        store.putString(collapsedStoreKey(), if (newOptions.collapsed) "1" else "0")
+                        store.putString(storeKey("collapsed"), if (newOptions.collapsed) "1" else "0")
                     }
                 }
             }
             if (freqChanged) {
                 stateStore?.let { store ->
-                    viewModelScope.launch { store.putString(freqStoreKey(), newOptions.freqMs.toString()) }
+                    viewModelScope.launch { store.putString(storeKey("freq"), newOptions.freqMs.toString()) }
                 }
             }
             // Символ/провайдер могли смениться — перечитать ордера/позиции
@@ -626,7 +631,7 @@ class DomViewModel(
         _paperEnabled.value = enabled
         stateStore?.let { store ->
             viewModelScope.launch {
-                store.putString(paperStoreKey(), if (enabled) "1" else "0")
+                store.putString(storeKey("paper"), if (enabled) "1" else "0")
             }
         }
         // Смена paper/live — Trading выключаем: включение только осознанно
@@ -652,7 +657,7 @@ class DomViewModel(
         _isTradingEnabled.value = enabled
         stateStore?.let { store ->
             viewModelScope.launch {
-                store.putString(tradingStoreKey(), if (enabled) "1" else "0")
+                store.putString(storeKey("trading"), if (enabled) "1" else "0")
             }
         }
         if (enabled) {
@@ -670,7 +675,12 @@ class DomViewModel(
     private val _providerRestored = MutableStateFlow(false)
     val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
 
-    fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
+    fun attachPanel(
+        workspaceId: String?,
+        panelId: String?,
+        preferredProviderId: String? = null,
+    ) {
+        workspaceKey = workspaceId
         panelKey = panelId
         val store = stateStore
         if (store == null) {
@@ -679,87 +689,86 @@ class DomViewModel(
         }
         viewModelScope.launch {
             // Тип контрактов — до провайдера: фильтр символов применится сразу
-            store.getString(contractTypeStoreKey())
+            loadSetting(store, "contract")
                 ?.let { raw -> runCatching { ContractType.valueOf(raw) }.getOrNull() }
                 ?.let { savedType ->
                     if (savedType != _domOptions.value.contractType) {
                         _domOptions.value = _domOptions.value.copy(contractType = savedType)
                     }
                 }
-            // Биржа: восстанавливаем до paper/trading, чтобы флаги легли на неё
-            val savedProvider = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
-                ?: store.getString(providerStoreKey())?.takeIf { providerRegistry.get(it) != null }
+            // Биржа: восстанавливаем до paper/trading, чтобы флаги легли на неё.
+            // Первый attach лечит stale-дефолт в PanelConfig из panel-store.
+            val preferred = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
+            val stored = loadSetting(store, "provider")
+                ?.takeIf { providerRegistry.get(it) != null }
+            val savedProvider = resolveRestoredProvider(
+                preferred = preferred,
+                stored = stored,
+                defaultProvider = DomOptions.default().provider,
+                firstAttach = !_providerRestored.value,
+            )
             if (!savedProvider.isNullOrBlank() &&
                 savedProvider != _domOptions.value.provider &&
                 providerRegistry.get(savedProvider) != null
             ) {
                 updateDomOptions(_domOptions.value.copy(provider = savedProvider))
             }
-            val enabled = store.getString(paperStoreKey()) == "1"
+            val enabled = loadSetting(store, "paper") == "1"
             if (enabled != _paperEnabled.value) {
                 _paperEnabled.value = enabled
                 ensureNoticesSubscription()
                 refreshTradingState()
             }
             // Live-Trading не восстанавливаем: только в paper-режиме
-            val tradingEnabled = enabled && store.getString(tradingStoreKey()) == "1"
+            val tradingEnabled = enabled && loadSetting(store, "trading") == "1"
             if (tradingEnabled != _isTradingEnabled.value) {
                 _isTradingEnabled.value = tradingEnabled
                 if (tradingEnabled) refreshTradingState()
             }
             // Настройки OrderPlacementPanel этой панели (как у chart)
-            store.getString(confirmStoreKey())?.let { _confirmOrders.value = it == "1" }
-            store.getString(reduceOnlyStoreKey())?.let { _reduceOnly.value = it == "1" }
-            store.getString(orderTypeStoreKey())
+            loadSetting(store, "confirm")?.let { _confirmOrders.value = it == "1" }
+            loadSetting(store, "reduce")?.let { _reduceOnly.value = it == "1" }
+            loadSetting(store, "order_type")
                 ?.let { raw -> runCatching { OrderType.valueOf(raw) }.getOrNull() }
                 ?.let { _limitOrderType.value = it }
-            store.getString(leverageStoreKey())?.toIntOrNull()?.takeIf { it > 0 }
+            loadSetting(store, "leverage")?.toIntOrNull()?.takeIf { it > 0 }
                 ?.let { _leverage.value = it }
-            store.getString(marginStoreKey())?.toIntOrNull()?.takeIf { it == 1 || it == 2 }
+            loadSetting(store, "margin")?.toIntOrNull()?.takeIf { it == 1 || it == 2 }
                 ?.let { _marginMode.value = it }
-            store.getString(qtyStoreKey())?.takeIf { it.isNotBlank() }?.let {
+            loadSetting(store, "qty")?.takeIf { it.isNotBlank() }?.let {
                 _orderQuantity.value = it
                 // Восстановленный qty — выбор пользователя: minQty его не перетирает
                 qtyUserEdited = true
             }
             // Частота эмитов структуры уровней (лесенки) этой панели
-            store.getString(freqStoreKey())?.toIntOrNull()
+            loadSetting(store, "freq")?.toIntOrNull()
                 ?.takeIf { it in DomOptions.frequencyOptions }
                 ?.let { savedFreq ->
                     if (savedFreq != _domOptions.value.freqMs) {
                         _domOptions.value = _domOptions.value.copy(freqMs = savedFreq)
                     }
                 }
-            if (store.getString(collapsedStoreKey()) == "1" && !_domOptions.value.collapsed) {
+            if (loadSetting(store, "collapsed") == "1" && !_domOptions.value.collapsed) {
                 _domOptions.value = _domOptions.value.copy(collapsed = true)
             }
             _providerRestored.value = true
         }
     }
 
-    private fun paperStoreKey(): String = "dom_paper_${panelKey ?: "default"}"
+    /** Ключ настройки DOM: workspace-scoped (как у chart-панелей). */
+    private fun storeKey(field: String): String =
+        "dom_${field}_${workspaceKey ?: "default"}_${panelKey ?: "default"}"
 
-    private fun tradingStoreKey(): String = "dom_trading_${panelKey ?: "default"}"
+    /** Старый panel-only ключ: читается один раз и мигрирует в scoped-ключ. */
+    private fun legacyStoreKey(field: String): String =
+        "dom_${field}_${panelKey ?: "default"}"
 
-    private fun providerStoreKey(): String = "dom_provider_${panelKey ?: "default"}"
-
-    private fun contractTypeStoreKey(): String = "dom_contract_${panelKey ?: "default"}"
-
-    private fun confirmStoreKey(): String = "dom_confirm_${panelKey ?: "default"}"
-
-    private fun reduceOnlyStoreKey(): String = "dom_reduce_${panelKey ?: "default"}"
-
-    private fun orderTypeStoreKey(): String = "dom_order_type_${panelKey ?: "default"}"
-
-    private fun leverageStoreKey(): String = "dom_leverage_${panelKey ?: "default"}"
-
-    private fun marginStoreKey(): String = "dom_margin_${panelKey ?: "default"}"
-
-    private fun qtyStoreKey(): String = "dom_qty_${panelKey ?: "default"}"
-
-    private fun freqStoreKey(): String = "dom_freq_${panelKey ?: "default"}"
-
-    private fun collapsedStoreKey(): String = "dom_collapsed_${panelKey ?: "default"}"
+    private suspend fun loadSetting(store: StateStore, field: String): String? {
+        store.getString(storeKey(field))?.let { return it }
+        val legacy = store.getString(legacyStoreKey(field)) ?: return null
+        store.putString(storeKey(field), legacy)
+        return legacy
+    }
 
     /** Сохранить настройки OrderPlacementPanel этой DOM-панели. */
     private fun persistPanelSettings() {
@@ -771,12 +780,12 @@ class DomViewModel(
         val marginMode = _marginMode.value
         val qty = _orderQuantity.value
         viewModelScope.launch {
-            store.putString(confirmStoreKey(), if (confirm) "1" else "0")
-            store.putString(reduceOnlyStoreKey(), if (reduceOnly) "1" else "0")
-            store.putString(orderTypeStoreKey(), orderType.name)
-            store.putString(leverageStoreKey(), leverage?.toString() ?: "")
-            store.putString(marginStoreKey(), marginMode.toString())
-            store.putString(qtyStoreKey(), qty)
+            store.putString(storeKey("confirm"), if (confirm) "1" else "0")
+            store.putString(storeKey("reduce"), if (reduceOnly) "1" else "0")
+            store.putString(storeKey("order_type"), orderType.name)
+            store.putString(storeKey("leverage"), leverage?.toString() ?: "")
+            store.putString(storeKey("margin"), marginMode.toString())
+            store.putString(storeKey("qty"), qty)
         }
     }
 
