@@ -57,6 +57,7 @@ class FootprintController(
     private var pollingJob: Job? = null
     private var formingJob: Job? = null
     private var isLoadingMore = false
+    private var lastFormingError: String? = null
 
     private var symbol: String = ""
     private var displayTimeframe: String = "1h"
@@ -93,7 +94,9 @@ class FootprintController(
         scope.launch {
             val cache = footprintCache ?: return@launch
             try {
+                val now = clock()
                 val cached = cache.getFootprintCandles(exchange, symbol, CACHE_LIMIT)
+                    .filter { it.endTime <= now }
                 _state.update { s ->
                     if (cached.isNotEmpty() && s.candles.isEmpty()) s.copy(candles = cached) else s
                 }
@@ -187,7 +190,7 @@ class FootprintController(
             pollingJob = scope.launch {
                 while (isActive) {
                     delay(60_000)
-                    val now = currentTimeMillis()
+                    val now = clock()
                     val displayMs = sourceMs * aggCount
                     val completedStart = (now / displayMs * displayMs) - displayMs
                     val completedEnd = completedStart + displayMs
@@ -231,7 +234,7 @@ class FootprintController(
         val (sourceTf, aggCount) = FootprintAggregator.resolveFootprintSourceTimeframe(timeframe)
         val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
         val bucketMs = sourceMs * aggCount
-        val now = currentTimeMillis()
+        val now = clock()
         val bucketStart = FootprintAggregator.bucketStart(now, sourceMs, aggCount)
 
         val previousLive = _state.value.liveCandle
@@ -245,9 +248,15 @@ class FootprintController(
         }
 
         val historyAlreadyHasBucket = _state.value.candles.lastOrNull()
-            ?.let { it.startTime >= bucketStart } == true
+            ?.let { FootprintAggregator.isCompleteBucket(it, bucketStart, now) } == true
         if (historyAlreadyHasBucket) {
-            _state.update { it.copy(liveCandle = null) }
+            lastFormingError = null
+            _state.update { s ->
+                s.copy(
+                    liveCandle = null,
+                    error = s.error?.takeUnless { it.startsWith(FORMING_ERROR_PREFIX) },
+                )
+            }
             return
         }
 
@@ -268,23 +277,53 @@ class FootprintController(
                     order = "asc",
                 )
             }
-            val response = api.getBatchFootprint(symbol = symbol, queries = queries)
+            val response = api.getBatchFootprint(
+                exchange = exchange,
+                symbol = symbol,
+                queries = queries,
+            )
             val byTimeframe = response.results.associate { it.timeframe to it.candles }
             val agg = FootprintAggregator.assembleFormingCandle(
                 displayTimeframe = timeframe,
                 bucketStart = bucketStart,
                 bucketEnd = bucketStart + bucketMs,
                 sourceCandles = byTimeframe,
-            ) ?: return
+            ) ?: throw IllegalStateException(
+                if (byTimeframe.values.all { it.isEmpty() }) {
+                    "batch returned no source candles"
+                } else {
+                    "source candles did not assemble into $timeframe"
+                },
+            )
 
+            lastFormingError = null
             _state.update {
                 it.copy(
+                    // Частичный бакет из истории/кэша не должен дублировать
+                    // формирующуюся свечу (важно для standalone FootprintChart).
+                    candles = it.candles.filterNot { c -> c.startTime == agg.startTime },
                     liveCandle = agg,
                     currentPrice = agg.close.takeIf { p -> p > 0f },
+                    error = it.error?.takeUnless { message ->
+                        message.startsWith(FORMING_ERROR_PREFIX)
+                    },
                 )
             }
-        } catch (_: Exception) {
-            // формирующаяся свеча не критична
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val message = e.message?.takeIf { it.isNotBlank() } ?: "unknown error"
+            if (message != lastFormingError) {
+                lastFormingError = message
+                println("❌ Footprint forming ($symbol, $timeframe): $message")
+            }
+            _state.update { s ->
+                if (s.error == null || s.error.startsWith(FORMING_ERROR_PREFIX)) {
+                    s.copy(error = "$FORMING_ERROR_PREFIX: $message")
+                } else {
+                    s
+                }
+            }
         }
     }
 
@@ -311,6 +350,7 @@ class FootprintController(
                 val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
 
                 val historical = (footprintApiClient?.getFootprint(
+                    exchange = exchange,
                     symbol = symbol,
                     timeframe = sourceTf,
                     to = oldestTime - 1,
@@ -359,11 +399,13 @@ class FootprintController(
         val sourceMs = FootprintAggregator.sourceTimeframeMs(sourceTf)
         return try {
             val raw = footprintApiClient.getFootprint(
+                exchange = exchange,
                 symbol = symbol,
                 timeframe = sourceTf,
                 limit = 20 * aggCount,
             ).reversed() // server returns DESC, we store ASC
-            if (aggCount > 1) {
+            val now = clock()
+            val result = if (aggCount > 1) {
                 FootprintAggregator.aggregateFootprintCandles(
                     raw,
                     aggCount,
@@ -373,6 +415,7 @@ class FootprintController(
             } else {
                 raw
             }
+            FootprintAggregator.completedDisplayCandles(result, now)
         } catch (e: Exception) {
             emptyList()
         }
@@ -392,6 +435,7 @@ class FootprintController(
 
         return try {
             val raw = footprintApiClient.getFootprint(
+                exchange = exchange,
                 symbol = symbol,
                 timeframe = sourceTf,
                 from = from,
@@ -462,5 +506,6 @@ class FootprintController(
         private const val FORMING_POLL_INTERVAL_MS = 30_000L
         private const val LIVE_SNAPSHOT_INTERVAL_MS = 100L
         private const val FORMING_SOURCE_LIMIT_MAX = 300
+        private const val FORMING_ERROR_PREFIX = "Footprint forming"
     }
 }

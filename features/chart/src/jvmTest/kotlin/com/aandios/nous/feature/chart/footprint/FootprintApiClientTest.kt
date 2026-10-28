@@ -22,6 +22,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class FootprintApiClientTest {
 
@@ -92,6 +94,32 @@ class FootprintApiClientTest {
             assertEquals("asc", queries[0].jsonObject["order"]?.jsonPrimitive?.content)
             assertEquals("1m", queries[1].jsonObject["timeframe"]?.jsonPrimitive?.content)
             assertEquals(15, queries[1].jsonObject["limit"]?.jsonPrimitive?.content?.toInt())
+        } finally {
+            client.close()
+        }
+    }
+
+    @Test
+    fun `batch non-2xx throws instead of decoding an empty response`() = runBlocking {
+        val engine = MockEngine {
+            respond(
+                content = """{"error":"invalid request body"}""",
+                status = HttpStatusCode.BadRequest,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+        }
+        try {
+            val api = FootprintApiClient(client, "http://test")
+            val error = assertFailsWith<IllegalStateException> {
+                api.getBatchFootprint(
+                    symbol = "BTCUSDT",
+                    queries = listOf(BatchFootprintQuery(timeframe = "1m")),
+                )
+            }
+            assertTrue(error.message?.contains("HTTP 400") == true, error.message.orEmpty())
         } finally {
             client.close()
         }

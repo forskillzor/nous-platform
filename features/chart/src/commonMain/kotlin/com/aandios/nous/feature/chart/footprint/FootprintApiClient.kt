@@ -10,13 +10,32 @@ import com.aandios.nous.api.market.model.FootprintLevel
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
+import io.ktor.http.isSuccess
 
 class FootprintApiClient(
     private val httpClient: HttpClient,
     private val baseUrl: String = "http://95.81.99.28:8085"
 ) {
+    /**
+     * Ktor-клиент создаётся с `expectSuccess = false`, поэтому HTTP-ошибки
+     * нужно проверять явно: иначе тело `{"error":...}` может молча
+     * десериализоваться в пустой ответ.
+     */
+    private suspend fun HttpResponse.requireSuccess(operation: String): HttpResponse {
+        if (!status.isSuccess()) {
+            val detail = runCatching { bodyAsText() }.getOrDefault("").take(500)
+            throw IllegalStateException(
+                "$operation failed: HTTP ${status.value}" +
+                    if (detail.isNotBlank()) " $detail" else "",
+            )
+        }
+        return this
+    }
+
     suspend fun getFootprint(
         exchange: String = "Binance",
         symbol: String,
@@ -32,7 +51,7 @@ class FootprintApiClient(
             from?.let { parameter("from", it) }
             to?.let { parameter("to", it) }
             parameter("limit", limit)
-        }.body()
+        }.requireSuccess("Footprint candles").body()
     }
 
     suspend fun getCandleLevels(
@@ -47,13 +66,13 @@ class FootprintApiClient(
             parameter("timeframe", timeframe)
             parameter("startTime", startTime)
             parameter("endTime", endTime)
-        }.body()
+        }.requireSuccess("Footprint levels").body()
     }
 
     suspend fun getInstruments(exchange: String = "Binance"): List<InstrumentSummary> {
         return httpClient.get("$baseUrl/api/instruments") {
             parameter("exchange", exchange)
-        }.body()
+        }.requireSuccess("Footprint instruments").body()
     }
 
     suspend fun getBatchFootprint(
@@ -70,7 +89,7 @@ class FootprintApiClient(
                     queries = queries,
                 )
             )
-        }.body()
+        }.requireSuccess("Footprint batch").body()
     }
 }
 

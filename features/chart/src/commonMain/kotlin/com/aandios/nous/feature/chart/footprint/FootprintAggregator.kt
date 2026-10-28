@@ -145,6 +145,25 @@ object FootprintAggregator {
         )
     }
 
+    /**
+     * Оставляет только завершённые display-бакеты.
+     *
+     * Незакрытый текущий бакет (`endTime > now`) нельзя держать в истории:
+     * иначе forming-сборка решает, что бакет уже есть, и не добирает хвост
+     * нижними таймфреймами (30m из 15m, 1w из 1d).
+     */
+    fun completedDisplayCandles(
+        candles: List<FootprintCandle>,
+        now: Long,
+    ): List<FootprintCandle> = candles.filter { it.endTime <= now }
+
+    /** Закрытый бакет, начинающийся ровно в [bucketStart]. */
+    fun isCompleteBucket(
+        candle: FootprintCandle,
+        bucketStart: Long,
+        now: Long,
+    ): Boolean = candle.startTime == bucketStart && candle.endTime <= now
+
     private data class Acc(
         var bidVol: Float = 0f,
         var askVol: Float = 0f,

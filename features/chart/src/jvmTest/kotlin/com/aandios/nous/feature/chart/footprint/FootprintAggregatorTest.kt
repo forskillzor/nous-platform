@@ -271,6 +271,33 @@ class FootprintAggregatorTest {
         assertEquals(4L, agg.totalTicks)
     }
 
+    @Test
+    fun `completedDisplayCandles drops the unfinished current bucket`() {
+        val now = 1_740_000L
+        val completed = candle(-1_800_000L, 0L, level("100.0", "1", "1"))
+        val current = candle(0L, 1_800_000L, level("100.0", "1", "1"))
+        val closedAtNow = candle(1_440_000L, now, level("100.0", "1", "1"))
+
+        val result = FootprintAggregator.completedDisplayCandles(
+            listOf(completed, current, closedAtNow),
+            now,
+        )
+
+        assertEquals(listOf(completed, closedAtNow), result)
+    }
+
+    @Test
+    fun `isCompleteBucket requires the exact start and a closed end`() {
+        val now = 1_740_000L
+        val current = candle(0L, 1_800_000L, level("100.0", "1", "1"))
+        val completed = candle(-1_800_000L, 0L, level("100.0", "1", "1"))
+
+        assertTrue(!FootprintAggregator.isCompleteBucket(current, 0L, now))
+        assertTrue(FootprintAggregator.isCompleteBucket(current, 0L, 1_800_000L))
+        assertTrue(FootprintAggregator.isCompleteBucket(completed, -1_800_000L, now))
+        assertTrue(!FootprintAggregator.isCompleteBucket(completed, 0L, now))
+    }
+
     private fun level(
         price: String,
         bidVolume: String,
