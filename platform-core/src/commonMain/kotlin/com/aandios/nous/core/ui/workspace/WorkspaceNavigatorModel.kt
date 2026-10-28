@@ -5,9 +5,12 @@
 
 package com.aandios.nous.core.ui.workspace
 
+import com.aandios.nous.core.ui.component.SearchFields
 import com.aandios.nous.core.ui.component.SearchRegexResult
 import com.aandios.nous.core.ui.component.compileSearchRegex
-import com.aandios.nous.core.ui.component.matchSymbol
+import com.aandios.nous.core.ui.component.matchSearchFields
+import com.aandios.nous.core.ui.component.searchHitComparator
+import com.aandios.nous.core.ui.component.searchItems
 import com.aandios.nous.core.workspace.PanelType
 import com.aandios.nous.core.workspace.WorkspaceConfig
 
@@ -58,13 +61,21 @@ fun navigatorWorkspaceSubline(ws: WorkspaceConfig): String =
  * затем новые папки по алфавиту), внутри — workspace'ы по order/createdAt.
  * При непустом [query] фильтрует единым матчером explorer/Market Watch: матч
  * имени папки показывает всех детей, матч имени workspace даёт диапазон
- * подсветки, матч мета (биржа/папка) — score 4. Ошибка regex возвращает
- * пустое дерево с текстом ошибки.
+ * подсветки, матч мета (биржа/папка) — META без подсветки. Ошибка regex
+ * возвращает пустое дерево с текстом ошибки.
  */
 fun buildNavigatorTree(
     workspaces: List<WorkspaceConfig>,
     folderOrder: List<String>,
-    query: String,
+    query: String = "",
+): NavigatorTree {
+    val tree = buildNavigatorTreeBase(workspaces, folderOrder)
+    return if (query.isBlank()) tree else searchNavigatorTree(tree, query)
+}
+
+private fun buildNavigatorTreeBase(
+    workspaces: List<WorkspaceConfig>,
+    folderOrder: List<String>,
 ): NavigatorTree {
     val byGroup = workspaces.groupBy { it.group }
     val orderedGroups = (folderOrder + byGroup.keys)
@@ -77,46 +88,59 @@ fun buildNavigatorTree(
             ),
         )
 
-    if (query.isBlank()) {
-        return NavigatorTree(
-            orderedGroups.map { group ->
-                NavigatorFolderNode(
-                    rawGroup = group,
-                    name = if (group.isEmpty()) NAVIGATOR_UNSORTED_LABEL else group,
-                    workspaces = (byGroup[group] ?: emptyList())
-                        .sortedWith(navigatorWorkspaceComparator)
-                        .map { NavigatorWorkspaceEntry(it, null) },
-                )
-            },
-        )
-    }
+    return NavigatorTree(
+        orderedGroups.map { group ->
+            NavigatorFolderNode(
+                rawGroup = group,
+                name = if (group.isEmpty()) NAVIGATOR_UNSORTED_LABEL else group,
+                workspaces = (byGroup[group] ?: emptyList())
+                    .sortedWith(navigatorWorkspaceComparator)
+                    .map { NavigatorWorkspaceEntry(it, null) },
+            )
+        },
+    )
+}
 
+internal fun searchNavigatorTree(tree: NavigatorTree, query: String): NavigatorTree {
     val regex = when (val compiled = compileSearchRegex(query)) {
         is SearchRegexResult.Ok -> compiled.regex
         is SearchRegexResult.Invalid -> return NavigatorTree(emptyList(), compiled.message)
     }
 
-    val folders = orderedGroups.mapNotNull { group ->
-        val name = if (group.isEmpty()) NAVIGATOR_UNSORTED_LABEL else group
-        val items = byGroup[group] ?: emptyList()
-        val folderMatch = regex.containsMatchIn(name)
+    val folders = tree.folders.mapNotNull { folder ->
+        val folderMatch = regex.containsMatchIn(folder.name)
         val entries = if (folderMatch) {
-            items.sortedWith(navigatorWorkspaceComparator).map { ws ->
-                NavigatorWorkspaceEntry(ws, matchSymbol(ws.name, regex, emptyList())?.matchRange)
-            }
-        } else {
-            items
-                .mapNotNull { ws ->
-                    matchSymbol(
-                        displaySymbol = ws.name,
-                        regex = regex,
-                        metaFields = listOf(name, navigatorExchangeLabel(ws), navigatorPanelSymbol(ws)),
-                    )?.let { match -> NavigatorWorkspaceEntry(ws, match.matchRange) to match }
+            folder.workspaces
+                .sortedWith(
+                    compareBy<NavigatorWorkspaceEntry> { it.workspace.order }
+                        .thenBy { it.workspace.createdAt },
+                )
+                .map { entry ->
+                    NavigatorWorkspaceEntry(
+                        workspace = entry.workspace,
+                        highlight = matchSearchFields(entry.workspace.name, regex)?.range,
+                    )
                 }
-                .sortedWith(compareBy({ it.second.score }, { it.second.position }, { it.second.matchLength }))
-                .map { it.first }
+        } else {
+            searchItems(folder.workspaces, regex) { entry ->
+                SearchFields(
+                    primary = entry.workspace.name,
+                    meta = listOf(
+                        folder.name,
+                        navigatorExchangeLabel(entry.workspace),
+                        navigatorPanelSymbol(entry.workspace),
+                    ),
+                )
+            }
+                .sortedWith(searchHitComparator<NavigatorWorkspaceEntry>())
+                .map { hit ->
+                    NavigatorWorkspaceEntry(
+                        workspace = hit.item.workspace,
+                        highlight = hit.match?.range,
+                    )
+                }
         }
-        if (entries.isEmpty() && !folderMatch) null else NavigatorFolderNode(group, name, entries)
+        if (entries.isEmpty() && !folderMatch) null else NavigatorFolderNode(folder.rawGroup, folder.name, entries)
     }
     return NavigatorTree(folders)
 }

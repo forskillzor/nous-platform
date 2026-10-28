@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,15 +53,14 @@ import androidx.compose.ui.unit.sp
 import com.aandios.nous.feature.chart.ui.chart.indicatorChartColors
 import com.aandios.nous.core.ui.component.ExplorerStar
 import com.aandios.nous.core.ui.component.ExplorerTab
-import com.aandios.nous.core.ui.component.SearchRegexResult
+import com.aandios.nous.core.ui.component.SearchFields
 import com.aandios.nous.core.ui.component.TerminalBoxDropdown
 import com.aandios.nous.core.ui.component.TerminalBoxStyle
 import com.aandios.nous.core.ui.component.TerminalDropdownMenu
 import com.aandios.nous.core.ui.component.TerminalExplorerPopupContent
 import com.aandios.nous.core.ui.component.TerminalMenuItem
-import com.aandios.nous.core.ui.component.compileSearchRegex
 import com.aandios.nous.core.ui.component.highlightedMatch
-import com.aandios.nous.core.ui.component.matchSymbol
+import com.aandios.nous.core.ui.component.searchItems
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.research.indicator.IndicatorDefinition
@@ -243,19 +243,22 @@ fun ChartIndicatorMenu(
         },
     ) {
         val allDefinitions = IndicatorRegistry.all.map { it.definition }
-        val matches = searchIndicatorDefinitions(
+        val result = searchIndicatorDefinitions(
             definitions = when (tab) {
                 IndicatorMenuTab.ALL -> allDefinitions
                 IndicatorMenuTab.FAVOURITES -> allDefinitions.filter { it.type in favourites }
             },
             query = query,
         )
+        val matches = result.matches
         val overlays = matches.filter { it.definition.placement == IndicatorPlacement.OVERLAY }
         val panes = matches.filter { it.definition.placement == IndicatorPlacement.PANE }
 
         if (matches.isEmpty()) {
             IndicatorMenuHint(
-                if (tab == IndicatorMenuTab.FAVOURITES) "No favourites" else "No indicators",
+                text = result.error
+                    ?: if (tab == IndicatorMenuTab.FAVOURITES) "No favourites" else "No indicators",
+                isError = result.error != null,
             )
         }
         if (overlays.isNotEmpty()) {
@@ -364,24 +367,31 @@ internal data class IndicatorDefinitionMatch(
     val matchRange: IntRange?,
 )
 
+internal data class IndicatorSearchResult(
+    val matches: List<IndicatorDefinitionMatch>,
+    val error: String? = null,
+)
+
 internal fun searchIndicatorDefinitions(
     definitions: List<IndicatorDefinition>,
     query: String,
-): List<IndicatorDefinitionMatch> {
+): IndicatorSearchResult {
     val term = query.trim()
-    if (term.isEmpty()) return definitions.map { IndicatorDefinitionMatch(it, null) }
-    val regex = when (val compiled = compileSearchRegex(term)) {
-        is SearchRegexResult.Ok -> compiled.regex
-        is SearchRegexResult.Invalid -> Regex(Regex.escape(term), RegexOption.IGNORE_CASE)
+    if (term.isEmpty()) {
+        return IndicatorSearchResult(definitions.map { IndicatorDefinitionMatch(it, null) })
     }
-    return definitions.mapNotNull { definition ->
-        val match = matchSymbol(
-            displaySymbol = definition.label,
-            regex = regex,
-            metaFields = listOf(definition.type.name.replace('_', ' ')),
-        ) ?: return@mapNotNull null
-        IndicatorDefinitionMatch(definition, match.matchRange)
+    val outcome = searchItems(definitions, term) { definition ->
+        SearchFields(
+            primary = definition.label,
+            meta = listOf(definition.type.name.replace('_', ' ')),
+        )
     }
+    outcome.error?.let { message ->
+        return IndicatorSearchResult(emptyList(), message)
+    }
+    return IndicatorSearchResult(
+        outcome.hits.map { hit -> IndicatorDefinitionMatch(hit.item, hit.match?.range) },
+    )
 }
 
 @Composable
@@ -412,11 +422,11 @@ private fun IndicatorMenuDivider() {
 }
 
 @Composable
-private fun IndicatorMenuHint(text: String) {
+private fun IndicatorMenuHint(text: String, isError: Boolean = false) {
     val tokens = LocalTerminalDesignTokens.current
     Text(
         text = text,
-        color = tokens.colors.label,
+        color = if (isError) MaterialTheme.colorScheme.error else tokens.colors.label,
         fontSize = 9.sp,
         fontFamily = TerminalFontFamily,
         modifier = Modifier.padding(

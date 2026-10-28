@@ -167,7 +167,7 @@ fun sortExplorerRows(
 
 /**
  * Полный конвейер списка: фильтры (таб watchlist, perpetuals, quote, биржа),
- * поиск (единый матчер [matchSymbol]: символ с подсветкой, затем
+ * поиск (единый матчер [matchSearchFields]: символ с подсветкой, затем
  * биржа/PERP/quote без подсветки) и сортировка. С активным чипом SYMBOL и
  * запросом порядок — по релевантности (как Market Watch, направление ↓/↑
  * инвертирует); при остальных сортировках — по выбранному полю.
@@ -197,103 +197,39 @@ fun computeExplorerRows(
         )
     }
 
-    val regex = when (val compiled = compileSearchRegex(query)) {
-        is SearchRegexResult.Ok -> compiled.regex
-        is SearchRegexResult.Invalid -> return SymbolExplorerSearchResult(emptyList(), compiled.message)
-    }
-
-    val matched = filtered.mapNotNull { row ->
-        val match = matchSymbol(
-            displaySymbol = row.displaySymbol,
-            regex = regex,
-            metaFields = buildList {
+    val outcome = searchItems(filtered, query) { row ->
+        SearchFields(
+            primary = row.displaySymbol,
+            meta = buildList {
                 add(row.exchangeLabel)
                 if (row.isPerpetual) add("PERP")
                 row.quoteAsset?.let { add(it) }
             },
-        ) ?: return@mapNotNull null
-        row to match
+        )
+    }
+    outcome.error?.let { message ->
+        return SymbolExplorerSearchResult(emptyList(), message)
     }
 
     val relevanceOrder = sort == SymbolExplorerSort.SYMBOL
     val comparator = if (relevanceOrder) {
-        Comparator<Pair<SymbolExplorerRow, SymbolMatch>> { a, b ->
-            symbolMatchComparator.compare(a.second, b.second)
-        }.thenBy { it.first.displaySymbol }
+        searchHitComparator<SymbolExplorerRow>()
+            .thenBy { it.item.displaySymbol }
     } else {
-        Comparator<Pair<SymbolExplorerRow, SymbolMatch>> { a, b ->
-            explorerComparator(sort, descending).compare(a.first, b.first)
-        }.thenBy { it.first.displaySymbol }
+        Comparator<SearchHit<SymbolExplorerRow>> { a, b ->
+            explorerComparator(sort, descending).compare(a.item, b.item)
+        }.thenBy { it.item.displaySymbol }
     }
     val ordered = if (relevanceOrder && descending) {
-        matched.sortedWith(comparator.reversed())
+        outcome.hits.sortedWith(comparator.reversed())
     } else {
-        matched.sortedWith(comparator)
+        outcome.hits.sortedWith(comparator)
     }
 
     return SymbolExplorerSearchResult(
-        ordered.map { (row, match) -> SymbolExplorerMatch(row, match.matchRange) },
+        ordered.map { hit -> SymbolExplorerMatch(hit.item, hit.match?.range) },
     )
 }
-
-/** Компиляция поискового regex (регистронезависимо) для Market Watch, explorer и indicators. */
-sealed interface SearchRegexResult {
-    data class Ok(val regex: Regex) : SearchRegexResult
-    data class Invalid(val message: String) : SearchRegexResult
-}
-
-fun compileSearchRegex(query: String): SearchRegexResult = try {
-    SearchRegexResult.Ok(Regex(query, RegexOption.IGNORE_CASE))
-} catch (e: IllegalArgumentException) {
-    SearchRegexResult.Invalid(e.message ?: "Invalid regular expression")
-}
-
-/**
- * Единый матчер поиска (Market Watch и explorer): сначала символ — с
- * диапазоном подсветки и score релевантности (0 точное → 1 префикс →
- * 2 подстрока → 3 пустой матч), затем мета-поля (биржа/PERP/quote) без
- * подсветки (score 4). null — кандидат не совпал.
- */
-fun matchSymbol(
-    displaySymbol: String,
-    regex: Regex,
-    metaFields: List<String>?,
-): SymbolMatch? {
-    val symbolMatch = regex.find(displaySymbol)
-    if (symbolMatch != null) {
-        val range = symbolMatch.range.takeIf { symbolMatch.value.isNotEmpty() }
-        val score = when {
-            range == null -> 3
-            range.first == 0 && symbolMatch.value.length == displaySymbol.length -> 0
-            range.first == 0 -> 1
-            else -> 2
-        }
-        return SymbolMatch(
-            matchRange = range,
-            score = score,
-            position = range?.first ?: Int.MAX_VALUE,
-            matchLength = if (range == null) Int.MAX_VALUE else range.last - range.first,
-        )
-    }
-    return metaFields?.firstNotNullOfOrNull { regex.find(it) }?.let {
-        SymbolMatch(matchRange = null, score = 4, position = Int.MAX_VALUE, matchLength = Int.MAX_VALUE)
-    }
-}
-
-/**
- * Матч кандидата: [matchRange] — диапазон подсветки в символе (null —
- * совпало мета-поле); [score]/[position]/[matchLength] — ключи релевантности.
- */
-data class SymbolMatch(
-    val matchRange: IntRange?,
-    val score: Int,
-    val position: Int,
-    val matchLength: Int,
-)
-
-/** Порядок релевантности матчей: score → позиция → длина (меньше — лучше). */
-internal val symbolMatchComparator: Comparator<SymbolMatch> =
-    compareBy({ it.score }, { it.position }, { it.matchLength })
 
 /**
  * Расширенный дропдаун выбора символа (тайтл chart, заголовки DOM/Trades):

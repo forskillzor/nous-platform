@@ -452,7 +452,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
 
 ### Where tests live
 - `platform-core/src/jvmTest` — workspace/format utilities, `MarketOverviewStore`,
-  explorer (`SymbolExplorerDropdownTest`), menu rows (`TerminalMenuItemTest`).
+  explorer (`SymbolExplorerDropdownTest`), shared search
+  (`SearchMatchingTest`), menu rows (`TerminalMenuItemTest`).
 - `public-api/api-market/src/jvmTest` — paper engine, adapters, commands.
 - `features/dom/src/commonTest` — DOM view model (fakes), including
   explorer selection (provider switch + pending symbol, contract-type sync).
@@ -693,8 +694,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `SearchHighlight.kt`): accent 24% fill + accent bold text. Use it for every
   regex-match label (explorer, Market Watch, Workspaces navigator, indicator
   menu) instead of ad-hoc SpanStyles. Matching and the highlight range come
-  from the shared `compileSearchRegex`/`matchSymbol` in
-  `SymbolExplorerDropdown.kt`, so filtering and highlighting cannot diverge.
+  from the shared `SearchMatching.kt` (`compileSearchRegex`, `matchSearchFields`,
+  `searchItems`), so filtering and highlighting cannot diverge. An invalid
+  regex is an error in all three searches (explorer, navigator, indicator
+  menu); there is no literal fallback.
 - Search inputs are the shared `TerminalSearchField` (platform-core): 28dp
   bordered box with search glyph, placeholder, CTRL K hint and × clear (Esc
   clears too). Used by the Workspaces navigator and the explorer/Market Watch
