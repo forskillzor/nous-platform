@@ -25,6 +25,7 @@ import com.aandios.nous.research.indicator.IndicatorColorRole
 import com.aandios.nous.research.indicator.IndicatorLine
 import com.aandios.nous.research.indicator.IndicatorLineStyle
 import com.aandios.nous.research.indicator.IndicatorOutput
+import com.aandios.nous.research.indicator.IndicatorType
 import kotlin.math.abs
 
 data class IndicatorChartColors(
@@ -317,7 +318,7 @@ fun indicatorPaneRange(
     var minValue = Float.POSITIVE_INFINITY
     var maxValue = Float.NEGATIVE_INFINITY
     for (output in outputs) {
-        if (output.range.fixed) {
+        if (output.range.fixed || output.type != IndicatorType.LIQUIDATIONS) {
             if (output.range.min.isFinite()) minValue = minOf(minValue, output.range.min)
             if (output.range.max.isFinite()) maxValue = maxOf(maxValue, output.range.max)
             continue
