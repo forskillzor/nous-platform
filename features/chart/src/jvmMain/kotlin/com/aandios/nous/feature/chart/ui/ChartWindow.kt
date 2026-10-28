@@ -112,9 +112,7 @@ fun ChartWindow() {
 
     LaunchedEffect(Unit) {
         chartViewModel.dispatch(ChartIntent.RestoreState)
-        val saved = persistor?.restore()
         initialZoom = persistor?.restoreZoom() ?: 1f
-        chartViewModel.dispatch(ChartIntent.LoadChart(saved?.symbol, saved?.timeframe))
     }
 
 

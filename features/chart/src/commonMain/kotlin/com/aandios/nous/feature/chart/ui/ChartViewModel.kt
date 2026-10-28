@@ -181,6 +181,9 @@ class ChartViewModel(
 
     private val footprintCacheStore: FootprintCacheStore? = footprintCache
     private var footprintController: FootprintController? = null
+    private var footprintSymbol: String? = null
+    private var footprintTimeframe: String? = null
+    private var footprintRunning = false
     private var persistor = stateStore?.let { ChartStatePersistor(it) }
     private var attachedPrefix: String? = null
 
@@ -458,6 +461,7 @@ class ChartViewModel(
             startFootprint(_state.value.currentSymbol, _state.value.currentTimeframe)
         } else {
             footprintController?.stop()
+            footprintRunning = false
             latestCandleState?.let { latest ->
                 _state.update {
                     it.copy(
@@ -1327,7 +1331,11 @@ class ChartViewModel(
     }
 
     private fun restoreState() {
-        val persistor = persistor ?: return
+        val persistor = persistor
+        if (persistor == null) {
+            loadChart(_state.value.currentSymbol, _state.value.currentTimeframe)
+            return
+        }
         viewModelScope.launch {
             val saved = persistor.restore()
             // Провайдер применяем только если он реально зарегистрирован
@@ -1355,6 +1363,10 @@ class ChartViewModel(
             // Торговые настройки панели (включая paper/показ) — panel-scoped
             restoreTradingState()
             loadSymbols()
+            loadChart(
+                ticker = saved.symbol ?: _state.value.currentSymbol,
+                timeframe = saved.timeframe ?: _state.value.currentTimeframe,
+            )
         }
     }
 
@@ -1420,8 +1432,15 @@ class ChartViewModel(
         }
         startCandleSeries(ticker, timeframe)
 
-        if (_state.value.chartMode == ChartMode.FOOTPRINT) {
-            startFootprint(ticker, timeframe)
+        applyChartMode(_state.value.chartMode, ticker, timeframe)
+    }
+
+    private fun applyChartMode(mode: ChartMode, symbol: String, timeframe: String) {
+        if (mode == ChartMode.FOOTPRINT) {
+            startFootprint(symbol, timeframe)
+        } else {
+            footprintController?.stop()
+            footprintRunning = false
         }
     }
 
@@ -1539,6 +1558,13 @@ class ChartViewModel(
 
     /** Создаёт/перезапускает footprint-контроллер для активного провайдера. */
     private fun startFootprint(symbol: String, timeframe: String) {
+        if (footprintRunning &&
+            footprintController != null &&
+            footprintSymbol == symbol &&
+            footprintTimeframe == timeframe
+        ) {
+            return
+        }
         footprintController?.dispose()
         val controller = FootprintController(
             footprintApiClient = footprintApiClient,
@@ -1547,6 +1573,9 @@ class ChartViewModel(
             exchange = exchangeName(),
         )
         footprintController = controller
+        footprintSymbol = symbol
+        footprintTimeframe = timeframe
+        footprintRunning = true
         viewModelScope.launch {
             controller.state.collect { fp ->
                 _state.update {

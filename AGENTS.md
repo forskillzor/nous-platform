@@ -101,7 +101,10 @@ Mind this when writing paths.
   `ChartViewModel.restoreProvider()` (standalone restores them through
   `RestoreState`). `saveState()` is gated on `providerRestored` and snapshots
   the active provider, so an early panel save can never overwrite the persisted
-  choice.
+  choice. Standalone `ChartWindow` must dispatch only `RestoreState`; restore
+  applies the saved chart mode before loading the chart itself. `startFootprint`
+  is idempotent per symbol/timeframe, so `LoadChart` and `SelectChartMode` may
+  both run without creating duplicate controllers.
 - **Providers are per panel.** `PanelConfig.providerId/providerName` is the
   panel's own exchange (null = restore from the panel-scoped StateStore key).
   `providerIdForPanel` no longer reads the workspace-level `ProviderRef`; the
@@ -581,8 +584,6 @@ from the IDE and tests visually; agents verify via compilation and tests.
 ### Known test noise (pre-existing, unrelated)
 - `FootprintLiveSmokeTest` calls live APIs and can fail/timeout on the network.
 - `MexcProviderDiagnostics` prints only (no asserts) — CI-safe.
-- `:platform-core:compileKotlinWasmJs` fails (Kotlin/Wasm plugin vs compiler
-  version mismatch) — unrelated to JVM work.
 
 ## UI conventions
 
@@ -759,7 +760,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
   shared `TerminalDropdownMenu` wrapper — theme islands like workspace panels:
   `workspacePanel` radius, `panelSurface` fill, `panelBorder` border at
   `borderWidth`, zero tonal/shadow elevation. Never call M3 `DropdownMenu`
-  directly (bidasker-web is a separate web prototype, exempt).
+  directly.
 - All menu/dropdown options render through the shared `TerminalMenuItem`
   (platform-core): 26dp row (like workspaces list rows), 2dp accent left bar +
   `selection` background on the selected option (explorer style),
@@ -769,7 +770,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `TerminalBoxDropdown`/`TerminalDropdown`/`TerminalInlineSelect`, explorer
   chips/sort, chart settings rows, panel/⚙ menus and trades size filter;
   guarded by `TerminalMenuItemTest`. Do not reintroduce `DropdownMenuItem`
-  for option rows (bidasker-web is a separate web prototype, exempt).
+  for option rows.
 - Search-match highlighting is the shared `highlightedMatch` (platform-core
   `SearchHighlight.kt`): accent 24% fill + accent bold text. Use it for every
   regex-match label (explorer, Market Watch, Workspaces navigator, indicator

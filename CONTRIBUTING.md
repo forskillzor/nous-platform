@@ -40,7 +40,6 @@ The project is a modular Kotlin Multiplatform codebase:
 | `public-api/api-ui` | UI widget API (chart, order book widgets) |
 | `features/dom`, `features/chart`, `features/trades`, `features/settings`, `features/localstorage` | Feature modules built on the public APIs |
 | `providers/binance-provider` | Binance implementation of the market/trading APIs |
-| `bidasker-web` | Web (Kotlin/JS) companion application |
 | `build-logic` | Convention plugins shared by all modules |
 
 ## Code Style

@@ -19,7 +19,18 @@ import com.aandios.nous.api.market.adapters.TradingAdapter
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.core.domain.cache.CandleCacheStore
+import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.feature.chart.footprint.FootprintApiClient
 import com.aandios.nous.research.indicator.LIQUIDATIONS_PANE_ID
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.serialization.kotlinx.json.json
+import kotlinx.serialization.json.Json
 import com.aandios.nous.research.indicator.createIndicator
 import com.aandios.nous.research.indicator.IndicatorPaneLayout
 import com.aandios.nous.research.indicator.IndicatorType
@@ -107,6 +118,68 @@ class ChartViewModelCacheTest {
         override val trading: TradingAdapter? = null
         override val symbolInfo: SymbolInfoAdapter? = symbolInfoAdapter
         override val liquidation: LiquidationAdapter? = null
+    }
+
+    @Test
+    fun `restore starting in footprint mode loads footprint history`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val dispatcher = StandardTestDispatcher(testScheduler)
+            var footprintRequests = 0
+            val engine = MockEngine { request ->
+                if (request.url.encodedPath == "/api/footprint") {
+                    footprintRequests++
+                }
+                respond(
+                    content = "[]",
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+            val client = HttpClient(engine) {
+                install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            }
+            try {
+                val store = FakeStateStore(
+                    mutableMapOf(
+                        "chart_symbol" to "BTCUSDT",
+                        "chart_timeframe" to "1h",
+                        "chart_mode" to ChartMode.FOOTPRINT.name,
+                    ),
+                )
+                val vm = ChartViewModel(
+                    providerRegistry = ProviderRegistry(
+                        listOf(FakeProvider(FakeChartAdapter(emptyMap()), FakeSymbolInfoAdapter())),
+                    ),
+                    footprintApiClient = FootprintApiClient(client, "http://test"),
+                    stateStore = store,
+                    candleCache = FakeCandleCacheStore(),
+                    cacheDispatcher = dispatcher,
+                )
+
+                vm.dispatch(ChartIntent.RestoreState)
+                advanceUntilIdle()
+
+                assertEquals(ChartMode.FOOTPRINT, vm.state.value.chartMode)
+                assertEquals("BTCUSDT", vm.state.value.currentSymbol)
+                assertTrue(footprintRequests > 0)
+                vm.dispose()
+            } finally {
+                client.close()
+            }
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    private class FakeStateStore(
+        private val values: MutableMap<String, String>,
+    ) : StateStore {
+        override suspend fun getString(key: String): String? = values[key]
+
+        override suspend fun putString(key: String, value: String) {
+            values[key] = value
+        }
     }
 
     private fun createViewModel(
