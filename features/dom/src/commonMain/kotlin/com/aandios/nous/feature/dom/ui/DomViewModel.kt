@@ -666,9 +666,16 @@ class DomViewModel(
      * Привязка панели: paper-режим и биржа этой DOM-панели персистятся
      * отдельно (как у графиков) и восстанавливаются при появлении панели.
      */
+    private val _providerRestored = MutableStateFlow(false)
+    val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
+
     fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
         panelKey = panelId
-        val store = stateStore ?: return
+        val store = stateStore
+        if (store == null) {
+            _providerRestored.value = true
+            return
+        }
         viewModelScope.launch {
             // Тип контрактов — до провайдера: фильтр символов применится сразу
             store.getString(contractTypeStoreKey())
@@ -725,6 +732,7 @@ class DomViewModel(
             if (store.getString(collapsedStoreKey()) == "1" && !_domOptions.value.collapsed) {
                 _domOptions.value = _domOptions.value.copy(collapsed = true)
             }
+            _providerRestored.value = true
         }
     }
 

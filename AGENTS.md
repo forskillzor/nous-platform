@@ -4,6 +4,27 @@ Operating guide for AI agents working in this repository. Keep it up to date:
 when a workflow discovery is made (a command pattern, a pitfall, a project
 invariant), add it here.
 
+## Tooling: JetBrains Index MCP is the primary code-intelligence tool
+
+Use the `jetbrains-index` MCP server **first** for anything that requires
+understanding code structure — before `grep`/`glob`/manual reading:
+
+- `ide_find_references` — all usages of a symbol (including call sites in
+  generated/other modules);
+- `ide_find_definition`, `ide_find_implementations`, `ide_call_hierarchy`,
+  `ide_type_hierarchy` — declarations, implementors, callers/callees;
+- `ide_find_class`, `ide_find_file`, `ide_search_text` — symbol/file/text lookup;
+- `ide_diagnostics`, `ide_project_diagnostics` — compiler/IDE errors and quick
+  fixes;
+- `ide_refactor_rename`, `ide_safe_delete`, `ide_move_file` — semantic edits.
+
+The project must be open in the IDE and indexing finished
+(`ide_index_status` → `isDumbMode=false`); if a call times out, retry once,
+then narrow the target (position instead of class, or add `paths`). Only fall
+back to the text search tools when the MCP server is unavailable or the query
+is genuinely textual — and say so when you do. Do not quote URLs or rely on
+stale line numbers: resolve symbols through the index.
+
 ## What this project is
 
 Desktop Kotlin Multiplatform (Compose) trading terminal. The workspace is a
@@ -71,19 +92,31 @@ Mind this when writing paths.
   `chart_{workspace}_{panel}_...`. Keys cover trading enabled, confirm, qty,
   order type, reduce-only, leverage, margin mode, show-orders, show-positions,
   panel collapsed, and paper mode (`PaperTrading.STORE_KEY` in the same prefix).
-  Symbol/timeframe/provider state (`chart_symbol`, `chart_provider_id`,
-  `fp_aggregation`, `fp_profile_scale`, `fp_ring_width`, `fp_ring_diameter`, ...)
-  is saved globally (no prefix); in the workspace the symbol/timeframe come
-  from `PanelConfig`, and `ChartWindow` restores the provider plus footprint
-  settings via `ChartViewModel.restoreProvider()` (standalone restores them
-  through `RestoreState`).
+  Symbol/timeframe/provider/contract-type and footprint state (`chart_symbol`,
+  `chart_provider_id`, `chart_mode`, `chart_contract_type`, `fp_aggregation`,
+  `fp_profile_scale`, `fp_ring_width`, `fp_ring_diameter`, ...) is also
+  **panel-scoped** under the same prefix; there is no global fallback. In the
+  workspace the symbol/timeframe come from `PanelConfig`, and `ChartWindow`
+  restores the provider plus footprint settings via
+  `ChartViewModel.restoreProvider()` (standalone restores them through
+  `RestoreState`). `saveState()` is gated on `providerRestored` and snapshots
+  the active provider, so an early panel save can never overwrite the persisted
+  choice.
+- **Providers are per panel.** `PanelConfig.providerId/providerName` is the
+  panel's own exchange (null = restore from the panel-scoped StateStore key).
+  `providerIdForPanel` no longer reads the workspace-level `ProviderRef`; the
+  chart panel mirrors later user picks back into its own `PanelConfig`, and
+  Market Watch "Apply to current workspace" is the only action that writes the
+  provider into every panel at once. `navigatorExchangeLabel` prefers the first
+  chart panel's `providerName` and falls back to `providers.first().name` for
+  legacy configs.
 - DOM: `dom_paper_{panelId}`, `dom_trading_{panelId}`, `dom_provider_{panelId}`,
   `dom_contract_{panelId}` (USDT_M / COIN_M) and the order panel settings
   persisted per panel: `dom_confirm_`, `dom_reduce_`, `dom_order_type_`,
   `dom_leverage_`, `dom_margin_`, `dom_qty_`, `dom_collapsed_` (+panelId);
   `dom_freq_{panelId}` stores the DOM level-emission frequency (100–300 ms).
-- Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`),
-  `trading_provider`, `trading_contract_type` (global keys). The window top bar
+- Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`, shared),
+  `trading_provider_{panelId}`, `trading_contract_{panelId}` (per panel). The window top bar
   Paper switch writes the same `paper_enabled` flag through the shared
   `PaperModeState` singleton (`features/trading`), so header and docked panel
   stay in sync; `TradingViewModel` observes it for external changes. The header
@@ -94,7 +127,7 @@ Mind this when writing paths.
   core-call failures in `refreshAll`, stream on `subscribeTo*` availability
   and collector failures; paper mode reports local CONNECTED ("Paper engine").
   ERROR rows open `TerminalContextPopup` with the error detail.
-- Trades panel: `trades_provider` (global key).
+- Trades panel: `trades_provider_{panelId}`, `trades_contract_{panelId}` (per panel).
 - Sidebar (tool panel) width: `tool_panel_width` (plain float dp, restore clamped
   to `workspaceToolPanelMin/MaxWidth`, save debounced 400 ms) via
   `ToolPanelPrefsRepository` (platform-core, `core/ui/panel`).
@@ -112,8 +145,8 @@ Mind this when writing paths.
   lives in the shared content (so the popup has it too). Catalog failures are
   never printed in the body: a red exclamation badge in the panel title opens
   `TerminalContextPopup` with `MarketOverviewStore.state.error`.
-- Chart: provider/contract-type state is global (`chart_provider_id`,
-  `chart_contract_type`).
+- Chart: provider/contract-type state is panel-scoped
+  (`chart_{workspace}_{panel}_chart_provider_id`, `..._chart_contract_type`).
 - Theme selection is global (`terminal_theme`) and is managed by
   `ThemeSettingsController`; Nous is the default, persisted names must align
   with `TerminalThemes.available`, and load/save errors are surfaced in the theme UI.
@@ -453,7 +486,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
 ### Where tests live
 - `platform-core/src/jvmTest` — workspace/format utilities, `MarketOverviewStore`,
   explorer (`SymbolExplorerDropdownTest`), shared search
-  (`SearchMatchingTest`), menu rows (`TerminalMenuItemTest`).
+  (`SearchMatchingTest`), panel/workspace config serialization
+  (`PanelConfigSerializationTest`), menu rows (`TerminalMenuItemTest`).
 - `public-api/api-market/src/jvmTest` — paper engine, adapters, commands.
 - `features/dom/src/commonTest` — DOM view model (fakes), including
   explorer selection (provider switch + pending symbol, contract-type sync).

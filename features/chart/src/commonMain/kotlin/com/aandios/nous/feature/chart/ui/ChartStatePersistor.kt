@@ -28,9 +28,6 @@ class ChartStatePersistor(
 
     private fun panelKey(key: String) = panelPrefix + key
 
-    private suspend fun panelOrLegacy(key: String): String? =
-        store.getString(panelKey(key)) ?: store.getString(key)
-
     data class SavedState(
         val symbol: String? = null,
         val timeframe: String? = null,
@@ -122,11 +119,11 @@ class ChartStatePersistor(
         providerId: String,
         contractType: ContractType,
     ) {
-        store.putString(KEY_SYMBOL, symbol)
-        store.putString(KEY_TIMEFRAME, timeframe)
-        store.putString(KEY_CHART_MODE, chartMode.name)
-        store.putString(KEY_PROVIDER_ID, providerId)
-        store.putString(KEY_CONTRACT_TYPE, contractType.name)
+        store.putString(panelKey(KEY_SYMBOL), symbol)
+        store.putString(panelKey(KEY_TIMEFRAME), timeframe)
+        store.putString(panelKey(KEY_CHART_MODE), chartMode.name)
+        store.putString(panelKey(KEY_PROVIDER_ID), providerId)
+        store.putString(panelKey(KEY_CONTRACT_TYPE), contractType.name)
     }
 
     /** Footprint-настройки панели: префикс не даёт им перетекать между chart-панелями. */
@@ -164,36 +161,36 @@ class ChartStatePersistor(
         store.getString(KEY_ZOOM)?.toFloatOrNull()
 
     suspend fun restore(): SavedState {
-        val mode = store.getString(KEY_CHART_MODE)?.let { raw ->
+        val mode = store.getString(panelKey(KEY_CHART_MODE))?.let { raw ->
             try {
                 ChartMode.valueOf(raw)
             } catch (e: Exception) {
                 ChartMode.CANDLESTICK
             }
         }
-        val aggregation = panelOrLegacy(KEY_FP_AGGREGATION)?.let { raw ->
+        val aggregation = store.getString(panelKey(KEY_FP_AGGREGATION))?.let { raw ->
             try {
                 AggregationLevel.fromString(raw)
             } catch (e: Exception) {
                 AggregationLevel.BaseTick
             }
         }
-        val profileScale = panelOrLegacy(KEY_FP_PROFILE_SCALE)
+        val profileScale = store.getString(panelKey(KEY_FP_PROFILE_SCALE))
             ?.let { FootprintProfileScale.fromString(it) }
-        val ringWidth = panelOrLegacy(KEY_FP_RING_WIDTH)
+        val ringWidth = store.getString(panelKey(KEY_FP_RING_WIDTH))
             ?.let { FootprintRingWidth.fromString(it) }
-        val ringDiameter = panelOrLegacy(KEY_FP_RING_DIAMETER)
+        val ringDiameter = store.getString(panelKey(KEY_FP_RING_DIAMETER))
             ?.let { FootprintRingDiameter.fromString(it) }
         return SavedState(
-            symbol = store.getString(KEY_SYMBOL),
-            timeframe = store.getString(KEY_TIMEFRAME),
+            symbol = store.getString(panelKey(KEY_SYMBOL)),
+            timeframe = store.getString(panelKey(KEY_TIMEFRAME)),
             chartMode = mode,
             fpAggregation = aggregation,
             fpProfileScale = profileScale,
             fpRingWidth = ringWidth,
             fpRingDiameter = ringDiameter,
-            providerId = store.getString(KEY_PROVIDER_ID),
-            contractType = store.getString(KEY_CONTRACT_TYPE)?.let { raw ->
+            providerId = store.getString(panelKey(KEY_PROVIDER_ID)),
+            contractType = store.getString(panelKey(KEY_CONTRACT_TYPE))?.let { raw ->
                 runCatching { ContractType.valueOf(raw) }.getOrNull()
             },
             indicators = restoreIndicators(),

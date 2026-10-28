@@ -57,6 +57,7 @@ import com.aandios.nous.feature.trading.ui.TradingWindow
 import com.aandios.nous.feature.trades.ui.TradesRecommendedWidth
 import com.aandios.nous.feature.trading.ui.TradingRecommendedWidth
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -103,6 +104,13 @@ fun WorkspaceView(
     fun updatePanelConfig(updated: PanelConfig) {
         panelConfigs = panelConfigs + (updated.id to updated)
         persistConfig()
+    }
+
+    // Per-panel биржа: зеркалим выбор в конфиг этой панели (без общего ProviderRef)
+    fun updatePanelProvider(panel: PanelConfig, providerId: String) {
+        val name = providerRegistry.displayName(providerId)
+        if (panel.providerId == providerId && panel.providerName == name) return
+        updatePanelConfig(panel.copy(providerId = providerId, providerName = name))
     }
 
     // Внешние обновления конфига («Apply symbol to current workspace»): символы и
@@ -284,18 +292,25 @@ fun WorkspaceView(
             panelConfigs[panelId]?.let { pc ->
                 when (pc.type) {
                     PanelType.CHART -> ChartPanel(
-                        ws, pc, providerIdForPanel(ws.config, pc, providerRegistry),
+                        ws, pc, providerIdForPanel(pc, providerRegistry),
                         onPanelConfigChange = ::updatePanelConfig,
+                        onProviderChange = ::updatePanelProvider,
                     )
                     PanelType.DOM -> DomPanel(
-                        ws, pc, providerIdForPanel(ws.config, pc, providerRegistry),
+                        ws, pc, providerIdForPanel(pc, providerRegistry),
                         onPanelConfigChange = ::updatePanelConfig,
+                        onProviderChange = ::updatePanelProvider,
                     )
                     PanelType.TRADES -> TradesPanel(
-                        ws, pc, tradesWidths, providerIdForPanel(ws.config, pc, providerRegistry),
+                        ws, pc, tradesWidths, providerIdForPanel(pc, providerRegistry),
                         onPanelConfigChange = ::updatePanelConfig,
+                        onProviderChange = ::updatePanelProvider,
                     )
-                    PanelType.TRADING -> TradingPanel(ws, pc, onPanelConfigChange = ::updatePanelConfig)
+                    PanelType.TRADING -> TradingPanel(
+                        ws, pc, providerIdForPanel(pc, providerRegistry),
+                        onPanelConfigChange = ::updatePanelConfig,
+                        onProviderChange = ::updatePanelProvider,
+                    )
                 }
             }
         }
@@ -355,10 +370,13 @@ private fun ChartPanel(
     pc: PanelConfig,
     providerId: String?,
     onPanelConfigChange: (PanelConfig) -> Unit,
+    onProviderChange: (PanelConfig, String) -> Unit,
 ) {
     val vmKey = "${pc.id}_chart"
     val vm: ChartViewModel =
         ws.liveViewModels.getOrPut(vmKey) { koinInject<ChartViewModel>() } as ChartViewModel
+
+    // panel-конфиг (персист): timeframe/chartMode/zoomLevel
     val state = pc.state as? PanelState.Chart
     val tf = state?.timeframe ?: "1m"
 
@@ -369,8 +387,9 @@ private fun ChartPanel(
         } catch (e: Exception) {
             ChartMode.CANDLESTICK
         }
-        if (vm.state.value.chartMode != target) vm.dispatch(ChartIntent.ToggleChartMode)
+        if (vm.state.value.chartMode != target) vm.dispatch(ChartIntent.SelectChartMode(target))
     }
+
     LaunchedEffect(pc.symbol, tf) {
         val needReload =
             vm.state.value.currentSymbol != pc.symbol || vm.state.value.currentTimeframe != tf
@@ -381,18 +400,14 @@ private fun ChartPanel(
     LaunchedEffect(Unit) {
         var skipInitial = true
         vm.state.map { it.currentSymbol }.distinctUntilChanged().collect { s ->
-            if (skipInitial) {
-                skipInitial = false; return@collect
-            }
+            if (skipInitial) { skipInitial = false; return@collect }
             onPanelConfigChange(currentPc.copy(symbol = s))
         }
     }
     LaunchedEffect(Unit) {
         var skipInitial = true
         vm.state.map { it.currentTimeframe }.distinctUntilChanged().collect { tf2 ->
-            if (skipInitial) {
-                skipInitial = false; return@collect
-            }
+            if (skipInitial) { skipInitial = false; return@collect }
             val curS = currentPc.state as? PanelState.Chart ?: PanelState.Chart()
             onPanelConfigChange(currentPc.copy(state = curS.copy(timeframe = tf2)))
         }
@@ -400,11 +415,19 @@ private fun ChartPanel(
     LaunchedEffect(Unit) {
         var skipInitial = true
         vm.state.map { it.chartMode }.distinctUntilChanged().collect { mode ->
-            if (skipInitial) {
-                skipInitial = false; return@collect
-            }
+            if (skipInitial) { skipInitial = false; return@collect }
             val curS = currentPc.state as? PanelState.Chart ?: PanelState.Chart()
             onPanelConfigChange(currentPc.copy(state = curS.copy(chartMode = mode.name)))
+        }
+    }
+    // Per-panel биржа: пишем в конфиг только после восстановления и только
+    // на последующие (пользовательские) изменения — не затираем персист.
+    LaunchedEffect(pc.id) {
+        vm.providerRestored.first { it }
+        var skipInitial = true
+        vm.state.map { it.currentProviderId }.distinctUntilChanged().collect { id ->
+            if (skipInitial) { skipInitial = false; return@collect }
+            onProviderChange(currentPc, id)
         }
     }
 
@@ -427,6 +450,7 @@ private fun DomPanel(
     pc: PanelConfig,
     providerId: String?,
     onPanelConfigChange: (PanelConfig) -> Unit,
+    onProviderChange: (PanelConfig, String) -> Unit,
 ) {
     val vmKey = "${pc.id}_dom"
     val vm: DomViewModel =
@@ -482,6 +506,14 @@ private fun DomPanel(
             )
         }
     }
+    LaunchedEffect(pc.id) {
+        vm.providerRestored.first { it }
+        var skipInitial = true
+        vm.domOptions.map { it.provider }.distinctUntilChanged().collect { id ->
+            if (skipInitial) { skipInitial = false; return@collect }
+            onProviderChange(domPc, id)
+        }
+    }
     key(ws.activationCount) { DomWindow(vm) }
 }
 
@@ -492,18 +524,17 @@ private fun TradesPanel(
     tradesWidths: MutableMap<String, androidx.compose.ui.unit.Dp>,
     providerId: String?,
     onPanelConfigChange: (PanelConfig) -> Unit,
+    onProviderChange: (PanelConfig, String) -> Unit,
 ) {
     val vmKey = "${pc.id}_trades"
     val vm: TradesViewModel =
         ws.liveViewModels.getOrPut(vmKey) { koinInject<TradesViewModel>() } as TradesViewModel
 
+    // Своя биржа/контракты + персист ширины этой панели
     LaunchedEffect(pc.id, pc.symbol, providerId) {
-        providerId?.let(vm::selectProvider)
+        vm.attachPanel(pc.id, providerId)
         if (vm.currentSymbol.value != pc.symbol) vm.subscribeToTrades(pc.symbol)
     }
-
-    // Персист ширины панели (шестерёнка): ширина для LayoutRenderer
-    LaunchedEffect(pc.id) { vm.attachPanel(pc.id) }
     LaunchedEffect(Unit) {
         vm.panelWidthDp.collect { widthDp ->
             if (widthDp != null) tradesWidths[pc.id] = widthDp.dp
@@ -511,6 +542,14 @@ private fun TradesPanel(
     }
 
     val tradesPc by rememberUpdatedState(pc)
+    LaunchedEffect(pc.id) {
+        vm.providerRestored.first { it }
+        var skipInitial = true
+        vm.currentProviderId.collect { id ->
+            if (skipInitial) { skipInitial = false; return@collect }
+            onProviderChange(tradesPc, id)
+        }
+    }
     LaunchedEffect(Unit) {
         var skipInitial = true
         vm.currentSymbol.collect { s ->
@@ -582,11 +621,16 @@ private fun TradesPanel(
 private fun TradingPanel(
     ws: WorkspaceViewModel,
     pc: PanelConfig,
+    providerId: String?,
     onPanelConfigChange: (PanelConfig) -> Unit,
+    onProviderChange: (PanelConfig, String) -> Unit,
 ) {
     val vmKey = "${pc.id}_trading"
     val vm: TradingViewModel =
         ws.liveViewModels.getOrPut(vmKey) { koinInject<TradingViewModel>() } as TradingViewModel
+
+    // Биржа/контракты — свои у этой панели
+    LaunchedEffect(pc.id, providerId) { vm.attachPanel(pc.id, providerId) }
 
     // Активная вкладка сохраняется в PanelState
     val tradingPc by rememberUpdatedState(pc)
@@ -594,6 +638,14 @@ private fun TradingPanel(
         val state = pc.state as? PanelState.Trading
         if (state != null) {
             vm.restoreTab(state.activeTab)
+        }
+    }
+    LaunchedEffect(pc.id) {
+        vm.providerRestored.first { it }
+        var skipInitial = true
+        vm.providerId.collect { id ->
+            if (skipInitial) { skipInitial = false; return@collect }
+            onProviderChange(tradingPc, id)
         }
     }
     LaunchedEffect(Unit) {
@@ -610,13 +662,6 @@ private fun TradingPanel(
 }
 
 private fun providerIdForPanel(
-    workspace: WorkspaceConfig,
     panel: PanelConfig,
     registry: ProviderRegistry,
-): String? {
-    val configuredProviderId = workspace.providers
-        .firstOrNull { it.id == panel.providerRef }
-        ?.providerId
-        ?: return null
-    return configuredProviderId.takeIf { registry.get(it) != null }
-}
+): String? = panel.providerId?.takeIf { registry.get(it) != null }

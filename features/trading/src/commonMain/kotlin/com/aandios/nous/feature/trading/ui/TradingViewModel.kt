@@ -130,6 +130,36 @@ class TradingViewModel(
     private fun tradingAdapter() =
         providerRegistry.get(_providerId.value)?.effectiveTrading(_paperEnabled.value)
 
+    private var panelKey: String? = null
+
+    private val _providerRestored = MutableStateFlow(false)
+    val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
+
+    /** Привязка панели: своя биржа и тип контрактов (per-panel). */
+    fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
+        panelKey = panelId
+        val store = stateStore
+        if (store == null) {
+            _providerRestored.value = true
+            return
+        }
+        scope.launch {
+            store.getString(contractTypeStoreKey())?.let { raw ->
+                runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
+            }
+            val saved = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
+                ?: store.getString(providerStoreKey())?.takeIf { providerRegistry.get(it) != null }
+            if (!saved.isNullOrBlank() && saved != _providerId.value) {
+                selectProvider(saved)
+            }
+            _providerRestored.value = true
+        }
+    }
+
+    private fun providerStoreKey(): String = "trading_provider_${panelKey ?: "default"}"
+
+    private fun contractTypeStoreKey(): String = "trading_contract_${panelKey ?: "default"}"
+
     init {
         scope.launch {
             // Paper-режим панели переживает перезапуск (общий ключ панели);
@@ -137,11 +167,11 @@ class TradingViewModel(
             _paperEnabled.value = paperModeState?.enabled?.value
                 ?: (stateStore?.getString(PaperTrading.STORE_KEY) == "1")
             // Биржа панели тоже переживает перезапуск (как paper-режим)
-            stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
+            stateStore?.getString(providerStoreKey())?.takeIf { it.isNotBlank() }?.let { saved ->
                 if (providerRegistry.get(saved) != null) _providerId.value = saved
             }
             // Тип контрактов панели (USDT-M / COIN-M)
-            stateStore?.getString(CONTRACT_TYPE_STORE_KEY)?.let { raw ->
+            stateStore?.getString(contractTypeStoreKey())?.let { raw ->
                 runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
             }
             restart()
@@ -169,7 +199,7 @@ class TradingViewModel(
         if (_providerId.value == providerId) return
         _providerId.value = providerId
         scope.launch {
-            stateStore?.putString(PROVIDER_STORE_KEY, providerId)
+            stateStore?.putString(providerStoreKey(), providerId)
         }
         _positions.value = emptyList()
         _openOrders.value = emptyList()
@@ -224,7 +254,7 @@ class TradingViewModel(
     fun setContractType(type: ContractType) {
         if (_contractType.value == type) return
         _contractType.value = type
-        scope.launch { stateStore?.putString(CONTRACT_TYPE_STORE_KEY, type.name) }
+        scope.launch { stateStore?.putString(contractTypeStoreKey(), type.name) }
     }
 
     /** Карта symbol → тип контракта активного провайдера. */
@@ -484,12 +514,6 @@ class TradingViewModel(
     }
 
     private companion object {
-        /** Ключ StateStore: выбранная биржа docked trading panel. */
-        const val PROVIDER_STORE_KEY = "trading_provider"
-
-        /** Ключ StateStore: тип контрактов панели (USDT_M / COIN_M). */
-        const val CONTRACT_TYPE_STORE_KEY = "trading_contract_type"
-
         /** Идентификаторы строк окна Manage connections. */
         const val REST_CONNECTION_ID = "rest"
         const val STREAM_CONNECTION_ID = "stream"

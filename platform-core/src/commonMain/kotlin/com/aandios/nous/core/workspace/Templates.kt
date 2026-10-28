@@ -221,7 +221,9 @@ fun WorkspaceConfig.forMarketWatchSymbol(
         providers = providers.map {
             it.copy(name = providerName, providerId = providerId, symbols = listOf(symbol))
         },
-        panels = panels.map { it.copy(symbol = symbol) },
+        panels = panels.map {
+            it.copy(symbol = symbol, providerId = providerId, providerName = providerName)
+        },
         createdAt = now,
         updatedAt = now,
         order = 0,
@@ -241,7 +243,9 @@ fun WorkspaceConfig.withMarketWatchSymbol(
         providers = providers.map {
             it.copy(name = providerName, providerId = providerId, symbols = listOf(symbol))
         },
-        panels = panels.map { it.copy(symbol = symbol) },
+        panels = panels.map {
+            it.copy(symbol = symbol, providerId = providerId, providerName = providerName)
+        },
         updatedAt = currentTime(),
     )
 }

@@ -17,7 +17,11 @@ data class PanelConfig(
     val type: PanelType,
     val providerRef: String,
     val symbol: String,
-    val state: PanelState = PanelState.empty()
+    val state: PanelState = PanelState.empty(),
+    /** Биржа именно этой панели (per-panel); null — восстановить из panel-scoped StateStore. */
+    val providerId: String? = null,
+    /** Отображаемое имя биржи панели (навигатор, заголовки). */
+    val providerName: String? = null,
 )
 
 @Serializable

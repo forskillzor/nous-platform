@@ -107,7 +107,7 @@ class ChartStatePersistorTest {
     }
 
     @Test
-    fun `save uses legacy storage keys`() = runTest {
+    fun `save with empty prefix uses base storage keys`() = runTest {
         val store = FakeStateStore()
         val persistor = ChartStatePersistor(store)
 
@@ -171,7 +171,7 @@ class ChartStatePersistorTest {
     }
 
     @Test
-    fun `panel footprint settings fall back to legacy global values`() = runTest {
+    fun `panel footprint settings ignore legacy global values`() = runTest {
         val store = FakeStateStore()
         store.data[ChartStatePersistor.KEY_FP_AGGREGATION] = "TenTick"
         store.data[ChartStatePersistor.KEY_FP_PROFILE_SCALE] = "P95"
@@ -180,10 +180,49 @@ class ChartStatePersistorTest {
 
         val restored = ChartStatePersistor(store, "chart_ws_legacy_").restore()
 
-        assertEquals(AggregationLevel.TenTick, restored.fpAggregation)
-        assertEquals(FootprintProfileScale.P95, restored.fpProfileScale)
-        assertEquals(FootprintRingWidth.TWO_HALF, restored.fpRingWidth)
-        assertEquals(FootprintRingDiameter.X4, restored.fpRingDiameter)
+        assertNull(restored.fpAggregation)
+        assertNull(restored.fpProfileScale)
+        assertNull(restored.fpRingWidth)
+        assertNull(restored.fpRingDiameter)
+    }
+
+    @Test
+    fun `panel providers are isolated and ignore legacy global value`() = runTest {
+        val store = FakeStateStore()
+        store.data[ChartStatePersistor.KEY_PROVIDER_ID] = "binance-nous-0.0.1"
+        val left = ChartStatePersistor(store, "chart_ws_left_")
+        val right = ChartStatePersistor(store, "chart_ws_right_")
+
+        left.save("BTCUSDT", "1h", ChartMode.CANDLESTICK, "bybit-nous-0.0.1", ContractType.USDT_M)
+        right.save("ETHUSDT", "5m", ChartMode.CANDLESTICK, "mexc-nous-0.0.1", ContractType.USDT_M)
+
+        assertEquals("bybit-nous-0.0.1", left.restore().providerId)
+        assertEquals("mexc-nous-0.0.1", right.restore().providerId)
+        assertNull(ChartStatePersistor(store, "chart_ws_missing_").restore().providerId)
+        assertEquals("binance-nous-0.0.1", store.data["chart_provider_id"])
+        assertEquals("bybit-nous-0.0.1", store.data["chart_ws_left_${ChartStatePersistor.KEY_PROVIDER_ID}"])
+        assertEquals("mexc-nous-0.0.1", store.data["chart_ws_right_${ChartStatePersistor.KEY_PROVIDER_ID}"])
+    }
+
+    @Test
+    fun `panel symbol timeframe mode and contract type are isolated`() = runTest {
+        val store = FakeStateStore()
+        val left = ChartStatePersistor(store, "chart_ws_left_")
+        val right = ChartStatePersistor(store, "chart_ws_right_")
+
+        left.save("BTCUSDT", "1h", ChartMode.CANDLESTICK, "binance-nous-0.0.1", ContractType.USDT_M)
+        right.save("ETHUSDT", "5m", ChartMode.FOOTPRINT, "binance-nous-0.0.1", ContractType.COIN_M)
+
+        val restoredLeft = left.restore()
+        val restoredRight = right.restore()
+        assertEquals("BTCUSDT", restoredLeft.symbol)
+        assertEquals("1h", restoredLeft.timeframe)
+        assertEquals(ChartMode.CANDLESTICK, restoredLeft.chartMode)
+        assertEquals(ContractType.USDT_M, restoredLeft.contractType)
+        assertEquals("ETHUSDT", restoredRight.symbol)
+        assertEquals("5m", restoredRight.timeframe)
+        assertEquals(ChartMode.FOOTPRINT, restoredRight.chartMode)
+        assertEquals(ContractType.COIN_M, restoredRight.contractType)
     }
 
     @Test

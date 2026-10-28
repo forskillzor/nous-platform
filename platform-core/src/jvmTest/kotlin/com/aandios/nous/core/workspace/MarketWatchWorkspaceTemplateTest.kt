@@ -51,6 +51,8 @@ class MarketWatchWorkspaceTemplateTest {
         assertEquals(listOf("ETHUSDT"), opened.providers.single().symbols)
         assertEquals("Bybit", opened.providers.single().name)
         assertEquals("bybit-nous-0.0.1", opened.providers.single().providerId)
+        assertTrue(opened.panels.all { it.providerId == "bybit-nous-0.0.1" })
+        assertTrue(opened.panels.all { it.providerName == "Bybit" })
         assertEquals(template.layout, opened.layout)
     }
 
@@ -72,6 +74,8 @@ class MarketWatchWorkspaceTemplateTest {
         assertEquals(listOf("SOLUSDT"), applied.providers.single().symbols)
         assertEquals("MEXC", applied.providers.single().name)
         assertEquals("mexc-nous-0.0.1", applied.providers.single().providerId)
+        assertTrue(applied.panels.all { it.providerId == "mexc-nous-0.0.1" })
+        assertTrue(applied.panels.all { it.providerName == "MEXC" })
         assertTrue(applied.updatedAt >= workspace.updatedAt)
     }
 }

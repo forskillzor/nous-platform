@@ -117,6 +117,9 @@ class TradesViewModel(
 
     private var panelKey: String? = null
 
+    private val _providerRestored = MutableStateFlow(false)
+    val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
+
     // Информация о текущем символе (minQty, tickSize и т.д.)
     private val _currentSymbol = MutableStateFlow("")
     val currentSymbol: StateFlow<String> = _currentSymbol.asStateFlow()
@@ -140,7 +143,6 @@ class TradesViewModel(
     val customPresets: StateFlow<List<Double>> = _customPresets.asStateFlow()
 
     private var subscribedSymbol: String = ""
-    private var providerSelectedExplicitly = false
 
     override fun dispose() {
         subscriptionJob?.cancel()
@@ -148,17 +150,8 @@ class TradesViewModel(
     }
 
     init {
-        // Биржа панели переживает перезапуск + список символов при старте
+        // Список символов при старте; per-panel биржа/контракты — в attachPanel
         viewModelScope.launch {
-            stateStore?.getString(PROVIDER_STORE_KEY)?.takeIf { it.isNotBlank() }?.let { saved ->
-                if (!providerSelectedExplicitly && providerRegistry.get(saved) != null) {
-                    _currentProviderId.value = saved
-                }
-            }
-            // Тип контрактов панели (USDT-M / COIN-M) — до загрузки списка
-            stateStore?.getString(CONTRACT_TYPE_STORE_KEY)?.let { raw ->
-                runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
-            }
             loadSymbols()
         }
     }
@@ -167,21 +160,38 @@ class TradesViewModel(
     fun setContractType(type: ContractType) {
         if (_contractType.value == type) return
         _contractType.value = type
-        viewModelScope.launch { stateStore?.putString(CONTRACT_TYPE_STORE_KEY, type.name) }
+        viewModelScope.launch { stateStore?.putString(contractTypeStoreKey(), type.name) }
         applyContractTypeFilter()
         ensureSymbolMatchesContractType()
     }
 
-    /** Привязка панели: персист ширины (шестерёнка настроек). */
-    fun attachPanel(panelId: String?) {
+    /** Привязка панели: своя биржа/контракты и персист ширины. */
+    fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
         panelKey = panelId
-        val store = stateStore ?: return
+        val store = stateStore
+        if (store == null) {
+            _providerRestored.value = true
+            return
+        }
         viewModelScope.launch {
             store.getString(widthStoreKey())?.toFloatOrNull()?.takeIf { it > 0f }?.let {
                 _panelWidthDp.value = it
             }
+            store.getString(contractTypeStoreKey())?.let { raw ->
+                runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
+            }
+            val saved = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
+                ?: store.getString(providerStoreKey())?.takeIf { providerRegistry.get(it) != null }
+            if (!saved.isNullOrBlank() && saved != _currentProviderId.value) {
+                selectProvider(saved)
+            }
+            _providerRestored.value = true
         }
     }
+
+    private fun providerStoreKey(): String = "trades_provider_${panelKey ?: "default"}"
+
+    private fun contractTypeStoreKey(): String = "trades_contract_${panelKey ?: "default"}"
 
     /** Установить ширину панели (dp) — превью в UI без записи в стор. */
     fun setPanelWidth(widthDp: Float) {
@@ -287,10 +297,9 @@ class TradesViewModel(
 
     /** Смена провайдера данных: переподписка на текущий символ + перезагрузка символов. */
     fun selectProvider(providerId: String) {
-        providerSelectedExplicitly = true
         if (_currentProviderId.value == providerId) return
         _currentProviderId.value = providerId
-        viewModelScope.launch { stateStore?.putString(PROVIDER_STORE_KEY, providerId) }
+        viewModelScope.launch { stateStore?.putString(providerStoreKey(), providerId) }
         _filteredBuffer.value = emptyList()
         subscribedSymbol = ""
         loadSymbols()
@@ -439,11 +448,5 @@ class TradesViewModel(
 
     companion object {
         private val fmt = com.aandios.nous.core.ui.format.SymbolFormatter.DEFAULT
-
-        /** Ключ StateStore: выбранная биржа trades-панели. */
-        const val PROVIDER_STORE_KEY = "trades_provider"
-
-        /** Ключ StateStore: тип контрактов панели (USDT_M / COIN_M). */
-        const val CONTRACT_TYPE_STORE_KEY = "trades_contract_type"
     }
 }

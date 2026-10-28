@@ -45,7 +45,10 @@ val navigatorWorkspaceComparator: Comparator<WorkspaceConfig> =
     compareBy({ it.order }, { it.createdAt })
 
 fun navigatorExchangeLabel(ws: WorkspaceConfig): String =
-    ws.providers.firstOrNull()?.name.orEmpty()
+    (ws.panels.firstOrNull { it.type == PanelType.CHART } ?: ws.panels.firstOrNull())
+        ?.providerName
+        ?.takeIf { it.isNotBlank() }
+        ?: ws.providers.firstOrNull()?.name.orEmpty()
 
 fun navigatorPanelSymbol(ws: WorkspaceConfig): String =
     (ws.panels.firstOrNull { it.type == PanelType.CHART } ?: ws.panels.firstOrNull())?.symbol.orEmpty()

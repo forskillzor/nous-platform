@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.ui
+
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.animation.AnimatedVisibility
@@ -113,6 +114,7 @@ fun ChartWindow() {
         chartViewModel.dispatch(ChartIntent.LoadChart(saved?.symbol, saved?.timeframe))
     }
 
+
     ChartWindowContent(
         chartViewModel = chartViewModel,
         initialZoomLevel = initialZoom,
@@ -140,11 +142,12 @@ fun ChartWindow(
 ) {
     // Торговые настройки этой панели (trading/paper/show orders/positions)
     // персистятся и восстанавливаются отдельно от других графиков
-    LaunchedEffect(workspaceId, panelId) {
+    LaunchedEffect(workspaceId, panelId, initialProviderId) {
         chartViewModel.attachPanel(workspaceId, panelId)
         // Биржу панели восстанавливаем из персиста (символ/ТФ — из PanelConfig)
         chartViewModel.restoreProvider(initialProviderId)
     }
+
     ChartWindowContent(
         chartViewModel = chartViewModel,
         modifier = modifier,
@@ -229,12 +232,12 @@ private fun ChartWindowContent(
                 val marginUsd = qty * contractSizeMargin / leverageForInfo
                 val maxContracts = available * leverageForInfo * price / contractSizeMargin
                 "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(marginUsd)} USDT · " +
-                    "Free $freeText · Max ${kotlin.math.floor(maxContracts)} cont (${leverageForInfo}x)"
+                        "Free $freeText · Max ${kotlin.math.floor(maxContracts)} cont (${leverageForInfo}x)"
             } else {
                 val margin = price * qty / leverageForInfo
                 val maxNotional = available * leverageForInfo
                 "Margin ≈ ${uiState.currentSymbolFormatter.formatVolumeFull(margin)} USDT · " +
-                    "Free $freeText · Max ${uiState.currentSymbolFormatter.formatVolumeFull(maxNotional)} USDT (${leverageForInfo}x)"
+                        "Free $freeText · Max ${uiState.currentSymbolFormatter.formatVolumeFull(maxNotional)} USDT (${leverageForInfo}x)"
             }
         } else {
             "Free $freeText (${leverageForInfo}x)"
@@ -264,7 +267,7 @@ private fun ChartWindowContent(
         }
         val sign = if (pnl >= 0) "+" else ""
         val text = "PnL $sign${String.format(java.util.Locale.US, "%.2f", pct)}%  $sign$deltaText  " +
-            "$sign${String.format(java.util.Locale.US, "%.2f", pnl)} USDT"
+                "$sign${String.format(java.util.Locale.US, "%.2f", pnl)} USDT"
         text to (pnl >= 0)
     }
     LaunchedEffect(uiState.currentSymbol, uiState.currentProviderId) {
@@ -401,6 +404,7 @@ private fun ChartWindowContent(
                                 )
                             }
                         }
+
                         is ChartState.Error -> {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
@@ -421,13 +425,14 @@ private fun ChartWindowContent(
                                 }
                             }
                         }
+
                         is ChartState.Success -> {
                             ChartCanvas(
                                 candles = state.candles,
                                 currentPrice = state.currentPrice,
                                 footprintCandles = null,
                                 seriesKey = "${uiState.currentProviderId}|${uiState.currentSymbol}|" +
-                                    "${uiState.currentTimeframe}|CANDLESTICK",
+                                        "${uiState.currentTimeframe}|CANDLESTICK",
                                 indicators = uiState.indicators,
                                 colors = indicatorColors,
                                 inputSource = indicatorInputSource,
@@ -455,16 +460,26 @@ private fun ChartWindowContent(
                         }
                     }
                 }
+
                 ChartMode.FOOTPRINT -> {
                     if (uiState.footprintLoading && uiState.footprintCandles.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Loading footprint data...", color = MaterialTheme.colorScheme.onBackground, fontSize = 14.sp)
+                            Text(
+                                "Loading footprint data...",
+                                color = MaterialTheme.colorScheme.onBackground,
+                                fontSize = 14.sp
+                            )
                         }
                     } else if (uiState.footprintError != null && uiState.footprintCandles.isEmpty()) {
                         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("Footprint data error", color = MaterialTheme.colorScheme.error, fontSize = 14.sp)
-                                Text(uiState.footprintError!!, color = MaterialTheme.colorScheme.onBackground, fontSize = 11.sp, modifier = Modifier.padding(top = 8.dp))
+                                Text(
+                                    uiState.footprintError!!,
+                                    color = MaterialTheme.colorScheme.onBackground,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
                             }
                         }
                     } else {
@@ -514,7 +529,7 @@ private fun ChartWindowContent(
                             currentPrice = uiState.footprintCurrentPrice ?: fpToCandle.lastOrNull()?.close,
                             footprintCandles = allFp,
                             seriesKey = "${uiState.currentProviderId}|${uiState.currentSymbol}|" +
-                                "${uiState.currentTimeframe}|FOOTPRINT",
+                                    "${uiState.currentTimeframe}|FOOTPRINT",
                             indicators = uiState.indicators,
                             colors = indicatorColors,
                             inputSource = indicatorInputSource,
@@ -965,7 +980,7 @@ private fun ChartNotificationItem(
 }
 
 private typealias ChartIndicatorRenderer =
-    DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit
+        DrawScope.(Rect, List<Candle>, PriceRange, Float, Float) -> Unit
 
 private data class ChartPaneVisual(
     val paneId: String,

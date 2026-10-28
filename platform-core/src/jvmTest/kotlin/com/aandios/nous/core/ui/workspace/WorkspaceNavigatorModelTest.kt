@@ -267,6 +267,22 @@ class WorkspaceNavigatorModelTest {
     }
 
     @Test
+    fun `navigator exchange prefers the chart panel provider name`() {
+        val config = ws("w1", "One", provider = "Binance").copy(
+            panels = listOf(
+                PanelConfig(
+                    id = "p1",
+                    type = PanelType.CHART,
+                    providerRef = "main",
+                    symbol = "SOLUSDT",
+                    providerName = "Bybit",
+                ),
+            ),
+        )
+        assertEquals("Bybit", navigatorExchangeLabel(config))
+    }
+
+    @Test
     fun `navigator symbol and exchange are empty without data`() {
         assertEquals("", navigatorPanelSymbol(ws("w1", "One")))
         assertEquals("", navigatorExchangeLabel(ws("w1", "One")))

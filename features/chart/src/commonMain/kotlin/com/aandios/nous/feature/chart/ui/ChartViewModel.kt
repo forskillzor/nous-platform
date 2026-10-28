@@ -51,6 +51,17 @@ import com.aandios.nous.research.indicator.mergeIndicatorParams
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.channels.Channel
+
+
+private suspend fun <T> runCatchingSuspend(block: suspend () -> T): Result<T> =
+    try {
+        Result.success(block())
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Throwable) {
+        Result.failure(e)
+    }
 
 /** Уведомление chart-трейдинга (snackbar поверх графика под тулбаром). */
 private const val INDICATOR_PANE_MIN_HEIGHT_DP = 40f
@@ -68,6 +79,7 @@ class ChartViewModel(
     cacheDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : Disposable {
     private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
     // Отдельный scope для записей кэша: не блокирует Main и переживает dispose панели
     private val cacheScope = CoroutineScope(cacheDispatcher + SupervisorJob())
 
@@ -155,11 +167,9 @@ class ChartViewModel(
     val paperEnabled: StateFlow<Boolean> = _paperEnabled.asStateFlow()
 
     /** Живые обновления ордеров активного адаптера (отмена/исполнение). */
-    private var ordersLiveJob: Job? = null
-    private var positionsLiveJob: Job? = null
-    private var balancesLiveJob: Job? = null
+    private var tradingLiveJob: Job? = null
+    private var tradingLiveAdapter: TradingAdapter? = null
 
-    /** Балансы активного адаптера (paper или live) — маржа/свободно. */
     private val _balances = MutableStateFlow<List<Balance>>(emptyList())
     val balances: StateFlow<List<Balance>> = _balances.asStateFlow()
     private var ordersLiveAdapter: TradingAdapter? = null
@@ -172,6 +182,12 @@ class ChartViewModel(
     private val footprintCacheStore: FootprintCacheStore? = footprintCache
     private var footprintController: FootprintController? = null
     private var persistor = stateStore?.let { ChartStatePersistor(it) }
+    private var attachedPrefix: String? = null
+
+    private val _providerRestored = MutableStateFlow(false)
+
+    /** Биржа панели восстановлена из персиста; до этого saveState не пишет. */
+    val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
 
     private var candleController: TimeSeriesController<Candle>? = null
     private var candleStateJob: Job? = null
@@ -206,6 +222,10 @@ class ChartViewModel(
         val prefix = if (workspaceId != null && panelId != null) {
             "chart_${workspaceId}_${panelId}_"
         } else ""
+        // Повторный вызов (например, после зеркалирования providerId в конфиг)
+        // не должен заново восстанавливать trading/indicators из стора.
+        if (attachedPrefix == prefix) return
+        attachedPrefix = prefix
         persistor = ChartStatePersistor(store, prefix)
         viewModelScope.launch {
             restoreTradingState()
@@ -219,6 +239,7 @@ class ChartViewModel(
         candleStateJob?.cancel()
         candleController?.dispose()
         footprintController?.dispose()
+        tradingLiveJob?.cancel()
         viewModelScope.cancel()
     }
 
@@ -237,21 +258,26 @@ class ChartViewModel(
             is ChartIntent.AddIndicatorOverlay -> addIndicatorOverlay(intent.type)
             is ChartIntent.AddIndicatorToPane ->
                 addIndicatorToPane(intent.type, intent.paneId, intent.createPane)
+
             is ChartIntent.RemoveIndicator -> removeIndicator(intent.instanceId)
             is ChartIntent.UpdateIndicatorParams ->
                 updateIndicatorParams(intent.instanceId, intent.params)
+
             is ChartIntent.SetIndicatorLineColor ->
                 setIndicatorLineColor(intent.instanceId, intent.lineId, intent.colorArgb)
+
             is ChartIntent.SelectIndicatorPane -> selectIndicatorPane(intent.paneId)
             is ChartIntent.SetIndicatorPaneLayout -> setIndicatorPaneLayout(intent.layout)
             is ChartIntent.SetIndicatorPaneHeight ->
                 setIndicatorPaneHeight(intent.paneId, intent.heightDp, intent.persist)
+
             is ChartIntent.MoveIndicatorPane -> moveIndicatorPane(intent.paneId, intent.targetIndex)
             is ChartIntent.ApplyIndicatorPreset -> applyIndicatorPreset(intent.preset)
             is ChartIntent.LoadChart -> loadChart(
                 ticker = intent.symbol ?: _state.value.currentSymbol,
                 timeframe = intent.timeframe ?: _state.value.currentTimeframe,
             )
+
             is ChartIntent.LoadMoreHistory -> candleController?.loadMore()
             is ChartIntent.LoadMoreFootprintHistory -> footprintController?.loadMore()
             is ChartIntent.RestoreState -> restoreState()
@@ -270,21 +296,14 @@ class ChartViewModel(
         val provider = providerRegistry.get(providerId) ?: return
         if (activeProviderId == providerId) return
         activeProviderId = providerId
-        // Смена биржи = смена цели торговли — Trading выключаем
         setTradingEnabled(false)
-        // Подписка на ордера была у старого адаптера — переподпишемся после рефреша
-        ordersLiveJob?.cancel()
-        ordersLiveJob = null
-        ordersLiveAdapter = null
         _state.update { it.copy(currentProviderId = providerId, symbols = emptyList()) }
         saveState()
         loadSymbols()
-        // Выбор из explorer: символ применится после загрузки списка (тут
-        // промежуточная загрузка старого символа на новой бирже не нужна)
         if (pendingExplorerSymbol == null) {
             loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
         }
-        refreshOpenOrders()
+        refreshTrading()
     }
 
     /** USDT-M / COIN-M: фильтр списка символов + fallback текущего символа. */
@@ -370,6 +389,7 @@ class ChartViewModel(
         }
         saveState()
         loadChart(ticker = symbol, timeframe = _state.value.currentTimeframe)
+        refreshTrading()
     }
 
     // ── Explorer (расширенный список символов) ──
@@ -814,17 +834,8 @@ class ChartViewModel(
         if (_paperEnabled.value == enabled) return
         _paperEnabled.value = enabled
         viewModelScope.launch { persistor?.savePaperEnabled(enabled) }
-        // Смена paper/live — Trading выключаем: включение только осознанно
-        // (флаги показа ордеров/позиций не трогаем — как выбрано, так и живёт)
         setTradingEnabled(false)
-        ordersLiveJob?.cancel()
-        positionsLiveJob?.cancel()
-        balancesLiveJob?.cancel()
-        ordersLiveJob = null
-        positionsLiveJob = null
-        balancesLiveJob = null
-        ordersLiveAdapter = null
-        refreshOpenOrders()
+        refreshTrading()
         refreshPaperFees(_state.value.currentSymbol)
     }
 
@@ -867,54 +878,113 @@ class ChartViewModel(
     }
 
     /** Перечитать открытые ордера текущего символа (для линий на графике). */
+    /** Перечитать открытые ордера текущего символа (для линий на графике). */
+
+    /** Идемпотентно: запускает стримы, если не запущены. */
     fun refreshOpenOrders() {
-        val adapter = activeTrading()
-            ?: run {
-                _openOrders.value = emptyList()
-                return
-            }
-        ensureOrdersLive(adapter)
-        val symbol = _state.value.currentSymbol
-        viewModelScope.launch {
-            val orders = runCatching { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
-            _openOrders.value = orders.filter { it.symbol.uppercase() == symbol.uppercase() }
-            val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
-            _positions.value = positions.filter { it.symbol.equals(symbol, ignoreCase = true) }
-            // Балансы активного адаптера — для строки маржи под панелью
-            runCatching { adapter.getBalances() }.onSuccess { _balances.value = it }
-        }
+        activeTrading()?.let { ensureTradingLive(it, force = false) }
+    }
+
+    /** Force-restart: cancel + новый snapshot (смена символа/биржи/paper). */
+    private fun refreshTrading() {
+        activeTrading()?.let { ensureTradingLive(it, force = true) }
     }
 
     /**
      * Живые обновления активного адаптера: ордера (отмена/исполнение) и
      * позиции — сразу обновляют линии/бейджи на графике.
      */
-    private fun ensureOrdersLive(adapter: TradingAdapter) {
-        if (ordersLiveJob?.isActive == true && ordersLiveAdapter === adapter) return
-        ordersLiveJob?.cancel()
-        positionsLiveJob?.cancel()
-        balancesLiveJob?.cancel()
-        ordersLiveAdapter = adapter
-        ordersLiveJob = adapter.subscribeToOrders()?.let { flow ->
-            viewModelScope.launch {
-                flow.collect { update -> onOrderUpdate(update) }
+    private fun ensureTradingLive(adapter: TradingAdapter, force: Boolean = false) {
+        if (!force && tradingLiveJob?.isActive == true && tradingLiveAdapter === adapter) return
+        tradingLiveJob?.cancel()
+        tradingLiveAdapter = adapter
+        tradingLiveJob = viewModelScope.launch {
+            launch { collectOrdersStream(adapter) }
+            launch { collectPositionsStream(adapter) }
+            launch { collectBalancesStream(adapter) }
+            adapter.notices()?.let { flow -> launch { flow.collect { notify(it) } } }
+        }
+    }
+
+    /**
+     * Подписка ДО snapshot (start = UNDISPATCHED), буферизация событий в
+     * Channel — чтобы WS-события, пришедшие во время REST-запроса, не
+     * потерялись и применились ПОСЛЕ атомарного snapshot.
+     */
+    private suspend fun CoroutineScope.collectOrdersStream(adapter: TradingAdapter) {
+        val events = Channel<Order>(Channel.UNLIMITED)
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                adapter.subscribeToOrders()?.collect { events.send(it) }
+            } finally {
+                events.close()
             }
         }
-        positionsLiveJob = adapter.subscribeToPositions()?.let { flow ->
-            viewModelScope.launch {
-                flow.collect { update -> onPositionUpdate(update) }
+        try {
+            val symbol = _state.value.currentSymbol
+            val snapshot = runCatchingSuspend { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
+            _openOrders.value = snapshot.filter {
+                it.symbol.equals(symbol, true) && it.status == OrderStatus.OPEN
+            }
+            for (e in events) onOrderUpdate(e)
+        } finally {
+            collector.cancel()
+            events.close()
+        }
+    }
+
+    private suspend fun CoroutineScope.collectPositionsStream(adapter: TradingAdapter) {
+        val flow = adapter.subscribeToPositions()
+        if (flow == null) {
+            // Стрим недоступен (нет ключей / адаптер без private WS) — один snapshot и выход.
+            val symbol = _state.value.currentSymbol
+            val snapshot = runCatchingSuspend { adapter.getPositions() }.getOrDefault(emptyList())
+            val filtered = snapshot.filter { it.symbol.equals(symbol, true) }
+            if (filtered.isNotEmpty() || _positions.value.isEmpty()) {
+                _positions.value = filtered
+            }
+            return
+        }
+        val events = Channel<Position>(Channel.UNLIMITED)
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                flow.collect { events.send(it) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+            } finally {
+                events.close()
             }
         }
-        balancesLiveJob = adapter.subscribeToBalances()?.let { flow ->
-            viewModelScope.launch {
-                flow.collect { update -> onBalanceUpdate(update) }
+        try {
+            val symbol = _state.value.currentSymbol
+            val snapshot = runCatchingSuspend { adapter.getPositions() }.getOrDefault(emptyList())
+            val filtered = snapshot.filter { it.symbol.equals(symbol, true) }
+            val hadBefore = _positions.value.isNotEmpty()
+            if (filtered.isNotEmpty() || !hadBefore) {
+                _positions.value = filtered
+            }
+            for (e in events) onPositionUpdate(e)
+        } finally {
+            collector.cancel()
+            events.close()
+        }
+    }
+    private suspend fun CoroutineScope.collectBalancesStream(adapter: TradingAdapter) {
+        val events = Channel<Balance>(Channel.UNLIMITED)
+        val collector = launch(start = CoroutineStart.UNDISPATCHED) {
+            try {
+                adapter.subscribeToBalances()?.collect { events.send(it) }
+            } finally {
+                events.close()
             }
         }
-        // Уведомления движка (причины отказов ордеров) — в snackbar
-        adapter.notices()?.let { flow ->
-            viewModelScope.launch {
-                flow.collect { text -> notify(text) }
-            }
+        try {
+            _balances.value = runCatchingSuspend { adapter.getBalances() }.getOrDefault(emptyList())
+            for (e in events) onBalanceUpdate(e)
+        } finally {
+            collector.cancel()
+            events.close()
         }
     }
 
@@ -927,26 +997,28 @@ class ChartViewModel(
     }
 
     private fun onPositionUpdate(update: Position) {
-        val symbol = _state.value.currentSymbol
-        if (!update.symbol.equals(symbol, ignoreCase = true)) return
-        _positions.value = if (update.quantity == 0.0) {
-            _positions.value.filterNot { it.positionId == update.positionId }
-        } else if (_positions.value.any { it.positionId == update.positionId }) {
-            _positions.value.map { if (it.positionId == update.positionId) update else it }
+        if (!update.symbol.equals(_state.value.currentSymbol, true)) return
+        if (update.quantity == 0.0) {
+            _positions.value = _positions.value.filterNot { it.positionId == update.positionId }
         } else {
-            _positions.value + update
+            _positions.value = if (_positions.value.any { it.positionId == update.positionId }) {
+                _positions.value.map { if (it.positionId == update.positionId) update else it }
+            } else {
+                _positions.value + update
+            }
         }
     }
 
     private fun onOrderUpdate(update: Order) {
-        val symbol = _state.value.currentSymbol
-        if (!update.symbol.equals(symbol, ignoreCase = true)) return
-        _openOrders.value = if (update.status != OrderStatus.OPEN) {
-            _openOrders.value.filterNot { it.orderId == update.orderId }
-        } else if (_openOrders.value.any { it.orderId == update.orderId }) {
-            _openOrders.value.map { if (it.orderId == update.orderId) update else it }
+        if (!update.symbol.equals(_state.value.currentSymbol, true)) return
+        if (update.status != OrderStatus.OPEN) {
+            _openOrders.value = _openOrders.value.filterNot { it.orderId == update.orderId }
         } else {
-            _openOrders.value + update
+            _openOrders.value = if (_openOrders.value.any { it.orderId == update.orderId }) {
+                _openOrders.value.map { if (it.orderId == update.orderId) update else it }
+            } else {
+                _openOrders.value + update
+            }
         }
     }
 
@@ -977,15 +1049,15 @@ class ChartViewModel(
     fun cancelAllChartOrders() {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeTrading()
-            if (adapter == null) {
-                notify("Trading adapter not available")
-                return@launch
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
             }
             val symbol = _state.value.currentSymbol
-            val ok = runCatching { adapter.cancelAllOrders(symbol) }.getOrDefault(false)
-            notify(if (ok) "All orders canceled ($symbol)" else "Failed to cancel orders")
-            refreshOpenOrders()
+            val ok = runCatchingSuspend { adapter.cancelAllOrders(symbol) }.getOrDefault(false)
+            if (ok) {
+                _openOrders.value = _openOrders.value.filterNot { it.symbol.equals(symbol, true) }
+            }
+            notify(if (ok) "All orders canceled ($symbol)" else "Failed to cancel orders")
         }
     }
 
@@ -993,14 +1065,15 @@ class ChartViewModel(
     fun closeChartPosition(position: Position) {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeTrading()
-            if (adapter == null) {
-                notify("Trading adapter not available")
-                return@launch
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
             }
-            val result = runCatching {
+            val result = runCatchingSuspend {
                 adapter.closePosition(position.symbol, position.positionId, position.quantity)
             }.getOrNull()
+            if (result?.success == true) {
+                _positions.value = _positions.value.filterNot { it.positionId == position.positionId }
+            }
             val qty = _state.value.currentSymbolFormatter.formatVolume(position.quantity)
             notify(
                 when {
@@ -1009,7 +1082,6 @@ class ChartViewModel(
                     else -> "Close failed: ${result.message}"
                 }
             )
-            refreshOpenOrders()
         }
     }
 
@@ -1017,25 +1089,25 @@ class ChartViewModel(
     fun closeAllChartPositions() {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeTrading()
-            if (adapter == null) {
-                notify("Trading adapter not available")
-                return@launch
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
             }
             val symbol = _state.value.currentSymbol
-            val positions = runCatching { adapter.getPositions() }.getOrDefault(emptyList())
-                .filter { it.symbol.equals(symbol, ignoreCase = true) }
+            val positions = _positions.value.filter { it.symbol.equals(symbol, true) }
             if (positions.isEmpty()) {
-                notify("No open positions ($symbol)")
-                return@launch
+                notify("No open positions ($symbol)"); return@launch
             }
             var closed = 0
             positions.forEach { p ->
-                val r = runCatching { adapter.closePosition(p.symbol, p.positionId, p.quantity) }.getOrNull()
-                if (r?.success == true) closed++
+                val r = runCatchingSuspend {
+                    adapter.closePosition(p.symbol, p.positionId, p.quantity)
+                }.getOrNull()
+                if (r?.success == true) {
+                    _positions.value = _positions.value.filterNot { it.positionId == p.positionId }
+                    closed++
+                }
             }
-            notify("Closed $closed/${positions.size} positions ($symbol)")
-            refreshOpenOrders()
+            notify("Closed $closed/${positions.size} positions ($symbol)")
         }
     }
 
@@ -1061,7 +1133,9 @@ class ChartViewModel(
     private fun submitOrConfirm(request: OrderRequest) {
         // Trading выключен на графике — ордера не размещаются вообще
         if (!_tradingEnabled.value) {
-            notify("Trading disabled")
+            notify(
+                "Trading disabled"
+            )
             return
         }
         if (_confirmOrders.value) {
@@ -1073,22 +1147,42 @@ class ChartViewModel(
 
     private fun executeOrder(request: OrderRequest) {
         viewModelScope.launch {
-            val adapter = activeTrading()
-            if (adapter == null) {
-                notify("Trading adapter not available")
-                return@launch
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
             }
-            val response = runCatching { adapter.placeOrder(request) }.getOrNull()
-            notify(when {
-                response == null -> "Order failed (network)"
-                response.success -> {
-                    val px = if (request.orderType == OrderType.MARKET) "market"
-                    else "@ ${_state.value.currentSymbolFormatter.formatPrice(request.price)}"
-                    "${request.orderType.name} ${request.side.name} ${request.quantity} $px → ${response.orderId}"
+            val response = runCatchingSuspend { adapter.placeOrder(request) }.getOrNull()
+            if (response?.success == true && response.orderId.isNotBlank()) {
+                // Оптимистично: бейдж появляется сразу, WS обновит полями.
+                if (_openOrders.value.none { it.orderId == response.orderId }) {
+                    val now = currentTimeMillis()
+                    _openOrders.value += Order(
+                        orderId = response.orderId,
+                        symbol = request.symbol,
+                        side = request.side,
+                        orderType = request.orderType,
+                        price = request.price,
+                        quantity = request.quantity,
+                        filledQuantity = 0.0,
+                        reduceOnly = request.reduceOnly,
+                        status = OrderStatus.OPEN,
+                        clientOrderId = request.clientOrderId,
+                        timestamp = now,
+                        updatedAt = now,
+                    )
                 }
-                else -> response.message ?: "Order failed"
-            })
-            refreshOpenOrders()
+            }
+            notify(
+                when {
+                    response == null -> "Order failed (network)"
+                    response.success -> {
+                        val px = if (request.orderType == OrderType.MARKET) "market"
+                        else "@ ${_state.value.currentSymbolFormatter.formatPrice(request.price)}"
+                        "${request.orderType.name} ${request.side.name} ${request.quantity} $px → ${response.orderId}"
+                    }
+
+                    else -> response.message ?: "Order failed"
+                }
+            )
         }
     }
 
@@ -1096,14 +1190,15 @@ class ChartViewModel(
     fun cancelChartOrder(orderId: String) {
         if (!_tradingEnabled.value) return
         viewModelScope.launch {
-            val adapter = activeTrading()
-            if (adapter == null) {
-                notify("Trading adapter not available")
-                return@launch
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
             }
-            val ok = runCatching { adapter.cancelOrder(orderId) }.getOrDefault(false)
-            notify(if (ok) "Order $orderId canceled" else "Failed to cancel $orderId")
-            refreshOpenOrders()
+            val ok = runCatchingSuspend { adapter.cancelOrder(orderId) }.getOrDefault(false)
+            if (ok) {
+                // Оптимистично убираем сразу. WS подтвердит или исправит.
+                _openOrders.value = _openOrders.value.filterNot { it.orderId == orderId }
+            }
+            notify(if (ok) "Order $orderId canceled" else "Failed to cancel $orderId")
         }
     }
 
@@ -1124,16 +1219,12 @@ class ChartViewModel(
 
     private fun replaceChartOrder(order: Order, price: Double, quantity: Double) {
         viewModelScope.launch {
-            val adapter = activeTrading()
-            if (adapter == null) {
-                notify("Trading adapter not available")
-                return@launch
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
             }
             if (quantity <= 0) {
-                notify("Quantity must be positive")
-                return@launch
+                notify("Quantity must be positive"); return@launch
             }
-            // Общая логика с DOM: cancel+replace
             val formatter = _state.value.currentSymbolFormatter
             val newPrice = if (order.orderType == OrderType.MARKET) 0.0 else formatter.roundPrice(price)
             val response = adapter.replaceOrder(
@@ -1143,6 +1234,26 @@ class ChartViewModel(
                 leverage = _chartLeverage.value,
                 marginMode = _chartMarginMode.value,
             )
+            if (response?.success == true && response.orderId.isNotBlank()) {
+                val now = currentTimeMillis()
+                val optimistic = Order(
+                    orderId = response.orderId,
+                    symbol = order.symbol,
+                    side = order.side,
+                    orderType = order.orderType,
+                    price = newPrice,
+                    quantity = quantity,
+                    filledQuantity = 0.0,
+                    reduceOnly = order.reduceOnly,
+                    status = OrderStatus.OPEN,
+                    clientOrderId = null,
+                    timestamp = now,
+                    updatedAt = now,
+                )
+                _openOrders.value = _openOrders.value
+                    .filterNot { it.orderId == order.orderId }
+                    .let { list -> if (list.none { it.orderId == optimistic.orderId }) list + optimistic else list }
+            }
             notify(when {
                 response == null -> "Replace failed (network)"
                 response.success -> {
@@ -1152,7 +1263,6 @@ class ChartViewModel(
                 }
                 else -> response.message ?: "Replace failed"
             })
-            refreshOpenOrders()
         }
     }
 
@@ -1189,13 +1299,15 @@ class ChartViewModel(
 
     private fun saveState() {
         val persistor = persistor ?: return
+        if (!_providerRestored.value) return
         val current = _state.value
+        val providerId = activeProviderId
         viewModelScope.launch {
             persistor.save(
                 symbol = current.currentSymbol,
                 timeframe = current.currentTimeframe,
                 chartMode = current.chartMode,
-                providerId = activeProviderId,
+                providerId = providerId,
                 contractType = current.contractType,
             )
         }
@@ -1265,6 +1377,7 @@ class ChartViewModel(
                     _state.update { it.copy(contractType = savedType) }
                 }
             }
+            _providerRestored.value = true
             val targetId = preferredId
                 ?: saved.providerId?.takeIf { providerRegistry.get(it) != null }
                 ?: return@launch
@@ -1396,7 +1509,7 @@ class ChartViewModel(
             }
 
             val targetMatches = _state.value.currentSymbol == ticker &&
-                _state.value.currentTimeframe == timeframe
+                    _state.value.currentTimeframe == timeframe
             val cachedState = if (targetMatches && cached.isNotEmpty() && latestCandleState is ChartState.Loading) {
                 ChartState.Success(cached, cached.last().close)
             } else {
