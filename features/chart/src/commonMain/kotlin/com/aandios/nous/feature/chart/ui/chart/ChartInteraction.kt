@@ -1253,7 +1253,7 @@ private fun GripDots(modifier: Modifier = Modifier) {
 
 private fun trimQtyText(v: Double): String = plainDecimalString(v)
 
-private fun positionBadgeKey(p: com.aandios.nous.api.market.model.trading.Position): String =
+private fun positionBadgeKey(p: Position): String =
     "pos:${p.positionId ?: p.avgPrice}"
 
 /**

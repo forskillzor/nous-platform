@@ -202,17 +202,49 @@ class BybitTradingAdapter internal constructor(
 
     override suspend fun getTradeHistory(symbol: String?, limit: Int): List<TradeFill> {
         if (!tradingClient.hasCredentials) return emptyList()
-        val params = buildMap {
+
+        // 1. Получаем историю исполнений (филлы)
+        val execParams = buildMap {
             put("category", CATEGORY)
             symbol?.let { put("symbol", it.uppercase()) }
             put("limit", limit.coerceIn(1, 100).toString())
         }
-        return getPaged("/v5/execution/list", params, maxPages = 1)
+        val executions = getPaged("/v5/execution/list", execParams, maxPages = 1)
             .filter { it.string("execType") == "Trade" }
             .take(limit.coerceIn(1, 100))
-            .mapNotNull { it.toTradeFill() }
-    }
 
+        if (executions.isEmpty()) return emptyList()
+
+        // 2. Получаем PnL по закрытым позициям, чтобы потом сопоставить
+        val pnlParams = buildMap {
+            put("category", CATEGORY)
+            // Bybit требует либо symbol, либо settleCoin.
+            // Если symbol null, берем все USDT-пары.
+            if (symbol != null) put("symbol", symbol.uppercase()) else put("settleCoin", SETTLE_COIN)
+            put("limit", "100")
+        }
+
+        // Строим мапу: orderId -> closedPnl
+        val orderIdToPnl = mutableMapOf<String, Double>()
+        runCatching {
+            getPaged("/v5/position/closed-pnl", pnlParams, maxPages = 1).forEach { row ->
+                val orderId = row.string("orderId")
+                val pnl = row.double("closedPnl")
+                if (orderId != null && pnl != null) {
+                    orderIdToPnl[orderId] = pnl
+                }
+            }
+        }
+
+        // 3. Мапим филлы, подставляя PnL по orderId
+        return executions.mapNotNull { exec ->
+            val orderId = exec.string("orderId")
+            // Если нашли PnL для этого orderId, подставляем. Иначе 0.0 (или execPnl, если вдруг он там будет)
+            val actualPnl = orderId?.let { orderIdToPnl[it] } ?: 0.0
+
+            exec.toTradeFill()?.copy(pnl = actualPnl)
+        }
+    }
     override suspend fun setLeverage(symbol: String, leverage: Int, positionId: Long?): Boolean {
         if (!tradingClient.hasCredentials || leverage < 1) return false
         tradingClient.signedPost(
@@ -281,6 +313,7 @@ class BybitTradingAdapter internal constructor(
     override fun subscribeToPositions(): Flow<Position>? {
         if (!tradingClient.hasCredentials) return null
         return privateStreams.subscribe("position.linear").transform { text ->
+            println("RAW position: $text")
             eventObjects(text).mapNotNull { it.toPosition() }.forEach { emit(it) }
         }
     }
@@ -372,14 +405,20 @@ class BybitTradingAdapter internal constructor(
     private fun JsonObject.toPosition(): Position? {
         val symbol = string("symbol") ?: return null
         val size = double("size") ?: return null
-        val positionIdx = string("positionIdx")?.toIntOrNull() ?: 0
+        // positionIdx: из поля, или из side, или 0 (one-way). Никогда не теряем.
+        val positionIdx = string("positionIdx")?.toIntOrNull()
+            ?: when (string("side")) {
+                "Buy" -> 1
+                "Sell" -> 2
+                else -> 0
+            }
+        // side: из поля, или из positionIdx. Никогда не теряем.
         val side = when (string("side")) {
             "Buy" -> TradeSide.BUY
             "Sell" -> TradeSide.SELL
-            else -> if (size == 0.0) {
-                if (positionIdx == 2) TradeSide.SELL else TradeSide.BUY
-            } else {
-                return null
+            else -> when (positionIdx) {
+                2 -> TradeSide.SELL
+                else -> TradeSide.BUY
             }
         }
         return Position(
@@ -387,7 +426,7 @@ class BybitTradingAdapter internal constructor(
             side = side,
             positionId = positionIdentityId(symbol, positionIdx),
             quantity = size,
-            avgPrice = double("avgPrice") ?: 0.0,
+            avgPrice = double("avgPrice") ?: double("entryPrice") ?: 0.0,
             markPrice = double("markPrice") ?: 0.0,
             leverage = string("leverage")?.toDoubleOrNull()?.toInt(),
             pnl = double("curRealisedPnl") ?: 0.0,
@@ -428,6 +467,7 @@ class BybitTradingAdapter internal constructor(
             },
             clientOrderId = string("orderLinkId"),
             timestamp = long("createdTime") ?: 0L,
+            updatedAt = long("updatedTime") ?: long("createdTime") ?: 0L,
         )
     }
 

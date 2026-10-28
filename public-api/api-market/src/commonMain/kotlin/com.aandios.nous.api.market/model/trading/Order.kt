@@ -24,6 +24,7 @@ data class Order(
     val status: OrderStatus = OrderStatus.OPEN,
     val clientOrderId: String? = null,
     val timestamp: Long = 0,
+    val updatedAt: Long = 0,
 )
 
 enum class OrderStatus {
