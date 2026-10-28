@@ -95,7 +95,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Nous"
-            packageVersion = "0.1.0"
+            packageVersion = "0.1.4"
 
             buildTypes.release.proguard {
                 isEnabled = false
