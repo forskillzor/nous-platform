@@ -122,9 +122,8 @@ fun WorkspaceView(
             var next = panelConfigs
             incoming.forEach { (id, remote) ->
                 val local = next[id] ?: return@forEach
-                if (local.symbol != remote.symbol || local.providerRef != remote.providerRef) {
-                    next = next + (id to local.copy(symbol = remote.symbol, providerRef = remote.providerRef))
-                }
+                val merged = applyExternalPanelState(local, remote)
+                if (merged !== local) next = next + (id to merged)
             }
             if (next !== panelConfigs) {
                 panelConfigs = next
