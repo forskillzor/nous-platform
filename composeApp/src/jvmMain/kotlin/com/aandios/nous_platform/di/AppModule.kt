@@ -16,6 +16,8 @@ import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.component.SymbolWatchlistRepository
 import com.aandios.nous.feature.localstorage.LocalStorage
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
+import com.aandios.nous.feature.chart.indicator.LiquidationHistorySource
+import com.aandios.nous.feature.chart.indicator.MarketDataLiquidationSource
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.IndicatorPresetRepository
 import com.aandios.nous.feature.dom.ui.DomViewModel
@@ -81,6 +83,9 @@ val appModule = module {
     // 3. Footprint API client (market-data-server)
     single<FootprintApiClient> {
         FootprintApiClient(httpClient = get<NetworkManager>().httpClient)
+    }
+    single<LiquidationHistorySource> {
+        MarketDataLiquidationSource(httpClient = get<NetworkManager>().httpClient)
     }
 
     // 4. Local storage (SQLite)

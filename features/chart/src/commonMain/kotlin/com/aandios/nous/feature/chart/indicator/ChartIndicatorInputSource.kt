@@ -33,6 +33,7 @@ import kotlinx.coroutines.sync.withLock
  */
 class ChartIndicatorInputSource(
     private val scope: CoroutineScope,
+    private val liquidationHistory: LiquidationHistorySource? = null,
 ) : IndicatorInputSource {
 
     private val marketMutex = Mutex()
@@ -54,7 +55,11 @@ class ChartIndicatorInputSource(
      * Switches the active market and resubscribes. A null/blank market clears
      * the feed so stale data cannot survive a provider or symbol change.
      */
-    suspend fun setMarket(symbol: String, adapter: LiquidationAdapter?) {
+    suspend fun setMarket(
+        symbol: String,
+        adapter: LiquidationAdapter?,
+        exchange: String? = null,
+    ) {
         marketMutex.withLock {
             if (closed) return@withLock
             generation += 1
@@ -68,10 +73,16 @@ class ChartIndicatorInputSource(
             _liquidations.value = emptyList()
             if (hadData) _updates.tryEmit(Unit)
 
-            if (symbol.isBlank() || adapter == null) return@withLock
+            if (symbol.isBlank()) return@withLock
+            if (adapter == null && liquidationHistory == null) return@withLock
 
             val seriesController = TimeSeriesController(
-                source = LiquidationSeriesSource(adapter, symbol),
+                source = LiquidationSeriesSource(
+                    liveAdapter = adapter,
+                    symbol = symbol,
+                    historySource = liquidationHistory,
+                    exchange = exchange,
+                ),
                 scope = scope,
             )
             controller = seriesController

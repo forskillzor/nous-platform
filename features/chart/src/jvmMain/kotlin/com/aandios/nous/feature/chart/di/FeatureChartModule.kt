@@ -15,6 +15,8 @@ import com.aandios.nous.core.domain.cache.FootprintCacheStore
 import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.feature.chart.footprint.FootprintApiClient
+import com.aandios.nous.feature.chart.indicator.LiquidationHistorySource
+import com.aandios.nous.feature.chart.indicator.MarketDataLiquidationSource
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.IndicatorPresetRepository
 import com.aandios.nous.feature.localstorage.LocalStorage
@@ -58,6 +60,9 @@ val featureChartModule = module {
     // 2. Footprint API client (подключается к market-data-server)
     single<FootprintApiClient> {
         FootprintApiClient(httpClient = get<NetworkManager>().httpClient)
+    }
+    single<LiquidationHistorySource> {
+        MarketDataLiquidationSource(httpClient = get<NetworkManager>().httpClient)
     }
 
     // 3. Локальное хранилище и кэш свечей/footprint (та же БД, что и в composeApp)

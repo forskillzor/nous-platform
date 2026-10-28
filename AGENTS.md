@@ -251,10 +251,19 @@ Mind this when writing paths.
   (`computation.range` → `fixedRange` → auto-range with `includeZero`).
 - Chart feed source: `ChartIndicatorInputSource` (chart common) owns the
   liquidation `TimeSeriesController`/`LiquidationSeriesSource`; `ChartWindow`
-  calls `setMarket(symbol, provider.liquidation)` on symbol/provider changes and
-  closes it on dispose. `snapshot` is lock-free; `setMarket` is suspend +
-  mutex + generation-guarded. Feed updates emit `updates()`; `ChartWindow`
-  collects them into `IndicatorComputePipeline.refresh()`.
+  calls `setMarket(symbol, provider.liquidation, exchange = provider display
+  name)` on symbol/provider changes and closes it on dispose. `snapshot` is
+  lock-free; `setMarket` is suspend + mutex + generation-guarded. Feed updates
+  emit `updates()`; `ChartWindow` collects them into
+  `IndicatorComputePipeline.refresh()`.
+- Liquidation history comes from market-data-server `GET /api/liquidations`
+  (`exchange/symbol/from/to/limit`, `isLong=true → SELL`, ASC-sorted after the
+  server's DESC response); live updates stay on the provider stream
+  (`@forceOrder`/`allLiquidation`). `LiquidationSeriesSource` reconciles with
+  the server on every closed minute (from last known event minus overlap),
+  dedups by `timestamp+price+quantity+side`, and keeps local history if the
+  server is unavailable. Binance `allForceOrders` is dead and must not be
+  called; `liveAdapter` is optional so history-only feeds (no MEXC live) work.
 - Indicator config is per chart panel: `ChartStatePersistor` stores JSON under
   `chart_{workspace}_{panel}_chart_indicators` (`KEY_INDICATORS`).
   Missing/invalid payload → `defaultIndicatorState()`; an explicitly saved

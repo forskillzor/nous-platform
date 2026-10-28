@@ -1,0 +1,5 @@
+package com.aandios.nous_platform
+
+object BuildConfig {
+    const val VERSION = "${version}"
+}

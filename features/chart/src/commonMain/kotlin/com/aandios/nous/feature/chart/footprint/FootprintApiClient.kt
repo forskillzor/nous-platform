@@ -7,6 +7,7 @@ package com.aandios.nous.feature.chart.footprint
 
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.FootprintLevel
+import com.aandios.nous.core.network.MarketDataServer
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -18,7 +19,7 @@ import io.ktor.http.isSuccess
 
 class FootprintApiClient(
     private val httpClient: HttpClient,
-    private val baseUrl: String = "http://95.81.99.28:8085"
+    private val baseUrl: String = MarketDataServer.BASE_URL
 ) {
     /**
      * Ktor-клиент создаётся с `expectSuccess = false`, поэтому HTTP-ошибки

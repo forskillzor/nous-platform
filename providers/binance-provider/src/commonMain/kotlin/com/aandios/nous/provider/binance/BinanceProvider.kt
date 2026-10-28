@@ -42,6 +42,6 @@ class BinanceProvider(
     override val chart: ChartAdapter by lazy { BinanceChartAdapter(binanceHttpClient, config, restGate, streamHub) }
     override val trading: TradingAdapter by lazy { BinanceTradingAdapter(binanceHttpClient, config) }
     override val symbolInfo: SymbolInfoAdapter by lazy { BinanceSymbolInfoAdapter(binanceHttpClient, config, restGate) }
-    override val liquidation: LiquidationAdapter by lazy { BinanceLiquidationAdapter(binanceHttpClient, config, restGate, streamHub) }
+    override val liquidation: LiquidationAdapter by lazy { BinanceLiquidationAdapter(streamHub) }
 
 }

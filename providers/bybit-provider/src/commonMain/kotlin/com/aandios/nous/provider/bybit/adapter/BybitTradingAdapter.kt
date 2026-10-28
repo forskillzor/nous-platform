@@ -313,7 +313,6 @@ class BybitTradingAdapter internal constructor(
     override fun subscribeToPositions(): Flow<Position>? {
         if (!tradingClient.hasCredentials) return null
         return privateStreams.subscribe("position.linear").transform { text ->
-            println("RAW position: $text")
             eventObjects(text).mapNotNull { it.toPosition() }.forEach { emit(it) }
         }
     }

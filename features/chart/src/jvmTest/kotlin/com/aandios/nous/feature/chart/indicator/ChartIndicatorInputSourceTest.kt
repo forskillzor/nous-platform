@@ -109,6 +109,32 @@ class ChartIndicatorInputSourceTest {
     }
 
     @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `market-data history is used with the active exchange and no live adapter`() = runTest {
+        val history = order(1_500L, 2.0)
+        var requestedExchange: String? = null
+        val historySource = object : LiquidationHistorySource {
+            override suspend fun getLiquidations(
+                exchange: String,
+                symbol: String,
+                from: Long,
+                to: Long,
+                limit: Int,
+            ): List<LiquidationOrder> {
+                requestedExchange = exchange
+                return listOf(history)
+            }
+        }
+        val source = ChartIndicatorInputSource(this, historySource)
+        source.setMarket("BTCUSDT", adapter = null, exchange = "Binance")
+        runCurrent()
+
+        assertEquals("Binance", requestedExchange)
+        assertEquals(listOf(history), source.snapshot(required, candles).liquidations)
+        source.close()
+    }
+
+    @Test
     fun `close is idempotent`() = runTest {
         val source = ChartIndicatorInputSource(this)
         source.close()

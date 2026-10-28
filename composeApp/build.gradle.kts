@@ -13,6 +13,20 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Единственный источник версии: packageVersion установщика и BuildConfig.VERSION.
+val appVersion = "0.1.5"
+
+// Генерация BuildConfig.kt: Compose Desktop не публикует packageVersion в код.
+val buildConfigDir = layout.buildDirectory.dir("generated/buildConfig/kotlin")
+val generateBuildConfig = tasks.register<Copy>("generateBuildConfig") {
+    from(layout.projectDirectory.dir("buildConfig"))
+    into(buildConfigDir)
+    include("com/aandios/nous_platform/BuildConfig.kt.template")
+    rename { "BuildConfig.kt" }
+    expand("version" to appVersion)
+    inputs.property("version", appVersion)
+}
+
 kotlin {
     jvmToolchain(25)
     jvm()
@@ -20,6 +34,7 @@ kotlin {
     sourceSets {
         jvmMain {
             resources.srcDirs("src/jvmMain/resources")  // исправлено!
+            kotlin.srcDir(buildConfigDir)
         }
 
         commonMain.dependencies {
@@ -95,7 +110,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Nous"
-            packageVersion = "0.1.4"
+            packageVersion = appVersion
 
             buildTypes.release.proguard {
                 isEnabled = false
@@ -176,4 +191,8 @@ compose.desktop {
             }
         }
     }
+}
+
+tasks.named("compileKotlinJvm") {
+    dependsOn(generateBuildConfig)
 }

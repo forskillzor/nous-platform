@@ -83,7 +83,7 @@ fun main() {
                         // Закрытие последнего окна завершает приложение
                         if (!windowManager.closeSession(session.id)) exitApplication()
                     },
-                    title = "Nous Platform pre-alpha-0.1.0",
+                    title = "Nous Platform ${BuildConfig.VERSION}",
                     state = wsState,
                     // Выполняется ДО показа окна: AWT-фрейм получает фон темы
                     // до создания нативного peer — при ресайзе заливка цветом

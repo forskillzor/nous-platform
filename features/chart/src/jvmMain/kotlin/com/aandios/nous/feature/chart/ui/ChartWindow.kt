@@ -60,6 +60,7 @@ import com.aandios.nous.core.ui.window.applyWindowBackground
 import com.aandios.nous.core.ui.window.applyWindowsDarkTitleBar
 import com.aandios.nous.feature.chart.di.initKoinForPreview
 import com.aandios.nous.feature.chart.indicator.ChartIndicatorInputSource
+import com.aandios.nous.feature.chart.indicator.LiquidationHistorySource
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
 import com.aandios.nous.feature.chart.model.toSkeletonCandle
@@ -174,13 +175,16 @@ private fun ChartWindowContent(
     // Feed-backed indicators (liquidations today, funding/OI later) live
     // outside the chart canvas so provider/symbol changes resubscribe once.
     val inputScope = rememberCoroutineScope()
-    val indicatorInputSource = remember(inputScope) {
-        ChartIndicatorInputSource(inputScope)
+    val liquidationHistory: LiquidationHistorySource = koinInject()
+    val indicatorInputSource = remember(inputScope, liquidationHistory) {
+        ChartIndicatorInputSource(inputScope, liquidationHistory)
     }
     LaunchedEffect(indicatorInputSource, uiState.currentSymbol, uiState.currentProviderId) {
+        val provider = registry.get(uiState.currentProviderId)
         indicatorInputSource.setMarket(
             symbol = uiState.currentSymbol,
-            adapter = registry.get(uiState.currentProviderId)?.liquidation,
+            adapter = provider?.liquidation,
+            exchange = provider?.config?.displayName,
         )
     }
     DisposableEffect(indicatorInputSource) {

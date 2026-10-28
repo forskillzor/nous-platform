@@ -151,6 +151,47 @@ class DefaultIndicatorEngineTest {
     }
 
     @Test
+    fun liquidationsAreVisibleOnEveryChartTimeframe() {
+        val intervals = listOf(
+            60_000L,        // 1m
+            300_000L,       // 5m
+            900_000L,       // 15m
+            1_800_000L,     // 30m
+            3_600_000L,     // 1h
+            14_400_000L,    // 4h
+            86_400_000L,    // 1d
+            604_800_000L,   // 1w
+        )
+
+        for (interval in intervals) {
+            val candles = List(10) { index ->
+                Candle(
+                    open = 100f,
+                    high = 101f,
+                    low = 99f,
+                    close = 100f,
+                    timestamp = TEST_CANDLE_START + index * interval,
+                    volume = 1f,
+                )
+            }
+            val output = compute(
+                type = IndicatorType.LIQUIDATIONS,
+                candles = candles,
+                liquidations = listOf(
+                    testLiquidation(candles.last().timestamp, 2.0, TradeSide.SELL),
+                ),
+            )
+
+            assertEquals(
+                2.0f,
+                output.lines.single().values.last(),
+                0.001f,
+                "liquidation should be visible on interval $interval",
+            )
+        }
+    }
+
+    @Test
     fun liquidationsAreComputedFromFeed() {
         val candles = testCandles(10)
         val output = compute(
