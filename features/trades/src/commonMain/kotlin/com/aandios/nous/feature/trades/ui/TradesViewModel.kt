@@ -16,6 +16,7 @@ import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.storage.StateStore
 import com.aandios.nous.core.ui.component.SymbolExplorerRow
 import com.aandios.nous.core.ui.component.toSymbolExplorerRow
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,8 +62,10 @@ class TradesViewModel(
     private val providerRegistry: ProviderRegistry,
     private val stateStore: StateStore? = null,
     private val marketOverviewStore: MarketOverviewStore? = null,
+    coroutineDispatcher: CoroutineDispatcher? = null,
 ) : Disposable {
-    private val viewModelScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private val dispatcher = coroutineDispatcher ?: Dispatchers.Main
+    private val viewModelScope = CoroutineScope(dispatcher + SupervisorJob())
     private var subscriptionJob: Job? = null
 
     private val _state = MutableStateFlow<TradesState>(TradesState.Loading)
@@ -72,11 +75,9 @@ class TradesViewModel(
     private val _currentProviderId = MutableStateFlow(providerRegistry.first()?.providerId.orEmpty())
     val currentProviderId: StateFlow<String> = _currentProviderId.asStateFlow()
 
-    // Основной фид: держим как можно дольше (500 последних сделок).
-    private val maxTrades = 500
-    // Отдельный долгоживущий буфер сделок под фильтр: редкие крупные сделки
-    // живут долго и не вытесняются потоком мелких из основного фида.
-    private val maxFilteredTrades = 2000
+    // Retention: raw 20k (источник для reseed), feed 500 (ALL), filtered 5k
+    // (retention применяется после фильтрации).
+    private val history = TradesHistoryBuffer()
 
     private val _filteredBuffer = MutableStateFlow<List<Trade>>(emptyList())
     val filteredBuffer: StateFlow<List<Trade>> = _filteredBuffer.asStateFlow()
@@ -235,14 +236,14 @@ class TradesViewModel(
     }
 
     /**
-     * Пересобирает буфер фильтра: при All — пустой, иначе — совпадения
-     * из текущего фида (историю дольше фида не храним).
+     * Пересобирает filtered из raw-истории при смене фильтра (или когда
+     * SymbolInfo пришёл позже первых сделок). Raw не очищается.
      */
     private fun reseedFilteredBuffer() {
         val filter = _selectedSizeFilter.value
-        val feed = (_state.value as? TradesState.Connected)?.trades ?: emptyList()
-        _filteredBuffer.value = if (filter is SizeFilter.All) emptyList()
-        else feed.filter { matchesFilter(it, filter) }.take(maxFilteredTrades)
+        val active = filter !is SizeFilter.All
+        history.reseed(active) { matchesFilter(it, filter) }
+        _filteredBuffer.value = if (active) history.filteredSnapshot() else emptyList()
     }
 
     /**
@@ -300,6 +301,7 @@ class TradesViewModel(
         if (_currentProviderId.value == providerId) return
         _currentProviderId.value = providerId
         viewModelScope.launch { stateStore?.putString(providerStoreKey(), providerId) }
+        history.clear()
         _filteredBuffer.value = emptyList()
         subscribedSymbol = ""
         loadSymbols()
@@ -347,6 +349,7 @@ class TradesViewModel(
 
         subscriptionJob?.cancel()
         _state.value = TradesState.Loading
+        history.clear()
         _filteredBuffer.value = emptyList()
 
         // Загружаем SymbolInfo для нового символа
@@ -368,14 +371,14 @@ class TradesViewModel(
                     _state.value = TradesState.Error("Ошибка: ${e.message}")
                 }
                 .collect { trade ->
-                    val feed = listOf(trade) +
-                        (_state.value as? TradesState.Connected)?.trades.orEmpty().take(maxTrades - 1)
-                    _state.value = TradesState.Connected(feed)
-                    // Сделка под текущим фильтром — копим в долгоживущий буфер
                     val filter = _selectedSizeFilter.value
-                    if (filter !is SizeFilter.All && matchesFilter(trade, filter)) {
-                        _filteredBuffer.value = (listOf(trade) + _filteredBuffer.value)
-                            .take(maxFilteredTrades)
+                    val active = filter !is SizeFilter.All
+                    val filteredChanged = history.add(trade, active) {
+                        matchesFilter(it, filter)
+                    }
+                    _state.value = TradesState.Connected(history.feedSnapshot())
+                    if (filteredChanged) {
+                        _filteredBuffer.value = history.filteredSnapshot()
                     }
                 }
         }
@@ -422,7 +425,14 @@ class TradesViewModel(
         viewModelScope.launch {
             try {
                 val symbolInfo = SymbolInfoRepositoryImpl(symbolInfoAdapter).getSymbolInfo(symbol)
+                // Символ уже сменился, пока грузились метаданные.
+                if (_currentSymbol.value != symbol) return@launch
                 _currentSymbolInfo.value = symbolInfo
+                // MinQty-фильтр зависит от SymbolInfo: если он пришёл позже
+                // первых сделок — пересобираем filtered из raw.
+                if (_selectedSizeFilter.value !is SizeFilter.All) {
+                    reseedFilteredBuffer()
+                }
             } catch (e: Exception) {
                 println("❌ TradesVM: Failed to fetch symbolInfo for $symbol: ${e.message}")
             }

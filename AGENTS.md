@@ -357,6 +357,12 @@ Mind this when writing paths.
   cache thrashes on price/time-scale labels. Trades UI samples `state` and
   `filteredBuffer` at 50 ms (20 Hz), memoizes `TradeRow` formatted strings, and
   measures the width-slider minimum only when sample string lengths change.
+- Trades retention has three levels in `TradesHistoryBuffer`: 20k raw trades
+  (never rendered) used to reseed filtering, 500 feed trades for ALL, and 5k
+  filtered trades (retention applied AFTER filtering). Changing the size filter
+  reseeds `filtered` from raw instead of the 500-trade feed, so high filters do
+  not lose older matches; symbol/provider change clears all three. Adapters have
+  no retention and remain WS-only.
 - `FootprintCandle.toSkeletonCandle()` must use the model's cached
   `open/high/low/close` body vals; only fall back to scanning `levels` when the
   min/max strings are invalid. `ChartWindowContent` caches skeleton candles per
