@@ -8,6 +8,7 @@ package com.aandios.nous.core.network
 import com.aandios.nous.api.market.NetworkManager
 import io.ktor.client.*
 import io.ktor.client.plugins.*
+import io.ktor.client.plugins.compression.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.websocket.*
 import io.ktor.serialization.kotlinx.json.*
@@ -26,6 +27,10 @@ class NetworkManagerImpl : NetworkManager {
             install(WebSockets) {
                 pingInterval = 30000.milliseconds
                 maxFrameSize = Long.MAX_VALUE
+            }
+
+            install(ContentEncoding) {
+                gzip()
             }
 
             install(ContentNegotiation) {

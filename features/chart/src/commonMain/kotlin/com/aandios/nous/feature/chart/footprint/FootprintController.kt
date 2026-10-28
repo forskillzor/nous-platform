@@ -477,7 +477,7 @@ class FootprintController(
                     symbol = symbol,
                     timeframe = sourceTf,
                     to = oldestTime - 1,
-                    limit = 20 * aggCount
+                    limit = HISTORY_PAGE_SIZE * aggCount
                 ) ?: emptyList()).reversed() // server DESC → ASC
 
                 if (historical.isEmpty()) {
@@ -526,7 +526,7 @@ class FootprintController(
                 exchange = exchange,
                 symbol = symbol,
                 timeframe = sourceTf,
-                limit = 20 * aggCount,
+                limit = HISTORY_PAGE_SIZE * aggCount,
             ).reversed() // server returns DESC, we store ASC
             val now = clock()
             val result = if (aggCount > 1) {
@@ -627,6 +627,7 @@ class FootprintController(
 
     companion object {
         private const val CACHE_LIMIT = 200
+        private const val HISTORY_PAGE_SIZE = 200
         private const val FORMING_TICK_MS = 1_000L
         private const val LIVE_SNAPSHOT_INTERVAL_MS = 100L
         private const val FORMING_SOURCE_LIMIT_MAX = 300
