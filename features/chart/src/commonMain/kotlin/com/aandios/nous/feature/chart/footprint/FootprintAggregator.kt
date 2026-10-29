@@ -185,7 +185,26 @@ object FootprintAggregator {
         now: Long,
     ): Boolean = candle.startTime == bucketStart && candle.endTime <= now
 
+    /**
+     * Канонизирует уровни одной свечи: численно равные цены сливаются
+     * (сервер иногда отдаёт в одной свече и "99.37000000", и "99.3700"),
+     * объёмы суммируются, порядок — по возрастанию цены.
+     */
+    fun normalizeCandle(candle: FootprintCandle): FootprintCandle {
+        if (candle.levels.isEmpty()) return candle
+        return mergeCandles(
+            candles = listOf(candle),
+            timeframe = candle.timeframe,
+            startTime = candle.startTime,
+            endTime = candle.endTime,
+        )
+    }
+
+    fun normalizeCandles(candles: List<FootprintCandle>): List<FootprintCandle> =
+        candles.map(::normalizeCandle)
+
     private data class Acc(
+        var price: String = "",
         var bidVol: Float = 0f,
         var askVol: Float = 0f,
         var bidCnt: Int = 0,
@@ -198,12 +217,21 @@ object FootprintAggregator {
         startTime: Long,
         endTime: Long,
     ): FootprintCandle {
-        val levelMap = linkedMapOf<String, Acc>()
+        // Группируем уровни по числовому значению цены: сервер отдаёт
+        // "100.9900", live/fallback — "100.99". Строковый ключ давал два
+        // уровня на одной цене (дубли в tooltip и раздвоенные объёмы).
+        val levelMap = linkedMapOf<Double, Acc>()
+        val unparsed = linkedMapOf<String, Acc>()
         var totalTicks = 0L
         for (candle in candles) {
             totalTicks += candle.totalTicks
             for (level in candle.levels) {
-                val acc = levelMap.getOrPut(level.price) { Acc() }
+                val price = level.price.toDoubleOrNull()
+                val acc = if (price != null) {
+                    levelMap.getOrPut(price) { Acc(price = level.price) }
+                } else {
+                    unparsed.getOrPut(level.price) { Acc(price = level.price) }
+                }
                 acc.bidVol += level.bidVolumeFloat
                 acc.askVol += level.askVolumeFloat
                 acc.bidCnt += level.bidCount
@@ -211,16 +239,33 @@ object FootprintAggregator {
             }
         }
 
-        val levelPrices = levelMap.keys.mapNotNull { it.toDoubleOrNull() }
-        val sorted = levelMap.entries.sortedByDescending { it.key.toDoubleOrNull() ?: 0.0 }
-        val levels = sorted.map { (price, acc) ->
-            FootprintLevel(
-                price = price,
-                bidVolume = acc.bidVol.toString(),
-                askVolume = acc.askVol.toString(),
-                bidCount = acc.bidCnt,
-                askCount = acc.askCnt,
-            )
+        // Канонический порядок уровней — по возрастанию цены (как у сервера
+        // и live-минуты); tooltip реверсит список для отображения сверху вниз.
+        val prices = levelMap.keys.sorted()
+        val levels = buildList {
+            for (price in prices) {
+                val acc = levelMap.getValue(price)
+                add(
+                    FootprintLevel(
+                        price = acc.price,
+                        bidVolume = acc.bidVol.toString(),
+                        askVolume = acc.askVol.toString(),
+                        bidCount = acc.bidCnt,
+                        askCount = acc.askCnt,
+                    )
+                )
+            }
+            for ((price, acc) in unparsed) {
+                add(
+                    FootprintLevel(
+                        price = price,
+                        bidVolume = acc.bidVol.toString(),
+                        askVolume = acc.askVol.toString(),
+                        bidCount = acc.bidCnt,
+                        askCount = acc.askCnt,
+                    )
+                )
+            }
         }
         return FootprintCandle(
             exchange = candles.first().exchange,
@@ -229,8 +274,8 @@ object FootprintAggregator {
             startTime = startTime,
             endTime = endTime,
             totalTicks = totalTicks,
-            minPrice = (levelPrices.minOrNull() ?: 0.0).toString(),
-            maxPrice = (levelPrices.maxOrNull() ?: 0.0).toString(),
+            minPrice = (prices.minOrNull() ?: 0.0).toString(),
+            maxPrice = (prices.maxOrNull() ?: 0.0).toString(),
             levels = levels,
         )
     }

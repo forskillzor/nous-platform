@@ -175,6 +175,38 @@ class ChartExplorerRowsTest {
     }
 
     @Test
+    fun `load chart refreshes formatter to the loaded symbol tick size`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        try {
+            val provider = FakeProvider(
+                providerId = "bybit-nous-0.0.1",
+                displayName = "Bybit",
+                symbolInfoAdapter = FakeSymbolInfoAdapter(
+                    listOf(
+                        info("BTCUSDT", "BTC").copy(tickSize = 0.1),
+                        info("SOLUSDT", "SOL"),
+                    )
+                ),
+            )
+            val vm = createViewModel(provider)
+            // init loadSymbols завершается, пока currentSymbol ещё дефолтный BTCUSDT:
+            // форматтер становится 1-знаковым (BTC tickSize = 0.1).
+            advanceUntilIdle()
+            assertEquals(0.1, vm.state.value.currentSymbolFormatter.tickSize)
+
+            // Загрузка панельного символа не должна оставлять форматтер BTC.
+            vm.dispatch(ChartIntent.LoadChart("SOLUSDT", "1m"))
+            advanceUntilIdle()
+
+            assertEquals(0.01, vm.state.value.currentSymbolFormatter.tickSize)
+            assertEquals("100.15", vm.state.value.currentSymbolFormatter.formatPrice(100.15))
+            vm.dispose()
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `explorer rows come from the shared market overview store`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {

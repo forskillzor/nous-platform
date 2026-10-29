@@ -126,9 +126,11 @@ class ChartViewModelCacheTest {
         try {
             val dispatcher = StandardTestDispatcher(testScheduler)
             var footprintRequests = 0
+            var footprintExchange: String? = null
             val engine = MockEngine { request ->
                 if (request.url.encodedPath == "/api/footprint") {
                     footprintRequests++
+                    footprintExchange = request.url.parameters["exchange"]
                 }
                 respond(
                     content = "[]",
@@ -163,6 +165,7 @@ class ChartViewModelCacheTest {
                 assertEquals(ChartMode.FOOTPRINT, vm.state.value.chartMode)
                 assertEquals("BTCUSDT", vm.state.value.currentSymbol)
                 assertTrue(footprintRequests > 0)
+                assertEquals("Binance", footprintExchange)
                 vm.dispose()
             } finally {
                 client.close()

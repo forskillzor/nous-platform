@@ -92,9 +92,27 @@ class LocalStorageTest {
         val candles = listOf(footprint(1_000L, "100.5"), footprint(61_000L, "101.5"))
 
         storage.saveFootprintCandles("Binance", "BTCUSDT", candles)
-        val loaded = storage.getFootprintCandles("Binance", "BTCUSDT", limit = 100)
+        val loaded = storage.getFootprintCandles("Binance", "BTCUSDT", "1m", limit = 100)
 
         assertEquals(candles, loaded)
+        storage.close()
+    }
+
+    @Test
+    fun `footprint candles are isolated by timeframe`() = runTest {
+        val storage = LocalStorage(tempDbPath())
+        // Одинаковый startTime у свечей разных ТФ не должен перезаписывать друг друга.
+        val oneMinute = footprint(1_000L, "100.5")
+        val oneDay = footprint(1_000L, "99.5").copy(timeframe = "1d", endTime = 86_400_000L)
+
+        storage.saveFootprintCandles("Binance", "BTCUSDT", listOf(oneMinute))
+        storage.saveFootprintCandles("Binance", "BTCUSDT", listOf(oneDay))
+
+        val loaded1m = storage.getFootprintCandles("Binance", "BTCUSDT", "1m")
+        val loaded1d = storage.getFootprintCandles("Binance", "BTCUSDT", "1d")
+
+        assertEquals(listOf(oneMinute), loaded1m)
+        assertEquals(listOf(oneDay), loaded1d)
         storage.close()
     }
 
@@ -176,12 +194,12 @@ class LocalStorageTest {
 
         val storage = LocalStorage(dbPath)
         val candles = storage.getCandles("Binance", "BTCUSDT", "1m")
-        val footprint = storage.getFootprintCandles("Binance", "BTCUSDT")
+        val footprint = storage.getFootprintCandles("Binance", "BTCUSDT", "1m")
 
         assertEquals(1, candles.size)
         assertEquals(1.5f, candles.single().close)
-        assertEquals(1, footprint.size)
-        assertEquals(1000L, footprint.single().startTime)
+        // Legacy footprint-кэш без timeframe смешивал ТФ — он пересоздаётся пустым.
+        assertEquals(0, footprint.size)
         storage.close()
     }
 }

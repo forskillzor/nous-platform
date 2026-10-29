@@ -18,9 +18,16 @@ interface CandleCacheStore {
 }
 
 /**
- * Кэш footprint-свечей на диске. Ключ: exchange + symbol.
+ * Кэш footprint-свечей на диске.
+ * Ключ: exchange + symbol + timeframe (ТФ обязателен: свечи разных
+ * таймфреймов не должны смешиваться или перезаписывать друг друга).
  */
 interface FootprintCacheStore {
     suspend fun saveFootprintCandles(exchange: String, symbol: String, candles: List<FootprintCandle>)
-    suspend fun getFootprintCandles(exchange: String, symbol: String, limit: Int = 200): List<FootprintCandle>
+    suspend fun getFootprintCandles(
+        exchange: String,
+        symbol: String,
+        timeframe: String,
+        limit: Int = 200,
+    ): List<FootprintCandle>
 }

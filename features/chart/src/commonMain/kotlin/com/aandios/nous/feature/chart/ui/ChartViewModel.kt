@@ -183,6 +183,7 @@ class ChartViewModel(
     private var footprintController: FootprintController? = null
     private var footprintSymbol: String? = null
     private var footprintTimeframe: String? = null
+    private var footprintExchange: String? = null
     private var footprintRunning = false
     private var persistor = stateStore?.let { ChartStatePersistor(it) }
     private var attachedPrefix: String? = null
@@ -293,16 +294,22 @@ class ChartViewModel(
 
     /** Пространство имён биржи для кэша — displayName активного провайдера. */
     private fun exchangeName(): String =
-        activeProvider()?.config?.displayName ?: activeProviderId
+        activeProvider()?.config?.displayName
+            ?: providerRegistry.first()?.config?.displayName
+            ?: "Binance"
 
     private fun selectProvider(providerId: String) {
         val provider = providerRegistry.get(providerId) ?: return
         if (activeProviderId == providerId) return
         activeProviderId = providerId
         setTradingEnabled(false)
+        // Сбрасываем каталог прошлой биржи: до прихода нового списка loadChart
+        // не должен брать чужой tickSize по совпадающему имени символа.
+        _symbolInfoMap.value = emptyMap()
         _state.update { it.copy(currentProviderId = providerId, symbols = emptyList()) }
         saveState()
         loadSymbols()
+        loadFootprintSymbols()
         if (pendingExplorerSymbol == null) {
             loadChart(ticker = _state.value.currentSymbol, timeframe = _state.value.currentTimeframe)
         }
@@ -336,6 +343,10 @@ class ChartViewModel(
         s.symbols.firstOrNull()?.let { selectSymbol(it) }
     }
 
+    /** Форматтер цен/объёмов по спецификации символа из текущего каталога. */
+    private fun formatterFor(symbol: String): SymbolFormatter? =
+        _symbolInfoMap.value[symbol]?.let { SymbolFormatter(it.tickSize, it.minQty) }
+
     private fun loadSymbols() {
         val symbolInfoAdapter = activeProvider()?.symbolInfo ?: return
         viewModelScope.launch {
@@ -351,9 +362,7 @@ class ChartViewModel(
                             .map { it.symbol }
                             .sorted(),
                         // Set formatter for current symbol
-                        currentSymbolFormatter = map[s.currentSymbol]?.let {
-                            SymbolFormatter(it.tickSize, it.minQty)
-                        } ?: s.currentSymbolFormatter,
+                        currentSymbolFormatter = formatterFor(s.currentSymbol) ?: s.currentSymbolFormatter,
                         currentSymbolInfo = map[s.currentSymbol] ?: s.currentSymbolInfo,
                     )
                 }
@@ -384,9 +393,7 @@ class ChartViewModel(
             val info = _symbolInfoMap.value[symbol]
             s.copy(
                 currentSymbol = symbol,
-                currentSymbolFormatter = info?.let {
-                    SymbolFormatter(it.tickSize, it.minQty)
-                } ?: s.currentSymbolFormatter,
+                currentSymbolFormatter = formatterFor(symbol) ?: s.currentSymbolFormatter,
                 currentSymbolInfo = info ?: s.currentSymbolInfo,
             )
         }
@@ -1392,9 +1399,15 @@ class ChartViewModel(
             _providerRestored.value = true
             val targetId = preferredId
                 ?: saved.providerId?.takeIf { providerRegistry.get(it) != null }
-                ?: return@launch
-            if (activeProviderId == targetId) return@launch
-            selectProvider(targetId)
+            if (targetId != null && activeProviderId != targetId) {
+                selectProvider(targetId)
+            } else {
+                applyChartMode(
+                    mode = _state.value.chartMode,
+                    symbol = _state.value.currentSymbol,
+                    timeframe = _state.value.currentTimeframe,
+                )
+            }
         }
     }
 
@@ -1413,7 +1426,7 @@ class ChartViewModel(
         val api = footprintApiClient ?: return
         viewModelScope.launch {
             try {
-                val instruments = api.getInstruments()
+                val instruments = api.getInstruments(exchange = exchangeName())
                 _state.update { it.copy(symbolsWithFootprint = instruments.map { i -> i.symbol }.toSet()) }
             } catch (e: Exception) {
                 println("Failed to load footprint symbols: ${e.message}")
@@ -1422,12 +1435,14 @@ class ChartViewModel(
     }
 
     private fun loadChart(ticker: String, timeframe: String) {
+        val info = _symbolInfoMap.value[ticker]
         _state.update {
             it.copy(
                 currentSymbol = ticker,
                 currentTimeframe = timeframe,
                 hasMoreHistory = true,
-                currentSymbolInfo = _symbolInfoMap.value[ticker] ?: it.currentSymbolInfo,
+                currentSymbolFormatter = formatterFor(ticker) ?: it.currentSymbolFormatter,
+                currentSymbolInfo = info ?: it.currentSymbolInfo,
             )
         }
         startCandleSeries(ticker, timeframe)
@@ -1558,10 +1573,12 @@ class ChartViewModel(
 
     /** Создаёт/перезапускает footprint-контроллер для активного провайдера. */
     private fun startFootprint(symbol: String, timeframe: String) {
+        val exchange = exchangeName()
         if (footprintRunning &&
             footprintController != null &&
             footprintSymbol == symbol &&
-            footprintTimeframe == timeframe
+            footprintTimeframe == timeframe &&
+            footprintExchange == exchange
         ) {
             return
         }
@@ -1570,11 +1587,12 @@ class ChartViewModel(
             footprintApiClient = footprintApiClient,
             tradesAdapter = activeProvider()?.trades,
             footprintCache = footprintCacheStore,
-            exchange = exchangeName(),
+            exchange = exchange,
         )
         footprintController = controller
         footprintSymbol = symbol
         footprintTimeframe = timeframe
+        footprintExchange = exchange
         footprintRunning = true
         viewModelScope.launch {
             controller.state.collect { fp ->

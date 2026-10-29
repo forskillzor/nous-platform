@@ -130,8 +130,10 @@ class FootprintController(
             val cache = footprintCache ?: return@launch
             try {
                 val now = clock()
-                val cached = cache.getFootprintCandles(exchange, symbol, CACHE_LIMIT)
-                    .filter { it.endTime <= now }
+                val cached = FootprintAggregator.normalizeCandles(
+                    cache.getFootprintCandles(exchange, symbol, displayTimeframe, CACHE_LIMIT)
+                        .filter { it.endTime <= now }
+                )
                 _state.update { s ->
                     if (cached.isNotEmpty() && s.candles.isEmpty()) s.copy(candles = cached) else s
                 }
@@ -486,16 +488,18 @@ class FootprintController(
                     return@launch
                 }
 
-                val aggregated = if (aggCount > 1) {
-                    FootprintAggregator.aggregateFootprintCandles(
-                        historical,
-                        aggCount,
-                        sourceMs,
-                        displayTimeframe,
-                    )
-                } else {
-                    historical
-                }
+                val aggregated = FootprintAggregator.normalizeCandles(
+                    if (aggCount > 1) {
+                        FootprintAggregator.aggregateFootprintCandles(
+                            historical,
+                            aggCount,
+                            sourceMs,
+                            displayTimeframe,
+                        )
+                    } else {
+                        historical
+                    }
+                )
                 _state.update { s ->
                     s.copy(candles = (aggregated + s.candles).distinctBy { it.startTime })
                 }
@@ -539,7 +543,9 @@ class FootprintController(
             } else {
                 raw
             }
-            FootprintAggregator.completedDisplayCandles(result, now)
+            FootprintAggregator.normalizeCandles(
+                FootprintAggregator.completedDisplayCandles(result, now)
+            )
         } catch (e: Exception) {
             emptyList()
         }
@@ -571,7 +577,9 @@ class FootprintController(
 
             // For display 1m (aggCount=1): just return the single source candle.
             // Терпимое сравнение: достаточно, чтобы свеча покрывала startTime
-            if (aggCount == 1) return raw.firstOrNull { it.startTime >= startTime && it.startTime < startTime + sourceMs }
+            if (aggCount == 1) return raw
+                .firstOrNull { it.startTime >= startTime && it.startTime < startTime + sourceMs }
+                ?.let(FootprintAggregator::normalizeCandle)
 
             // For aggregated timeframes: find the chunk that covers the exact display window
             for (i in 0..raw.size - aggCount) {

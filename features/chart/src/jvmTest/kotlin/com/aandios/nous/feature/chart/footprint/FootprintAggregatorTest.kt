@@ -63,8 +63,8 @@ class FootprintAggregatorTest {
         assertEquals(0L, agg.startTime)
         assertEquals(120_000L, agg.endTime)
 
-        // Levels sorted descending by price: 102, 101, 100
-        assertEquals(listOf("102.0", "101.0", "100.0"), agg.levels.map { it.price })
+        // Уровни в каноническом порядке — по возрастанию цены: 100, 101, 102
+        assertEquals(listOf("100.0", "101.0", "102.0"), agg.levels.map { it.price })
 
         val at100 = agg.levels.first { it.price == "100.0" }
         assertEquals(4.0f, at100.bidVolumeFloat)
@@ -79,6 +79,77 @@ class FootprintAggregatorTest {
         val at102 = agg.levels.first { it.price == "102.0" }
         assertEquals(3.0f, at102.askVolumeFloat)
         assertEquals(6, at102.askCount)
+    }
+
+    @Test
+    fun `aggregateFootprintCandles deduplicates equivalent server and live price strings`() {
+        val server = candle(
+            0L, 60_000L,
+            level("100.9800", "1.0", "0.0"),
+            level("100.9900", "5.0", "0.0"),
+            level("101.0000", "0.0", "2.0"),
+        )
+        val live = candle(
+            60_000L, 120_000L,
+            level("100.99", "2.0", "0.5"),
+        )
+
+        val agg = FootprintAggregator.aggregateFootprintCandles(listOf(server, live), 2, 60_000L).first()
+
+        // "100.9900" (сервер) и "100.99" (live) — один уровень, порядок ASC.
+        assertEquals(listOf("100.9800", "100.9900", "101.0000"), agg.levels.map { it.price })
+        val at100_99 = agg.levels.first { it.price == "100.9900" }
+        assertEquals(7.0f, at100_99.bidVolumeFloat)
+        assertEquals(0.5f, at100_99.askVolumeFloat)
+    }
+
+    @Test
+    fun `assembleFormingCandle returns unique levels ascending by price`() {
+        val minute = 60_000L
+        val fifteen = 15 * minute
+        val hour = 60 * minute
+        val sources = mapOf(
+            "15m" to (0 until 4).map { i ->
+                val start = i * fifteen
+                candle(
+                    start, start + fifteen,
+                    level("102.00", "1", "0"),
+                    level("100.00", "1", "0"),
+                )
+            },
+        )
+
+        val agg = FootprintAggregator.assembleFormingCandle("1h", 0L, hour, sources)
+
+        requireNotNull(agg)
+        assertEquals(listOf("100.00", "102.00"), agg.levels.map { it.price })
+        assertEquals(4.0f, agg.levels.first { it.price == "100.00" }.bidVolumeFloat)
+    }
+
+    @Test
+    fun `normalizeCandle merges numerically equal prices with different precision`() {
+        val raw = FootprintCandle(
+            exchange = "Binance",
+            symbol = "SOLUSDT",
+            timeframe = "1d",
+            startTime = 0L,
+            endTime = 86_400_000L,
+            totalTicks = 3L,
+            minPrice = "99.37000000",
+            maxPrice = "99.3800",
+            levels = listOf(
+                level("99.3800", "2.0", "0.0"),
+                level("99.37000000", "0.0", "1.0"),
+                level("99.3700", "3.0", "0.0"),
+            ),
+        )
+
+        val normalized = FootprintAggregator.normalizeCandle(raw)
+
+        assertEquals(listOf("99.37000000", "99.3800"), normalized.levels.map { it.price })
+        val at99_37 = normalized.levels.first { it.priceFloat == 99.37f }
+        assertEquals(3.0f, at99_37.bidVolumeFloat)
+        assertEquals(1.0f, at99_37.askVolumeFloat)
     }
 
     @Test

@@ -69,10 +69,11 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore, CandleCacheS
                 CREATE TABLE IF NOT EXISTS footprint_cache (
                     exchange TEXT NOT NULL,
                     symbol TEXT NOT NULL,
+                    timeframe TEXT NOT NULL,
                     start_time INTEGER NOT NULL,
                     end_time INTEGER NOT NULL,
                     json_data TEXT NOT NULL,
-                    PRIMARY KEY (exchange, symbol, start_time)
+                    PRIMARY KEY (exchange, symbol, timeframe, start_time)
                 )
             """)
             stmt.execute("""
@@ -130,6 +131,25 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore, CandleCacheS
                     SELECT 'Binance', symbol, start_time, end_time, json_data FROM footprint_cache_legacy
                 """)
                 stmt.execute("DROP TABLE footprint_cache_legacy")
+            }
+        }
+        // Кэш footprint теперь разделён по таймфрейму. Старые строки без
+        // timeframe смешивали ТФ и перезаписывали друг друга по start_time,
+        // поэтому кэш (не пользовательские данные) безопасно пересоздать.
+        if (!hasColumn(conn, "footprint_cache", "timeframe")) {
+            conn.createStatement().use { stmt ->
+                stmt.execute("DROP TABLE IF EXISTS footprint_cache")
+                stmt.execute("""
+                    CREATE TABLE footprint_cache (
+                        exchange TEXT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        timeframe TEXT NOT NULL,
+                        start_time INTEGER NOT NULL,
+                        end_time INTEGER NOT NULL,
+                        json_data TEXT NOT NULL,
+                        PRIMARY KEY (exchange, symbol, timeframe, start_time)
+                    )
+                """)
             }
         }
     }
@@ -264,11 +284,11 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore, CandleCacheS
     override suspend fun saveFootprintCandles(exchange: String, symbol: String, candles: List<FootprintCandle>) {
         if (candles.isEmpty()) return
         withDb { conn ->
-            conn.prepareStatement("INSERT OR REPLACE INTO footprint_cache (exchange, symbol, start_time, end_time, json_data) VALUES (?, ?, ?, ?, ?)").use { stmt ->
+            conn.prepareStatement("INSERT OR REPLACE INTO footprint_cache (exchange, symbol, timeframe, start_time, end_time, json_data) VALUES (?, ?, ?, ?, ?, ?)").use { stmt ->
                 candles.forEach { c ->
-                    stmt.setString(1, exchange); stmt.setString(2, symbol)
-                    stmt.setLong(3, c.startTime); stmt.setLong(4, c.endTime)
-                    stmt.setString(5, json.encodeToString(c))
+                    stmt.setString(1, exchange); stmt.setString(2, symbol); stmt.setString(3, c.timeframe)
+                    stmt.setLong(4, c.startTime); stmt.setLong(5, c.endTime)
+                    stmt.setString(6, json.encodeToString(c))
                     stmt.addBatch()
                 }
                 stmt.executeBatch()
@@ -293,10 +313,10 @@ class LocalStorage(val dbPath: String = DEFAULT_PATH) : StateStore, CandleCacheS
         }
     }
 
-    override suspend fun getFootprintCandles(exchange: String, symbol: String, limit: Int): List<FootprintCandle> =
+    override suspend fun getFootprintCandles(exchange: String, symbol: String, timeframe: String, limit: Int): List<FootprintCandle> =
         withDb { conn ->
-            conn.prepareStatement("SELECT json_data FROM footprint_cache WHERE exchange = ? AND symbol = ? ORDER BY start_time DESC LIMIT ?").use {
-                it.setString(1, exchange); it.setString(2, symbol); it.setInt(3, limit)
+            conn.prepareStatement("SELECT json_data FROM footprint_cache WHERE exchange = ? AND symbol = ? AND timeframe = ? ORDER BY start_time DESC LIMIT ?").use {
+                it.setString(1, exchange); it.setString(2, symbol); it.setString(3, timeframe); it.setInt(4, limit)
                 val rs = it.executeQuery()
                 val result = mutableListOf<FootprintCandle>()
                 while (rs.next()) {
