@@ -117,7 +117,7 @@ Mind this when writing paths.
   `dom_paper_{workspaceId}_{panelId}`, `dom_trading_...`, `dom_provider_...`,
   `dom_contract_...` (USDT_M / COIN_M), `dom_confirm_`, `dom_reduce_`,
   `dom_order_type_`, `dom_leverage_`, `dom_margin_`, `dom_qty_`,
-  `dom_collapsed_`, `dom_freq_` (level-emission frequency 100–300 ms).
+  `dom_freq_` (level-emission frequency 100–300 ms).
   Legacy panel-only keys `dom_{field}_{panelId}` are read once on attach and
   migrated into the scoped key, so duplicated workspaces that share panel ids
   no longer share DOM state. DOM restore is gated: `DomPanel` must wait for
@@ -671,19 +671,20 @@ from the IDE and tests visually; agents verify via compilation and tests.
   then meta fields (exchange/PERP/quote, no highlight). With a query typed and
   the SYMBOL sort active the explorer ranks by relevance (↓/↑ inverts, like
   Market Watch); other sort chips keep their field order.
-  DOM and Trades headers use the same explorer (`SymbolExplorerDropdown` in the
-  first header row next to the contract-type button; their old `Ex`
-  inline-select and `DomSymbolDropdown` / `TradesSymbolDropdown` are gone):
-  the VMs expose `explorerRows` from the
-  shared `MarketOverviewStore`, `selectExplorerRow(row)` switches the provider
-  (DOM: Trading OFF; Trades: `selectProvider`) and applies the symbol via
-  `pendingExplorerSymbol` after `loadSymbols()`, syncing `contractType` from
-  the row's `SymbolInfo`. Header layout: none of the headers has a separate
-  contract-type button — the type is implied by the symbol (row picks sync
-  `contractType`); DOM row 1 = symbol explorer + collapse, row 2 =
-  depth + agg + freq; FREQ throttles the level-structure emissions from the
-  DOM model (100/150/200/250/300 ms, persisted per panel). Trades is a single
-  row = symbol explorer + size filter.
+  DOM and Trades headers use the same explorer, but now in the panel title
+  (`PanelHeader.panelTitleContent`, like chart): the trigger shows the exchange
+  label + symbol and the three standard title actions (⚙ settings, + split, ×
+  close) stay on the right for every panel. The VMs expose `explorerRows` from
+  the shared `MarketOverviewStore`, `selectExplorerRow(row)` switches the
+  provider (DOM: Trading OFF; Trades: `selectProvider`) and applies the symbol
+  via `pendingExplorerSymbol` after `loadSymbols()`, syncing `contractType`
+  from the row's `SymbolInfo`. The content headers no longer contain the
+  explorer: DOM is a single row = depth + agg + freq; Trades is a single row =
+  size filter (right-aligned). Neither has a separate contract-type button —
+  the type is implied by the symbol (row picks sync `contractType`). FREQ
+  throttles the level-structure emissions from the DOM model (100/150/200/250/
+  300 ms, persisted per panel). DOM collapse was removed together with
+  `DomHeaderCompact`/`CompactProviderSymbol` and the `dom_collapsed_` key.
   Trades size filter is one box button: funnel glyph (`TerminalFunnelGlyph` —
   a filter, unlike the explorer's `TerminalSortGlyph` arrows) + current mode
   in `primary` text ("ALL" / "≥ …").

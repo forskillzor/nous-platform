@@ -246,7 +246,6 @@ class DomViewModel(
             val aggregationChanged =
                 oldOptions.aggregation.multiplier != newOptions.aggregation.multiplier
             val contractTypeChanged = oldOptions.contractType != newOptions.contractType
-            val collapsedChanged = oldOptions.collapsed != newOptions.collapsed
             val freqChanged = oldOptions.freqMs != newOptions.freqMs
             _domOptions.value = newOptions
             updateAggMultiplier()
@@ -285,13 +284,6 @@ class DomViewModel(
             } else if (oldOptions.symbol != newOptions.symbol) {
                 qtyUserEdited = false
                 fetchSymbolMetadata(newOptions.symbol.symbol)
-            }
-            if (collapsedChanged) {
-                stateStore?.let { store ->
-                    viewModelScope.launch {
-                        store.putString(storeKey("collapsed"), if (newOptions.collapsed) "1" else "0")
-                    }
-                }
             }
             if (freqChanged) {
                 stateStore?.let { store ->
@@ -748,9 +740,6 @@ class DomViewModel(
                         _domOptions.value = _domOptions.value.copy(freqMs = savedFreq)
                     }
                 }
-            if (loadSetting(store, "collapsed") == "1" && !_domOptions.value.collapsed) {
-                _domOptions.value = _domOptions.value.copy(collapsed = true)
-            }
             _providerRestored.value = true
         }
     }

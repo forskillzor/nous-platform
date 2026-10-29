@@ -25,7 +25,6 @@ data class DomOptions(
     val symbol: TradingSymbol = TradingSymbol("BTCUSDT", "BTC/USDT", "binance-nous-0.0.1"),
     val depth: DepthLimit = DepthLimit.default(),
     val aggregation: AggregationLevel = AggregationLevel.BaseTick,
-    val collapsed: Boolean = false,
     val contractType: ContractType = ContractType.USDT_M,
     val freqMs: Int = 100,
 ) {

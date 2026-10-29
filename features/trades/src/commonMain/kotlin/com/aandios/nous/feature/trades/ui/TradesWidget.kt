@@ -48,7 +48,6 @@ fun TradesWidget(
     val state by remember(viewModel) {
         viewModel.state.sample(50)
     }.collectAsState(initial = viewModel.state.value)
-    val explorerRows by viewModel.explorerRows.collectAsState()
     val currentSymbolInfo by viewModel.currentSymbolInfo.collectAsState()
     val selectedSizeFilter by viewModel.selectedSizeFilter.collectAsState()
     val customPresets by viewModel.customPresets.collectAsState()
@@ -80,13 +79,9 @@ fun TradesWidget(
     Column(modifier = modifier.background(MaterialTheme.colorScheme.surface)) {
         // Header bar с dropdowns (как в feature-dom)
         TradesHeaderBar(
-            currentSymbol = currentSymbol,
             currentSymbolInfo = currentSymbolInfo,
             selectedSizeFilter = selectedSizeFilter,
             customPresets = customPresets,
-            currentProviderId = currentProviderId,
-            explorerRows = explorerRows,
-            onExplorerRowSelected = { row -> viewModel.selectExplorerRow(row) },
             onFilterChanged = { viewModel.updateSizeFilter(it) },
             onPresetAdd = { viewModel.addPreset(it) },
             onPresetEdit = { idx, v -> viewModel.editPreset(idx, v) },

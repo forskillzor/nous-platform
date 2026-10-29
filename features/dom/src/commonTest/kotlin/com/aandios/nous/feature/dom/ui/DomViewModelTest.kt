@@ -690,7 +690,7 @@ class DomViewModelTest {
         vm.setLeverage(10)
         vm.setMarginMode(1)
         vm.updateOrderQuantity("2.5")
-        vm.updateDomOptions(vm.domOptions.value.copy(collapsed = true, freqMs = 250))
+        vm.updateDomOptions(vm.domOptions.value.copy(freqMs = 250))
         advanceUntilIdle()
 
         // Новый экземпляр панели (рестарт) читает сохранённые настройки
@@ -708,7 +708,6 @@ class DomViewModelTest {
         assertEquals(10, restored.leverage.first())
         assertEquals(1, restored.marginMode.first())
         assertEquals("2.5", restored.orderQuantity.first())
-        assertTrue(restored.domOptions.value.collapsed)
         assertEquals(250, restored.domOptions.value.freqMs)
     }
 

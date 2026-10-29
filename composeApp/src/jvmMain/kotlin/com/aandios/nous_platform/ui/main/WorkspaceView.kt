@@ -30,6 +30,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import com.aandios.nous.api.market.ProviderRegistry
+import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
 import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
@@ -255,8 +256,37 @@ fun WorkspaceView(
                             )
                         }
 
-                        PanelType.DOM -> PanelTitleLabel(text = pc.symbol)
-                        PanelType.TRADES -> PanelTitleLabel(text = pc.symbol)
+                        PanelType.DOM -> {
+                            val vm = ws.liveViewModels.getOrPut("${pc.id}_dom") {
+                                koinInject<DomViewModel>()
+                            } as DomViewModel
+                            val options by vm.domOptions.collectAsState()
+                            val rows by vm.explorerRows.collectAsState()
+                            SymbolExplorerDropdown(
+                                currentSymbol = options.symbol.symbol,
+                                currentExchangeId = options.provider,
+                                rows = rows,
+                                onSelect = vm::selectExplorerRow,
+                                onManageWatchlist = onManageWatchlist,
+                            )
+                        }
+
+                        PanelType.TRADES -> {
+                            val vm = ws.liveViewModels.getOrPut("${pc.id}_trades") {
+                                koinInject<TradesViewModel>()
+                            } as TradesViewModel
+                            val symbol by vm.currentSymbol.collectAsState()
+                            val selectedProvider by vm.currentProviderId.collectAsState()
+                            val rows by vm.explorerRows.collectAsState()
+                            SymbolExplorerDropdown(
+                                currentSymbol = symbol,
+                                currentExchangeId = selectedProvider,
+                                rows = rows,
+                                onSelect = vm::selectExplorerRow,
+                                onManageWatchlist = onManageWatchlist,
+                            )
+                        }
+
                         PanelType.TRADING -> PanelTitleLabel(text = pc.symbol)
                     }
                 }
