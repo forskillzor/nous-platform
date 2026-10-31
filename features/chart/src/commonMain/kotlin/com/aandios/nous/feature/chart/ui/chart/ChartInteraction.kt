@@ -395,7 +395,7 @@ fun CandleStickChartInteraction(
                         }
                     }
 
-                    /** Double-click: сброс всех зумов (time + vertical) — свечи и footprint */
+                    /** Двойной клик сбрасывает только вертикальное панорамирование. */
                     val nowMs = down.uptimeMillis
                     val isDoubleClick = lastClickTimeMs != 0L &&
                         nowMs - lastClickTimeMs in 0..DOUBLE_CLICK_TIMEOUT_MS &&
@@ -408,13 +408,7 @@ fun CandleStickChartInteraction(
                             event.changes.forEach { it.consume() }
                             if (event.changes.none { it.pressed }) break
                         } while (true)
-                        timeScale.setZoom(1f)
-                        timeScale.scrollToLatest(currentCandles.size, chartWidthPx)
                         verticalScroll = 0f
-                        verticalZoom = 1f
-                        verticalAnchorPrice = null
-                        followLive = true
-                        selectedDrawingId = null
                         chartFocusRequester.requestFocus()
                         return@awaitEachGesture
                     }
@@ -1320,7 +1314,7 @@ fun CandleStickChartInteraction(
                     )
                     .size(18.dp)
                     .background(config.backgroundColor.copy(alpha = 0.92f), RoundedCornerShape(3.dp))
-                    .border(1.dp, config.accentColor, RoundedCornerShape(3.dp))
+                    .border(1.dp, config.gridColor, RoundedCornerShape(3.dp))
                     .pointerInput(chartOrderType) {
                         awaitPointerEventScope {
                             while (true) {
@@ -1356,7 +1350,7 @@ fun CandleStickChartInteraction(
             ) {
                 Text(
                     text = "+",
-                    color = config.accentColor,
+                    color = config.gridColor,
                     fontSize = 14.sp,
                     lineHeight = 14.sp,
                     fontFamily = TerminalFontFamily,
@@ -1745,9 +1739,10 @@ private fun TpSlLevelBadge(
     Row(
         modifier = modifier
             .onGloballyPositioned { coords -> onBounds(coords.boundsInRoot()) }
+            .height(TRADING_BADGE_HEIGHT)
             .background(background, RoundedCornerShape(2.dp))
             .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .padding(horizontal = 6.dp)
             .pointerInput(label, price, pricePerPx, enabled) {
                 if (!enabled) return@pointerInput
                 var dragPrice: Double? = null
@@ -1783,8 +1778,8 @@ private fun TpSlLevelBadge(
         Text(
             text = label,
             color = color,
-            fontSize = 9.sp,
-            lineHeight = 10.sp,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
@@ -1792,8 +1787,8 @@ private fun TpSlLevelBadge(
         Text(
             text = "${formatter.formatPrice(price)}  $pctText%",
             color = color,
-            fontSize = 9.sp,
-            lineHeight = 10.sp,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
             fontFamily = TerminalFontFamily,
             maxLines = 1,
             modifier = Modifier.padding(start = 4.dp),
@@ -1801,8 +1796,8 @@ private fun TpSlLevelBadge(
         Text(
             text = "✕",
             color = color,
-            fontSize = 9.sp,
-            lineHeight = 10.sp,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
             fontFamily = TerminalFontFamily,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
