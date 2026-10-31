@@ -237,9 +237,15 @@ Mind this when writing paths.
   Bybit Partial TP/SL are conditional stop orders, so a successful
   `orderFilter=StopOrder` fetch is authoritative (empty = no TP/SL); the
   `positionTpSlCache` fallback is only valid when that REST call fails.
-  `ChartViewModel` reconciles positions/open orders every 10 s (TradingViewModel
-  every 30 s), so cancellations made in the exchange web UI disappear without a
-  restart; never let a stale cache resurrect a canceled TP/SL.
+  TP/SL mutations are per-side: Bybit sends only the changed `takeProfit` or
+  `stopLoss` field to `trading-stop` and must never cancel both orders for a
+  single-side change; MEXC merges `null = keep` with the existing combined stop
+  order and restores it if the replacement fails.
+  `ChartViewModel` applies TP/SL changes optimistically with a pending override
+  (rollback + refresh on adapter failure) and reconciles positions/open orders
+  every 10 s (TradingViewModel every 30 s), so cancellations made in the exchange
+  web UI disappear without a restart; never let a stale cache resurrect a
+  canceled TP/SL.
 - Paper engine notices (`TradingAdapter.notices()`) and real-adapter
   `OrderResponse.message` surface as panel snackbars (chart and DOM).
 

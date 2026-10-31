@@ -407,6 +407,9 @@ class BybitTradingAdapter internal constructor(
             stopLossPrice == 0.0 -> null
             else -> stopLossPrice
         }
+        val tpChanged = !samePrice(finalTp, currentTp)
+        val slChanged = !samePrice(finalSl, currentSl)
+        if (!tpChanged && !slChanged) return true
         return runCatching {
             tradingClient.signedPost(
                 "/v5/order/amend",
@@ -415,15 +418,19 @@ class BybitTradingAdapter internal constructor(
                     put("symbol", order.symbol.uppercase())
                     put("orderId", order.orderId)
                     put("tpslMode", "Partial")
-                    put("takeProfit", finalTp?.let(::decimal) ?: "0")
-                    put("stopLoss", finalSl?.let(::decimal) ?: "0")
-                    finalTp?.let {
-                        put("tpOrderType", "Limit")
-                        put("tpLimitPrice", decimal(it))
+                    if (tpChanged) {
+                        put("takeProfit", finalTp?.let(::decimal) ?: "0")
+                        put("tpTriggerBy", "LastPrice")
+                        finalTp?.let {
+                            put("tpOrderType", "Limit")
+                            put("tpLimitPrice", decimal(it))
+                        }
                     }
-                    finalSl?.let { put("slOrderType", "Market") }
-                    put("tpTriggerBy", "LastPrice")
-                    put("slTriggerBy", "LastPrice")
+                    if (slChanged) {
+                        put("stopLoss", finalSl?.let(::decimal) ?: "0")
+                        put("slTriggerBy", "LastPrice")
+                        finalSl?.let { put("slOrderType", "Market") }
+                    }
                 },
             )
             true
@@ -459,59 +466,90 @@ class BybitTradingAdapter internal constructor(
             stopLossPrice == 0.0 -> null
             else -> stopLossPrice
         }
-        cancelPositionTpSlOrders(symbol, index)
-        if (finalTp == null && finalSl == null) {
-            positionTpSlCache[positionId] = null to null
+        val tpChanged = !samePrice(finalTp, existing.first)
+        val slChanged = !samePrice(finalSl, existing.second)
+        if (!tpChanged && !slChanged) {
+            positionTpSlCache[positionId] = finalTp to finalSl
             return true
         }
-        val ok = runCatching {
+
+        var posted = postPositionTpSl(symbol, index, position.quantity, finalTp, finalSl, tpChanged, slChanged)
+        if (!posted && !(tpChanged && slChanged)) {
+            posted = postPositionTpSl(symbol, index, position.quantity, finalTp, finalSl, includeTp = true, includeSl = true)
+        }
+        if (!posted) {
+            positionTpSlCache.remove(positionId)
+            return false
+        }
+
+        // If Bybit dropped the untouched side, restore only that side.
+        val actual = fetchPositionTpSl()?.get(positionId)
+        val actualTp = actual?.first
+        val actualSl = actual?.second
+        val missingTp = !tpChanged && finalTp != null && actualTp == null
+        val missingSl = !slChanged && finalSl != null && actualSl == null
+        if (missingTp || missingSl) {
+            val repaired = postPositionTpSl(
+                symbol = symbol,
+                positionIdx = index,
+                quantity = position.quantity,
+                takeProfitPrice = if (missingTp) finalTp else actualTp,
+                stopLossPrice = if (missingSl) finalSl else actualSl,
+                includeTp = missingTp,
+                includeSl = missingSl,
+            )
+            if (!repaired) {
+                positionTpSlCache.remove(positionId)
+                return false
+            }
+        }
+        positionTpSlCache[positionId] = finalTp to finalSl
+        return true
+    }
+
+    private suspend fun postPositionTpSl(
+        symbol: String,
+        positionIdx: Int,
+        quantity: Double,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+        includeTp: Boolean,
+        includeSl: Boolean,
+    ): Boolean {
+        if (!includeTp && !includeSl) return true
+        return runCatching {
             tradingClient.signedPost(
                 "/v5/position/trading-stop",
                 buildJsonObject {
                     put("category", CATEGORY)
                     put("symbol", symbol)
-                    put("positionIdx", index)
+                    put("positionIdx", positionIdx)
                     put("tpslMode", "Partial")
-                    put("tpSize", decimal(position.quantity))
-                    put("slSize", decimal(position.quantity))
-                    put("takeProfit", finalTp?.let(::decimal) ?: "0")
-                    put("stopLoss", finalSl?.let(::decimal) ?: "0")
-                    finalTp?.let {
-                        put("tpOrderType", "Limit")
-                        put("tpLimitPrice", decimal(it))
+                    put("tpSize", decimal(quantity))
+                    put("slSize", decimal(quantity))
+                    if (includeTp) {
+                        put("takeProfit", takeProfitPrice?.let(::decimal) ?: "0")
+                        put("tpTriggerBy", "LastPrice")
+                        takeProfitPrice?.let {
+                            put("tpOrderType", "Limit")
+                            put("tpLimitPrice", decimal(it))
+                        }
                     }
-                    finalSl?.let { put("slOrderType", "Market") }
-                    put("tpTriggerBy", "LastPrice")
-                    put("slTriggerBy", "LastPrice")
+                    if (includeSl) {
+                        put("stopLoss", stopLossPrice?.let(::decimal) ?: "0")
+                        put("slTriggerBy", "LastPrice")
+                        stopLossPrice?.let { put("slOrderType", "Market") }
+                    }
                 },
             )
             true
         }.getOrDefault(false)
-        positionTpSlCache[positionId] = if (ok) finalTp to finalSl else null to null
-        return ok
     }
 
-    /** Bybit Partial TP/SL нельзя изменить — снимаем старые TP/SL ордера. */
-    private suspend fun cancelPositionTpSlOrders(symbol: String, positionIdx: Int) {
-        val rows = runCatching {
-            getPaged(
-                "/v5/order/realtime",
-                mapOf(
-                    "category" to CATEGORY,
-                    "symbol" to symbol.uppercase(),
-                    "orderFilter" to "StopOrder",
-                    "limit" to "50",
-                ),
-            )
-        }.getOrDefault(emptyList())
-        rows.filter { row ->
-            row.string("positionIdx")?.toIntOrNull() == positionIdx &&
-                row.string("stopOrderType")?.let {
-                    it.contains("TakeProfit", true) || it.contains("StopLoss", true)
-                } == true
-        }.forEach { row ->
-            row.string("orderId")?.takeIf { it.isNotBlank() }?.let { cancelOrder(it) }
-        }
+    private fun samePrice(a: Double?, b: Double?): Boolean = when {
+        a == null && b == null -> true
+        a == null || b == null -> false
+        else -> kotlin.math.abs(a - b) < 1e-9
     }
 
     override fun subscribeToPositions(): Flow<Position>? {

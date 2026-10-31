@@ -65,9 +65,16 @@ private suspend fun <T> runCatchingSuspend(block: suspend () -> T): Result<T> =
         Result.failure(e)
     }
 
-/** Уведомление chart-трейдинга (snackbar поверх графика под тулбаром). */
 private const val INDICATOR_PANE_MIN_HEIGHT_DP = 40f
 private const val INDICATOR_PANE_MAX_HEIGHT_DP = 240f
+
+private data class PendingTpSl(
+    val takeProfitPrice: Double?,
+    val stopLossPrice: Double?,
+    val previousTakeProfitPrice: Double?,
+    val previousStopLossPrice: Double?,
+)
+
 
 data class ChartNotification(val id: Long, val text: String)
 
@@ -161,6 +168,9 @@ class ChartViewModel(
     /** Открытые позиции текущего символа (линии/бейджи на графике). */
     private val _positions = MutableStateFlow<List<Position>>(emptyList())
     val positions: StateFlow<List<Position>> = _positions.asStateFlow()
+
+    private val pendingPositionTpSl = mutableMapOf<Long, PendingTpSl>()
+    private val pendingOrderTpSl = mutableMapOf<String, PendingTpSl>()
 
     /** Отображение ордеров/позиций на графике (Options dropdown). */
     private val _showOrders = MutableStateFlow(false)
@@ -939,15 +949,21 @@ class ChartViewModel(
     private suspend fun reconcileTradingLoop(adapter: TradingAdapter) {
         while (currentCoroutineContext().isActive) {
             delay(10.seconds)
-            val symbol = _state.value.currentSymbol
-            runCatchingSuspend { adapter.getPositions() }.onSuccess { positions ->
-                _positions.value = positions.filter { it.symbol.equals(symbol, true) }
-            }
-            runCatchingSuspend { adapter.getOpenOrders(symbol) }.onSuccess { orders ->
-                _openOrders.value = orders.filter {
-                    it.symbol.equals(symbol, true) && it.status == OrderStatus.OPEN
-                }
-            }
+            refreshTradingSnapshot(adapter)
+        }
+    }
+
+    private suspend fun refreshTradingSnapshot(adapter: TradingAdapter) {
+        val symbol = _state.value.currentSymbol
+        runCatchingSuspend { adapter.getPositions() }.onSuccess { positions ->
+            _positions.value = mergePendingPositionTpSl(
+                positions.filter { it.symbol.equals(symbol, true) }
+            )
+        }
+        runCatchingSuspend { adapter.getOpenOrders(symbol) }.onSuccess { orders ->
+            _openOrders.value = mergePendingOrderTpSl(
+                orders.filter { it.symbol.equals(symbol, true) && it.status == OrderStatus.OPEN }
+            )
         }
     }
 
@@ -968,9 +984,11 @@ class ChartViewModel(
         try {
             val symbol = _state.value.currentSymbol
             val snapshot = runCatchingSuspend { adapter.getOpenOrders(symbol) }.getOrDefault(emptyList())
-            _openOrders.value = snapshot.filter {
-                it.symbol.equals(symbol, true) && it.status == OrderStatus.OPEN
-            }
+            _openOrders.value = mergePendingOrderTpSl(
+                snapshot.filter {
+                    it.symbol.equals(symbol, true) && it.status == OrderStatus.OPEN
+                }
+            )
             for (e in events) onOrderUpdate(e)
         } finally {
             collector.cancel()
@@ -986,7 +1004,7 @@ class ChartViewModel(
             val snapshot = runCatchingSuspend { adapter.getPositions() }.getOrDefault(emptyList())
             val filtered = snapshot.filter { it.symbol.equals(symbol, true) }
             if (filtered.isNotEmpty() || _positions.value.isEmpty()) {
-                _positions.value = filtered
+                _positions.value = mergePendingPositionTpSl(filtered)
             }
             return
         }
@@ -1007,7 +1025,7 @@ class ChartViewModel(
             val filtered = snapshot.filter { it.symbol.equals(symbol, true) }
             val hadBefore = _positions.value.isNotEmpty()
             if (filtered.isNotEmpty() || !hadBefore) {
-                _positions.value = filtered
+                _positions.value = mergePendingPositionTpSl(filtered)
             }
             for (e in events) onPositionUpdate(e)
         } finally {
@@ -1041,9 +1059,32 @@ class ChartViewModel(
         }
     }
 
+    private fun mergePendingPositionTpSl(positions: List<Position>): List<Position> {
+        if (pendingPositionTpSl.isEmpty()) return positions
+        return positions.map { position ->
+            val pending = pendingPositionTpSl[position.positionId] ?: return@map position
+            position.copy(
+                takeProfitPrice = pending.takeProfitPrice,
+                stopLossPrice = pending.stopLossPrice,
+            )
+        }
+    }
+
+    private fun mergePendingOrderTpSl(orders: List<Order>): List<Order> {
+        if (pendingOrderTpSl.isEmpty()) return orders
+        return orders.map { order ->
+            val pending = pendingOrderTpSl[order.orderId] ?: return@map order
+            order.copy(
+                takeProfitPrice = pending.takeProfitPrice,
+                stopLossPrice = pending.stopLossPrice,
+            )
+        }
+    }
+
     private fun onPositionUpdate(update: Position) {
         if (!update.symbol.equals(_state.value.currentSymbol, true)) return
         if (update.quantity == 0.0) {
+            pendingPositionTpSl.remove(update.positionId)
             _positions.value = _positions.value.filterNot { it.positionId == update.positionId }
         } else {
             _positions.value = if (_positions.value.any { it.positionId == update.positionId }) {
@@ -1052,6 +1093,7 @@ class ChartViewModel(
                 _positions.value + update
             }
         }
+        _positions.value = mergePendingPositionTpSl(_positions.value)
     }
 
     private fun onOrderUpdate(update: Order) {
@@ -1065,6 +1107,29 @@ class ChartViewModel(
                 _openOrders.value + update
             }
         }
+        _openOrders.value = mergePendingOrderTpSl(_openOrders.value)
+        updateTpSlOrderPosition(update)
+    }
+
+    private fun updateTpSlOrderPosition(update: Order) {
+        if (!update.isTpSl) return
+        val positionId = update.parentPositionId ?: return
+        val isTakeProfit = update.isTakeProfit ?: return
+        val clear = update.status != OrderStatus.OPEN
+        val price = update.triggerPrice?.takeIf { it > 0.0 }
+        _positions.value = _positions.value.map { position ->
+            if (position.positionId != positionId) position
+            else if (isTakeProfit) {
+                position.copy(
+                    takeProfitPrice = if (clear) null else (price ?: position.takeProfitPrice),
+                )
+            } else {
+                position.copy(
+                    stopLossPrice = if (clear) null else (price ?: position.stopLossPrice),
+                )
+            }
+        }
+        _positions.value = mergePendingPositionTpSl(_positions.value)
     }
 
     /** Постановка ордера через `+`: сторона и тип выбраны в меню, цена — из точки на графике. */
@@ -1324,30 +1389,65 @@ class ChartViewModel(
             takeProfit = tp?.takeIf { it > 0 },
             stopLoss = sl?.takeIf { it > 0 },
         )?.let { notify(it); return }
+        val finalTp = when {
+            tp == null -> order.takeProfitPrice
+            tp == 0.0 -> null
+            else -> tp
+        }
+        val finalSl = when {
+            sl == null -> order.stopLossPrice
+            sl == 0.0 -> null
+            else -> sl
+        }
+        if (finalTp == order.takeProfitPrice && finalSl == order.stopLossPrice) return
+        val pending = PendingTpSl(
+            takeProfitPrice = finalTp,
+            stopLossPrice = finalSl,
+            previousTakeProfitPrice = order.takeProfitPrice,
+            previousStopLossPrice = order.stopLossPrice,
+        )
+        pendingOrderTpSl[order.orderId] = pending
+        _openOrders.value = _openOrders.value.map {
+            if (it.orderId == order.orderId) {
+                it.copy(takeProfitPrice = finalTp, stopLossPrice = finalSl)
+            } else it
+        }
         viewModelScope.launch {
             val adapter = activeTrading() ?: run {
-                notify("Trading adapter not available"); return@launch
-            }
-            val ok = adapter.setOrderTpSl(order, tp, sl)
-            if (ok) {
+                if (pendingOrderTpSl[order.orderId] === pending) pendingOrderTpSl.remove(order.orderId)
                 _openOrders.value = _openOrders.value.map {
                     if (it.orderId == order.orderId) {
                         it.copy(
-                            takeProfitPrice = when {
-                                tp == null -> it.takeProfitPrice
-                                tp == 0.0 -> null
-                                else -> tp
-                            },
-                            stopLossPrice = when {
-                                sl == null -> it.stopLossPrice
-                                sl == 0.0 -> null
-                                else -> sl
-                            },
+                            takeProfitPrice = pending.previousTakeProfitPrice,
+                            stopLossPrice = pending.previousStopLossPrice,
                         )
                     } else it
                 }
-            } else {
+                notify("Trading adapter not available")
+                return@launch
+            }
+            val ok = try {
+                withTimeout(10.seconds) { adapter.setOrderTpSl(order, tp, sl) }
+            } catch (_: TimeoutCancellationException) {
+                false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                false
+            }
+            if (pendingOrderTpSl[order.orderId] !== pending) return@launch
+            pendingOrderTpSl.remove(order.orderId)
+            if (!ok) {
+                _openOrders.value = _openOrders.value.map {
+                    if (it.orderId == order.orderId) {
+                        it.copy(
+                            takeProfitPrice = pending.previousTakeProfitPrice,
+                            stopLossPrice = pending.previousStopLossPrice,
+                        )
+                    } else it
+                }
                 notify("TP/SL not supported for ${order.symbol}")
+                refreshTradingSnapshot(adapter)
             }
         }
     }
@@ -1374,30 +1474,66 @@ class ChartViewModel(
             takeProfit = tp?.takeIf { it > 0 },
             stopLoss = sl?.takeIf { it > 0 },
         )?.let { notify(it); return }
+        val finalTp = when {
+            tp == null -> position.takeProfitPrice
+            tp == 0.0 -> null
+            else -> tp
+        }
+        val finalSl = when {
+            sl == null -> position.stopLossPrice
+            sl == 0.0 -> null
+            else -> sl
+        }
+        if (finalTp == position.takeProfitPrice && finalSl == position.stopLossPrice) return
+        val positionId = position.positionId ?: return
+        val pending = PendingTpSl(
+            takeProfitPrice = finalTp,
+            stopLossPrice = finalSl,
+            previousTakeProfitPrice = position.takeProfitPrice,
+            previousStopLossPrice = position.stopLossPrice,
+        )
+        pendingPositionTpSl[positionId] = pending
+        _positions.value = _positions.value.map {
+            if (it.positionId == positionId) {
+                it.copy(takeProfitPrice = finalTp, stopLossPrice = finalSl)
+            } else it
+        }
         viewModelScope.launch {
             val adapter = activeTrading() ?: run {
-                notify("Trading adapter not available"); return@launch
-            }
-            val ok = adapter.setPositionTpSl(position, tp, sl)
-            if (ok) {
+                if (pendingPositionTpSl[positionId] === pending) pendingPositionTpSl.remove(positionId)
                 _positions.value = _positions.value.map {
-                    if (it.positionId == position.positionId) {
+                    if (it.positionId == positionId) {
                         it.copy(
-                            takeProfitPrice = when {
-                                tp == null -> it.takeProfitPrice
-                                tp == 0.0 -> null
-                                else -> tp
-                            },
-                            stopLossPrice = when {
-                                sl == null -> it.stopLossPrice
-                                sl == 0.0 -> null
-                                else -> sl
-                            },
+                            takeProfitPrice = pending.previousTakeProfitPrice,
+                            stopLossPrice = pending.previousStopLossPrice,
                         )
                     } else it
                 }
-            } else {
+                notify("Trading adapter not available")
+                return@launch
+            }
+            val ok = try {
+                withTimeout(10.seconds) { adapter.setPositionTpSl(position, tp, sl) }
+            } catch (_: TimeoutCancellationException) {
+                false
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                false
+            }
+            if (pendingPositionTpSl[positionId] !== pending) return@launch
+            pendingPositionTpSl.remove(positionId)
+            if (!ok) {
+                _positions.value = _positions.value.map {
+                    if (it.positionId == positionId) {
+                        it.copy(
+                            takeProfitPrice = pending.previousTakeProfitPrice,
+                            stopLossPrice = pending.previousStopLossPrice,
+                        )
+                    } else it
+                }
                 notify("TP/SL not supported for ${position.symbol}")
+                refreshTradingSnapshot(adapter)
             }
         }
     }
