@@ -48,6 +48,16 @@ class BybitTradingAdapter internal constructor(
     private val positionTpSlCache = mutableMapOf<Long, Pair<Double?, Double?>>()
     private var knownPositionMode: Int? = null
 
+    private data class PositionStopOrder(val orderId: String, val price: Double, val symbol: String)
+
+    private data class PositionTpSlState(
+        val takeProfits: List<PositionStopOrder> = emptyList(),
+        val stopLosses: List<PositionStopOrder> = emptyList(),
+    ) {
+        val takeProfitPrice: Double? get() = takeProfits.lastOrNull()?.price
+        val stopLossPrice: Double? get() = stopLosses.lastOrNull()?.price
+    }
+
     override suspend fun placeOrder(request: OrderRequest): OrderResponse {
         if (!tradingClient.hasCredentials) return noKeys()
         return try {
@@ -212,7 +222,7 @@ class BybitTradingAdapter internal constructor(
                 .firstOrNull { it == 0 }
                 ?.let { knownPositionMode = ONE_WAY_MODE }
         val positions = rows.mapNotNull { it.toPosition() }.filter { it.quantity > 0.0 }
-        val extraTpSl = fetchPositionTpSl()
+        val extraTpSl = fetchPositionTpSlState()
         if (extraTpSl != null) {
             val activeIds = positions.mapNotNull { it.positionId }.toSet()
             positionTpSlCache.keys.retainAll(activeIds)
@@ -222,8 +232,8 @@ class BybitTradingAdapter internal constructor(
             val extra = id?.let { extraTpSl?.get(it) }
             val updated = if (extraTpSl != null) {
                 position.copy(
-                    takeProfitPrice = extra?.first,
-                    stopLossPrice = extra?.second,
+                    takeProfitPrice = extra?.takeProfitPrice,
+                    stopLossPrice = extra?.stopLossPrice,
                 )
             } else {
                 position
@@ -234,7 +244,7 @@ class BybitTradingAdapter internal constructor(
     }
 
     /** TP/SL Partial приходят как conditional-ордера, а не в position/list. */
-    private suspend fun fetchPositionTpSl(): Map<Long, Pair<Double?, Double?>>? {
+    private suspend fun fetchPositionTpSlState(): Map<Long, PositionTpSlState>? {
         val rows = runCatching {
             getPaged(
                 "/v5/order/realtime",
@@ -246,7 +256,8 @@ class BybitTradingAdapter internal constructor(
                 ),
             )
         }.getOrNull() ?: return null
-        val result = mutableMapOf<Long, Pair<Double?, Double?>>()
+        val takeProfits = mutableMapOf<Long, MutableList<PositionStopOrder>>()
+        val stopLosses = mutableMapOf<Long, MutableList<PositionStopOrder>>()
         rows.forEach { row ->
             val stopType = row.string("stopOrderType")
             if (stopType?.let {
@@ -256,12 +267,21 @@ class BybitTradingAdapter internal constructor(
             val symbol = row.string("symbol") ?: return@forEach
             val index = row.string("positionIdx")?.toIntOrNull() ?: 0
             val price = row.double("triggerPrice")?.takeIf { it > 0.0 } ?: return@forEach
+            val orderId = row.string("orderId")?.takeIf { it.isNotBlank() } ?: return@forEach
             val id = positionIdentityId(symbol, index)
-            val previous = result[id] ?: (null to null)
-            result[id] = if (stopType.contains("TakeProfit", true)) price to previous.second
-            else previous.first to price
+            val order = PositionStopOrder(orderId, price, symbol)
+            if (stopType.contains("TakeProfit", true)) {
+                takeProfits.getOrPut(id) { mutableListOf() } += order
+            } else {
+                stopLosses.getOrPut(id) { mutableListOf() } += order
+            }
         }
-        return result
+        return (takeProfits.keys + stopLosses.keys).associateWith { id ->
+            PositionTpSlState(
+                takeProfits = takeProfits[id].orEmpty(),
+                stopLosses = stopLosses[id].orEmpty(),
+            )
+        }
     }
 
     override suspend fun getOpenOrders(symbol: String?): List<Order> {
@@ -450,62 +470,122 @@ class BybitTradingAdapter internal constructor(
             }
             ?: return false
         val positionId = position.positionId ?: return false
-        val fresh = fetchPositionTpSl()
-        val existing = if (fresh != null) {
-            fresh[positionId] ?: (null to null)
-        } else {
-            positionTpSlCache[positionId] ?: (position.takeProfitPrice to position.stopLossPrice)
-        }
+        val fresh = fetchPositionTpSlState() ?: return false
+        val existing = fresh[positionId] ?: PositionTpSlState()
+        val existingTp = existing.takeProfitPrice
+        val existingSl = existing.stopLossPrice
         val finalTp = when {
-            takeProfitPrice == null -> existing.first
+            takeProfitPrice == null -> existingTp
             takeProfitPrice == 0.0 -> null
             else -> takeProfitPrice
         }
         val finalSl = when {
-            stopLossPrice == null -> existing.second
+            stopLossPrice == null -> existingSl
             stopLossPrice == 0.0 -> null
             else -> stopLossPrice
         }
-        val tpChanged = !samePrice(finalTp, existing.first)
-        val slChanged = !samePrice(finalSl, existing.second)
+        val tpChanged = !samePrice(finalTp, existingTp)
+        val slChanged = !samePrice(finalSl, existingSl)
         if (!tpChanged && !slChanged) {
             positionTpSlCache[positionId] = finalTp to finalSl
             return true
         }
 
-        var posted = postPositionTpSl(symbol, index, position.quantity, finalTp, finalSl, tpChanged, slChanged)
-        if (!posted && !(tpChanged && slChanged)) {
-            posted = postPositionTpSl(symbol, index, position.quantity, finalTp, finalSl, includeTp = true, includeSl = true)
+        val ok = if (tpChanged && slChanged) {
+            val canceled = cancelPositionStopOrders(existing.takeProfits + existing.stopLosses)
+            if (!canceled) {
+                false
+            } else if (finalTp == null && finalSl == null) {
+                true
+            } else {
+                postPositionTpSl(
+                    symbol, index, position.quantity, finalTp, finalSl,
+                    includeTp = true, includeSl = true,
+                )
+            }
+        } else if (tpChanged) {
+            applyPositionStopSide(
+                symbol, index, position.quantity,
+                existing.takeProfits, finalTp, isTakeProfit = true,
+            )
+        } else {
+            applyPositionStopSide(
+                symbol, index, position.quantity,
+                existing.stopLosses, finalSl, isTakeProfit = false,
+            )
         }
-        if (!posted) {
+        if (!ok) {
             positionTpSlCache.remove(positionId)
             return false
-        }
-
-        // If Bybit dropped the untouched side, restore only that side.
-        val actual = fetchPositionTpSl()?.get(positionId)
-        val actualTp = actual?.first
-        val actualSl = actual?.second
-        val missingTp = !tpChanged && finalTp != null && actualTp == null
-        val missingSl = !slChanged && finalSl != null && actualSl == null
-        if (missingTp || missingSl) {
-            val repaired = postPositionTpSl(
-                symbol = symbol,
-                positionIdx = index,
-                quantity = position.quantity,
-                takeProfitPrice = if (missingTp) finalTp else actualTp,
-                stopLossPrice = if (missingSl) finalSl else actualSl,
-                includeTp = missingTp,
-                includeSl = missingSl,
-            )
-            if (!repaired) {
-                positionTpSlCache.remove(positionId)
-                return false
-            }
         }
         positionTpSlCache[positionId] = finalTp to finalSl
         return true
     }
+
+    private suspend fun applyPositionStopSide(
+        symbol: String,
+        positionIdx: Int,
+        quantity: Double,
+        existing: List<PositionStopOrder>,
+        finalPrice: Double?,
+        isTakeProfit: Boolean,
+    ): Boolean {
+        if (existing.size == 1 && finalPrice != null &&
+            amendPositionStop(existing.single(), symbol, finalPrice, isTakeProfit)
+        ) {
+            return true
+        }
+        if (!cancelPositionStopOrders(existing)) return false
+        if (finalPrice == null) return true
+        return postPositionTpSl(
+            symbol,
+            positionIdx,
+            quantity,
+            takeProfitPrice = if (isTakeProfit) finalPrice else null,
+            stopLossPrice = if (isTakeProfit) null else finalPrice,
+            includeTp = isTakeProfit,
+            includeSl = !isTakeProfit,
+        )
+    }
+
+    private suspend fun cancelPositionStopOrders(orders: List<PositionStopOrder>): Boolean {
+        for (order in orders) {
+            if (!cancelStopOrder(order.symbol, order.orderId)) return false
+        }
+        return true
+    }
+
+    private suspend fun cancelStopOrder(symbol: String, orderId: String): Boolean = runCatching {
+        tradingClient.signedPost(
+            "/v5/order/cancel",
+            buildJsonObject {
+                put("category", CATEGORY)
+                put("symbol", symbol.uppercase())
+                put("orderId", orderId)
+            },
+        )
+        true
+    }.getOrDefault(false)
+
+    private suspend fun amendPositionStop(
+        order: PositionStopOrder,
+        symbol: String,
+        price: Double,
+        isTakeProfit: Boolean,
+    ): Boolean = runCatching {
+        tradingClient.signedPost(
+            "/v5/order/amend",
+            buildJsonObject {
+                put("category", CATEGORY)
+                put("symbol", symbol.uppercase())
+                put("orderId", order.orderId)
+                put("triggerPrice", decimal(price))
+                put("triggerBy", "LastPrice")
+                if (isTakeProfit) put("price", decimal(price))
+            },
+        )
+        true
+    }.getOrDefault(false)
 
     private suspend fun postPositionTpSl(
         symbol: String,

@@ -266,15 +266,14 @@ class BybitTradingAdapterTest {
     }
 
     @Test
-    fun `moving TP sends only takeProfit and leaves SL untouched`() = runBlocking {
+    fun `moving TP amends only TP and leaves SL untouched`() = runBlocking {
         var stopOrders = stopOrdersJson("120", "90")
-        var afterPost: String? = null
         val (http, requests) = client { request ->
             when {
                 request.path == "/v5/position/list" -> positionListJson
-                request.path == "/v5/position/trading-stop" -> {
-                    afterPost?.let { stopOrders = it }
-                    """{"retCode":0,"retMsg":"OK","result":{}}"""
+                request.path == "/v5/order/amend" -> {
+                    stopOrders = stopOrdersJson("130", "90")
+                    """{"retCode":0,"retMsg":"OK","result":{"orderId":"tp-1"}}"""
                 }
                 request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
                 else -> emptyListJson
@@ -284,12 +283,13 @@ class BybitTradingAdapterTest {
             val adapter = adapter(http)
             val position = adapter.getPositions().single()
 
-            afterPost = stopOrdersJson("130", "90")
             assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = 130.0, stopLossPrice = null))
-            val tradingStop = requests.single { it.path == "/v5/position/trading-stop" }
-            assertTrue(tradingStop.body.contains("\"takeProfit\":\"130\""), tradingStop.body)
-            assertFalse(tradingStop.body.contains("\"stopLoss\""), tradingStop.body)
+            val amend = requests.single { it.path == "/v5/order/amend" }
+            assertTrue(amend.body.contains("\"triggerPrice\":\"130\""), amend.body)
+            assertTrue(amend.body.contains("\"price\":\"130\""), amend.body)
+            assertFalse(amend.body.contains("stopLoss"), amend.body)
             assertTrue(requests.none { it.path == "/v5/order/cancel" })
+            assertTrue(requests.none { it.path == "/v5/position/trading-stop" })
         } finally {
             http.close()
         }
@@ -298,12 +298,11 @@ class BybitTradingAdapterTest {
     @Test
     fun `cancel TP cancels only TP and does not touch SL`() = runBlocking {
         var stopOrders = stopOrdersJson("120", "90")
-        var afterPost: String? = null
         val (http, requests) = client { request ->
             when {
                 request.path == "/v5/position/list" -> positionListJson
-                request.path == "/v5/position/trading-stop" -> {
-                    afterPost?.let { stopOrders = it }
+                request.path == "/v5/order/cancel" -> {
+                    stopOrders = stopOrdersJson(null, "90")
                     """{"retCode":0,"retMsg":"OK","result":{}}"""
                 }
                 request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
@@ -314,13 +313,13 @@ class BybitTradingAdapterTest {
             val adapter = adapter(http)
             val position = adapter.getPositions().single()
 
-            afterPost = stopOrdersJson(null, "90")
             assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = 0.0, stopLossPrice = null))
-            val tradingStop = requests.single { it.path == "/v5/position/trading-stop" }
-            assertTrue(tradingStop.body.contains("\"takeProfit\":\"0\""), tradingStop.body)
-            assertFalse(tradingStop.body.contains("\"stopLoss\""), tradingStop.body)
-            assertTrue(requests.none { it.path == "/v5/order/cancel" })
+            val cancel = requests.single { it.path == "/v5/order/cancel" }
+            assertTrue(cancel.body.contains("\"orderId\":\"tp-1\""), cancel.body)
+            assertTrue(requests.none { it.path == "/v5/position/trading-stop" })
+            assertTrue(requests.none { it.path == "/v5/order/amend" })
             assertEquals(90.0, adapter.getPositions().single().stopLossPrice)
+            assertEquals(null, adapter.getPositions().single().takeProfitPrice)
         } finally {
             http.close()
         }
@@ -329,12 +328,11 @@ class BybitTradingAdapterTest {
     @Test
     fun `cancel SL cancels only SL and does not touch TP`() = runBlocking {
         var stopOrders = stopOrdersJson("120", "90")
-        var afterPost: String? = null
         val (http, requests) = client { request ->
             when {
                 request.path == "/v5/position/list" -> positionListJson
-                request.path == "/v5/position/trading-stop" -> {
-                    afterPost?.let { stopOrders = it }
+                request.path == "/v5/order/cancel" -> {
+                    stopOrders = stopOrdersJson("120", null)
                     """{"retCode":0,"retMsg":"OK","result":{}}"""
                 }
                 request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
@@ -345,12 +343,46 @@ class BybitTradingAdapterTest {
             val adapter = adapter(http)
             val position = adapter.getPositions().single()
 
-            afterPost = stopOrdersJson("120", null)
             assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = null, stopLossPrice = 0.0))
-            val tradingStop = requests.single { it.path == "/v5/position/trading-stop" }
-            assertTrue(tradingStop.body.contains("\"stopLoss\":\"0\""), tradingStop.body)
-            assertFalse(tradingStop.body.contains("\"takeProfit\""), tradingStop.body)
+            val cancel = requests.single { it.path == "/v5/order/cancel" }
+            assertTrue(cancel.body.contains("\"orderId\":\"sl-1\""), cancel.body)
+            assertTrue(requests.none { it.path == "/v5/position/trading-stop" })
             assertEquals(120.0, adapter.getPositions().single().takeProfitPrice)
+            assertEquals(null, adapter.getPositions().single().stopLossPrice)
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
+    fun `cancelling both TP and SL uses two cancel calls and no trading stop`() = runBlocking {
+        val cancelled = mutableSetOf<String>()
+        var stopOrders = stopOrdersJson("120", "90")
+        val (http, requests) = client { request ->
+            when {
+                request.path == "/v5/position/list" -> positionListJson
+                request.path == "/v5/order/cancel" -> {
+                    if (request.body.contains("\"tp-1\"")) cancelled += "tp"
+                    if (request.body.contains("\"sl-1\"")) cancelled += "sl"
+                    stopOrders = stopOrdersJson(
+                        if ("tp" in cancelled) null else "120",
+                        if ("sl" in cancelled) null else "90",
+                    )
+                    """{"retCode":0,"retMsg":"OK","result":{}}"""
+                }
+                request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
+                else -> emptyListJson
+            }
+        }
+        try {
+            val adapter = adapter(http)
+            val position = adapter.getPositions().single()
+
+            assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = 0.0, stopLossPrice = 0.0))
+            assertEquals(2, requests.count { it.path == "/v5/order/cancel" })
+            assertTrue(requests.none { it.path == "/v5/position/trading-stop" })
+            assertEquals(null, adapter.getPositions().single().takeProfitPrice)
+            assertEquals(null, adapter.getPositions().single().stopLossPrice)
         } finally {
             http.close()
         }

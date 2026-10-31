@@ -237,10 +237,11 @@ Mind this when writing paths.
   Bybit Partial TP/SL are conditional stop orders, so a successful
   `orderFilter=StopOrder` fetch is authoritative (empty = no TP/SL); the
   `positionTpSlCache` fallback is only valid when that REST call fails.
-  TP/SL mutations are per-side: Bybit sends only the changed `takeProfit` or
-  `stopLoss` field to `trading-stop` and must never cancel both orders for a
-  single-side change; MEXC merges `null = keep` with the existing combined stop
-  order and restores it if the replacement fails.
+  TP/SL mutations are per-side: Bybit amends the affected conditional order when
+  possible, otherwise cancels only that side's orders by `orderId`, and uses
+  `trading-stop` only to add a missing side or when both sides change; never
+  cancel both orders for a single-side change. MEXC merges `null = keep` with the
+  existing combined stop order and restores it if the replacement fails.
   `ChartViewModel` applies TP/SL changes optimistically with a pending override
   (rollback + refresh on adapter failure) and reconciles positions/open orders
   every 10 s (TradingViewModel every 30 s), so cancellations made in the exchange
