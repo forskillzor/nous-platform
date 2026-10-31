@@ -91,7 +91,6 @@ private data class TpSlPreview(
     val price: Double,
 )
 
-
 /**
  * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
  * ленивая история и Canvas-конвейер. Работает с любой [ChartSeries] —
@@ -290,6 +289,25 @@ fun CandleStickChartInteraction(
                         return@awaitEachGesture
                     }
 
+                    /** Двойной клик сбрасывает всё вертикальное состояние, горизонталь не трогаем. */
+                    val nowMs = down.uptimeMillis
+                    val isDoubleClick = lastClickTimeMs != 0L &&
+                        nowMs - lastClickTimeMs in 0..DOUBLE_CLICK_TIMEOUT_MS &&
+                        (down.position - lastClickPos).getDistance() <= doubleClickSlopPx
+                    if (isDoubleClick) {
+                        lastClickTimeMs = 0L
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                            if (event.changes.none { it.pressed }) break
+                        } while (true)
+                        verticalScroll = 0f
+                        verticalZoom = 1f
+                        verticalAnchorPrice = null
+                        chartFocusRequester.requestFocus()
+                        return@awaitEachGesture
+                    }
+
                     /** 1. Перемещение/изменение размера существующего рисунка */
                     val history = drawingHistory
                     if (history != null && activeDrawingTool == DrawingToolType.NONE) {
@@ -393,24 +411,6 @@ fun CandleStickChartInteraction(
                             if (moved) currentOnMoveTradingOrder?.invoke(hitOrder, newPrice)
                             return@awaitEachGesture
                         }
-                    }
-
-                    /** Двойной клик сбрасывает только вертикальное панорамирование. */
-                    val nowMs = down.uptimeMillis
-                    val isDoubleClick = lastClickTimeMs != 0L &&
-                        nowMs - lastClickTimeMs in 0..DOUBLE_CLICK_TIMEOUT_MS &&
-                        (down.position - lastClickPos).getDistance() <= doubleClickSlopPx
-                    if (isDoubleClick) {
-                        lastClickTimeMs = 0L
-                        // Съедаем жест до release: второй клик не панорамирует и не ставит ордер
-                        do {
-                            val event = awaitPointerEvent()
-                            event.changes.forEach { it.consume() }
-                            if (event.changes.none { it.pressed }) break
-                        } while (true)
-                        verticalScroll = 0f
-                        chartFocusRequester.requestFocus()
-                        return@awaitEachGesture
                     }
 
                     /** 2. Панорамирование / Alt+вертикаль (и свечи, и footprint) */
