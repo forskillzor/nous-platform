@@ -188,4 +188,124 @@ class BybitTradingAdapterTest {
             http.close()
         }
     }
+
+    private val positionListJson = """
+        {"retCode":0,"retMsg":"OK","result":{"list":[{"symbol":"BTCUSDT","side":"Buy","size":"0.1","positionIdx":0,"avgPrice":"100","markPrice":"101","leverage":"10","curRealisedPnl":"0","unrealisedPnl":"1","liqPrice":"50","tradeMode":0}]}}
+    """.trimIndent()
+
+    private val emptyListJson = """{"retCode":0,"retMsg":"OK","result":{"list":[]}}"""
+
+    private fun stopOrdersJson(takeProfit: String?, stopLoss: String?): String {
+        val rows = buildList {
+            takeProfit?.let {
+                add("""{"orderId":"tp-1","symbol":"BTCUSDT","positionIdx":0,"stopOrderType":"PartialTakeProfit","triggerPrice":"$it"}""")
+            }
+            stopLoss?.let {
+                add("""{"orderId":"sl-1","symbol":"BTCUSDT","positionIdx":0,"stopOrderType":"PartialStopLoss","triggerPrice":"$it"}""")
+            }
+        }
+        return """{"retCode":0,"retMsg":"OK","result":{"list":[${rows.joinToString(",")}]}}"""
+    }
+
+    private fun adapter(http: HttpClient) = BybitTradingAdapter(
+        http,
+        BybitPrivateStreamHub(http, ProviderConfig(), "key", "secret"),
+        ProviderConfig(),
+        "key",
+        "secret",
+    )
+
+    @Test
+    fun `external TP SL cancellation clears cached position levels`() = runBlocking {
+        var stopOrders = stopOrdersJson("120", "90")
+        val (http, _) = client { request ->
+            when {
+                request.path == "/v5/position/list" -> positionListJson
+                request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
+                else -> emptyListJson
+            }
+        }
+        try {
+            val adapter = adapter(http)
+            val first = adapter.getPositions().single()
+            assertEquals(120.0, first.takeProfitPrice)
+            assertEquals(90.0, first.stopLossPrice)
+
+            stopOrders = emptyListJson
+            val second = adapter.getPositions().single()
+            assertEquals(null, second.takeProfitPrice)
+            assertEquals(null, second.stopLossPrice)
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
+    fun `cancelling stale SL after external cancel does not recreate TP`() = runBlocking {
+        var stopOrders = stopOrdersJson("120", "90")
+        val (http, requests) = client { request ->
+            when {
+                request.path == "/v5/position/list" -> positionListJson
+                request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
+                else -> emptyListJson
+            }
+        }
+        try {
+            val adapter = adapter(http)
+            val position = adapter.getPositions().single()
+
+            stopOrders = emptyListJson
+            assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = null, stopLossPrice = 0.0))
+            assertTrue(
+                requests.none { it.path == "/v5/position/trading-stop" },
+                "stale TP must not be recreated: ${requests.map { it.path }}",
+            )
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
+    fun `null TP SL keeps the counterpart from fresh stop orders`() = runBlocking {
+        var stopOrders = stopOrdersJson("120", "90")
+        val (http, requests) = client { request ->
+            when {
+                request.path == "/v5/position/list" -> positionListJson
+                request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") -> stopOrders
+                else -> emptyListJson
+            }
+        }
+        try {
+            val adapter = adapter(http)
+            val position = adapter.getPositions().single()
+
+            stopOrders = stopOrdersJson("125", "90")
+            assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = null, stopLossPrice = null))
+            val tradingStop = requests.single { it.path == "/v5/position/trading-stop" }
+            assertTrue(tradingStop.body.contains("\"takeProfit\":\"125\""), tradingStop.body)
+            assertTrue(tradingStop.body.contains("\"stopLoss\":\"90\""), tradingStop.body)
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
+    fun `open orders merge regular and stop order lists without duplicates`() = runBlocking {
+        val (http, _) = client { request ->
+            when {
+                request.path == "/v5/order/realtime" && request.query.contains("orderFilter=StopOrder") ->
+                    """{"retCode":0,"retMsg":"OK","result":{"list":[{"orderId":"stop-1","symbol":"BTCUSDT","side":"Sell","orderType":"Market","qty":"0.1","stopOrderType":"PartialTakeProfit","triggerPrice":"120","positionIdx":0,"orderStatus":"Untriggered","reduceOnly":"true"}]}}"""
+                request.path == "/v5/order/realtime" ->
+                    """{"retCode":0,"retMsg":"OK","result":{"list":[{"orderId":"regular-1","symbol":"BTCUSDT","side":"Buy","orderType":"Limit","qty":"0.1","price":"100","timeInForce":"GTC","orderStatus":"New","reduceOnly":"false"}]}}"""
+                else -> emptyListJson
+            }
+        }
+        try {
+            val orders = adapter(http).getOpenOrders("BTCUSDT")
+            assertEquals(listOf("regular-1", "stop-1"), orders.map { it.orderId })
+            assertEquals(true, orders.single { it.orderId == "stop-1" }.isTpSl)
+        } finally {
+            http.close()
+        }
+    }
 }

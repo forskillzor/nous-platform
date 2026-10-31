@@ -53,6 +53,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlin.time.Duration.Companion.seconds
 
 
 private suspend fun <T> runCatchingSuspend(block: suspend () -> T): Result<T> =
@@ -926,7 +927,27 @@ class ChartViewModel(
             launch { collectOrdersStream(adapter) }
             launch { collectPositionsStream(adapter) }
             launch { collectBalancesStream(adapter) }
+            launch { reconcileTradingLoop(adapter) }
             adapter.notices()?.let { flow -> launch { flow.collect { notify(it) } } }
+        }
+    }
+
+    /**
+     * Периодически сверяет позиции и открытые ордера с биржей, чтобы TP/SL,
+     * снятые или изменённые вне терминала, исчезали из UI без перезапуска.
+     */
+    private suspend fun reconcileTradingLoop(adapter: TradingAdapter) {
+        while (currentCoroutineContext().isActive) {
+            delay(10.seconds)
+            val symbol = _state.value.currentSymbol
+            runCatchingSuspend { adapter.getPositions() }.onSuccess { positions ->
+                _positions.value = positions.filter { it.symbol.equals(symbol, true) }
+            }
+            runCatchingSuspend { adapter.getOpenOrders(symbol) }.onSuccess { orders ->
+                _openOrders.value = orders.filter {
+                    it.symbol.equals(symbol, true) && it.status == OrderStatus.OPEN
+                }
+            }
         }
     }
 
@@ -1046,19 +1067,7 @@ class ChartViewModel(
         }
     }
 
-    /**
-     * Разместить ордер кликом по графику: ниже текущей цены — BUY, выше — SELL.
-     * Тип — выбранный в панели (для MARKET цена клика игнорируется),
-     * количество — [_tradingQuantity] или minQty инструмента.
-     */
-    fun placeChartOrder(price: Double) {
-        val lastPrice = chartLastPrice() ?: 0.0
-        val side = if (lastPrice > 0 && price >= lastPrice) OrderSide.SELL else OrderSide.BUY
-        val type = _chartOrderType.value
-        submitOrConfirm(buildTradingRequest(side, type, if (type == OrderType.MARKET) 0.0 else price))
-    }
-
-    /** Постановка ордера через `+`: сторона и тип выбраны в меню. */
+    /** Постановка ордера через `+`: сторона и тип выбраны в меню, цена — из точки на графике. */
     fun placeChartOrderAt(price: Double, side: OrderSide, orderType: OrderType) {
         executeOrder(buildTradingRequest(side, orderType, if (orderType == OrderType.MARKET) 0.0 else price))
     }

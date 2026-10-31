@@ -232,6 +232,14 @@ Mind this when writing paths.
   `BestBidAskCommand`, which build and execute `OrderRequest`s.
 - Both panels share `TradingAdapter.replaceOrder(order, price, quantity,
   leverage, marginMode)` (cancel + place) for badge drag and inline qty edits.
+- TP/SL update contract: `null` = keep, `0.0` = clear, `>0` = set. The UI must
+  pass `null` for the untouched side, never the locally cached counterpart.
+  Bybit Partial TP/SL are conditional stop orders, so a successful
+  `orderFilter=StopOrder` fetch is authoritative (empty = no TP/SL); the
+  `positionTpSlCache` fallback is only valid when that REST call fails.
+  `ChartViewModel` reconciles positions/open orders every 10 s (TradingViewModel
+  every 30 s), so cancellations made in the exchange web UI disappear without a
+  restart; never let a stale cache resurrect a canceled TP/SL.
 - Paper engine notices (`TradingAdapter.notices()`) and real-adapter
   `OrderResponse.message` surface as panel snackbars (chart and DOM).
 

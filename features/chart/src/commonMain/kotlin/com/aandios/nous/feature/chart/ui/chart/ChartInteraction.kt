@@ -1080,8 +1080,8 @@ fun CandleStickChartInteraction(
                         onTpSlCommit = { isTp, price ->
                             onSetTradingOrderTpSl?.invoke(
                                 order,
-                                if (isTp) price else order.takeProfitPrice,
-                                if (!isTp) price else order.stopLossPrice,
+                                if (isTp) price else null,
+                                if (isTp) null else price,
                             )
                         },
                         onTpSlRect = { isTp, rect ->
@@ -1168,8 +1168,8 @@ fun CandleStickChartInteraction(
                         onTpSlCommit = { isTp, price ->
                             onSetTradingPositionTpSl?.invoke(
                                 position,
-                                if (isTp) price else position.takeProfitPrice,
-                                if (!isTp) price else position.stopLossPrice,
+                                if (isTp) price else null,
+                                if (isTp) null else price,
                             )
                         },
                         onTpSlRect = { isTp, rect ->
@@ -1228,8 +1228,8 @@ fun CandleStickChartInteraction(
                         onCommit = { kind, p ->
                             onSetTradingPositionTpSl?.invoke(
                                 position,
-                                if (kind) p else position.takeProfitPrice,
-                                if (!kind) p else position.stopLossPrice,
+                                if (kind) p else null,
+                                if (kind) null else p,
                             )
                         },
                         onBounds = { rect ->
@@ -1279,8 +1279,8 @@ fun CandleStickChartInteraction(
                         onCommit = { kind, p ->
                             onSetTradingOrderTpSl?.invoke(
                                 order,
-                                if (kind) p else order.takeProfitPrice,
-                                if (!kind) p else order.stopLossPrice,
+                                if (kind) p else null,
+                                if (kind) null else p,
                             )
                         },
                         onBounds = { rect ->

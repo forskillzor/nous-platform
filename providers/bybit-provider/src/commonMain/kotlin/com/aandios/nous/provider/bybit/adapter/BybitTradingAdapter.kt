@@ -113,10 +113,7 @@ class BybitTradingAdapter internal constructor(
 
     override suspend fun cancelOrder(orderId: String): Boolean {
         if (!tradingClient.hasCredentials) return false
-        val row = tradingClient.signedGet(
-            "/v5/order/realtime",
-            mapOf("category" to CATEGORY, "settleCoin" to SETTLE_COIN, "orderId" to orderId, "limit" to "1"),
-        )["list"]?.asObjectList()?.firstOrNull() ?: return false
+        val row = findRealtimeOrder(orderId) ?: return false
         val symbol = row.string("symbol") ?: return false
         tradingClient.signedPost(
             "/v5/order/cancel",
@@ -126,6 +123,20 @@ class BybitTradingAdapter internal constructor(
                 put("orderId", orderId)
             },
         )
+        val stopOrderType = row.string("stopOrderType")
+        if (stopOrderType?.let {
+                it.contains("TakeProfit", true) || it.contains("StopLoss", true)
+            } == true
+        ) {
+            val index = row.string("positionIdx")?.toIntOrNull() ?: 0
+            val positionId = positionIdentityId(symbol, index)
+            val cached = positionTpSlCache[positionId]
+            positionTpSlCache[positionId] = if (stopOrderType.contains("TakeProfit", true)) {
+                null to cached?.second
+            } else {
+                cached?.first to null
+            }
+        }
         return true
     }
 
@@ -202,20 +213,28 @@ class BybitTradingAdapter internal constructor(
                 ?.let { knownPositionMode = ONE_WAY_MODE }
         val positions = rows.mapNotNull { it.toPosition() }.filter { it.quantity > 0.0 }
         val extraTpSl = fetchPositionTpSl()
+        if (extraTpSl != null) {
+            val activeIds = positions.mapNotNull { it.positionId }.toSet()
+            positionTpSlCache.keys.retainAll(activeIds)
+        }
         return positions.map { position ->
-            val extra = extraTpSl[position.positionId]
-            val updated = position.copy(
-                takeProfitPrice = position.takeProfitPrice ?: extra?.first,
-                stopLossPrice = position.stopLossPrice ?: extra?.second,
-            )
-            val id = position.positionId ?: return@map position
-            positionTpSlCache[id] = updated.takeProfitPrice to updated.stopLossPrice
+            val id = position.positionId
+            val extra = id?.let { extraTpSl?.get(it) }
+            val updated = if (extraTpSl != null) {
+                position.copy(
+                    takeProfitPrice = extra?.first,
+                    stopLossPrice = extra?.second,
+                )
+            } else {
+                position
+            }
+            if (id != null) positionTpSlCache[id] = updated.takeProfitPrice to updated.stopLossPrice
             updated
         }
     }
 
     /** TP/SL Partial приходят как conditional-ордера, а не в position/list. */
-    private suspend fun fetchPositionTpSl(): Map<Long, Pair<Double?, Double?>> {
+    private suspend fun fetchPositionTpSl(): Map<Long, Pair<Double?, Double?>>? {
         val rows = runCatching {
             getPaged(
                 "/v5/order/realtime",
@@ -226,7 +245,7 @@ class BybitTradingAdapter internal constructor(
                     "limit" to "50",
                 ),
             )
-        }.getOrDefault(emptyList())
+        }.getOrNull() ?: return null
         val result = mutableMapOf<Long, Pair<Double?, Double?>>()
         rows.forEach { row ->
             val stopType = row.string("stopOrderType")
@@ -375,13 +394,16 @@ class BybitTradingAdapter internal constructor(
         stopLossPrice: Double?,
     ): Boolean {
         if (!tradingClient.hasCredentials || order.reduceOnly || order.isTpSl) return false
+        val current = findRealtimeOrder(order.orderId, order.symbol)
+        val currentTp = current?.double("takeProfit")?.takeIf { it > 0.0 } ?: order.takeProfitPrice
+        val currentSl = current?.double("stopLoss")?.takeIf { it > 0.0 } ?: order.stopLossPrice
         val finalTp = when {
-            takeProfitPrice == null -> order.takeProfitPrice
+            takeProfitPrice == null -> currentTp
             takeProfitPrice == 0.0 -> null
             else -> takeProfitPrice
         }
         val finalSl = when {
-            stopLossPrice == null -> order.stopLossPrice
+            stopLossPrice == null -> currentSl
             stopLossPrice == 0.0 -> null
             else -> stopLossPrice
         }
@@ -421,9 +443,12 @@ class BybitTradingAdapter internal constructor(
             }
             ?: return false
         val positionId = position.positionId ?: return false
-        val existing = fetchPositionTpSl()[positionId]
-            ?: positionTpSlCache[positionId]
-            ?: (position.takeProfitPrice to position.stopLossPrice)
+        val fresh = fetchPositionTpSl()
+        val existing = if (fresh != null) {
+            fresh[positionId] ?: (null to null)
+        } else {
+            positionTpSlCache[positionId] ?: (position.takeProfitPrice to position.stopLossPrice)
+        }
         val finalTp = when {
             takeProfitPrice == null -> existing.first
             takeProfitPrice == 0.0 -> null
@@ -434,10 +459,12 @@ class BybitTradingAdapter internal constructor(
             stopLossPrice == 0.0 -> null
             else -> stopLossPrice
         }
-        positionTpSlCache[positionId] = finalTp to finalSl
         cancelPositionTpSlOrders(symbol, index)
-        if (finalTp == null && finalSl == null) return true
-        return runCatching {
+        if (finalTp == null && finalSl == null) {
+            positionTpSlCache[positionId] = null to null
+            return true
+        }
+        val ok = runCatching {
             tradingClient.signedPost(
                 "/v5/position/trading-stop",
                 buildJsonObject {
@@ -460,6 +487,8 @@ class BybitTradingAdapter internal constructor(
             )
             true
         }.getOrDefault(false)
+        positionTpSlCache[positionId] = if (ok) finalTp to finalSl else null to null
+        return ok
     }
 
     /** Bybit Partial TP/SL нельзя изменить — снимаем старые TP/SL ордера. */
@@ -467,7 +496,12 @@ class BybitTradingAdapter internal constructor(
         val rows = runCatching {
             getPaged(
                 "/v5/order/realtime",
-                mapOf("category" to CATEGORY, "symbol" to symbol.uppercase(), "limit" to "50"),
+                mapOf(
+                    "category" to CATEGORY,
+                    "symbol" to symbol.uppercase(),
+                    "orderFilter" to "StopOrder",
+                    "limit" to "50",
+                ),
             )
         }.getOrDefault(emptyList())
         rows.filter { row ->
@@ -544,6 +578,25 @@ class BybitTradingAdapter internal constructor(
             "Bybit uses an account-wide margin mode. Select $desired margin in Bybit account settings; " +
                 "the order was not sent."
         }
+    }
+
+    private suspend fun findRealtimeOrder(orderId: String, symbol: String? = null): JsonObject? {
+        val base = buildMap {
+            put("category", CATEGORY)
+            put("orderId", orderId)
+            put("limit", "1")
+            if (symbol != null) put("symbol", symbol.uppercase()) else put("settleCoin", SETTLE_COIN)
+        }
+        val regular = runCatching {
+            tradingClient.signedGet("/v5/order/realtime", base)["list"]?.asObjectList()?.firstOrNull()
+        }.getOrNull()
+        if (regular != null) return regular
+        return runCatching {
+            tradingClient.signedGet(
+                "/v5/order/realtime",
+                base + ("orderFilter" to "StopOrder"),
+            )["list"]?.asObjectList()?.firstOrNull()
+        }.getOrNull()
     }
 
     private suspend fun getPaged(
