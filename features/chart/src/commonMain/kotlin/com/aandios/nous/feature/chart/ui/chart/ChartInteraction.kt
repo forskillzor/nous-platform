@@ -1066,7 +1066,8 @@ fun CandleStickChartInteraction(
                         pricePerPx = tpSlPricePerPx,
                         tpColor = config.candleStyle.bullishColor,
                         slColor = config.candleStyle.bearishColor,
-                        formatter = config.priceFormatter,
+                        surfaceColor = config.backgroundColor.copy(alpha = 0.92f),
+                        gridColor = config.gridColor,
                         onTpSlPreview = { isTp, price ->
                             tpSlPreview = price?.let {
                                 TpSlPreview("o:${order.orderId}:$isTp", isTp, it)
@@ -1154,7 +1155,7 @@ fun CandleStickChartInteraction(
                         pricePerPx = tpSlPricePerPx,
                         tpColor = config.candleStyle.bullishColor,
                         slColor = config.candleStyle.bearishColor,
-                        formatter = config.priceFormatter,
+                        surfaceColor = config.backgroundColor.copy(alpha = 0.92f),
                         onTpSlPreview = { isTp, price ->
                             tpSlPreview = price?.let {
                                 TpSlPreview("p:${positionBadgeKey(position)}:$isTp", isTp, it)
@@ -1482,7 +1483,8 @@ private fun TradingOrderBadge(
     pricePerPx: Double,
     tpColor: Color,
     slColor: Color,
-    formatter: SymbolFormatter,
+    surfaceColor: Color,
+    gridColor: Color,
     onTpSlPreview: (Boolean, Double?) -> Unit,
     onTpSlCommit: (Boolean, Double?) -> Unit,
     onTpSlRect: (Boolean, Rect) -> Unit,
@@ -1517,18 +1519,23 @@ private fun TradingOrderBadge(
 
     Row(
         modifier = modifier
-            .background(color, RoundedCornerShape(2.dp))
-            // Поглощаем клики по бейджу, чтобы клик не размещал новый ордер
+            .height(TRADING_BADGE_HEIGHT)
+            .background(surfaceColor, RoundedCornerShape(2.dp))
+            .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
+            // Кликабельная область на бейдже, чтобы клики не разворачивали график
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
             ) { },
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        GripDots(modifier = Modifier.padding(start = 4.dp, end = 3.dp))
+        GripDots(
+            color = color.copy(alpha = 0.85f),
+            modifier = Modifier.padding(start = 4.dp, end = 3.dp),
+        )
         Text(
             text = title,
-            color = Color.White,
+            color = color,
             fontSize = 10.sp,
             lineHeight = 11.sp,
             fontFamily = TerminalFontFamily,
@@ -1541,7 +1548,7 @@ private fun TradingOrderBadge(
             onValueChange = { qtyText = it },
             singleLine = true,
             textStyle = TextStyle(
-                color = Color(0xFF1A1A1A),
+                color = Color.White,
                 fontSize = 10.sp,
                 lineHeight = 11.sp,
                 textAlign = TextAlign.Center,
@@ -1551,7 +1558,8 @@ private fun TradingOrderBadge(
             cursorBrush = SolidColor(color),
             modifier = Modifier
                 .width(44.dp)
-                .background(Color.White, RoundedCornerShape(2.dp))
+                .background(Color.Black.copy(alpha = 0.35f), RoundedCornerShape(2.dp))
+                .border(1.dp, gridColor.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
                 .padding(horizontal = 3.dp, vertical = 1.dp)
                 .onGloballyPositioned { coords ->
                     // Границы поля qty внутри бейджа — исключены из зоны драга
@@ -1611,7 +1619,7 @@ private fun TradingOrderBadge(
         }
         Text(
             text = "✕",
-            color = Color.White,
+            color = Color.White.copy(alpha = 0.72f),
             fontSize = 11.sp,
             lineHeight = 12.sp,
             fontFamily = TerminalFontFamily,
@@ -1628,7 +1636,10 @@ private fun TradingOrderBadge(
 
 /** Грип перетаскивания (две колонки точек). */
 @Composable
-private fun GripDots(modifier: Modifier = Modifier) {
+private fun GripDots(
+    color: Color = Color.White,
+    modifier: Modifier = Modifier,
+) {
     Canvas(modifier = modifier.size(width = 6.dp, height = 10.dp)) {
         val r = 0.9f * density
         val step = size.height / 3f
@@ -1636,7 +1647,7 @@ private fun GripDots(modifier: Modifier = Modifier) {
         val ys = listOf(step * 0.5f, step * 1.5f, step * 2.5f)
         xs.forEach { x ->
             ys.forEach { y ->
-                drawCircle(Color.White.copy(alpha = 0.9f), radius = r, center = Offset(x, y))
+                drawCircle(color.copy(alpha = 0.9f), radius = r, center = Offset(x, y))
             }
         }
     }
@@ -1660,19 +1671,10 @@ private fun TpSlActionButton(
 ) {
     val isTakeProfit = label == "TP"
     var dragPrice by remember { mutableStateOf<Double?>(null) }
-    Text(
-        text = label,
-        color = color,
-        fontSize = 9.sp,
-        lineHeight = 10.sp,
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
+    Row(
         modifier = modifier
             .onGloballyPositioned { coords -> onBounds(coords.boundsInRoot()) }
-            .background(background, RoundedCornerShape(2.dp))
-            .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
-            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .height(TRADING_BADGE_HEIGHT)
             .pointerInput(label, currentPrice, pricePerPx, referencePrice, enabled) {
                 if (!enabled) return@pointerInput
                 detectDragGestures(
@@ -1702,8 +1704,22 @@ private fun TpSlActionButton(
             .pointerInput(label, enabled) {
                 if (!enabled) return@pointerInput
                 detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, 0.0) })
-            },
-    )
+            }
+            .background(background, RoundedCornerShape(2.dp))
+            .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
+            .padding(horizontal = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontSize = 10.sp,
+            lineHeight = 11.sp,
+            fontFamily = TerminalFontFamily,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+    }
     DisposableEffect(label) {
         onDispose { onBoundsRemoved() }
     }
@@ -1840,7 +1856,7 @@ private fun TradingPositionBadge(
     pricePerPx: Double,
     tpColor: Color,
     slColor: Color,
-    formatter: SymbolFormatter,
+    surfaceColor: Color,
     onTpSlPreview: (Boolean, Double?) -> Unit,
     onTpSlCommit: (Boolean, Double?) -> Unit,
     onTpSlRect: (Boolean, Rect) -> Unit,
@@ -1862,8 +1878,10 @@ private fun TradingPositionBadge(
     }
     Row(
         modifier = modifier
-            .background(sideColor, RoundedCornerShape(2.dp))
-            // Поглощаем клики по бейджу, чтобы клик не размещал новый ордер
+            .height(TRADING_BADGE_HEIGHT)
+            .background(surfaceColor, RoundedCornerShape(2.dp))
+            .border(1.dp, sideColor.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
+            // Кликабельная область на бейдже, чтобы клики не разворачивали график
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -1872,7 +1890,7 @@ private fun TradingPositionBadge(
     ) {
         Text(
             text = title,
-            color = Color.White,
+            color = sideColor,
             fontSize = 10.sp,
             lineHeight = 11.sp,
             fontFamily = TerminalFontFamily,
@@ -1884,6 +1902,7 @@ private fun TradingPositionBadge(
             Box(
                 modifier = Modifier
                     .background(pnlPlateColor, RoundedCornerShape(2.dp))
+                    .border(1.dp, pnlColor.copy(alpha = 0.35f), RoundedCornerShape(2.dp))
                     .padding(horizontal = 4.dp, vertical = 1.dp),
             ) {
                 Text(
@@ -1930,24 +1949,29 @@ private fun TradingPositionBadge(
             )
         }
         onClose?.let { close ->
-            Text(
-                text = "Flatten",
-                color = pnlDownColor,
-                fontSize = 9.sp,
-                lineHeight = 10.sp,
-                fontFamily = TerminalFontFamily,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
+            Row(
                 modifier = Modifier
                     .padding(start = 2.dp)
+                    .height(TRADING_BADGE_HEIGHT)
                     .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
                     .border(1.dp, pnlDownColor.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) { close() }
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-            )
+                    .padding(horizontal = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Flatten",
+                    color = pnlDownColor,
+                    fontSize = 10.sp,
+                    lineHeight = 11.sp,
+                    fontFamily = TerminalFontFamily,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                )
+            }
         }
     }
 }
