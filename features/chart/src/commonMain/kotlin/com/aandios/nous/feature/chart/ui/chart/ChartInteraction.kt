@@ -4,6 +4,7 @@
  */
 
 package com.aandios.nous.feature.chart.ui.chart
+import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.Canvas
@@ -12,7 +13,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -68,6 +68,13 @@ import kotlin.math.max
 
 /** Высота бейджа ордера (перетаскивание/правка qty). */
 private val TRADING_BADGE_HEIGHT = 18.dp
+
+/** Границы вертикального зума цены (Alt+scroll): 1 = autoscale. */
+private const val MIN_VERTICAL_ZOOM = 0.1f
+private const val MAX_VERTICAL_ZOOM = 10f
+
+/** Окно двойного клика для сброса зумов. */
+private const val DOUBLE_CLICK_TIMEOUT_MS = 400L
 
 /**
  * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
@@ -128,6 +135,10 @@ fun CandleStickChartInteraction(
     var chartWidthPx by remember { mutableFloatStateOf(0f) }
     var chartHeightPx by remember { mutableFloatStateOf(0f) }
     var verticalScroll by remember { mutableFloatStateOf(0f) }
+    var verticalZoom by remember { mutableFloatStateOf(1f) }
+    var verticalAnchorPrice by remember { mutableStateOf<Float?>(null) }
+    var lastClickTimeMs by remember { mutableStateOf(0L) }
+    var lastClickPos by remember { mutableStateOf(Offset.Zero) }
     var isCtrlPressed by remember { mutableStateOf(false) }
 
     /** Alt+hover popup position for footprint */
@@ -161,6 +172,7 @@ fun CandleStickChartInteraction(
     /** Шкалы и серия — единая модель для свечей и footprint */
     val timeScale = remember { TimeScale(initialZoom = initialZoomLevel) }
     val priceScale = remember { PriceScale() }
+    val designTokens = LocalTerminalDesignTokens.current
 
     val series: ChartSeries = remember(candles, footprintCandles, config) {
         if (footprintCandles != null) {
@@ -191,6 +203,7 @@ fun CandleStickChartInteraction(
     /** TextMeasurer для измерения текста */
     val textMeasurer = rememberTextMeasurer(cacheSize = 128)
     val density = LocalDensity.current
+    val doubleClickSlopPx = with(density) { 6.dp.toPx() }
 
     val chartFocusRequester = remember { FocusRequester() }
 
@@ -351,7 +364,31 @@ fun CandleStickChartInteraction(
                         }
                     }
 
-                    /** 2. Панорамирование / Alt+вертикаль (footprint) */
+                    /** Double-click: сброс всех зумов (time + vertical) — свечи и footprint */
+                    val nowMs = down.uptimeMillis
+                    val isDoubleClick = lastClickTimeMs != 0L &&
+                        nowMs - lastClickTimeMs in 0..DOUBLE_CLICK_TIMEOUT_MS &&
+                        (down.position - lastClickPos).getDistance() <= doubleClickSlopPx
+                    if (isDoubleClick) {
+                        lastClickTimeMs = 0L
+                        // Съедаем жест до release: второй клик не панорамирует и не ставит ордер
+                        do {
+                            val event = awaitPointerEvent()
+                            event.changes.forEach { it.consume() }
+                            if (event.changes.none { it.pressed }) break
+                        } while (true)
+                        timeScale.setZoom(1f)
+                        timeScale.scrollToLatest(currentCandles.size, chartWidthPx)
+                        verticalScroll = 0f
+                        verticalZoom = 1f
+                        verticalAnchorPrice = null
+                        followLive = true
+                        selectedDrawingId = null
+                        chartFocusRequester.requestFocus()
+                        return@awaitEachGesture
+                    }
+
+                    /** 2. Панорамирование / Alt+вертикаль (и свечи, и footprint) */
                     var previous = down.position
                     var moved = false
                     do {
@@ -368,8 +405,8 @@ fun CandleStickChartInteraction(
                         val deltaY = change.position.y - previous.y
                         previous = change.position
 
-                        if (alt && footprintCandles != null) {
-                            // Вертикальный скролл уровней footprint
+                        if (alt) {
+                            // Единая вертикальная панорама для свечей и footprint
                             verticalScroll = (verticalScroll + deltaY)
                                 .coerceIn(-chartHeightPx * 2f, chartHeightPx * 2f)
                         } else {
@@ -379,8 +416,16 @@ fun CandleStickChartInteraction(
                         }
                         change.consume()
                     } while (true)
-                    // Клик по пустому месту — снимаем выделение рисунка
+                    // Клик по пустому месту — снимаем выделение рисунка.
                     if (!moved) selectedDrawingId = null
+                    // Кандидат на двойной клик: допускаем небольшое дрожание мыши,
+                    // иначе быстрый double-click иногда «съедается» микропаном.
+                    if ((previous - down.position).getDistance() <= doubleClickSlopPx) {
+                        lastClickTimeMs = down.uptimeMillis
+                        lastClickPos = down.position
+                    } else {
+                        lastClickTimeMs = 0L
+                    }
 
                     /** Chart trading: клик по области графика размещает ордер.
                      * Клики по бейджам (грип/qty/✕) ордер не размещают; проверка —
@@ -422,7 +467,8 @@ fun CandleStickChartInteraction(
                     }
                 }
             }
-            // Зум: без Ctrl — от правого края, с Ctrl — от свечи под курсором
+            // Зум: без Ctrl — от правого края, с Ctrl — от свечи под курсором.
+            // Alt+scroll — вертикальный зум цены вокруг курсора (свечи и footprint).
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -431,32 +477,39 @@ fun CandleStickChartInteraction(
                         val sd = change.scrollDelta
                         if (event.type == PointerEventType.Scroll && sd != Offset.Zero) {
                             val factor = if (sd.y < 0) zoomStep else 1f / zoomStep
-                            timeScale.zoomAt(
-                                factor = factor,
-                                mouseX = change.position.x,
-                                anchorAtMouse = event.keyboardModifiers.isCtrlPressed,
-                                chartWidth = chartWidthPx,
-                                candleCount = currentCandles.size,
-                                minZoom = minZoom,
-                                maxZoom = maxZoom,
-                            )
-                            onZoomChange?.invoke(timeScale.zoomLevel)
-                            // Если остались у правого края — follow сохраняется
-                            followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
+                            if (event.keyboardModifiers.isAltPressed) {
+                                val yRatio = if (chartHeightPx > 0f) {
+                                    (change.position.y / chartHeightPx).coerceIn(0f, 1f)
+                                } else {
+                                    0.5f
+                                }
+                                // Цена под курсором в текущем (уже масштабированном) виде
+                                val currentRange = priceScale.range(
+                                    verticalScroll = verticalScroll,
+                                    chartHeight = chartHeightPx,
+                                    verticalZoom = verticalZoom,
+                                    anchorPrice = verticalAnchorPrice,
+                                )
+                                verticalAnchorPrice = currentRange.visibleMax - yRatio * currentRange.range
+                                verticalZoom = (verticalZoom * factor)
+                                    .coerceIn(MIN_VERTICAL_ZOOM, MAX_VERTICAL_ZOOM)
+                            } else {
+                                timeScale.zoomAt(
+                                    factor = factor,
+                                    mouseX = change.position.x,
+                                    anchorAtMouse = event.keyboardModifiers.isCtrlPressed,
+                                    chartWidth = chartWidthPx,
+                                    candleCount = currentCandles.size,
+                                    minZoom = minZoom,
+                                    maxZoom = maxZoom,
+                                )
+                                onZoomChange?.invoke(timeScale.zoomLevel)
+                                // Если остались у правого края — follow сохраняется
+                                followLive = timeScale.isAtLatest(currentCandles.size, chartWidthPx)
+                            }
                             change.consume()
                         }
                     }
-                }
-            }
-            // Double-tap: сброс зума/скролла (footprint)
-            .pointerInput(footprintCandles) {
-                if (footprintCandles != null) {
-                    detectTapGestures(onDoubleTap = {
-                        timeScale.setZoom(1f)
-                        timeScale.scrollToLatest(currentCandles.size, chartWidthPx)
-                        verticalScroll = 0f
-                        followLive = true
-                    })
                 }
             }
             /** Hover-трекинг: crosshair всегда включён (как в TradingView),
@@ -679,7 +732,7 @@ fun CandleStickChartInteraction(
             series.priceRange(startIdx, endIdx)
         }
         priceScale.fit { visibleRange }
-        val priceRange = priceScale.range(verticalScroll, chartHeightPx)
+        val priceRange = priceScale.range(verticalScroll, chartHeightPx, verticalZoom, verticalAnchorPrice)
         currentPriceRange = priceRange
         // Линия и badge текущей цены рисуются, только если цена попадает в видимый диапазон
         val visibleCurrentPrice = currentPrice?.takeIf { it in priceRange.visibleMin..priceRange.visibleMax }
@@ -864,6 +917,7 @@ fun CandleStickChartInteraction(
                     config = config,
                     chartLayout = layout,
                     textMeasurer = textMeasurer,
+                    tokens = designTokens,
                     scrollOffset = clampedOffset,
                     zoomLevel = timeScale.zoomLevel,
                 )

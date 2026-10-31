@@ -159,6 +159,15 @@ class FootprintRendererTest {
         assertEquals(3f, result.sumOf { it.bidVolumeFloat.toDouble() }.toFloat())
     }
 
+    @Test
+    fun `footprint popup bar width scales linearly and clamps`() {
+        assertEquals(0f, footprintPopupBarWidth(volume = 0f, maxVolume = 10f, maxWidth = 100f))
+        assertEquals(0f, footprintPopupBarWidth(volume = 5f, maxVolume = 0f, maxWidth = 100f))
+        assertEquals(50f, footprintPopupBarWidth(volume = 5f, maxVolume = 10f, maxWidth = 100f))
+        assertEquals(100f, footprintPopupBarWidth(volume = 10f, maxVolume = 10f, maxWidth = 100f))
+        assertEquals(100f, footprintPopupBarWidth(volume = 20f, maxVolume = 10f, maxWidth = 100f))
+    }
+
     private fun level(
         price: String,
         bid: String = "0",

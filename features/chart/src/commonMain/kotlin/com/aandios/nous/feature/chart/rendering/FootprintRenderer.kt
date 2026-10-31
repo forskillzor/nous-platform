@@ -4,8 +4,8 @@
  */
 
 package com.aandios.nous.feature.chart.rendering
-import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -17,10 +17,11 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.font.FontWeight
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.FootprintLevel
-import com.aandios.nous.core.ui.format.SymbolFormatter
+import com.aandios.nous.core.ui.theme.TerminalDesignTokens
+import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.feature.chart.model.CandleMetrics
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
@@ -30,8 +31,6 @@ import com.aandios.nous.feature.chart.utils.calculateCandleMetrics
 import com.aandios.nous.feature.chart.utils.priceFromY
 import com.aandios.nous.feature.chart.utils.priceToY
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
-import kotlin.math.abs
-import kotlin.math.min
 
 /**
  * Масштаб Profile-баров по выбранному перцентилю объёмов видимого окна.
@@ -88,7 +87,7 @@ private fun percentile(sorted: FloatArray, count: Int, fraction: Float): Float {
     if (count == 1) return sorted[0]
     val position = (count - 1) * fraction
     val lower = position.toInt()
-    val upper = min(lower + 1, count - 1)
+    val upper = kotlin.math.min(lower + 1, count - 1)
     val weight = position - lower
     return sorted[lower] + (sorted[upper] - sorted[lower]) * weight
 }
@@ -229,7 +228,7 @@ fun DrawScope.drawFootprintCandle(
         if (!footprintLevelVisible(price, nextPrice, visibleMin, visibleMax)) continue
         val priceY = priceToY(price, priceRange, chartHeight)
         val nextPriceY = priceToY(nextPrice, priceRange, chartHeight)
-        val levelHeight = abs(nextPriceY - priceY).coerceAtLeast(1f)
+        val levelHeight = kotlin.math.abs(nextPriceY - priceY).coerceAtLeast(1f)
         val topY = minOf(priceY, nextPriceY)
 
         val bidWidth = profileBarWidth(bidVolume, profileVolumeScale, maxBarWidth)
@@ -271,8 +270,11 @@ fun DrawScope.drawFootprintCandle(
 }
 
 /**
- * Alt+hover popup: rectangle with compact bid/ask volume table for the candle under cursor.
- * When Alt pressed and mouse over footprint candle — shows price levels table.
+ * Alt+hover popup: mirrored footprint view for the candle under the cursor.
+ * Price stays in the center; ask volume grows from the center to the left and
+ * bid volume from the center to the right, matching the footprint candle look.
+ * The shell is built from [TerminalDesignTokens] (panel surface/border/radius,
+ * typography, spacing, selection color).
  */
 fun DrawScope.drawFootprintPopup(
     mousePosition: Offset,
@@ -281,10 +283,10 @@ fun DrawScope.drawFootprintPopup(
     config: ChartConfig,
     chartLayout: ChartLayout,
     textMeasurer: TextMeasurer,
+    tokens: TerminalDesignTokens,
     scrollOffset: Float = 0f,
     zoomLevel: Float = 1f,
 ) {
-    val fontSize = 12.sp
     val candleMetrics = calculateCandleMetrics(zoomLevel)
     val totalW = candleMetrics.width + candleMetrics.spacing
     val virtualX = mousePosition.x - chartLayout.chartMainArea.left + scrollOffset
@@ -309,84 +311,206 @@ fun DrawScope.drawFootprintPopup(
     }
     if (centerIdx < 0) centerIdx = levels.size / 2
 
-    val visibleLevels = 22
+    val fmt = config.priceFormatter
+    val askColor = config.footprintConfig.askColor
+    val bidColor = config.footprintConfig.bidColor
+
+    val headerStyle = TextStyle(
+        color = tokens.colors.accent,
+        fontSize = tokens.typography.microSize,
+        letterSpacing = tokens.typography.compactLetterSpacing,
+        fontFamily = TerminalFontFamily,
+        fontWeight = FontWeight.Medium,
+    )
+    val rowStyle = TextStyle(
+        color = tokens.colors.axisText,
+        fontSize = tokens.typography.compactSize,
+        lineHeight = tokens.typography.compactLineHeight,
+        fontFamily = TerminalFontFamily,
+    )
+    val askTextStyle = rowStyle.copy(color = askColor)
+    val bidTextStyle = rowStyle.copy(color = bidColor)
+    val currentPriceStyle = rowStyle.copy(color = tokens.colors.accent, fontWeight = FontWeight.Bold)
+
+    val headerAsk = textMeasurer.measure(AnnotatedString("ASK"), headerStyle)
+    val headerPrice = textMeasurer.measure(AnnotatedString("PRICE"), headerStyle)
+    val headerBid = textMeasurer.measure(AnnotatedString("BID"), headerStyle)
+    val headerHeight = maxOf(headerAsk.size.height, headerPrice.size.height, headerBid.size.height)
+
+    val paddingX = tokens.spacing.sm.toPx()
+    val paddingY = tokens.spacing.sm.toPx()
+    val columnGap = tokens.spacing.xs.toPx()
+    val rowGap = tokens.spacing.xxs.toPx()
+    val headerGap = tokens.spacing.xs.toPx()
+    val sampleRow = textMeasurer.measure(AnnotatedString("0"), rowStyle)
+    val rowHeight = maxOf(sampleRow.size.height.toFloat(), tokens.typography.compactLineHeight.toPx())
+    val rowStep = rowHeight + rowGap
+
+    // Сколько строк реально влезает в область графика (максимум 22).
+    val availableHeight = chartLayout.chartMainArea.height - paddingY * 2 - headerHeight - headerGap
+    val maxRows = (availableHeight / rowStep).toInt().coerceAtLeast(1)
+    val visibleLevels = minOf(22, maxRows)
     val halfVisible = visibleLevels / 2
-    val startIdx = (centerIdx - halfVisible).coerceAtLeast(0)
-    val endIdx = (centerIdx + halfVisible).coerceAtMost(levels.size)
+    var startIdx = (centerIdx - halfVisible).coerceAtLeast(0)
+    var endIdx = (startIdx + visibleLevels).coerceAtMost(levels.size)
+    startIdx = (endIdx - visibleLevels).coerceAtLeast(0)
     val viewLevels = levels.subList(startIdx, endIdx).reversed()
 
-    val popupBg = Color(0xFF0D1117)
-    val textWhite = Color(0xFFE0E0E0)
-    val darkGreen = Color(0xFF1B5E20)
-    val darkRed = Color(0xFF5D1A1A)
-
-    val title = "Price       Ask    Bid"
-    val titleStyle = TextStyle(color = config.accentColor, fontSize = fontSize, fontFamily = TerminalFontFamily)
-    val titleLayout = textMeasurer.measure(AnnotatedString(title), titleStyle)
-    val rowStyle = TextStyle(color = textWhite, fontSize = fontSize, fontFamily = TerminalFontFamily)
-    val measureStyle = TextStyle(fontSize = fontSize, fontFamily = TerminalFontFamily)
-
-    // Measure column positions: Price | Ask | Bid
-    val priceX = 4f
-    val askX = priceX + textMeasurer.measure(AnnotatedString("  64321.12 "), measureStyle).size.width + 4f
-    val bidX = askX + textMeasurer.measure(AnnotatedString(" 12345 "), measureStyle).size.width + 4f
-
-    val fmt = config.priceFormatter
-
-    val panelW = textMeasurer.measure(AnnotatedString("  64321.12   12345   12345"), measureStyle).size.width + 50f
-    val gapBetweenRows = 2f
-    val rowH = 14f
-    val panelH = titleLayout.size.height + viewLevels.size * rowH + (viewLevels.size - 1) * gapBetweenRows + 10f
+    // Реальные (отформатированные) тексты — без магических sample-строк.
+    val priceTexts = viewLevels.map { fmt.formatPrice(it.priceFloat) }
+    val askTexts = viewLevels.map { fmt.formatVolume(it.askVolumeFloat) }
+    val bidTexts = viewLevels.map { fmt.formatVolume(it.bidVolumeFloat) }
+    val priceTextWidth = priceTexts.maxOfOrNull {
+        textMeasurer.measure(AnnotatedString(it), rowStyle).size.width.toFloat()
+    } ?: 0f
+    val volumeTextWidth = maxOf(
+        askTexts.maxOfOrNull {
+            textMeasurer.measure(AnnotatedString(it), askTextStyle).size.width.toFloat()
+        } ?: 0f,
+        bidTexts.maxOfOrNull {
+            textMeasurer.measure(AnnotatedString(it), bidTextStyle).size.width.toFloat()
+        } ?: 0f,
+    )
+    val barMax = maxOf(priceTextWidth, volumeTextWidth) * 1.35f
+    val priceColumnWidth = priceTextWidth + columnGap * 2
+    val contentWidth = priceColumnWidth + barMax * 2
+    val panelWidth = contentWidth + paddingX * 2
+    val panelHeight = paddingY * 2 + headerHeight + headerGap +
+        viewLevels.size * rowHeight + (viewLevels.size - 1) * rowGap
 
     // Position: right of candle if space, else left
     val candleX = candleIndex * totalW - scrollOffset + candleMetrics.width / 2
-    val panelX = if (candleX + panelW + 20f > chartLayout.chartMainArea.width) maxOf(candleX - panelW - 10f, 2f) else candleX + 10f
-    val panelY = maxOf(mousePosition.y - chartLayout.chartMainArea.top - panelH / 2, 0f)
+    val panelX = if (candleX + panelWidth + 20f > chartLayout.chartMainArea.width) {
+        maxOf(candleX - panelWidth - 10f, 2f)
+    } else {
+        candleX + 10f
+    }
+    val panelY = (mousePosition.y - chartLayout.chartMainArea.top - panelHeight / 2f)
+        .coerceIn(0f, (chartLayout.chartMainArea.height - panelHeight).coerceAtLeast(0f))
 
-    // Background
-    drawRect(color = popupBg, topLeft = Offset(panelX, panelY), size = Size(panelW, panelH))
-    drawRect(color = config.accentColor.copy(alpha = 0.3f), topLeft = Offset(panelX, panelY), size = Size(panelW, panelH), style = Stroke(1f))
+    val shellRadius = CornerRadius(tokens.cornerRadii.workspacePanel.toPx())
+    drawRoundRect(
+        color = tokens.colors.panelSurface,
+        topLeft = Offset(panelX, panelY),
+        size = Size(panelWidth, panelHeight),
+        cornerRadius = shellRadius,
+    )
+    drawRoundRect(
+        color = tokens.colors.panelBorder,
+        topLeft = Offset(panelX, panelY),
+        size = Size(panelWidth, panelHeight),
+        cornerRadius = shellRadius,
+        style = Stroke(tokens.dimensions.borderWidth.toPx()),
+    )
 
-    // Title
-    drawText(titleLayout, topLeft = Offset(panelX + 4f, panelY + 3f))
+    val contentLeft = panelX + paddingX
+    val contentRight = panelX + panelWidth - paddingX
+    val centerX = panelX + panelWidth / 2f
+    val priceLeft = centerX - priceTextWidth / 2f
+    val priceRight = centerX + priceTextWidth / 2f
+    val askValueRight = priceLeft - columnGap
+    val bidValueLeft = priceRight + columnGap
 
-    val maxVol = viewLevels.maxOfOrNull { maxOf(it.bidVolumeFloat, it.askVolumeFloat) } ?: 1f
+    // Header: ASK слева · PRICE по центру · BID справа
+    val headerTop = panelY + paddingY
+    drawText(
+        textLayoutResult = headerAsk,
+        topLeft = Offset(askValueRight - headerAsk.size.width, headerTop),
+    )
+    drawText(
+        textLayoutResult = headerPrice,
+        topLeft = Offset(centerX - headerPrice.size.width / 2f, headerTop),
+    )
+    drawText(
+        textLayoutResult = headerBid,
+        topLeft = Offset(bidValueLeft, headerTop),
+    )
+    val dividerY = headerTop + headerHeight + headerGap / 2f
+    drawLine(
+        color = tokens.colors.panelBorder,
+        start = Offset(contentLeft, dividerY),
+        end = Offset(contentRight, dividerY),
+        strokeWidth = tokens.dimensions.dividerThickness.toPx(),
+    )
 
-    // Rows
-    var yOff = panelY + titleLayout.size.height + 5f
+    val maxVol = viewLevels.maxOfOrNull { maxOf(it.bidVolumeFloat, it.askVolumeFloat) }
+        ?.takeIf { it > 0f } ?: 1f
+
+    val rowRadius = CornerRadius(tokens.cornerRadii.smallCard.toPx())
+    var rowTop = headerTop + headerHeight + headerGap
     viewLevels.forEachIndexed { i, level ->
         val originalIdx = viewLevels.size - 1 - i + startIdx
-        val isCurrent = (originalIdx == centerIdx)
+        val isCurrent = originalIdx == centerIdx
 
         if (isCurrent) {
-            drawRect(color = Color.White.copy(alpha = 0.06f), topLeft = Offset(panelX + 2f, yOff - 1f), size = Size(panelW - 4f, rowH + 2f))
+            drawRoundRect(
+                color = tokens.colors.selection,
+                topLeft = Offset(contentLeft, rowTop - rowGap / 2f),
+                size = Size(contentWidth, rowHeight + rowGap),
+                cornerRadius = rowRadius,
+            )
         }
 
-        // Price text
-        val priceText = fmt.formatPrice(level.priceFloat)
-        val priceLayout = textMeasurer.measure(AnnotatedString(priceText), rowStyle)
-        drawText(priceLayout, topLeft = Offset(panelX + priceX, yOff))
-
-        // Ask volume bar + text (left column after price)
         val askVol = level.askVolumeFloat
-        val askBarW = (askVol / maxVol * 30f).coerceAtLeast(if (askVol > 0f) 2f else 0f)
-        val askText = fmt.formatVolume(askVol)
-        val askLayout = textMeasurer.measure(AnnotatedString(askText), rowStyle)
-        val askTextX = panelX + askX
-        if (askBarW > 0f) drawRect(color = darkRed, topLeft = Offset(askTextX + askLayout.size.width + 2f, yOff + 2f), size = Size(askBarW, maxOf(rowH - 4f, 1f)))
-        drawText(askLayout, topLeft = Offset(askTextX, yOff))
-
-        // Bid volume bar + text (right column after ask)
         val bidVol = level.bidVolumeFloat
-        val bidBarW = (bidVol / maxVol * 30f).coerceAtLeast(if (bidVol > 0f) 2f else 0f)
-        val bidText = fmt.formatVolume(bidVol)
-        val bidLayout = textMeasurer.measure(AnnotatedString(bidText), rowStyle)
-        val bidTextX = panelX + bidX
-        if (bidBarW > 0f) drawRect(color = darkGreen, topLeft = Offset(bidTextX + bidLayout.size.width + 2f, yOff + 2f), size = Size(bidBarW, maxOf(rowH - 4f, 1f)))
-        drawText(bidLayout, topLeft = Offset(bidTextX, yOff))
+        val askBarWidth = footprintPopupBarWidth(askVol, maxVol, barMax)
+        val bidBarWidth = footprintPopupBarWidth(bidVol, maxVol, barMax)
 
-        yOff += rowH + gapBetweenRows
+        // Ask: гистограмма от центра влево
+        if (askBarWidth > 0f) {
+            drawRect(
+                color = askColor.copy(alpha = 0.35f),
+                topLeft = Offset(priceLeft - askBarWidth, rowTop),
+                size = Size(askBarWidth, rowHeight),
+            )
+        }
+        // Bid: гистограмма от центра вправо
+        if (bidBarWidth > 0f) {
+            drawRect(
+                color = bidColor.copy(alpha = 0.35f),
+                topLeft = Offset(priceRight, rowTop),
+                size = Size(bidBarWidth, rowHeight),
+            )
+        }
+
+        val priceLayout = textMeasurer.measure(
+            AnnotatedString(priceTexts[i]),
+            if (isCurrent) currentPriceStyle else rowStyle,
+        )
+        drawText(
+            textLayoutResult = priceLayout,
+            topLeft = Offset(
+                centerX - priceLayout.size.width / 2f,
+                rowTop + (rowHeight - priceLayout.size.height) / 2f,
+            ),
+        )
+
+        val askLayout = textMeasurer.measure(AnnotatedString(askTexts[i]), askTextStyle)
+        drawText(
+            textLayoutResult = askLayout,
+            topLeft = Offset(
+                askValueRight - askLayout.size.width,
+                rowTop + (rowHeight - askLayout.size.height) / 2f,
+            ),
+        )
+
+        val bidLayout = textMeasurer.measure(AnnotatedString(bidTexts[i]), bidTextStyle)
+        drawText(
+            textLayoutResult = bidLayout,
+            topLeft = Offset(
+                bidValueLeft,
+                rowTop + (rowHeight - bidLayout.size.height) / 2f,
+            ),
+        )
+
+        rowTop += rowStep
     }
+}
+
+/** Ширина popup-гистограммы: линейно по объёму, максимум — [maxWidth]. */
+internal fun footprintPopupBarWidth(volume: Float, maxVolume: Float, maxWidth: Float): Float {
+    if (volume <= 0f || maxVolume <= 0f || maxWidth <= 0f) return 0f
+    return (volume / maxVolume).coerceIn(0f, 1f) * maxWidth
 }
 
 fun aggregateLevels(levels: List<FootprintLevel>, aggLevel: AggregationLevel, tickSize: Double): List<FootprintLevel> {

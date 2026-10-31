@@ -55,6 +55,42 @@ class PriceScaleTest {
     }
 
     @Test
+    fun `vertical zoom scales around the anchor`() {
+        val scale = PriceScale()
+        scale.fit { calculatePriceRangeWithCurrentPrice(candles(), currentPrice = null) }
+        val base = scale.range(verticalScroll = 0f, chartHeight = 200f)
+        val anchorPrice = base.visibleMax - 0.5f * base.range
+
+        val zoomed = scale.range(
+            verticalScroll = 0f,
+            chartHeight = 200f,
+            verticalZoom = 2f,
+            anchorPrice = anchorPrice,
+        )
+
+        assertEquals(anchorPrice + base.range / 4f, zoomed.visibleMax, 0.001f)
+        assertEquals(anchorPrice - base.range / 4f, zoomed.visibleMin, 0.001f)
+        assertEquals(base.range / 2f, zoomed.range, 0.001f)
+    }
+
+    @Test
+    fun `vertical zoom at the top keeps the upper bound fixed`() {
+        val scale = PriceScale()
+        scale.fit { calculatePriceRangeWithCurrentPrice(candles(), currentPrice = null) }
+        val base = scale.range(verticalScroll = 0f, chartHeight = 200f)
+
+        val zoomed = scale.range(
+            verticalScroll = 0f,
+            chartHeight = 200f,
+            verticalZoom = 2f,
+            anchorPrice = base.visibleMax,
+        )
+
+        assertEquals(base.visibleMax, zoomed.visibleMax, 0.001f)
+        assertEquals(base.range / 2f, zoomed.range, 0.001f)
+    }
+
+    @Test
     fun `fit is idempotent for the same visible data`() {
         val scale = PriceScale()
         scale.fit { calculatePriceRangeWithCurrentPrice(candles(), currentPrice = null) }
