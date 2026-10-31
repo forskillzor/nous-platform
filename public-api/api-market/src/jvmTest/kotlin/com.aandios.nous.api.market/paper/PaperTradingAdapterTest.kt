@@ -333,7 +333,8 @@ class PaperTradingAdapterTest {
         )
         adapter.setMarkPrice("BTCUSDT", 111.0)
         assertEquals(0, adapter.portfolio().positions.size)
-        assertEquals(11.0, adapter.portfolio().history.last().pnl)
+        // TP — лимитный, исполняется по trigger-цене 110, а не по 111.
+        assertEquals(10.0, adapter.portfolio().history.last().pnl)
     }
 
     @Test
@@ -364,7 +365,19 @@ class PaperTradingAdapterTest {
         assertEquals(120.0, updated.takeProfitPrice)
         assertEquals(90.0, updated.stopLossPrice)
 
-        assertTrue(adapter.setPositionTpSl(updated, takeProfitPrice = null, stopLossPrice = null))
+        // null = keep: передвигаем только TP, SL должен остаться.
+        assertTrue(adapter.setPositionTpSl(updated, takeProfitPrice = 125.0, stopLossPrice = null))
+        val movedTp = adapter.getPositions().single()
+        assertEquals(125.0, movedTp.takeProfitPrice)
+        assertEquals(90.0, movedTp.stopLossPrice)
+
+        // null = keep: передвигаем только SL, TP должен остаться.
+        assertTrue(adapter.setPositionTpSl(movedTp, takeProfitPrice = null, stopLossPrice = 85.0))
+        val movedSl = adapter.getPositions().single()
+        assertEquals(125.0, movedSl.takeProfitPrice)
+        assertEquals(85.0, movedSl.stopLossPrice)
+
+        assertTrue(adapter.setPositionTpSl(movedSl, takeProfitPrice = 0.0, stopLossPrice = 0.0))
         val cleared = adapter.getPositions().single()
         assertEquals(null, cleared.takeProfitPrice)
         assertEquals(null, cleared.stopLossPrice)

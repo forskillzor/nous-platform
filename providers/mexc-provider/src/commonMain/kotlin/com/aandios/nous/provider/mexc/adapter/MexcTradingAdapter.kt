@@ -152,12 +152,16 @@ class MexcTradingAdapter(
             request.side == OrderSide.BUY -> 1                         // open long
             else -> 3                                                 // open short
         }
+        if (request.orderType == OrderType.STOP) {
+            return OrderResponse("", success = false, message = "Stop orders are not supported on MEXC yet")
+        }
         val type = when (request.orderType) {
             OrderType.LIMIT -> 1
             OrderType.POST_ONLY -> 2
             OrderType.IOC -> 3
             OrderType.FOK -> 4
             OrderType.MARKET -> 5
+            OrderType.STOP -> 5
         }
         val body = buildJsonObject {
             put("symbol", toMexcSymbol(request.symbol))
@@ -345,42 +349,35 @@ class MexcTradingAdapter(
             .firstOrNull { it.positionId == positionId.toString() }
         return runCatching {
             restGate.execute(key = "stoporders:position:$positionId", weight = 20) {
-                val response = when {
-                    tp == null && sl == null -> {
-                        if (existing == null) return@execute true
-                        tradingClient.signedPost(
-                            "api/v1/private/stoporder/cancel",
-                            buildJsonArray {
-                                add(buildJsonObject { put("stopPlanOrderId", existing.id) })
-                            }.toString(),
-                        )
-                    }
-                    existing != null -> tradingClient.signedPost(
-                        "api/v1/private/stoporder/change_plan_price",
-                        buildJsonObject {
-                            put("stopPlanOrderId", existing.id)
-                            put("takeProfitPrice", formatDecimal(tp ?: 0.0))
-                            put("stopLossPrice", formatDecimal(sl ?: 0.0))
-                            put("profitTrend", 1)
-                            put("lossTrend", 1)
+                if (existing != null) {
+                    tradingClient.signedPost(
+                        "api/v1/private/stoporder/cancel",
+                        buildJsonArray {
+                            add(buildJsonObject { put("stopPlanOrderId", existing.id) })
                         }.toString(),
                     )
-                    else -> {
-                        val spec = contractSpec(position.symbol)
-                        val vol = toContracts(position.quantity, spec)
-                        tradingClient.signedPost(
-                            "api/v1/private/stoporder/place",
-                            buildJsonObject {
-                                put("positionId", positionId)
-                                put("vol", formatDecimal(vol))
-                                put("takeProfitPrice", formatDecimal(tp ?: 0.0))
-                                put("stopLossPrice", formatDecimal(sl ?: 0.0))
-                                put("profitTrend", 1)
-                                put("lossTrend", 1)
-                            }.toString(),
-                        )
-                    }
                 }
+                if (tp == null && sl == null) return@execute true
+                val spec = contractSpec(position.symbol)
+                val vol = toContracts(position.quantity, spec)
+                val response = tradingClient.signedPost(
+                    "api/v1/private/stoporder/place",
+                    buildJsonObject {
+                        put("positionId", positionId)
+                        put("vol", formatDecimal(vol))
+                        tp?.let {
+                            put("takeProfitPrice", formatDecimal(it))
+                            put("takeProfitType", 1)
+                            put("takeProfitOrderPrice", formatDecimal(it))
+                        }
+                        sl?.let {
+                            put("stopLossPrice", formatDecimal(it))
+                            put("stopLossType", 0)
+                        }
+                        put("profitTrend", 1)
+                        put("lossTrend", 1)
+                    }.toString(),
+                )
                 response.jsonObject["success"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
             }
         }.getOrDefault(false)

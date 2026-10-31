@@ -306,7 +306,7 @@ fun ChartTitleToolbar(
     indicatorPresetRepository: IndicatorPresetRepository? = null,
 ) {
     val uiState by chartViewModel.state.collectAsState()
-    val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
+    val orderSettingsVisible by chartViewModel.orderSettingsVisible.collectAsState()
     val explorerRows by chartViewModel.explorerRows.collectAsState()
 
     ChartToolbar(
@@ -322,8 +322,8 @@ fun ChartTitleToolbar(
         onFpAggregationChange = { chartViewModel.dispatch(ChartIntent.SetFpAggregation(it)) },
         fpProfileScale = uiState.fpProfileScale,
         onFpProfileScaleChange = { chartViewModel.dispatch(ChartIntent.SetFpProfileScale(it)) },
-        tradingEnabled = tradingEnabled,
-        onTradingToggle = { chartViewModel.setTradingEnabled(it) },
+        tradingEnabled = orderSettingsVisible,
+        onTradingToggle = { chartViewModel.toggleOrderSettings() },
         onManageWatchlist = onManageWatchlist,
         footprintSymbols = uiState.symbolsWithFootprint,
         modifier = modifier,

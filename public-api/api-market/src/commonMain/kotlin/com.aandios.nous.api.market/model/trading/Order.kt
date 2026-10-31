@@ -26,6 +26,11 @@ data class Order(
     /** Привязанные к ордеру TP/SL (до филла), если биржа их отдаёт. */
     val takeProfitPrice: Double? = null,
     val stopLossPrice: Double? = null,
+    /** TP/SL conditional-ордер (показывается в Orders как TP/SL строка). */
+    val isTpSl: Boolean = false,
+    val isTakeProfit: Boolean? = null,
+    val triggerPrice: Double? = null,
+    val parentPositionId: Long? = null,
     val timestamp: Long = 0,
     val updatedAt: Long = 0,
 )

@@ -59,7 +59,10 @@ fun CandleStickChart(
     /** Inverse (COIN-M): номинал контракта (USD) и признак — для PnL. */
     contractSize: Double = 1.0,
     inverse: Boolean = false,
-    onChartTradingClick: ((Double) -> Unit)? = null,
+    chartOrderType: com.aandios.nous.api.market.model.orderbook.OrderType =
+        com.aandios.nous.api.market.model.orderbook.OrderType.LIMIT,
+    onOrderTypeChanged: (com.aandios.nous.api.market.model.orderbook.OrderType) -> Unit = {},
+    onPlaceTradingOrderAt: ((Double, com.aandios.nous.api.market.model.orderbook.OrderSide, com.aandios.nous.api.market.model.orderbook.OrderType) -> Unit)? = null,
     onCancelTradingOrder: ((Order) -> Unit)? = null,
     onMoveTradingOrder: ((Order, Double) -> Unit)? = null,
     onResizeTradingOrder: ((Order, Double) -> Unit)? = null,
@@ -94,7 +97,9 @@ fun CandleStickChart(
         symbolBase = symbolBase,
         contractSize = contractSize,
         inverse = inverse,
-        onChartTradingClick = onChartTradingClick,
+        chartOrderType = chartOrderType,
+        onOrderTypeChanged = onOrderTypeChanged,
+        onPlaceTradingOrderAt = onPlaceTradingOrderAt,
         onCancelTradingOrder = onCancelTradingOrder,
         onMoveTradingOrder = onMoveTradingOrder,
         onResizeTradingOrder = onResizeTradingOrder,

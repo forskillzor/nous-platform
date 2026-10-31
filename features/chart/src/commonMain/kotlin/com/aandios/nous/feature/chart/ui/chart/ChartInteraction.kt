@@ -38,6 +38,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isAltPressed
 import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -53,6 +54,7 @@ import androidx.compose.ui.unit.*
 import com.aandios.nous.api.market.model.Candle
 import com.aandios.nous.api.market.model.FootprintCandle
 import com.aandios.nous.api.market.model.orderbook.OrderSide
+import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeSide
@@ -88,6 +90,7 @@ private data class TpSlPreview(
     val isTakeProfit: Boolean,
     val price: Double,
 )
+
 
 /**
  * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
@@ -127,7 +130,11 @@ fun CandleStickChartInteraction(
     /** Inverse (COIN-M): номинал контракта в USD и признак — для PnL. */
     contractSize: Double = 1.0,
     inverse: Boolean = false,
-    onChartTradingClick: ((Double) -> Unit)? = null,
+
+    /** Тип ордера для `+` (LIMIT/STOP), выбирается ПКМ. */
+    chartOrderType: OrderType = OrderType.LIMIT,
+    onOrderTypeChanged: (OrderType) -> Unit = {},
+    onPlaceTradingOrderAt: ((Double, OrderSide, OrderType) -> Unit)? = null,
 
     /** Отмена ордера с графика (✕ на бейдже). */
     onCancelTradingOrder: ((Order) -> Unit)? = null,
@@ -208,12 +215,7 @@ fun CandleStickChartInteraction(
     /** Актуальные данные для обработчиков жестов (pointerInput не перезапускается) */
     val currentCandles by rememberUpdatedState(candles)
     val currentTradingOrders by rememberUpdatedState(tradingOrders)
-    val currentTradingPositions by rememberUpdatedState(tradingPositions)
 
-    /** Колбэки Trading, включённого ПОСЛЕ старта pointerInput, иначе жест
-     *  держит старый null и клик «не размещает» до пересоздания композиции
-     */
-    val currentOnChartTradingClick by rememberUpdatedState(onChartTradingClick)
     val currentOnMoveTradingOrder by rememberUpdatedState(onMoveTradingOrder)
 
     val zoomStep = 1.25f
@@ -347,7 +349,7 @@ fun CandleStickChartInteraction(
                     if (currentOnMoveTradingOrder != null && currentTradingOrders.isNotEmpty()) {
                         val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
                         val hitOrder = currentTradingOrders.firstOrNull { o ->
-                            if (o.price <= 0.0) return@firstOrNull false
+                            if (o.price <= 0.0 || o.isTpSl) return@firstOrNull false
                             val size = orderBadgeSizes[o.orderId] ?: return@firstOrNull false
                             val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
                             if (y < 0f || y > chartHeightPx) return@firstOrNull false
@@ -454,45 +456,6 @@ fun CandleStickChartInteraction(
                         lastClickPos = down.position
                     } else {
                         lastClickTimeMs = 0L
-                    }
-
-                    /** Chart trading: клик по области графика размещает ордер.
-                     * Клики по бейджам (грип/qty/✕) ордер не размещают; проверка —
-                     * по измеренным размерам бейджей (down.isConsumed не годится:
-                     * double-tap детектор footprint потребляет down в каждом клике).
-                     */
-                    if (!moved && currentOnChartTradingClick != null) {
-                        val badgeH = with(density) { TRADING_BADGE_HEIGHT.toPx() }
-                        val overBadge = currentTradingOrders.any { o ->
-                            val size = orderBadgeSizes[o.orderId] ?: return@any false
-                            if (o.price <= 0.0) return@any false
-                            val y = priceToY(o.price.toFloat(), currentPriceRange, chartHeightPx)
-                            val left = chartWidthPx / 2f - size.width / 2f
-                            val top = y - badgeH / 2f
-                            down.position.x in left..(left + size.width.toFloat()) &&
-                                    down.position.y in top..(top + badgeH)
-                        } || currentTradingPositions.any { p ->
-                            val key = positionBadgeKey(p)
-                            val size = positionBadgeSizes[key] ?: return@any false
-                            if (p.avgPrice <= 0.0) return@any false
-                            val y = priceToY(p.avgPrice.toFloat(), currentPriceRange, chartHeightPx)
-                            val left = chartWidthPx / 2f - size.width / 2f
-                            val top = y - badgeH / 2f
-                            down.position.x in left..(left + size.width.toFloat()) &&
-                                    down.position.y in top..(top + badgeH)
-                        }
-                        // chartMainArea — Rect(0, 0, chartWidthPx, chartHeightPx)
-                        if (!overBadge &&
-                            down.position.x >= 0f && down.position.x <= chartWidthPx &&
-                            down.position.y >= 0f && down.position.y <= chartHeightPx
-                        ) {
-                            val price = priceFromY(
-                                y = down.position.y,
-                                priceRange = currentPriceRange,
-                                chartHeight = chartHeightPx,
-                            )
-                            if (price > 0) currentOnChartTradingClick?.invoke(price.toDouble())
-                        }
                     }
                 }
             }
@@ -899,6 +862,7 @@ fun CandleStickChartInteraction(
                 }
             }
             tradingOrders.forEach { o ->
+                if (o.reduceOnly || o.isTpSl) return@forEach
                 val prefix = "o:${o.orderId}"
                 o.takeProfitPrice?.let {
                     if (tpSlPreview?.key != "$prefix:true") {
@@ -1065,7 +1029,7 @@ fun CandleStickChartInteraction(
                     scrollOffset = clampedOffset,
                     zoomLevel = timeScale.zoomLevel,
                     indicatorValueRanges = indicatorValueRanges,
-                    tradingEnabled = onChartTradingClick != null,
+                    tradingEnabled = false,
                     currentPrice = currentPrice ?: candles.lastOrNull()?.close,
                 )
             }
@@ -1080,6 +1044,7 @@ fun CandleStickChartInteraction(
          */
         if (tradingOrders.isNotEmpty()) {
             tradingOrders.forEach { order ->
+                if (order.isTpSl) return@forEach
                 val displayPrice = if (draggingOrderId == order.orderId) {
                     draggingOrderPrice ?: order.price
                 } else {
@@ -1252,7 +1217,7 @@ fun CandleStickChartInteraction(
                         price = effectivePrice,
                         referencePrice = position.avgPrice,
                         isLong = isLong,
-                        tickSize = config.priceFormatter.tickSize,
+                        formatter = config.priceFormatter,
                         color = if (isTp) config.candleStyle.bullishColor else designTokens.colors.warning,
                         background = config.backgroundColor.copy(alpha = 0.92f),
                         enabled = onSetTradingPositionTpSl != null,
@@ -1281,10 +1246,9 @@ fun CandleStickChartInteraction(
             }
         }
         tradingOrders.forEach { order ->
-            if (order.price <= 0.0) return@forEach
+            if (order.price <= 0.0 || order.reduceOnly || order.isTpSl) return@forEach
             val prefix = "o:${order.orderId}"
-            val isLong = if (order.reduceOnly) order.side == OrderSide.SELL
-            else order.side == OrderSide.BUY
+            val isLong = order.side == OrderSide.BUY
             listOf(true to order.takeProfitPrice, false to order.stopLossPrice).forEach { (isTp, price) ->
                 val key = "$prefix:$isTp"
                 val preview = tpSlPreview?.takeIf { it.key == key }?.price
@@ -1304,7 +1268,7 @@ fun CandleStickChartInteraction(
                         price = effectivePrice,
                         referencePrice = order.price,
                         isLong = isLong,
-                        tickSize = config.priceFormatter.tickSize,
+                        formatter = config.priceFormatter,
                         color = if (isTp) config.candleStyle.bullishColor else designTokens.colors.warning,
                         background = config.backgroundColor.copy(alpha = 0.92f),
                         enabled = onSetTradingOrderTpSl != null,
@@ -1330,6 +1294,65 @@ fun CandleStickChartInteraction(
                         onBoundsRemoved = { tpSlChipRects.remove("$key:level") },
                     )
                 }
+            }
+        }
+        // Кнопка «+» на линии crosshair: тип ордера — из Trading-меню, сторона — по цене.
+        val crosshairPrice = mousePosition
+            ?.takeIf { isCrosshairVisible && it.y >= layout.chartMainArea.top && it.y <= layout.chartMainArea.bottom }
+            ?.let { priceFromY(it.y - layout.chartMainArea.top, priceRange, layout.chartMainArea.height) }
+        if (crosshairPrice != null && crosshairPrice > 0f && onPlaceTradingOrderAt != null) {
+            val plusY = mousePosition?.y ?: layout.chartMainArea.top
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(
+                        x = with(density) { layout.priceScaleArea.left.toDp() },
+                        y = with(density) { plusY.toDp() } - 9.dp,
+                    )
+                    .size(18.dp)
+                    .background(config.backgroundColor.copy(alpha = 0.92f), RoundedCornerShape(3.dp))
+                    .border(1.dp, config.accentColor, RoundedCornerShape(3.dp))
+                    .pointerInput(chartOrderType) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                if (event.type == PointerEventType.Press) {
+                                    if (!event.buttons.isSecondaryPressed) {
+                                        val price = mousePosition?.let {
+                                            priceFromY(
+                                                it.y - layout.chartMainArea.top,
+                                                priceRange,
+                                                layout.chartMainArea.height,
+                                            ).toDouble()
+                                        }
+                                        if (price != null && price > 0.0) {
+                                            val lastPrice = currentPrice?.toDouble()
+                                                ?: candles.lastOrNull()?.close?.toDouble()
+                                                ?: price
+                                            val side =
+                                                if (lastPrice > 0.0 && price >= lastPrice) OrderSide.SELL
+                                                else OrderSide.BUY
+                                            val type =
+                                                if (chartOrderType == OrderType.STOP) OrderType.STOP
+                                                else OrderType.LIMIT
+                                            onPlaceTradingOrderAt.invoke(price, side, type)
+                                        }
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = "+",
+                    color = config.accentColor,
+                    fontSize = 14.sp,
+                    lineHeight = 14.sp,
+                    fontFamily = TerminalFontFamily,
+                    fontWeight = FontWeight.Bold,
+                )
             }
         }
         // Кнопка «к последней свече» в правом нижнем углу области графика
@@ -1395,6 +1418,7 @@ private fun DrawScope.drawTradingOrderLines(
     sellColor: Color,
 ) {
     orders.forEach { order ->
+        if (order.isTpSl) return@forEach
         val price = if (order.orderId == draggingOrderId && draggingPrice != null) {
             draggingPrice
         } else {
@@ -1550,34 +1574,38 @@ private fun TradingOrderBadge(
                 Box(contentAlignment = Alignment.Center) { inner() }
             },
         )
-        TpSlActionButton(
-            label = "TP",
-            color = tpColor,
-            background = Color.Black.copy(alpha = 0.25f),
-            enabled = true,
-            referencePrice = order.price,
-            currentPrice = takeProfitPrice,
-            pricePerPx = pricePerPx,
-            onPreview = onTpSlPreview,
-            onCommit = onTpSlCommit,
-            onBounds = { rect -> onTpSlRect(true, rect) },
-            onBoundsRemoved = { onTpSlRectRemoved(true) },
-            modifier = Modifier.padding(start = 3.dp),
-        )
-        TpSlActionButton(
-            label = "SL",
-            color = slColor,
-            background = Color.Black.copy(alpha = 0.25f),
-            enabled = true,
-            referencePrice = order.price,
-            currentPrice = stopLossPrice,
-            pricePerPx = pricePerPx,
-            onPreview = onTpSlPreview,
-            onCommit = onTpSlCommit,
-            onBounds = { rect -> onTpSlRect(false, rect) },
-            onBoundsRemoved = { onTpSlRectRemoved(false) },
-            modifier = Modifier.padding(start = 2.dp),
-        )
+        if (takeProfitPrice == null && !order.reduceOnly) {
+            TpSlActionButton(
+                label = "TP",
+                color = tpColor,
+                background = Color.Black.copy(alpha = 0.25f),
+                enabled = true,
+                referencePrice = order.price,
+                currentPrice = null,
+                pricePerPx = pricePerPx,
+                onPreview = onTpSlPreview,
+                onCommit = onTpSlCommit,
+                onBounds = { rect -> onTpSlRect(true, rect) },
+                onBoundsRemoved = { onTpSlRectRemoved(true) },
+                modifier = Modifier.padding(start = 3.dp),
+            )
+        }
+        if (stopLossPrice == null && !order.reduceOnly) {
+            TpSlActionButton(
+                label = "SL",
+                color = slColor,
+                background = Color.Black.copy(alpha = 0.25f),
+                enabled = true,
+                referencePrice = order.price,
+                currentPrice = null,
+                pricePerPx = pricePerPx,
+                onPreview = onTpSlPreview,
+                onCommit = onTpSlCommit,
+                onBounds = { rect -> onTpSlRect(false, rect) },
+                onBoundsRemoved = { onTpSlRectRemoved(false) },
+                modifier = Modifier.padding(start = 2.dp),
+            )
+        }
         Text(
             text = "✕",
             color = Color.White,
@@ -1670,7 +1698,7 @@ private fun TpSlActionButton(
             }
             .pointerInput(label, enabled) {
                 if (!enabled) return@pointerInput
-                detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, null) })
+                detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, 0.0) })
             },
     )
     DisposableEffect(label) {
@@ -1678,14 +1706,14 @@ private fun TpSlActionButton(
     }
 }
 
-/** Отдельный бейдж TP/SL на своём ценовом уровне; показывает число тиков. */
+/** Отдельный бейдж TP/SL на ценовом уровне: цена, % изменения и ✕. */
 @Composable
 private fun TpSlLevelBadge(
     label: String,
     price: Double,
     referencePrice: Double,
     isLong: Boolean,
-    tickSize: Double,
+    formatter: SymbolFormatter,
     color: Color,
     background: Color,
     enabled: Boolean,
@@ -1697,22 +1725,15 @@ private fun TpSlLevelBadge(
     modifier: Modifier = Modifier,
 ) {
     val isTakeProfit = label == "TP"
-    val ticks = if (tickSize > 0.0 && referencePrice > 0.0) {
-        val dir = if (isLong) 1.0 else -1.0
-        kotlin.math.round((price - referencePrice) * dir / tickSize).toInt()
+    val pct = if (referencePrice > 0.0) {
+        (price - referencePrice) / referencePrice * 100.0 * (if (isLong) 1.0 else -1.0)
     } else {
-        0
+        0.0
     }
-    val ticksText = if (ticks > 0) "+$ticks" else ticks.toString()
+    val pctText = (if (pct >= 0.0) "+" else "") +
+        plainDecimalString(kotlin.math.round(pct * 100.0) / 100.0)
 
-    Text(
-        text = "$label $ticksText",
-        color = color,
-        fontSize = 9.sp,
-        lineHeight = 10.sp,
-        fontFamily = TerminalFontFamily,
-        fontWeight = FontWeight.Bold,
-        maxLines = 1,
+    Row(
         modifier = modifier
             .onGloballyPositioned { coords -> onBounds(coords.boundsInRoot()) }
             .background(background, RoundedCornerShape(2.dp))
@@ -1746,9 +1767,44 @@ private fun TpSlLevelBadge(
             }
             .pointerInput(label, enabled) {
                 if (!enabled) return@pointerInput
-                detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, null) })
+                detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, 0.0) })
             },
-    )
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            color = color,
+            fontSize = 9.sp,
+            lineHeight = 10.sp,
+            fontFamily = TerminalFontFamily,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+        )
+        Text(
+            text = "${formatter.formatPrice(price)}  $pctText%",
+            color = color,
+            fontSize = 9.sp,
+            lineHeight = 10.sp,
+            fontFamily = TerminalFontFamily,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+        Text(
+            text = "✕",
+            color = color,
+            fontSize = 9.sp,
+            lineHeight = 10.sp,
+            fontFamily = TerminalFontFamily,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onCommit(isTakeProfit, 0.0) }
+                .padding(start = 4.dp),
+        )
+    }
     DisposableEffect(label) {
         onDispose { onBoundsRemoved() }
     }
@@ -1837,34 +1893,38 @@ private fun TradingPositionBadge(
                 )
             }
         }
-        TpSlActionButton(
-            label = "TP",
-            color = tpColor,
-            background = Color.Black.copy(alpha = 0.25f),
-            enabled = true,
-            referencePrice = position.avgPrice,
-            currentPrice = takeProfitPrice,
-            pricePerPx = pricePerPx,
-            onPreview = onTpSlPreview,
-            onCommit = onTpSlCommit,
-            onBounds = { rect -> onTpSlRect(true, rect) },
-            onBoundsRemoved = { onTpSlRectRemoved(true) },
-            modifier = Modifier.padding(start = 3.dp),
-        )
-        TpSlActionButton(
-            label = "SL",
-            color = slColor,
-            background = Color.Black.copy(alpha = 0.25f),
-            enabled = true,
-            referencePrice = position.avgPrice,
-            currentPrice = stopLossPrice,
-            pricePerPx = pricePerPx,
-            onPreview = onTpSlPreview,
-            onCommit = onTpSlCommit,
-            onBounds = { rect -> onTpSlRect(false, rect) },
-            onBoundsRemoved = { onTpSlRectRemoved(false) },
-            modifier = Modifier.padding(start = 2.dp),
-        )
+        if (takeProfitPrice == null) {
+            TpSlActionButton(
+                label = "TP",
+                color = tpColor,
+                background = Color.Black.copy(alpha = 0.25f),
+                enabled = true,
+                referencePrice = position.avgPrice,
+                currentPrice = null,
+                pricePerPx = pricePerPx,
+                onPreview = onTpSlPreview,
+                onCommit = onTpSlCommit,
+                onBounds = { rect -> onTpSlRect(true, rect) },
+                onBoundsRemoved = { onTpSlRectRemoved(true) },
+                modifier = Modifier.padding(start = 3.dp),
+            )
+        }
+        if (stopLossPrice == null) {
+            TpSlActionButton(
+                label = "SL",
+                color = slColor,
+                background = Color.Black.copy(alpha = 0.25f),
+                enabled = true,
+                referencePrice = position.avgPrice,
+                currentPrice = null,
+                pricePerPx = pricePerPx,
+                onPreview = onTpSlPreview,
+                onCommit = onTpSlCommit,
+                onBounds = { rect -> onTpSlRect(false, rect) },
+                onBoundsRemoved = { onTpSlRectRemoved(false) },
+                modifier = Modifier.padding(start = 2.dp),
+            )
+        }
         onClose?.let { close ->
             Text(
                 text = "Flatten",

@@ -45,6 +45,7 @@ class BybitTradingAdapter internal constructor(
 ) : TradingAdapter {
     private val tradingClient = BybitTradingClient(client, config, apiKey, apiSecret)
     private val positionIdentity = mutableMapOf<Long, Pair<String, Int>>()
+    private val positionTpSlCache = mutableMapOf<Long, Pair<Double?, Double?>>()
     private var knownPositionMode: Int? = null
 
     override suspend fun placeOrder(request: OrderRequest): OrderResponse {
@@ -61,9 +62,12 @@ class BybitTradingAdapter internal constructor(
                 put("category", CATEGORY)
                 put("symbol", request.symbol.uppercase())
                 put("side", if (request.side == OrderSide.BUY) "Buy" else "Sell")
-                put("orderType", if (type == OrderType.MARKET) "Market" else "Limit")
+                put("orderType", if (type == OrderType.MARKET || type == OrderType.STOP) "Market" else "Limit")
                 put("qty", decimal(request.quantity))
-                if (type != OrderType.MARKET) {
+                if (type == OrderType.STOP) {
+                    put("triggerPrice", decimal(request.price))
+                    put("triggerBy", "LastPrice")
+                } else if (type != OrderType.MARKET) {
                     put("price", decimal(request.price))
                     put("timeInForce", when (type) {
                         OrderType.POST_ONLY -> "PostOnly"
@@ -76,10 +80,19 @@ class BybitTradingAdapter internal constructor(
                     ?: positionIndex(request.side, request.positionMode)
                 put("positionIdx", positionIdx)
                 if (request.reduceOnly) put("reduceOnly", true)
-                if (request.stopLossPrice != null || request.takeProfitPrice != null) {
-                    put("tpslMode", "Full")
-                    request.stopLossPrice?.let { put("stopLoss", decimal(it)) }
-                    request.takeProfitPrice?.let { put("takeProfit", decimal(it)) }
+                if (!request.reduceOnly && (request.stopLossPrice != null || request.takeProfitPrice != null)) {
+                    put("tpslMode", "Partial")
+                    request.takeProfitPrice?.let {
+                        put("takeProfit", decimal(it))
+                        put("tpOrderType", "Limit")
+                        put("tpLimitPrice", decimal(it))
+                        put("tpTriggerBy", "LastPrice")
+                    }
+                    request.stopLossPrice?.let {
+                        put("stopLoss", decimal(it))
+                        put("slOrderType", "Market")
+                        put("slTriggerBy", "LastPrice")
+                    }
                 }
                 request.clientOrderId?.takeIf { it.isNotBlank() }?.let { put("orderLinkId", it) }
             }
@@ -188,7 +201,48 @@ class BybitTradingAdapter internal constructor(
                 .firstOrNull { it == 0 }
                 ?.let { knownPositionMode = ONE_WAY_MODE }
         val positions = rows.mapNotNull { it.toPosition() }.filter { it.quantity > 0.0 }
-        return positions
+        val extraTpSl = fetchPositionTpSl()
+        return positions.map { position ->
+            val extra = extraTpSl[position.positionId]
+            val updated = position.copy(
+                takeProfitPrice = position.takeProfitPrice ?: extra?.first,
+                stopLossPrice = position.stopLossPrice ?: extra?.second,
+            )
+            val id = position.positionId ?: return@map position
+            positionTpSlCache[id] = updated.takeProfitPrice to updated.stopLossPrice
+            updated
+        }
+    }
+
+    /** TP/SL Partial приходят как conditional-ордера, а не в position/list. */
+    private suspend fun fetchPositionTpSl(): Map<Long, Pair<Double?, Double?>> {
+        val rows = runCatching {
+            getPaged(
+                "/v5/order/realtime",
+                mapOf(
+                    "category" to CATEGORY,
+                    "settleCoin" to SETTLE_COIN,
+                    "orderFilter" to "StopOrder",
+                    "limit" to "50",
+                ),
+            )
+        }.getOrDefault(emptyList())
+        val result = mutableMapOf<Long, Pair<Double?, Double?>>()
+        rows.forEach { row ->
+            val stopType = row.string("stopOrderType")
+            if (stopType?.let {
+                    it.contains("TakeProfit", true) || it.contains("StopLoss", true)
+                } != true
+            ) return@forEach
+            val symbol = row.string("symbol") ?: return@forEach
+            val index = row.string("positionIdx")?.toIntOrNull() ?: 0
+            val price = row.double("triggerPrice")?.takeIf { it > 0.0 } ?: return@forEach
+            val id = positionIdentityId(symbol, index)
+            val previous = result[id] ?: (null to null)
+            result[id] = if (stopType.contains("TakeProfit", true)) price to previous.second
+            else previous.first to price
+        }
+        return result
     }
 
     override suspend fun getOpenOrders(symbol: String?): List<Order> {
@@ -197,7 +251,12 @@ class BybitTradingAdapter internal constructor(
             put("category", CATEGORY)
             put(if (symbol == null) "settleCoin" else "symbol", symbol?.uppercase() ?: SETTLE_COIN)
         }
-        return getPaged("/v5/order/realtime", params).mapNotNull { it.toOrder() }
+        val regular = getPaged("/v5/order/realtime", params).mapNotNull { it.toOrder() }
+        val conditional = getPaged(
+            "/v5/order/realtime",
+            params + ("orderFilter" to "StopOrder"),
+        ).mapNotNull { it.toOrder() }
+        return (regular + conditional).distinctBy { it.orderId }
     }
 
     override suspend fun getTradeHistory(symbol: String?, limit: Int): List<TradeFill> {
@@ -315,7 +374,17 @@ class BybitTradingAdapter internal constructor(
         takeProfitPrice: Double?,
         stopLossPrice: Double?,
     ): Boolean {
-        if (!tradingClient.hasCredentials) return false
+        if (!tradingClient.hasCredentials || order.reduceOnly || order.isTpSl) return false
+        val finalTp = when {
+            takeProfitPrice == null -> order.takeProfitPrice
+            takeProfitPrice == 0.0 -> null
+            else -> takeProfitPrice
+        }
+        val finalSl = when {
+            stopLossPrice == null -> order.stopLossPrice
+            stopLossPrice == 0.0 -> null
+            else -> stopLossPrice
+        }
         return runCatching {
             tradingClient.signedPost(
                 "/v5/order/amend",
@@ -323,9 +392,14 @@ class BybitTradingAdapter internal constructor(
                     put("category", CATEGORY)
                     put("symbol", order.symbol.uppercase())
                     put("orderId", order.orderId)
-                    put("tpslMode", "Full")
-                    put("takeProfit", takeProfitPrice?.let(::decimal) ?: "0")
-                    put("stopLoss", stopLossPrice?.let(::decimal) ?: "0")
+                    put("tpslMode", "Partial")
+                    put("takeProfit", finalTp?.let(::decimal) ?: "0")
+                    put("stopLoss", finalSl?.let(::decimal) ?: "0")
+                    finalTp?.let {
+                        put("tpOrderType", "Limit")
+                        put("tpLimitPrice", decimal(it))
+                    }
+                    finalSl?.let { put("slOrderType", "Market") }
                     put("tpTriggerBy", "LastPrice")
                     put("slTriggerBy", "LastPrice")
                 },
@@ -346,6 +420,23 @@ class BybitTradingAdapter internal constructor(
                 positionIdentity[position.positionId]
             }
             ?: return false
+        val positionId = position.positionId ?: return false
+        val existing = fetchPositionTpSl()[positionId]
+            ?: positionTpSlCache[positionId]
+            ?: (position.takeProfitPrice to position.stopLossPrice)
+        val finalTp = when {
+            takeProfitPrice == null -> existing.first
+            takeProfitPrice == 0.0 -> null
+            else -> takeProfitPrice
+        }
+        val finalSl = when {
+            stopLossPrice == null -> existing.second
+            stopLossPrice == 0.0 -> null
+            else -> stopLossPrice
+        }
+        positionTpSlCache[positionId] = finalTp to finalSl
+        cancelPositionTpSlOrders(symbol, index)
+        if (finalTp == null && finalSl == null) return true
         return runCatching {
             tradingClient.signedPost(
                 "/v5/position/trading-stop",
@@ -353,15 +444,40 @@ class BybitTradingAdapter internal constructor(
                     put("category", CATEGORY)
                     put("symbol", symbol)
                     put("positionIdx", index)
-                    put("tpslMode", "Full")
-                    put("takeProfit", takeProfitPrice?.let(::decimal) ?: "0")
-                    put("stopLoss", stopLossPrice?.let(::decimal) ?: "0")
+                    put("tpslMode", "Partial")
+                    put("tpSize", decimal(position.quantity))
+                    put("slSize", decimal(position.quantity))
+                    put("takeProfit", finalTp?.let(::decimal) ?: "0")
+                    put("stopLoss", finalSl?.let(::decimal) ?: "0")
+                    finalTp?.let {
+                        put("tpOrderType", "Limit")
+                        put("tpLimitPrice", decimal(it))
+                    }
+                    finalSl?.let { put("slOrderType", "Market") }
                     put("tpTriggerBy", "LastPrice")
                     put("slTriggerBy", "LastPrice")
                 },
             )
             true
         }.getOrDefault(false)
+    }
+
+    /** Bybit Partial TP/SL нельзя изменить — снимаем старые TP/SL ордера. */
+    private suspend fun cancelPositionTpSlOrders(symbol: String, positionIdx: Int) {
+        val rows = runCatching {
+            getPaged(
+                "/v5/order/realtime",
+                mapOf("category" to CATEGORY, "symbol" to symbol.uppercase(), "limit" to "50"),
+            )
+        }.getOrDefault(emptyList())
+        rows.filter { row ->
+            row.string("positionIdx")?.toIntOrNull() == positionIdx &&
+                row.string("stopOrderType")?.let {
+                    it.contains("TakeProfit", true) || it.contains("StopLoss", true)
+                } == true
+        }.forEach { row ->
+            row.string("orderId")?.takeIf { it.isNotBlank() }?.let { cancelOrder(it) }
+        }
     }
 
     override fun subscribeToPositions(): Flow<Position>? {
@@ -474,10 +590,12 @@ class BybitTradingAdapter internal constructor(
                 else -> TradeSide.BUY
             }
         }
+        val positionId = positionIdentityId(symbol, positionIdx)
+        val cached = positionTpSlCache[positionId]
         return Position(
             symbol = symbol,
             side = side,
-            positionId = positionIdentityId(symbol, positionIdx),
+            positionId = positionId,
             quantity = size,
             avgPrice = double("avgPrice") ?: double("entryPrice") ?: 0.0,
             markPrice = double("markPrice") ?: 0.0,
@@ -486,8 +604,8 @@ class BybitTradingAdapter internal constructor(
             unrealizedPnl = double("unrealisedPnl") ?: 0.0,
             liquidatePrice = double("liqPrice")?.takeIf { it > 0.0 },
             marginMode = string("tradeMode")?.toIntOrNull()?.takeIf { it == 1 }?.let { 1 },
-            takeProfitPrice = double("takeProfit")?.takeIf { it > 0.0 },
-            stopLossPrice = double("stopLoss")?.takeIf { it > 0.0 },
+            takeProfitPrice = double("takeProfit")?.takeIf { it > 0.0 } ?: cached?.first,
+            stopLossPrice = double("stopLoss")?.takeIf { it > 0.0 } ?: cached?.second,
         )
     }
 
@@ -499,21 +617,37 @@ class BybitTradingAdapter internal constructor(
             else -> return null
         }
         val orderTypeText = string("orderType") ?: return null
-        val orderType = when (string("timeInForce")) {
+        val stopOrderType = string("stopOrderType")
+        val isTpSl = stopOrderType?.let {
+            it.contains("TakeProfit", true) || it.contains("StopLoss", true)
+        } == true
+        val isTakeProfit = if (isTpSl) stopOrderType.contains("TakeProfit", true) else null
+        val reduceOnly = string("reduceOnly") == "true"
+        val triggerPrice = double("triggerPrice")?.takeIf { it > 0.0 }
+        val orderPrice = double("price")?.takeIf { it > 0.0 }
+        val isStop = !isTpSl && triggerPrice != null &&
+            (orderTypeText == "Market" || string("stopOrderType")?.contains("Stop", true) == true)
+        val orderType = if (isStop) {
+            OrderType.STOP
+        } else when (string("timeInForce")) {
             "PostOnly" -> OrderType.POST_ONLY
             "IOC" -> OrderType.IOC
             "FOK" -> OrderType.FOK
             else -> if (orderTypeText == "Market") OrderType.MARKET else OrderType.LIMIT
         }
+        val symbol = string("symbol").orEmpty()
+        val parentPositionId = if (isTpSl) {
+            string("positionIdx")?.toIntOrNull()?.let { positionIdentityId(symbol, it) }
+        } else null
         return Order(
             orderId = string("orderId").orEmpty(),
-            symbol = string("symbol").orEmpty(),
+            symbol = symbol,
             side = side,
             orderType = orderType,
-            price = double("price") ?: 0.0,
+            price = if (isTpSl) (orderPrice ?: 0.0) else (triggerPrice ?: orderPrice ?: 0.0),
             quantity = double("qty") ?: 0.0,
             filledQuantity = double("cumExecQty") ?: 0.0,
-            reduceOnly = string("reduceOnly") == "true",
+            reduceOnly = reduceOnly,
             status = when (string("orderStatus")) {
                 "New", "PartiallyFilled", "Untriggered", "Triggered" -> OrderStatus.OPEN
                 "Filled" -> OrderStatus.FILLED
@@ -521,8 +655,12 @@ class BybitTradingAdapter internal constructor(
                 else -> OrderStatus.REJECTED
             },
             clientOrderId = string("orderLinkId"),
-            takeProfitPrice = double("takeProfit")?.takeIf { it > 0.0 },
-            stopLossPrice = double("stopLoss")?.takeIf { it > 0.0 },
+            takeProfitPrice = if (reduceOnly || isTpSl) null else double("takeProfit")?.takeIf { it > 0.0 },
+            stopLossPrice = if (reduceOnly || isTpSl) null else double("stopLoss")?.takeIf { it > 0.0 },
+            isTpSl = isTpSl,
+            isTakeProfit = isTakeProfit,
+            triggerPrice = triggerPrice,
+            parentPositionId = parentPositionId,
             timestamp = long("createdTime") ?: 0L,
             updatedAt = long("updatedTime") ?: long("createdTime") ?: 0L,
         )

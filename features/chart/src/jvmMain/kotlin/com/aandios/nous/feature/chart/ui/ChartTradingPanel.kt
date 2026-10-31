@@ -195,15 +195,6 @@ fun ChartTradingPanel(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            // Быстрый lock: выключает Trading (замок закрыт — торговля включена)
-            Text(
-                text = "🔒",
-                fontSize = 10.sp,
-                maxLines = 1,
-                modifier = Modifier
-                    .clickableNoIndication { onLock() }
-                    .padding(horizontal = 4.dp, vertical = 1.dp),
-            )
             Text(
                 text = "▼",
                 color = tokens.colors.label,
@@ -302,46 +293,6 @@ fun ChartTradingPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Chip("RO", active = reduceOnly) { onReduceOnlyChanged(!reduceOnly) }
-            Chip(
-                if (confirmOrders) "Confirm: ON" else "Confirm: OFF",
-                active = confirmOrders,
-                activeColor = tokens.colors.accent,
-            ) { onConfirmChanged(!confirmOrders) }
-        }
-
-        val pending = pendingOrder
-        if (pending != null) {
-            // Подтверждение отложенного ордера (Confirm: ON) — прямо в панели
-            val sideColor = if (pending.side.name == "BUY") tokens.colors.buyOrder else tokens.colors.sellOrder
-            val px = if (pending.orderType == OrderType.MARKET) "market"
-            else "@ ${formatter.formatPrice(pending.price)}"
-            Text(
-                text = "${pending.orderType.name} ${pending.side.name} ${trimZeros(pending.quantity)} $px",
-                color = sideColor,
-                fontSize = 10.sp,
-                fontFamily = TerminalFontFamily,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                SideButton("Confirm", sideColor, onConfirmPending, Modifier.weight(1f))
-                SideButton("Cancel", tokens.colors.label, onCancelPending, Modifier.weight(1f))
-            }
-        } else {
-            val typedPrice = priceText.toDoubleOrNull()?.takeIf { it > 0 }
-            // Market: основные CTA сторон (без хоткей-подписей Ctrl+B/S)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                PrimarySideButton("BUY / LONG", tokens.colors.buyOrder, onBuy, Modifier.weight(1f))
-                PrimarySideButton("SELL / SHORT", tokens.colors.sellOrder, onSell, Modifier.weight(1f))
-            }
-            // Лимитки: цена из поля Price, пусто — лучшие bid/ask
-            val buyLimitPrice = typedPrice ?: bestBid
-            val sellLimitPrice = typedPrice ?: bestAsk
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                LimitButton("Buy Limit", tokens.colors.buyOrder, buyLimitPrice, { buyLimitPrice?.let(onBuyLimit) }, Modifier.weight(1f))
-                LimitButton("Sell Limit", tokens.colors.sellOrder, sellLimitPrice, { sellLimitPrice?.let(onSellLimit) }, Modifier.weight(1f))
-            }
         }
 
         // Управление ордерами/позициями по exchange+symbol
@@ -454,15 +405,6 @@ private fun CompactHeader(
                 maxLines = 1,
             )
         }
-        // Быстрый lock трейдинга (компактный вид)
-        Text(
-            text = "🔒",
-            fontSize = 10.sp,
-            maxLines = 1,
-            modifier = Modifier
-                .clickableNoIndication { onLock() }
-                .padding(horizontal = 4.dp, vertical = 1.dp),
-        )
         Text(
             text = "▲",
             color = tokens.colors.accent,

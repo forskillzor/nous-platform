@@ -135,7 +135,7 @@ class ChartExplorerRowsTest {
     }
 
     @Test
-    fun `selecting a row on another exchange switches provider and disables trading`() = runTest {
+    fun `selecting a row on another exchange switches provider and keeps trading active`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         try {
             val binance = FakeProvider(
@@ -166,8 +166,7 @@ class ChartExplorerRowsTest {
 
             assertEquals("bybit-nous-0.0.1", vm.state.value.currentProviderId)
             assertEquals("SOLUSDT", vm.state.value.currentSymbol)
-            // Смена биржи — Trading OFF (инвариант безопасности)
-            assertFalse(vm.tradingEnabled.value)
+            assertTrue(vm.tradingEnabled.value)
             vm.dispose()
         } finally {
             Dispatchers.resetMain()

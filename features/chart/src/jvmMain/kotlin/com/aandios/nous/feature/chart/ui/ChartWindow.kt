@@ -210,6 +210,7 @@ private fun ChartWindowContent(
 
     // Chart trading
     val tradingEnabled by chartViewModel.tradingEnabled.collectAsState()
+    val orderSettingsVisible by chartViewModel.orderSettingsVisible.collectAsState()
     val tradingOrders by chartViewModel.openOrders.collectAsState()
     val tradingQuantity by chartViewModel.tradingQuantity.collectAsState()
     val confirmOrders by chartViewModel.confirmOrders.collectAsState()
@@ -479,6 +480,11 @@ private fun ChartWindowContent(
                                 },
                                 contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
                                 inverse = uiState.currentSymbolInfo?.isInverse == true,
+                                chartOrderType = chartOrderType,
+                                onOrderTypeChanged = { chartViewModel.setChartOrderType(it) },
+                                onPlaceTradingOrderAt = { price, side, type ->
+                                    chartViewModel.placeChartOrderAt(price, side, type)
+                                },
                                 tradingEnabled = tradingEnabled,
                                 chartViewModel = chartViewModel,
                                 onNeedMoreHistory = { chartViewModel.dispatch(ChartIntent.LoadMoreHistory) },
@@ -583,6 +589,11 @@ private fun ChartWindowContent(
                             },
                             contractSize = uiState.currentSymbolInfo?.contractSize ?: 1.0,
                             inverse = uiState.currentSymbolInfo?.isInverse == true,
+                            chartOrderType = chartOrderType,
+                            onOrderTypeChanged = { chartViewModel.setChartOrderType(it) },
+                            onPlaceTradingOrderAt = { price, side, type ->
+                                chartViewModel.placeChartOrderAt(price, side, type)
+                            },
                             tradingEnabled = tradingEnabled,
                             chartViewModel = chartViewModel,
                             onNeedMoreHistory = {
@@ -612,7 +623,7 @@ private fun ChartWindowContent(
             // Панель chart trading (левый нижний угол, вертикальная как
             // DrawingToolPanel): при выключенном Trading скрыта, ордера на
             // графике остаются видны, но только для просмотра.
-            if (tradingEnabled) {
+            if (orderSettingsVisible) {
                 val panelMaxWidth = (maxWidth - 20.dp).coerceAtLeast(160.dp)
                 // Развёрнутая — вертикальная узкая панель (стиль DrawingToolPanel);
                 // свёрнутая — компактная строка по контенту (нижний край там же)
@@ -661,27 +672,6 @@ private fun ChartWindowContent(
                         .align(Alignment.BottomStart)
                         .padding(start = 8.dp, bottom = 28.dp)
                         .widthIn(max = if (panelCollapsed) panelMaxWidth else panelWidth),
-                )
-            }
-
-            // Быстрый unlock: Trading выключен — маленький замок возвращает его
-            if (!tradingEnabled) {
-                Text(
-                    text = "🔓",
-                    fontSize = 11.sp,
-                    maxLines = 1,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 8.dp, bottom = 28.dp)
-                        .blockChartPointerInput()
-                        .clickable { chartViewModel.setTradingEnabled(true) }
-                        .background(designTokens.colors.panelSurface.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
-                        .border(
-                            designTokens.dimensions.borderWidth,
-                            designTokens.colors.panelBorder,
-                            RoundedCornerShape(8.dp),
-                        )
-                        .padding(horizontal = 6.dp, vertical = 3.dp),
                 )
             }
 
@@ -736,6 +726,9 @@ private fun ChartCanvas(
     symbolBase: String?,
     contractSize: Double,
     inverse: Boolean,
+    chartOrderType: com.aandios.nous.api.market.model.orderbook.OrderType,
+    onOrderTypeChanged: (com.aandios.nous.api.market.model.orderbook.OrderType) -> Unit,
+    onPlaceTradingOrderAt: ((Double, com.aandios.nous.api.market.model.orderbook.OrderSide, com.aandios.nous.api.market.model.orderbook.OrderType) -> Unit)?,
     tradingEnabled: Boolean,
     chartViewModel: ChartViewModel,
     onNeedMoreHistory: () -> Unit,
@@ -793,10 +786,9 @@ private fun ChartCanvas(
             symbolBase = symbolBase,
             contractSize = contractSize,
             inverse = inverse,
-            onChartTradingClick = if (tradingEnabled) {
-                { price -> chartViewModel.placeChartOrder(price) }
-            } else null,
-            // Trading off — бейджи только для просмотра
+            chartOrderType = chartOrderType,
+            onOrderTypeChanged = onOrderTypeChanged,
+            onPlaceTradingOrderAt = onPlaceTradingOrderAt,
             onCancelTradingOrder = if (tradingEnabled) {
                 { chartViewModel.cancelChartOrder(it.orderId) }
             } else null,

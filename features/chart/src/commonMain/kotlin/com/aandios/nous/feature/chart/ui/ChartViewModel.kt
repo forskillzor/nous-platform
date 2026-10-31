@@ -106,8 +106,20 @@ class ChartViewModel(
 
     // ── Chart trading (вкл/выкл) ──
 
-    private val _tradingEnabled = MutableStateFlow(false)
+    private val _tradingEnabled = MutableStateFlow(true)
     val tradingEnabled: StateFlow<Boolean> = _tradingEnabled.asStateFlow()
+
+    /** Видимость меню настроек ордера (кнопка Trading в тайтле). */
+    private val _orderSettingsVisible = MutableStateFlow(false)
+    val orderSettingsVisible: StateFlow<Boolean> = _orderSettingsVisible.asStateFlow()
+
+    fun toggleOrderSettings() {
+        _orderSettingsVisible.value = !_orderSettingsVisible.value
+    }
+
+    fun setOrderSettingsVisible(visible: Boolean) {
+        _orderSettingsVisible.value = visible
+    }
 
     /** Количество для chart-ордеров (null — minQty инструмента). */
     private val _tradingQuantity = MutableStateFlow<Double?>(null)
@@ -303,7 +315,7 @@ class ChartViewModel(
         val provider = providerRegistry.get(providerId) ?: return
         if (activeProviderId == providerId) return
         activeProviderId = providerId
-        setTradingEnabled(false)
+        _tradingEnabled.value = true
         // Сбрасываем каталог прошлой биржи: до прихода нового списка loadChart
         // не должен брать чужой tickSize по совпадающему имени символа.
         _symbolInfoMap.value = emptyMap()
@@ -751,8 +763,8 @@ class ChartViewModel(
     }
 
     fun setConfirmOrders(confirm: Boolean) {
-        _confirmOrders.value = confirm
-        saveTradingState()
+        _confirmOrders.value = false
+        _pendingOrder.value = null
     }
 
     /** Options: показывать ордера на графике. */
@@ -846,7 +858,7 @@ class ChartViewModel(
         if (_paperEnabled.value == enabled) return
         _paperEnabled.value = enabled
         viewModelScope.launch { persistor?.savePaperEnabled(enabled) }
-        setTradingEnabled(false)
+        _tradingEnabled.value = true
         refreshTrading()
         refreshPaperFees(_state.value.currentSymbol)
     }
@@ -861,8 +873,8 @@ class ChartViewModel(
         val paperEnabled = p.restorePaperEnabled()
         _paperEnabled.value = paperEnabled
         // Live-Trading не восстанавливаем: только в paper-режиме
-        _tradingEnabled.value = trading.enabled && paperEnabled
-        _confirmOrders.value = trading.confirmOrders
+        _tradingEnabled.value = true
+        _confirmOrders.value = false
         _tradingQuantity.value = trading.quantity
         _chartOrderType.value = trading.orderType
         _reduceOnly.value = trading.reduceOnly
@@ -1046,6 +1058,11 @@ class ChartViewModel(
         submitOrConfirm(buildTradingRequest(side, type, if (type == OrderType.MARKET) 0.0 else price))
     }
 
+    /** Постановка ордера через `+`: сторона и тип выбраны в меню. */
+    fun placeChartOrderAt(price: Double, side: OrderSide, orderType: OrderType) {
+        executeOrder(buildTradingRequest(side, orderType, if (orderType == OrderType.MARKET) 0.0 else price))
+    }
+
     /** Рыночный ордер по кнопке Buy/Sell (последняя цена графика). */
     fun placeMarketOrder(side: OrderSide) {
         submitOrConfirm(buildTradingRequest(side, OrderType.MARKET, 0.0))
@@ -1143,18 +1160,8 @@ class ChartViewModel(
     }
 
     private fun submitOrConfirm(request: OrderRequest) {
-        // Trading выключен на графике — ордера не размещаются вообще
-        if (!_tradingEnabled.value) {
-            notify(
-                "Trading disabled"
-            )
-            return
-        }
-        if (_confirmOrders.value) {
-            _pendingOrder.value = request
-        } else {
-            executeOrder(request)
-        }
+        // Trading lock и confirm убраны: ордер ставится сразу.
+        executeOrder(request)
     }
 
     private fun executeOrder(request: OrderRequest) {
@@ -1287,15 +1294,26 @@ class ChartViewModel(
      */
     fun setChartOrderTpSl(order: Order, takeProfitPrice: Double?, stopLossPrice: Double?) {
         if (!_tradingEnabled.value) return
+        if (order.reduceOnly) {
+            notify("TP/SL is managed on the position")
+            return
+        }
         val formatter = _state.value.currentSymbolFormatter
-        val tp = takeProfitPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
-        val sl = stopLossPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
+        val tp = when {
+            takeProfitPrice == null -> null
+            takeProfitPrice == 0.0 -> 0.0
+            else -> formatter.roundPrice(takeProfitPrice)
+        }
+        val sl = when {
+            stopLossPrice == null -> null
+            stopLossPrice == 0.0 -> 0.0
+            else -> formatter.roundPrice(stopLossPrice)
+        }
         validateTpSl(
-            // reduce-only SELL закрывает Long, BUY — Short
-            isLong = if (order.reduceOnly) order.side == OrderSide.SELL else order.side == OrderSide.BUY,
+            isLong = order.side == OrderSide.BUY,
             reference = order.price.takeIf { it > 0 },
-            takeProfit = tp,
-            stopLoss = sl,
+            takeProfit = tp?.takeIf { it > 0 },
+            stopLoss = sl?.takeIf { it > 0 },
         )?.let { notify(it); return }
         viewModelScope.launch {
             val adapter = activeTrading() ?: run {
@@ -1305,7 +1323,18 @@ class ChartViewModel(
             if (ok) {
                 _openOrders.value = _openOrders.value.map {
                     if (it.orderId == order.orderId) {
-                        it.copy(takeProfitPrice = tp, stopLossPrice = sl)
+                        it.copy(
+                            takeProfitPrice = when {
+                                tp == null -> it.takeProfitPrice
+                                tp == 0.0 -> null
+                                else -> tp
+                            },
+                            stopLossPrice = when {
+                                sl == null -> it.stopLossPrice
+                                sl == 0.0 -> null
+                                else -> sl
+                            },
+                        )
                     } else it
                 }
             } else {
@@ -1320,13 +1349,21 @@ class ChartViewModel(
     fun setChartPositionTpSl(position: Position, takeProfitPrice: Double?, stopLossPrice: Double?) {
         if (!_tradingEnabled.value) return
         val formatter = _state.value.currentSymbolFormatter
-        val tp = takeProfitPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
-        val sl = stopLossPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
+        val tp = when {
+            takeProfitPrice == null -> null
+            takeProfitPrice == 0.0 -> 0.0
+            else -> formatter.roundPrice(takeProfitPrice)
+        }
+        val sl = when {
+            stopLossPrice == null -> null
+            stopLossPrice == 0.0 -> 0.0
+            else -> formatter.roundPrice(stopLossPrice)
+        }
         validateTpSl(
             isLong = position.side == TradeSide.BUY,
             reference = position.avgPrice.takeIf { it > 0 },
-            takeProfit = tp,
-            stopLoss = sl,
+            takeProfit = tp?.takeIf { it > 0 },
+            stopLoss = sl?.takeIf { it > 0 },
         )?.let { notify(it); return }
         viewModelScope.launch {
             val adapter = activeTrading() ?: run {
@@ -1336,7 +1373,18 @@ class ChartViewModel(
             if (ok) {
                 _positions.value = _positions.value.map {
                     if (it.positionId == position.positionId) {
-                        it.copy(takeProfitPrice = tp, stopLossPrice = sl)
+                        it.copy(
+                            takeProfitPrice = when {
+                                tp == null -> it.takeProfitPrice
+                                tp == 0.0 -> null
+                                else -> tp
+                            },
+                            stopLossPrice = when {
+                                sl == null -> it.stopLossPrice
+                                sl == 0.0 -> null
+                                else -> sl
+                            },
+                        )
                     } else it
                 }
             } else {

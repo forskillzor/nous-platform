@@ -14,4 +14,6 @@ enum class OrderType {
     IOC,
     /** Fill-or-Kill. */
     FOK,
+    /** Stop-market: `price` — trigger price, исполняется по рынку при пересечении. */
+    STOP,
 }

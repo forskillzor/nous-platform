@@ -505,9 +505,20 @@ private fun OrdersTable(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Cell(o.symbol, OrdersWindow.SYMBOL, align = TextAlign.Start)
-                Cell("${o.side.name}/${o.orderType.name}", OrdersWindow.SIDE_TYPE, color = sideColor(o.side), align = TextAlign.Start)
+                val typeLabel = if (o.isTpSl) {
+                    if (o.isTakeProfit == true) "TP" else "SL"
+                } else {
+                    o.orderType.name
+                }
+                Cell("${o.side.name}/$typeLabel", OrdersWindow.SIDE_TYPE, color = sideColor(o.side), align = TextAlign.Start)
                 Cell(
-                    if (o.orderType == OrderType.MARKET) "market" else formatter.formatPrice(o.price),
+                    if (o.isTpSl) {
+                        val trigger = o.triggerPrice?.let(formatter::formatPrice) ?: "-"
+                        val orderPrice = if (o.orderType == OrderType.MARKET) "market"
+                        else o.price.takeIf { it > 0.0 }?.let(formatter::formatPrice) ?: "-"
+                        "$trigger / $orderPrice"
+                    } else if (o.orderType == OrderType.MARKET) "market"
+                    else formatter.formatPrice(o.price),
                     OrdersWindow.PRICE,
                 )
                 Cell("${formatter.formatVolume(o.quantity)}/${formatter.formatVolume(o.filledQuantity)}", OrdersWindow.QTY)

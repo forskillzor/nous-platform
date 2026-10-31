@@ -296,6 +296,13 @@ class PaperTradingAdapter(
         val type = request.orderType
         val isMarket = type == OrderType.MARKET
 
+        if (type == OrderType.STOP) {
+            if (request.price <= 0) {
+                return@withLock OrderResponse("", success = false, message = "Trigger price required for stop order")
+            }
+            return@withLock restOrderLocked(symbol, request)
+        }
+
         if (isMarket) {
             val exec = mark.takeIf { it > 0 } ?: request.price.takeIf { it > 0 }
                 ?: return@withLock OrderResponse("", success = false, message = "No price for $symbol")
@@ -333,10 +340,28 @@ class PaperTradingAdapter(
     }
 
     override suspend fun cancelOrder(orderId: String): Boolean = mutex.withLock {
-        val order = _openOrders.value.firstOrNull { it.orderId == orderId } ?: return@withLock false
-        _openOrders.value = _openOrders.value.filterNot { it.orderId == orderId }
-        restingLeverage.remove(orderId)
-        _orderUpdates.tryEmit(order.copy(status = OrderStatus.CANCELED))
+        val order = _openOrders.value.firstOrNull { it.orderId == orderId }
+        if (order != null) {
+            _openOrders.value = _openOrders.value.filterNot { it.orderId == orderId }
+            restingLeverage.remove(orderId)
+            _orderUpdates.tryEmit(order.copy(status = OrderStatus.CANCELED))
+            return@withLock true
+        }
+        val plan = plans.firstOrNull { it.planId == orderId } ?: return@withLock false
+        plans.remove(plan)
+        plan.positionId?.let { positionId ->
+            val position = _positions.value.firstOrNull { it.positionId == positionId }
+            if (position != null) {
+                val remaining = plans.filter { it.positionId == positionId }
+                upsertPositionLocked(
+                    position.copy(
+                        takeProfitPrice = remaining.firstOrNull { it.takeProfit }?.triggerPrice,
+                        stopLossPrice = remaining.firstOrNull { !it.takeProfit }?.triggerPrice,
+                    )
+                )
+            }
+        }
+        _orderUpdates.tryEmit(planToOrder(plan).copy(status = OrderStatus.CANCELED))
         true
     }
 
@@ -386,8 +411,32 @@ class PaperTradingAdapter(
     override suspend fun getPositions(): List<Position> = mutex.withLock { _positions.value }
 
     override suspend fun getOpenOrders(symbol: String?): List<Order> = mutex.withLock {
-        if (symbol == null) _openOrders.value
-        else _openOrders.value.filter { it.symbol == symbol.uppercase() }
+        val sym = symbol?.uppercase()
+        val regular = if (sym == null) _openOrders.value
+        else _openOrders.value.filter { it.symbol == sym }
+        val planOrders = plans
+            .filter { sym == null || it.symbol.uppercase() == sym }
+            .map(::planToOrder)
+        regular + planOrders
+    }
+
+    private fun planToOrder(plan: PaperPlanOrder): Order {
+        val position = _positions.value.firstOrNull { it.positionId == plan.positionId }
+        return Order(
+            orderId = plan.planId,
+            symbol = plan.symbol,
+            side = plan.side,
+            orderType = if (plan.takeProfit) OrderType.LIMIT else OrderType.MARKET,
+            price = if (plan.takeProfit) plan.triggerPrice else 0.0,
+            quantity = position?.quantity ?: 0.0,
+            filledQuantity = 0.0,
+            reduceOnly = true,
+            status = OrderStatus.OPEN,
+            isTpSl = true,
+            isTakeProfit = plan.takeProfit,
+            triggerPrice = plan.triggerPrice,
+            parentPositionId = plan.positionId,
+        )
     }
 
     override suspend fun setOrderTpSl(
@@ -397,9 +446,18 @@ class PaperTradingAdapter(
     ): Boolean = mutex.withLock {
         val index = _openOrders.value.indexOfFirst { it.orderId == order.orderId }
         if (index < 0) return@withLock false
-        val updated = _openOrders.value[index].copy(
-            takeProfitPrice = takeProfitPrice?.takeIf { it > 0 },
-            stopLossPrice = stopLossPrice?.takeIf { it > 0 },
+        val current = _openOrders.value[index]
+        val updated = current.copy(
+            takeProfitPrice = when {
+                takeProfitPrice == null -> current.takeProfitPrice
+                takeProfitPrice == 0.0 -> null
+                else -> takeProfitPrice
+            },
+            stopLossPrice = when {
+                stopLossPrice == null -> current.stopLossPrice
+                stopLossPrice == 0.0 -> null
+                else -> stopLossPrice
+            },
         )
         _openOrders.value = _openOrders.value.toMutableList().also { it[index] = updated }
         _orderUpdates.tryEmit(updated)
@@ -413,7 +471,17 @@ class PaperTradingAdapter(
     ): Boolean = mutex.withLock {
         val current = _positions.value.firstOrNull { it.positionId == position.positionId }
             ?: return@withLock false
-        setPlansLocked(current.symbol, current, takeProfitPrice, stopLossPrice, clearWhenEmpty = true)
+        val finalTp = when {
+            takeProfitPrice == null -> current.takeProfitPrice
+            takeProfitPrice == 0.0 -> null
+            else -> takeProfitPrice
+        }
+        val finalSl = when {
+            stopLossPrice == null -> current.stopLossPrice
+            stopLossPrice == 0.0 -> null
+            else -> stopLossPrice
+        }
+        setPlansLocked(current.symbol, current, finalTp, finalSl, clearWhenEmpty = true)
         true
     }
 
@@ -718,9 +786,17 @@ class PaperTradingAdapter(
         val toReject = mutableListOf<Pair<Order, OrderResponse>>()
         _openOrders.value = _openOrders.value.filterNot { order ->
             if (order.symbol != symbol) return@filterNot false
-            val crossed = when (order.side) {
-                OrderSide.BUY -> price <= order.price
-                OrderSide.SELL -> price >= order.price
+            val isStop = order.orderType == OrderType.STOP
+            val crossed = if (isStop) {
+                when (order.side) {
+                    OrderSide.BUY -> price >= order.price
+                    OrderSide.SELL -> price <= order.price
+                }
+            } else {
+                when (order.side) {
+                    OrderSide.BUY -> price <= order.price
+                    OrderSide.SELL -> price >= order.price
+                }
             }
             if (!crossed) return@filterNot false
             val qty = order.quantity
@@ -736,7 +812,8 @@ class PaperTradingAdapter(
                 takeProfitPrice = order.takeProfitPrice,
                 stopLossPrice = order.stopLossPrice,
             )
-            val response = fillOrderLocked(symbol, request, order.price, price, taker = false, emit = false)
+            val execPrice = if (isStop) price else order.price
+            val response = fillOrderLocked(symbol, request, execPrice, price, taker = isStop, emit = false)
             restingLeverage.remove(order.orderId)
             if (response.success) toFill += order else toReject += order to response
             true
@@ -761,15 +838,17 @@ class PaperTradingAdapter(
         }
         triggered.forEach { plan ->
             val pos = _positions.value.firstOrNull { it.positionId == plan.positionId } ?: return@forEach
-            val feeRate = feeRateLocked(symbol, taker = true)
-            closePositionPartLocked(symbol, pos, pos.quantity, price, feeRate)
+            // TP — лимитный по trigger-цене (maker), SL — рыночный по mark (taker).
+            val execPrice = if (plan.takeProfit) plan.triggerPrice else price
+            val feeRate = feeRateLocked(symbol, taker = !plan.takeProfit)
+            closePositionPartLocked(symbol, pos, pos.quantity, execPrice, feeRate)
             _orderUpdates.tryEmit(
                 Order(
                     orderId = plan.planId,
                     symbol = symbol,
                     side = plan.side,
-                    orderType = OrderType.MARKET,
-                    price = price,
+                    orderType = if (plan.takeProfit) OrderType.LIMIT else OrderType.MARKET,
+                    price = execPrice,
                     quantity = pos.quantity,
                     filledQuantity = pos.quantity,
                     reduceOnly = true,

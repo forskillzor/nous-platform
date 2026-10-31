@@ -68,8 +68,8 @@ interface TradingAdapter : MarketAdapter {
     fun subscribeToOrders(): Flow<Order>? = null
 
     /**
-     * Установить/изменить/снять (null) TP/SL лимитного ордера.
-     * По умолчанию не поддерживается.
+     * TP/SL лимитного ордера: `null` — оставить текущее, `0.0` — снять,
+     * `>0` — установить. По умолчанию не поддерживается.
      */
     suspend fun setOrderTpSl(
         order: Order,
@@ -78,8 +78,8 @@ interface TradingAdapter : MarketAdapter {
     ): Boolean = false
 
     /**
-     * Установить/изменить/снять (null) TP/SL позиции (full-position).
-     * По умолчанию не поддерживается.
+     * TP/SL позиции (full-position): `null` — оставить текущее,
+     * `0.0` — снять, `>0` — установить. По умолчанию не поддерживается.
      */
     suspend fun setPositionTpSl(
         position: Position,

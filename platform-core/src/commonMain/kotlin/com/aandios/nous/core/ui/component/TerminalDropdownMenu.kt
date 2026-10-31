@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.PopupProperties
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
 
 /**
@@ -27,6 +28,7 @@ fun TerminalDropdownMenu(
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     offset: DpOffset = DpOffset.Zero,
+    focusable: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val tokens = LocalTerminalDesignTokens.current
@@ -35,6 +37,7 @@ fun TerminalDropdownMenu(
         onDismissRequest = onDismissRequest,
         modifier = modifier,
         offset = offset,
+        properties = PopupProperties(focusable = focusable),
         shape = RoundedCornerShape(tokens.cornerRadii.workspacePanel),
         containerColor = tokens.colors.panelSurface,
         tonalElevation = 0.dp,
