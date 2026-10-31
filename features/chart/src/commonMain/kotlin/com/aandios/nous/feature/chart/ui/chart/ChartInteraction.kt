@@ -1039,6 +1039,7 @@ fun CandleStickChartInteraction(
         } else {
             0.0
         }
+        val tpSlLevelGapPx = with(density) { 6.dp.toPx() }
         /** Бейджи открытых ордеров поверх графика (TradingView-style):
          * по центру чарта на линии цены; драг — вся поверхность, кроме qty.
          */
@@ -1198,6 +1199,8 @@ fun CandleStickChartInteraction(
             if (position.avgPrice <= 0.0) return@forEach
             val prefix = "p:${positionBadgeKey(position)}"
             val isLong = position.side == TradeSide.BUY
+            val badgeWidth = positionBadgeSizes[positionBadgeKey(position)]?.width?.toFloat() ?: 0f
+            val levelStartX = chartWidthPx / 2f + badgeWidth / 2f + tpSlLevelGapPx
             listOf(true to position.takeProfitPrice, false to position.stopLossPrice).forEach { (isTp, price) ->
                 val key = "$prefix:$isTp"
                 val preview = tpSlPreview?.takeIf { it.key == key }?.price
@@ -1207,10 +1210,10 @@ fun CandleStickChartInteraction(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .width(with(density) { chartWidthPx.toDp() })
-                        .offset(y = with(density) { levelY.toDp() } - 6.dp)
-                        .padding(end = 8.dp),
-                    contentAlignment = Alignment.TopEnd,
+                        .offset(
+                            x = with(density) { levelStartX.toDp() },
+                            y = with(density) { levelY.toDp() } - 6.dp,
+                        ),
                 ) {
                     TpSlLevelBadge(
                         label = if (isTp) "TP" else "SL",
@@ -1249,6 +1252,8 @@ fun CandleStickChartInteraction(
             if (order.price <= 0.0 || order.reduceOnly || order.isTpSl) return@forEach
             val prefix = "o:${order.orderId}"
             val isLong = order.side == OrderSide.BUY
+            val badgeWidth = orderBadgeSizes[order.orderId]?.width?.toFloat() ?: 0f
+            val levelStartX = chartWidthPx / 2f + badgeWidth / 2f + tpSlLevelGapPx
             listOf(true to order.takeProfitPrice, false to order.stopLossPrice).forEach { (isTp, price) ->
                 val key = "$prefix:$isTp"
                 val preview = tpSlPreview?.takeIf { it.key == key }?.price
@@ -1258,10 +1263,10 @@ fun CandleStickChartInteraction(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .width(with(density) { chartWidthPx.toDp() })
-                        .offset(y = with(density) { levelY.toDp() } - 6.dp)
-                        .padding(end = 8.dp),
-                    contentAlignment = Alignment.TopEnd,
+                        .offset(
+                            x = with(density) { levelStartX.toDp() },
+                            y = with(density) { levelY.toDp() } - 6.dp,
+                        ),
                 ) {
                     TpSlLevelBadge(
                         label = if (isTp) "TP" else "SL",
@@ -1298,7 +1303,11 @@ fun CandleStickChartInteraction(
         }
         // Кнопка «+» на линии crosshair: тип ордера — из Trading-меню, сторона — по цене.
         val crosshairPrice = mousePosition
-            ?.takeIf { isCrosshairVisible && it.y >= layout.chartMainArea.top && it.y <= layout.chartMainArea.bottom }
+            ?.takeIf {
+                isCrosshairVisible &&
+                    it.x >= layout.chartMainArea.left && it.x <= layout.chartMainArea.right &&
+                    it.y >= layout.chartMainArea.top && it.y <= layout.chartMainArea.bottom
+            }
             ?.let { priceFromY(it.y - layout.chartMainArea.top, priceRange, layout.chartMainArea.height) }
         if (crosshairPrice != null && crosshairPrice > 0f && onPlaceTradingOrderAt != null) {
             val plusY = mousePosition?.y ?: layout.chartMainArea.top
@@ -1306,7 +1315,7 @@ fun CandleStickChartInteraction(
                 modifier = Modifier
                     .align(Alignment.TopStart)
                     .offset(
-                        x = with(density) { layout.priceScaleArea.left.toDp() },
+                        x = with(density) { layout.chartMainArea.right.toDp() } - 22.dp,
                         y = with(density) { plusY.toDp() } - 9.dp,
                     )
                     .size(18.dp)
