@@ -23,6 +23,9 @@ data class Order(
     val reduceOnly: Boolean = false,
     val status: OrderStatus = OrderStatus.OPEN,
     val clientOrderId: String? = null,
+    /** Привязанные к ордеру TP/SL (до филла), если биржа их отдаёт. */
+    val takeProfitPrice: Double? = null,
+    val stopLossPrice: Double? = null,
     val timestamp: Long = 0,
     val updatedAt: Long = 0,
 )

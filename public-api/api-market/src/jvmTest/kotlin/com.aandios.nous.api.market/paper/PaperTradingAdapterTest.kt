@@ -352,6 +352,25 @@ class PaperTradingAdapterTest {
     }
 
     @Test
+    fun `position TP SL can be updated and cleared from the adapter`() = runTest {
+        val adapter = PaperTradingAdapter()
+        adapter.setMarkPrice("BTCUSDT", 100.0)
+        adapter.placeOrder(OrderRequest("BTCUSDT", OrderSide.BUY, OrderType.MARKET, 1.0))
+
+        val position = adapter.getPositions().single()
+        assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = 120.0, stopLossPrice = 90.0))
+
+        val updated = adapter.getPositions().single()
+        assertEquals(120.0, updated.takeProfitPrice)
+        assertEquals(90.0, updated.stopLossPrice)
+
+        assertTrue(adapter.setPositionTpSl(updated, takeProfitPrice = null, stopLossPrice = null))
+        val cleared = adapter.getPositions().single()
+        assertEquals(null, cleared.takeProfitPrice)
+        assertEquals(null, cleared.stopLossPrice)
+    }
+
+    @Test
     fun `set balance, reset balance keeps history, reset history clears it`() = runTest {
         val adapter = PaperTradingAdapter()
         adapter.setBalance("USDT", 500.0)

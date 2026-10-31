@@ -390,6 +390,33 @@ class PaperTradingAdapter(
         else _openOrders.value.filter { it.symbol == symbol.uppercase() }
     }
 
+    override suspend fun setOrderTpSl(
+        order: Order,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean = mutex.withLock {
+        val index = _openOrders.value.indexOfFirst { it.orderId == order.orderId }
+        if (index < 0) return@withLock false
+        val updated = _openOrders.value[index].copy(
+            takeProfitPrice = takeProfitPrice?.takeIf { it > 0 },
+            stopLossPrice = stopLossPrice?.takeIf { it > 0 },
+        )
+        _openOrders.value = _openOrders.value.toMutableList().also { it[index] = updated }
+        _orderUpdates.tryEmit(updated)
+        true
+    }
+
+    override suspend fun setPositionTpSl(
+        position: Position,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean = mutex.withLock {
+        val current = _positions.value.firstOrNull { it.positionId == position.positionId }
+            ?: return@withLock false
+        setPlansLocked(current.symbol, current, takeProfitPrice, stopLossPrice, clearWhenEmpty = true)
+        true
+    }
+
     override suspend fun getTradeHistory(symbol: String?, limit: Int): List<TradeFill> = mutex.withLock {
         val filtered = if (symbol == null) _history.value
         else _history.value.filter { it.symbol == symbol.uppercase() }
@@ -481,6 +508,8 @@ class PaperTradingAdapter(
             reduceOnly = request.reduceOnly,
             status = OrderStatus.OPEN,
             clientOrderId = request.clientOrderId,
+            takeProfitPrice = request.takeProfitPrice?.takeIf { it > 0 },
+            stopLossPrice = request.stopLossPrice?.takeIf { it > 0 },
             timestamp = now(),
         )
         _openOrders.value = _openOrders.value + order
@@ -630,16 +659,20 @@ class PaperTradingAdapter(
         pos: Position,
         takeProfitPrice: Double?,
         stopLossPrice: Double?,
+        clearWhenEmpty: Boolean = false,
     ) {
-        if (takeProfitPrice == null && stopLossPrice == null) return
+        val tp = takeProfitPrice?.takeIf { it > 0 }
+        val sl = stopLossPrice?.takeIf { it > 0 }
+        if (tp == null && sl == null && !clearWhenEmpty) return
         plans.removeAll { it.positionId == pos.positionId }
         val closeSide = if (pos.side == TradeSide.BUY) OrderSide.SELL else OrderSide.BUY
-        takeProfitPrice?.takeIf { it > 0 }?.let {
+        tp?.let {
             plans += PaperPlanOrder(newPlanId(), symbol, closeSide, it, takeProfit = true, pos.positionId)
         }
-        stopLossPrice?.takeIf { it > 0 }?.let {
+        sl?.let {
             plans += PaperPlanOrder(newPlanId(), symbol, closeSide, it, takeProfit = false, pos.positionId)
         }
+        upsertPositionLocked(pos.copy(takeProfitPrice = tp, stopLossPrice = sl))
     }
 
     private fun filledOrder(request: OrderRequest, symbol: String, price: Double, qty: Double): Order =
@@ -654,6 +687,8 @@ class PaperTradingAdapter(
             reduceOnly = request.reduceOnly,
             status = OrderStatus.FILLED,
             clientOrderId = request.clientOrderId,
+            takeProfitPrice = request.takeProfitPrice?.takeIf { it > 0 },
+            stopLossPrice = request.stopLossPrice?.takeIf { it > 0 },
             timestamp = now(),
         )
 
@@ -698,6 +733,8 @@ class PaperTradingAdapter(
                 reduceOnly = order.reduceOnly,
                 clientOrderId = order.clientOrderId,
                 leverage = restingLeverage[order.orderId],
+                takeProfitPrice = order.takeProfitPrice,
+                stopLossPrice = order.stopLossPrice,
             )
             val response = fillOrderLocked(symbol, request, order.price, price, taker = false, emit = false)
             restingLeverage.remove(order.orderId)

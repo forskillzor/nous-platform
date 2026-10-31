@@ -809,6 +809,12 @@ private fun ChartCanvas(
             onCloseTradingPosition = if (tradingEnabled) {
                 { position -> chartViewModel.closeChartPosition(position) }
             } else null,
+            onSetTradingOrderTpSl = if (tradingEnabled) {
+                { order, tp, sl -> chartViewModel.setChartOrderTpSl(order, tp, sl) }
+            } else null,
+            onSetTradingPositionTpSl = if (tradingEnabled) {
+                { position, tp, sl -> chartViewModel.setChartPositionTpSl(position, tp, sl) }
+            } else null,
         )
 
         val layout = chartLayout

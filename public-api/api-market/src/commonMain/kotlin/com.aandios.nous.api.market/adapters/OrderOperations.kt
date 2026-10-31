@@ -21,6 +21,8 @@ suspend fun TradingAdapter.replaceOrder(
     quantity: Double,
     leverage: Int? = null,
     marginMode: Int? = null,
+    takeProfitPrice: Double? = order.takeProfitPrice,
+    stopLossPrice: Double? = order.stopLossPrice,
 ): OrderResponse? {
     if (quantity <= 0.0) return null
     runCatching { cancelOrder(order.orderId) }
@@ -35,6 +37,8 @@ suspend fun TradingAdapter.replaceOrder(
                 reduceOnly = order.reduceOnly,
                 leverage = leverage,
                 marginMode = marginMode,
+                takeProfitPrice = takeProfitPrice,
+                stopLossPrice = stopLossPrice,
             )
         )
     }.getOrNull()

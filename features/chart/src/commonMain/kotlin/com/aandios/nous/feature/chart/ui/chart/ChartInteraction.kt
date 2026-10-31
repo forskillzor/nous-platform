@@ -9,10 +9,13 @@ import com.aandios.nous.core.ui.theme.TerminalFontFamily
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,7 +39,9 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isAltPressed
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
@@ -51,6 +56,7 @@ import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalString
 import com.aandios.nous.feature.chart.model.ChartLayout
 import com.aandios.nous.feature.chart.model.PriceRange
@@ -75,6 +81,13 @@ private const val MAX_VERTICAL_ZOOM = 10f
 
 /** Окно двойного клика для сброса зумов. */
 private const val DOUBLE_CLICK_TIMEOUT_MS = 400L
+
+/** Превью цены TP/SL при драге (ключ привязан к ордеру/позиции). */
+private data class TpSlPreview(
+    val key: String,
+    val isTakeProfit: Boolean,
+    val price: Double,
+)
 
 /**
  * Единый движок графика: layout, жесты (pan/зум/Ctrl-зум/Alt-вертикаль/double-tap),
@@ -127,6 +140,12 @@ fun CandleStickChartInteraction(
 
     /** Закрытие позиции по рынку (✕ на бейдже позиции). */
     onCloseTradingPosition: ((Position) -> Unit)? = null,
+
+    /** TP/SL лимитного ордера с графика (drag мини-бейджа; null — снять). */
+    onSetTradingOrderTpSl: ((Order, Double?, Double?) -> Unit)? = null,
+
+    /** TP/SL позиции с графика (drag мини-бейджа; null — снять). */
+    onSetTradingPositionTpSl: ((Position, Double?, Double?) -> Unit)? = null,
 ) {
     if (candles.isEmpty()) return
 
@@ -140,6 +159,10 @@ fun CandleStickChartInteraction(
     var lastClickTimeMs by remember { mutableStateOf(0L) }
     var lastClickPos by remember { mutableStateOf(Offset.Zero) }
     var isCtrlPressed by remember { mutableStateOf(false) }
+    var chartOriginInRoot by remember { mutableStateOf(Offset.Zero) }
+    /** Превью TP/SL при драге чипа. */
+    var tpSlPreview by remember { mutableStateOf<TpSlPreview?>(null) }
+    val tpSlChipRects = remember { mutableMapOf<String, Rect>() }
 
     /** Alt+hover popup position for footprint */
     var footprintHoverPos by remember { mutableStateOf<Offset?>(null) }
@@ -210,6 +233,7 @@ fun CandleStickChartInteraction(
     BoxWithConstraints(
         modifier = modifier
             .fillMaxSize()
+            .onGloballyPositioned { chartOriginInRoot = it.positionInRoot() }
             .focusRequester(chartFocusRequester)
             .focusable()
             .onKeyEvent { event ->
@@ -258,6 +282,11 @@ fun CandleStickChartInteraction(
             .pointerInput(activeDrawingTool, drawingHistory) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
+
+                    // TP/SL мини-бейджи обрабатывают драг сами; не панорамируем чарт.
+                    if (tpSlChipRects.values.any { down.position in it }) {
+                        return@awaitEachGesture
+                    }
 
                     /** 1. Перемещение/изменение размера существующего рисунка */
                     val history = drawingHistory
@@ -825,6 +854,64 @@ fun CandleStickChartInteraction(
                 )
             }
 
+            /** 2d. Превью TP/SL при драге мини-бейджа */
+            tpSlPreview?.let { preview ->
+                val y = priceToY(preview.price.toFloat(), priceRange, layout.chartMainArea.height)
+                if (y in 0f..layout.chartMainArea.height) {
+                    drawLine(
+                        color = if (preview.isTakeProfit) config.candleStyle.bullishColor
+                        else config.candleStyle.bearishColor,
+                        start = Offset(layout.chartMainArea.left, layout.chartMainArea.top + y),
+                        end = Offset(layout.chartMainArea.right, layout.chartMainArea.top + y),
+                        strokeWidth = 1.5f,
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                            floatArrayOf(6f, 4f),
+                        ),
+                    )
+                }
+            }
+
+            // Постоянные dashed-линии установленных TP/SL
+            fun drawTpSlLevelLine(price: Double, color: Color) {
+                val y = priceToY(price.toFloat(), priceRange, layout.chartMainArea.height)
+                if (y !in 0f..layout.chartMainArea.height) return
+                drawLine(
+                    color = color.copy(alpha = 0.45f),
+                    start = Offset(layout.chartMainArea.left, layout.chartMainArea.top + y),
+                    end = Offset(layout.chartMainArea.right, layout.chartMainArea.top + y),
+                    strokeWidth = 1f,
+                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(
+                        floatArrayOf(4f, 4f),
+                    ),
+                )
+            }
+            tradingPositions.forEach { p ->
+                val prefix = "p:${positionBadgeKey(p)}"
+                p.takeProfitPrice?.let {
+                    if (tpSlPreview?.key != "$prefix:true") {
+                        drawTpSlLevelLine(it, config.candleStyle.bullishColor)
+                    }
+                }
+                p.stopLossPrice?.let {
+                    if (tpSlPreview?.key != "$prefix:false") {
+                        drawTpSlLevelLine(it, designTokens.colors.warning)
+                    }
+                }
+            }
+            tradingOrders.forEach { o ->
+                val prefix = "o:${o.orderId}"
+                o.takeProfitPrice?.let {
+                    if (tpSlPreview?.key != "$prefix:true") {
+                        drawTpSlLevelLine(it, config.candleStyle.bullishColor)
+                    }
+                }
+                o.stopLossPrice?.let {
+                    if (tpSlPreview?.key != "$prefix:false") {
+                        drawTpSlLevelLine(it, designTokens.colors.warning)
+                    }
+                }
+            }
+
             /** 3. Шкала времени (по каркасным свечам — общая для обоих режимов) */
             drawTimeScale(
                 candles = candles,
@@ -983,6 +1070,11 @@ fun CandleStickChartInteraction(
                 )
             }
         }
+        val tpSlPricePerPx = if (layout.chartMainArea.height > 0f) {
+            (priceRange.range / layout.chartMainArea.height).toDouble()
+        } else {
+            0.0
+        }
         /** Бейджи открытых ордеров поверх графика (TradingView-style):
          * по центру чарта на линии цены; драг — вся поверхность, кроме qty.
          */
@@ -1009,6 +1101,34 @@ fun CandleStickChartInteraction(
                         priceText = config.priceFormatter.formatPrice(displayPrice),
                         sideColor = if (order.side == OrderSide.BUY) config.candleStyle.bullishColor
                         else config.candleStyle.bearishColor,
+                        takeProfitPrice = order.takeProfitPrice,
+                        stopLossPrice = order.stopLossPrice,
+                        pricePerPx = tpSlPricePerPx,
+                        tpColor = config.candleStyle.bullishColor,
+                        slColor = config.candleStyle.bearishColor,
+                        formatter = config.priceFormatter,
+                        onTpSlPreview = { isTp, price ->
+                            tpSlPreview = price?.let {
+                                TpSlPreview("o:${order.orderId}:$isTp", isTp, it)
+                            }
+                        },
+                        onTpSlCommit = { isTp, price ->
+                            onSetTradingOrderTpSl?.invoke(
+                                order,
+                                if (isTp) price else order.takeProfitPrice,
+                                if (!isTp) price else order.stopLossPrice,
+                            )
+                        },
+                        onTpSlRect = { isTp, rect ->
+                            val key = "o:${order.orderId}:$isTp:btn"
+                            tpSlChipRects[key] = Rect(
+                                left = rect.left - chartOriginInRoot.x,
+                                top = rect.top - chartOriginInRoot.y,
+                                right = rect.right - chartOriginInRoot.x,
+                                bottom = rect.bottom - chartOriginInRoot.y,
+                            )
+                        },
+                        onTpSlRectRemoved = { isTp -> tpSlChipRects.remove("o:${order.orderId}:$isTp:btn") },
                         onCancel = { onCancelTradingOrder?.invoke(order) },
                         onResize = { qty -> onResizeTradingOrder?.invoke(order, qty) },
                         onQtyBounds = { rect -> orderQtyRects[order.orderId] = rect },
@@ -1069,11 +1189,145 @@ fun CandleStickChartInteraction(
                         pnlUpColor = config.currentPriceColor,
                         pnlDownColor = config.candleStyle.bearishColor,
                         pnlPlateColor = config.pnlPlateColor,
+                        takeProfitPrice = position.takeProfitPrice,
+                        stopLossPrice = position.stopLossPrice,
+                        pricePerPx = tpSlPricePerPx,
+                        tpColor = config.candleStyle.bullishColor,
+                        slColor = config.candleStyle.bearishColor,
+                        formatter = config.priceFormatter,
+                        onTpSlPreview = { isTp, price ->
+                            tpSlPreview = price?.let {
+                                TpSlPreview("p:${positionBadgeKey(position)}:$isTp", isTp, it)
+                            }
+                        },
+                        onTpSlCommit = { isTp, price ->
+                            onSetTradingPositionTpSl?.invoke(
+                                position,
+                                if (isTp) price else position.takeProfitPrice,
+                                if (!isTp) price else position.stopLossPrice,
+                            )
+                        },
+                        onTpSlRect = { isTp, rect ->
+                            val key = "p:${positionBadgeKey(position)}:$isTp:btn"
+                            tpSlChipRects[key] = Rect(
+                                left = rect.left - chartOriginInRoot.x,
+                                top = rect.top - chartOriginInRoot.y,
+                                right = rect.right - chartOriginInRoot.x,
+                                bottom = rect.bottom - chartOriginInRoot.y,
+                            )
+                        },
+                        onTpSlRectRemoved = { isTp ->
+                            tpSlChipRects.remove("p:${positionBadgeKey(position)}:$isTp:btn")
+                        },
                         onClose = onCloseTradingPosition?.let { cb -> { cb(position) } },
                         modifier = Modifier
                             .offset(y = with(density) { y.toDp() } - TRADING_BADGE_HEIGHT / 2)
                             .height(TRADING_BADGE_HEIGHT)
                             .onSizeChanged { positionBadgeSizes[positionBadgeKey(position)] = it },
+                    )
+                }
+            }
+        }
+        // Отдельные TP/SL бейджи на ценовых уровнях (тащатся вертикально)
+        tradingPositions.forEach { position ->
+            if (position.avgPrice <= 0.0) return@forEach
+            val prefix = "p:${positionBadgeKey(position)}"
+            val isLong = position.side == TradeSide.BUY
+            listOf(true to position.takeProfitPrice, false to position.stopLossPrice).forEach { (isTp, price) ->
+                val key = "$prefix:$isTp"
+                val preview = tpSlPreview?.takeIf { it.key == key }?.price
+                val effectivePrice = preview ?: price ?: return@forEach
+                val levelY = priceToY(effectivePrice.toFloat(), priceRange, layout.chartMainArea.height)
+                if (levelY < 0f || levelY > layout.chartMainArea.height) return@forEach
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .width(with(density) { chartWidthPx.toDp() })
+                        .offset(y = with(density) { levelY.toDp() } - 6.dp)
+                        .padding(end = 8.dp),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    TpSlLevelBadge(
+                        label = if (isTp) "TP" else "SL",
+                        price = effectivePrice,
+                        referencePrice = position.avgPrice,
+                        isLong = isLong,
+                        tickSize = config.priceFormatter.tickSize,
+                        color = if (isTp) config.candleStyle.bullishColor else designTokens.colors.warning,
+                        background = config.backgroundColor.copy(alpha = 0.92f),
+                        enabled = onSetTradingPositionTpSl != null,
+                        pricePerPx = tpSlPricePerPx,
+                        onPreview = { kind, p ->
+                            tpSlPreview = p?.let { TpSlPreview(key, kind, it) }
+                        },
+                        onCommit = { kind, p ->
+                            onSetTradingPositionTpSl?.invoke(
+                                position,
+                                if (kind) p else position.takeProfitPrice,
+                                if (!kind) p else position.stopLossPrice,
+                            )
+                        },
+                        onBounds = { rect ->
+                            tpSlChipRects["$key:level"] = Rect(
+                                left = rect.left - chartOriginInRoot.x,
+                                top = rect.top - chartOriginInRoot.y,
+                                right = rect.right - chartOriginInRoot.x,
+                                bottom = rect.bottom - chartOriginInRoot.y,
+                            )
+                        },
+                        onBoundsRemoved = { tpSlChipRects.remove("$key:level") },
+                    )
+                }
+            }
+        }
+        tradingOrders.forEach { order ->
+            if (order.price <= 0.0) return@forEach
+            val prefix = "o:${order.orderId}"
+            val isLong = if (order.reduceOnly) order.side == OrderSide.SELL
+            else order.side == OrderSide.BUY
+            listOf(true to order.takeProfitPrice, false to order.stopLossPrice).forEach { (isTp, price) ->
+                val key = "$prefix:$isTp"
+                val preview = tpSlPreview?.takeIf { it.key == key }?.price
+                val effectivePrice = preview ?: price ?: return@forEach
+                val levelY = priceToY(effectivePrice.toFloat(), priceRange, layout.chartMainArea.height)
+                if (levelY < 0f || levelY > layout.chartMainArea.height) return@forEach
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .width(with(density) { chartWidthPx.toDp() })
+                        .offset(y = with(density) { levelY.toDp() } - 6.dp)
+                        .padding(end = 8.dp),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    TpSlLevelBadge(
+                        label = if (isTp) "TP" else "SL",
+                        price = effectivePrice,
+                        referencePrice = order.price,
+                        isLong = isLong,
+                        tickSize = config.priceFormatter.tickSize,
+                        color = if (isTp) config.candleStyle.bullishColor else designTokens.colors.warning,
+                        background = config.backgroundColor.copy(alpha = 0.92f),
+                        enabled = onSetTradingOrderTpSl != null,
+                        pricePerPx = tpSlPricePerPx,
+                        onPreview = { kind, p ->
+                            tpSlPreview = p?.let { TpSlPreview(key, kind, it) }
+                        },
+                        onCommit = { kind, p ->
+                            onSetTradingOrderTpSl?.invoke(
+                                order,
+                                if (kind) p else order.takeProfitPrice,
+                                if (!kind) p else order.stopLossPrice,
+                            )
+                        },
+                        onBounds = { rect ->
+                            tpSlChipRects["$key:level"] = Rect(
+                                left = rect.left - chartOriginInRoot.x,
+                                top = rect.top - chartOriginInRoot.y,
+                                right = rect.right - chartOriginInRoot.x,
+                                bottom = rect.bottom - chartOriginInRoot.y,
+                            )
+                        },
+                        onBoundsRemoved = { tpSlChipRects.remove("$key:level") },
                     )
                 }
             }
@@ -1196,6 +1450,16 @@ private fun TradingOrderBadge(
     order: Order,
     priceText: String,
     sideColor: Color,
+    takeProfitPrice: Double?,
+    stopLossPrice: Double?,
+    pricePerPx: Double,
+    tpColor: Color,
+    slColor: Color,
+    formatter: SymbolFormatter,
+    onTpSlPreview: (Boolean, Double?) -> Unit,
+    onTpSlCommit: (Boolean, Double?) -> Unit,
+    onTpSlRect: (Boolean, Rect) -> Unit,
+    onTpSlRectRemoved: (Boolean) -> Unit,
     onCancel: () -> Unit,
     onResize: (Double) -> Unit,
     onQtyBounds: (Rect) -> Unit,
@@ -1286,6 +1550,34 @@ private fun TradingOrderBadge(
                 Box(contentAlignment = Alignment.Center) { inner() }
             },
         )
+        TpSlActionButton(
+            label = "TP",
+            color = tpColor,
+            background = Color.Black.copy(alpha = 0.25f),
+            enabled = true,
+            referencePrice = order.price,
+            currentPrice = takeProfitPrice,
+            pricePerPx = pricePerPx,
+            onPreview = onTpSlPreview,
+            onCommit = onTpSlCommit,
+            onBounds = { rect -> onTpSlRect(true, rect) },
+            onBoundsRemoved = { onTpSlRectRemoved(true) },
+            modifier = Modifier.padding(start = 3.dp),
+        )
+        TpSlActionButton(
+            label = "SL",
+            color = slColor,
+            background = Color.Black.copy(alpha = 0.25f),
+            enabled = true,
+            referencePrice = order.price,
+            currentPrice = stopLossPrice,
+            pricePerPx = pricePerPx,
+            onPreview = onTpSlPreview,
+            onCommit = onTpSlCommit,
+            onBounds = { rect -> onTpSlRect(false, rect) },
+            onBoundsRemoved = { onTpSlRectRemoved(false) },
+            modifier = Modifier.padding(start = 2.dp),
+        )
         Text(
             text = "✕",
             color = Color.White,
@@ -1319,6 +1611,149 @@ private fun GripDots(modifier: Modifier = Modifier) {
     }
 }
 
+/** Кнопка TP/SL в основном бейдже: drag «вытаскивает» уровень. */
+@Composable
+private fun TpSlActionButton(
+    label: String,
+    color: Color,
+    background: Color,
+    enabled: Boolean,
+    referencePrice: Double,
+    currentPrice: Double?,
+    pricePerPx: Double,
+    onPreview: (Boolean, Double?) -> Unit,
+    onCommit: (Boolean, Double?) -> Unit,
+    onBounds: (Rect) -> Unit,
+    onBoundsRemoved: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isTakeProfit = label == "TP"
+    var dragPrice by remember { mutableStateOf<Double?>(null) }
+    Text(
+        text = label,
+        color = color,
+        fontSize = 9.sp,
+        lineHeight = 10.sp,
+        fontFamily = TerminalFontFamily,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = modifier
+            .onGloballyPositioned { coords -> onBounds(coords.boundsInRoot()) }
+            .background(background, RoundedCornerShape(2.dp))
+            .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .pointerInput(label, currentPrice, pricePerPx, referencePrice, enabled) {
+                if (!enabled) return@pointerInput
+                detectDragGestures(
+                    onDragStart = { dragPrice = currentPrice ?: referencePrice },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        val base = currentPrice ?: referencePrice
+                        if (base > 0.0 && pricePerPx > 0.0) {
+                            val next = ((dragPrice ?: base) - amount.y * pricePerPx)
+                                .takeIf { it > 0.0 }
+                            dragPrice = next
+                            onPreview(isTakeProfit, next)
+                        }
+                    },
+                    onDragEnd = {
+                        val target = dragPrice
+                        dragPrice = null
+                        onPreview(isTakeProfit, null)
+                        if (target != null) onCommit(isTakeProfit, target)
+                    },
+                    onDragCancel = {
+                        dragPrice = null
+                        onPreview(isTakeProfit, null)
+                    },
+                )
+            }
+            .pointerInput(label, enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, null) })
+            },
+    )
+    DisposableEffect(label) {
+        onDispose { onBoundsRemoved() }
+    }
+}
+
+/** Отдельный бейдж TP/SL на своём ценовом уровне; показывает число тиков. */
+@Composable
+private fun TpSlLevelBadge(
+    label: String,
+    price: Double,
+    referencePrice: Double,
+    isLong: Boolean,
+    tickSize: Double,
+    color: Color,
+    background: Color,
+    enabled: Boolean,
+    pricePerPx: Double,
+    onPreview: (Boolean, Double?) -> Unit,
+    onCommit: (Boolean, Double?) -> Unit,
+    onBounds: (Rect) -> Unit,
+    onBoundsRemoved: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isTakeProfit = label == "TP"
+    val ticks = if (tickSize > 0.0 && referencePrice > 0.0) {
+        val dir = if (isLong) 1.0 else -1.0
+        kotlin.math.round((price - referencePrice) * dir / tickSize).toInt()
+    } else {
+        0
+    }
+    val ticksText = if (ticks > 0) "+$ticks" else ticks.toString()
+
+    Text(
+        text = "$label $ticksText",
+        color = color,
+        fontSize = 9.sp,
+        lineHeight = 10.sp,
+        fontFamily = TerminalFontFamily,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = modifier
+            .onGloballyPositioned { coords -> onBounds(coords.boundsInRoot()) }
+            .background(background, RoundedCornerShape(2.dp))
+            .border(1.dp, color.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+            .pointerInput(label, price, pricePerPx, enabled) {
+                if (!enabled) return@pointerInput
+                var dragPrice: Double? = null
+                detectDragGestures(
+                    onDragStart = { dragPrice = price },
+                    onDrag = { change, amount ->
+                        change.consume()
+                        if (pricePerPx > 0.0) {
+                            val next = ((dragPrice ?: price) - amount.y * pricePerPx)
+                                .takeIf { it > 0.0 }
+                            dragPrice = next
+                            onPreview(isTakeProfit, next)
+                        }
+                    },
+                    onDragEnd = {
+                        val target = dragPrice
+                        dragPrice = null
+                        onPreview(isTakeProfit, null)
+                        if (target != null) onCommit(isTakeProfit, target)
+                    },
+                    onDragCancel = {
+                        dragPrice = null
+                        onPreview(isTakeProfit, null)
+                    },
+                )
+            }
+            .pointerInput(label, enabled) {
+                if (!enabled) return@pointerInput
+                detectTapGestures(onDoubleTap = { onCommit(isTakeProfit, null) })
+            },
+    )
+    DisposableEffect(label) {
+        onDispose { onBoundsRemoved() }
+    }
+}
+
 private fun trimQtyText(v: Double): String = plainDecimalString(v)
 
 private fun positionBadgeKey(p: Position): String =
@@ -1340,6 +1775,16 @@ private fun TradingPositionBadge(
     pnlUpColor: Color,
     pnlDownColor: Color,
     pnlPlateColor: Color,
+    takeProfitPrice: Double?,
+    stopLossPrice: Double?,
+    pricePerPx: Double,
+    tpColor: Color,
+    slColor: Color,
+    formatter: SymbolFormatter,
+    onTpSlPreview: (Boolean, Double?) -> Unit,
+    onTpSlCommit: (Boolean, Double?) -> Unit,
+    onTpSlRect: (Boolean, Rect) -> Unit,
+    onTpSlRectRemoved: (Boolean) -> Unit,
     onClose: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
@@ -1392,20 +1837,52 @@ private fun TradingPositionBadge(
                 )
             }
         }
+        TpSlActionButton(
+            label = "TP",
+            color = tpColor,
+            background = Color.Black.copy(alpha = 0.25f),
+            enabled = true,
+            referencePrice = position.avgPrice,
+            currentPrice = takeProfitPrice,
+            pricePerPx = pricePerPx,
+            onPreview = onTpSlPreview,
+            onCommit = onTpSlCommit,
+            onBounds = { rect -> onTpSlRect(true, rect) },
+            onBoundsRemoved = { onTpSlRectRemoved(true) },
+            modifier = Modifier.padding(start = 3.dp),
+        )
+        TpSlActionButton(
+            label = "SL",
+            color = slColor,
+            background = Color.Black.copy(alpha = 0.25f),
+            enabled = true,
+            referencePrice = position.avgPrice,
+            currentPrice = stopLossPrice,
+            pricePerPx = pricePerPx,
+            onPreview = onTpSlPreview,
+            onCommit = onTpSlCommit,
+            onBounds = { rect -> onTpSlRect(false, rect) },
+            onBoundsRemoved = { onTpSlRectRemoved(false) },
+            modifier = Modifier.padding(start = 2.dp),
+        )
         onClose?.let { close ->
             Text(
-                text = "✕",
-                color = Color.White,
-                fontSize = 11.sp,
-                lineHeight = 12.sp,
+                text = "Flatten",
+                color = pnlDownColor,
+                fontSize = 9.sp,
+                lineHeight = 10.sp,
                 fontFamily = TerminalFontFamily,
+                fontWeight = FontWeight.Bold,
                 maxLines = 1,
                 modifier = Modifier
+                    .padding(start = 2.dp)
+                    .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
+                    .border(1.dp, pnlDownColor.copy(alpha = 0.9f), RoundedCornerShape(2.dp))
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                     ) { close() }
-                    .padding(horizontal = 4.dp),
+                    .padding(horizontal = 4.dp, vertical = 1.dp),
             )
         }
     }

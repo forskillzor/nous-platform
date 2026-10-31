@@ -27,12 +27,14 @@ import com.aandios.nous.provider.mexc.model.MexcCancelResult
 import com.aandios.nous.provider.mexc.model.MexcHistoryOrder
 import com.aandios.nous.provider.mexc.model.MexcOrderDeal
 import com.aandios.nous.provider.mexc.model.MexcPosition
+import com.aandios.nous.provider.mexc.model.MexcStopOrder
 import io.ktor.client.HttpClient
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
@@ -247,7 +249,7 @@ class MexcTradingAdapter(
 
     override suspend fun getPositions(): List<Position> {
         if (!tradingClient.hasCredentials) return emptyList()
-        return restGate.execute(key = "position:open", weight = 20) {
+        val positions = restGate.execute(key = "position:open", weight = 20) {
             val response = tradingClient.signedGet("api/v1/private/position/open_positions")
             json.decodeFromJsonElement<List<MexcPosition>>(response.jsonObject["data"] ?: JsonArray(emptyList()))
                 .filter { it.state == 1 } // только удерживаемые
@@ -255,6 +257,14 @@ class MexcTradingAdapter(
                     val spec = contractSpec(position.symbol)
                     position.toPosition().scaled(spec)
                 }
+        }
+        val stops = fetchStopOrders(symbol = null).associateBy { it.positionId }
+        return positions.map { position ->
+            val stop = stops[position.positionId?.toString()]
+            if (stop == null) position else position.copy(
+                takeProfitPrice = stop.takeProfitPrice.takeIf { it > 0.0 },
+                stopLossPrice = stop.stopLossPrice.takeIf { it > 0.0 },
+            )
         }
     }
 
@@ -265,7 +275,7 @@ class MexcTradingAdapter(
         } else {
             "api/v1/private/order/list/open_orders"
         }
-        return restGate.execute(key = "orders:open:${symbol.orEmpty()}", weight = 20) {
+        val orders = restGate.execute(key = "orders:open:${symbol.orEmpty()}", weight = 20) {
             val response = tradingClient.signedGet(path, mapOf("page_size" to "100"))
             json.decodeFromJsonElement<List<com.aandios.nous.provider.mexc.model.MexcOrder>>(
                 response.jsonObject["data"] ?: JsonArray(emptyList())
@@ -274,6 +284,106 @@ class MexcTradingAdapter(
                 order.toOrder().scaled(spec)
             }
         }
+        val stops = fetchStopOrders(symbol).associateBy { it.orderId }
+        return orders.map { order ->
+            val stop = stops[order.orderId]
+            if (stop == null) order else order.copy(
+                takeProfitPrice = stop.takeProfitPrice.takeIf { it > 0.0 },
+                stopLossPrice = stop.stopLossPrice.takeIf { it > 0.0 },
+            )
+        }
+    }
+
+    /** Текущие TP/SL план-ордера (привязка к лимитному ордеру или позиции). */
+    private suspend fun fetchStopOrders(symbol: String?): List<MexcStopOrder> {
+        if (!tradingClient.hasCredentials) return emptyList()
+        val params = if (symbol != null) mapOf("symbol" to toMexcSymbol(symbol)) else emptyMap()
+        return runCatching {
+            restGate.execute(key = "stoporders:open:${symbol.orEmpty()}", weight = 20) {
+                val response = tradingClient.signedGet("api/v1/private/stoporder/open_orders", params)
+                json.decodeFromJsonElement<List<MexcStopOrder>>(
+                    response.jsonObject["data"] ?: JsonArray(emptyList())
+                )
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    override suspend fun setOrderTpSl(
+        order: Order,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean {
+        if (!tradingClient.hasCredentials) return false
+        val orderId = order.orderId.toLongOrNull() ?: return false
+        return runCatching {
+            restGate.execute(key = "stoporders:change-price:$orderId", weight = 20) {
+                val response = tradingClient.signedPost(
+                    "api/v1/private/stoporder/change_price",
+                    buildJsonObject {
+                        put("orderId", orderId)
+                        put("takeProfitPrice", formatDecimal(takeProfitPrice ?: 0.0))
+                        put("stopLossPrice", formatDecimal(stopLossPrice ?: 0.0))
+                        put("profitTrend", 1)
+                        put("lossTrend", 1)
+                    }.toString(),
+                )
+                response.jsonObject["success"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
+            }
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setPositionTpSl(
+        position: Position,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean {
+        if (!tradingClient.hasCredentials) return false
+        val positionId = position.positionId ?: return false
+        val tp = takeProfitPrice?.takeIf { it > 0.0 }
+        val sl = stopLossPrice?.takeIf { it > 0.0 }
+        val existing = fetchStopOrders(position.symbol)
+            .firstOrNull { it.positionId == positionId.toString() }
+        return runCatching {
+            restGate.execute(key = "stoporders:position:$positionId", weight = 20) {
+                val response = when {
+                    tp == null && sl == null -> {
+                        if (existing == null) return@execute true
+                        tradingClient.signedPost(
+                            "api/v1/private/stoporder/cancel",
+                            buildJsonArray {
+                                add(buildJsonObject { put("stopPlanOrderId", existing.id) })
+                            }.toString(),
+                        )
+                    }
+                    existing != null -> tradingClient.signedPost(
+                        "api/v1/private/stoporder/change_plan_price",
+                        buildJsonObject {
+                            put("stopPlanOrderId", existing.id)
+                            put("takeProfitPrice", formatDecimal(tp ?: 0.0))
+                            put("stopLossPrice", formatDecimal(sl ?: 0.0))
+                            put("profitTrend", 1)
+                            put("lossTrend", 1)
+                        }.toString(),
+                    )
+                    else -> {
+                        val spec = contractSpec(position.symbol)
+                        val vol = toContracts(position.quantity, spec)
+                        tradingClient.signedPost(
+                            "api/v1/private/stoporder/place",
+                            buildJsonObject {
+                                put("positionId", positionId)
+                                put("vol", formatDecimal(vol))
+                                put("takeProfitPrice", formatDecimal(tp ?: 0.0))
+                                put("stopLossPrice", formatDecimal(sl ?: 0.0))
+                                put("profitTrend", 1)
+                                put("lossTrend", 1)
+                            }.toString(),
+                        )
+                    }
+                }
+                response.jsonObject["success"]?.jsonPrimitive?.content?.toBooleanStrictOrNull() == true
+            }
+        }.getOrDefault(false)
     }
 
     override suspend fun getTradeHistory(symbol: String?, limit: Int): List<TradeFill> {

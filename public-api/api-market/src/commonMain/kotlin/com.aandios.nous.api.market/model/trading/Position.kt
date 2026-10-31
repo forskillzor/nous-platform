@@ -24,4 +24,7 @@ data class Position(
     val liquidatePrice: Double? = null,
     /** Режим маржи: 1 — изолированная, 2 — кросс. */
     val marginMode: Int? = null,
+    /** TP/SL позиции, если биржа их отдаёт. */
+    val takeProfitPrice: Double? = null,
+    val stopLossPrice: Double? = null,
 )

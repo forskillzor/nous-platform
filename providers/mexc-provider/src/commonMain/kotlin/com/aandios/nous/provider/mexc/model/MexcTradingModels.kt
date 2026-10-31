@@ -130,6 +130,20 @@ data class MexcOrder(
     )
 }
 
+// ── TP/SL план-ордера ───────────────────────────────────────────────────────
+
+@Serializable
+data class MexcStopOrder(
+    val id: Long = 0,
+    val symbol: String = "",
+    val orderId: String = "0",
+    val positionId: String = "0",
+    val takeProfitPrice: Double = 0.0,
+    val stopLossPrice: Double = 0.0,
+    val vol: Double = 0.0,
+    val state: Int = 0,
+)
+
 // ── Сделки (fills) ───────────────────────────────────────────────────────────
 
 @Serializable

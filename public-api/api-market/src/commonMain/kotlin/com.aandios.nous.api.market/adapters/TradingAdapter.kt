@@ -67,6 +67,26 @@ interface TradingAdapter : MarketAdapter {
     /** Живые обновления ордеров. */
     fun subscribeToOrders(): Flow<Order>? = null
 
+    /**
+     * Установить/изменить/снять (null) TP/SL лимитного ордера.
+     * По умолчанию не поддерживается.
+     */
+    suspend fun setOrderTpSl(
+        order: Order,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean = false
+
+    /**
+     * Установить/изменить/снять (null) TP/SL позиции (full-position).
+     * По умолчанию не поддерживается.
+     */
+    suspend fun setPositionTpSl(
+        position: Position,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean = false
+
     /** Живые обновления балансов. */
     fun subscribeToBalances(): Flow<Balance>? = null
 

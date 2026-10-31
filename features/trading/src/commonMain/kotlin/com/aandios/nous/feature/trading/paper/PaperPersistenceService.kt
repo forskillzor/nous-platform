@@ -107,6 +107,8 @@ private data class PositionDto(
     val unrealizedPnl: Double = 0.0,
     val liquidatePrice: Double? = null,
     val marginMode: Int? = null,
+    val takeProfitPrice: Double? = null,
+    val stopLossPrice: Double? = null,
 )
 
 @Serializable
@@ -121,6 +123,8 @@ private data class OrderDto(
     val reduceOnly: Boolean = false,
     val status: String,
     val clientOrderId: String? = null,
+    val takeProfitPrice: Double? = null,
+    val stopLossPrice: Double? = null,
     val timestamp: Long = 0,
 )
 
@@ -174,6 +178,8 @@ private data class PaperStateDto(
                 unrealizedPnl = it.unrealizedPnl,
                 liquidatePrice = it.liquidatePrice,
                 marginMode = it.marginMode,
+                takeProfitPrice = it.takeProfitPrice,
+                stopLossPrice = it.stopLossPrice,
             )
         },
         openOrders = openOrders.map {
@@ -188,6 +194,8 @@ private data class PaperStateDto(
                 reduceOnly = it.reduceOnly,
                 status = enumOr(it.status, OrderStatus.OPEN),
                 clientOrderId = it.clientOrderId,
+                takeProfitPrice = it.takeProfitPrice,
+                stopLossPrice = it.stopLossPrice,
                 timestamp = it.timestamp,
             )
         },
@@ -238,6 +246,8 @@ private data class PaperStateDto(
                     unrealizedPnl = it.unrealizedPnl,
                     liquidatePrice = it.liquidatePrice,
                     marginMode = it.marginMode,
+                    takeProfitPrice = it.takeProfitPrice,
+                    stopLossPrice = it.stopLossPrice,
                 )
             },
             openOrders = state.openOrders.map {
@@ -252,6 +262,8 @@ private data class PaperStateDto(
                     reduceOnly = it.reduceOnly,
                     status = it.status.name,
                     clientOrderId = it.clientOrderId,
+                    takeProfitPrice = it.takeProfitPrice,
+                    stopLossPrice = it.stopLossPrice,
                     timestamp = it.timestamp,
                 )
             },

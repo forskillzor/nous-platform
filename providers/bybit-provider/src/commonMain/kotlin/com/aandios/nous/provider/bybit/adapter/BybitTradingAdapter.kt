@@ -310,6 +310,60 @@ class BybitTradingAdapter internal constructor(
         return true
     }
 
+    override suspend fun setOrderTpSl(
+        order: Order,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean {
+        if (!tradingClient.hasCredentials) return false
+        return runCatching {
+            tradingClient.signedPost(
+                "/v5/order/amend",
+                buildJsonObject {
+                    put("category", CATEGORY)
+                    put("symbol", order.symbol.uppercase())
+                    put("orderId", order.orderId)
+                    put("tpslMode", "Full")
+                    put("takeProfit", takeProfitPrice?.let(::decimal) ?: "0")
+                    put("stopLoss", stopLossPrice?.let(::decimal) ?: "0")
+                    put("tpTriggerBy", "LastPrice")
+                    put("slTriggerBy", "LastPrice")
+                },
+            )
+            true
+        }.getOrDefault(false)
+    }
+
+    override suspend fun setPositionTpSl(
+        position: Position,
+        takeProfitPrice: Double?,
+        stopLossPrice: Double?,
+    ): Boolean {
+        if (!tradingClient.hasCredentials) return false
+        val (symbol, index) = positionIdentity[position.positionId]
+            ?: run {
+                getPositions()
+                positionIdentity[position.positionId]
+            }
+            ?: return false
+        return runCatching {
+            tradingClient.signedPost(
+                "/v5/position/trading-stop",
+                buildJsonObject {
+                    put("category", CATEGORY)
+                    put("symbol", symbol)
+                    put("positionIdx", index)
+                    put("tpslMode", "Full")
+                    put("takeProfit", takeProfitPrice?.let(::decimal) ?: "0")
+                    put("stopLoss", stopLossPrice?.let(::decimal) ?: "0")
+                    put("tpTriggerBy", "LastPrice")
+                    put("slTriggerBy", "LastPrice")
+                },
+            )
+            true
+        }.getOrDefault(false)
+    }
+
     override fun subscribeToPositions(): Flow<Position>? {
         if (!tradingClient.hasCredentials) return null
         return privateStreams.subscribe("position.linear").transform { text ->
@@ -432,6 +486,8 @@ class BybitTradingAdapter internal constructor(
             unrealizedPnl = double("unrealisedPnl") ?: 0.0,
             liquidatePrice = double("liqPrice")?.takeIf { it > 0.0 },
             marginMode = string("tradeMode")?.toIntOrNull()?.takeIf { it == 1 }?.let { 1 },
+            takeProfitPrice = double("takeProfit")?.takeIf { it > 0.0 },
+            stopLossPrice = double("stopLoss")?.takeIf { it > 0.0 },
         )
     }
 
@@ -465,6 +521,8 @@ class BybitTradingAdapter internal constructor(
                 else -> OrderStatus.REJECTED
             },
             clientOrderId = string("orderLinkId"),
+            takeProfitPrice = double("takeProfit")?.takeIf { it > 0.0 },
+            stopLossPrice = double("stopLoss")?.takeIf { it > 0.0 },
             timestamp = long("createdTime") ?: 0L,
             updatedAt = long("updatedTime") ?: long("createdTime") ?: 0L,
         )

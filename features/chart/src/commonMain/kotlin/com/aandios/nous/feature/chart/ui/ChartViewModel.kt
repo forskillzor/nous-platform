@@ -20,6 +20,7 @@ import com.aandios.nous.api.market.model.trading.Order
 import com.aandios.nous.api.market.model.trading.OrderRequest
 import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.Position
+import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.core.data.repository.ChartRepositoryImpl
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
 import com.aandios.nous.core.domain.cache.CandleCacheStore
@@ -1177,6 +1178,8 @@ class ChartViewModel(
                         reduceOnly = request.reduceOnly,
                         status = OrderStatus.OPEN,
                         clientOrderId = request.clientOrderId,
+                        takeProfitPrice = request.takeProfitPrice,
+                        stopLossPrice = request.stopLossPrice,
                         timestamp = now,
                         updatedAt = now,
                     )
@@ -1258,6 +1261,8 @@ class ChartViewModel(
                     reduceOnly = order.reduceOnly,
                     status = OrderStatus.OPEN,
                     clientOrderId = null,
+                    takeProfitPrice = order.takeProfitPrice,
+                    stopLossPrice = order.stopLossPrice,
                     timestamp = now,
                     updatedAt = now,
                 )
@@ -1275,6 +1280,88 @@ class ChartViewModel(
                 else -> response.message ?: "Replace failed"
             })
         }
+    }
+
+    /**
+     * TP/SL лимитного ордера с графика: drag мини-бейджа. `null` снимает сторону.
+     */
+    fun setChartOrderTpSl(order: Order, takeProfitPrice: Double?, stopLossPrice: Double?) {
+        if (!_tradingEnabled.value) return
+        val formatter = _state.value.currentSymbolFormatter
+        val tp = takeProfitPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
+        val sl = stopLossPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
+        validateTpSl(
+            // reduce-only SELL закрывает Long, BUY — Short
+            isLong = if (order.reduceOnly) order.side == OrderSide.SELL else order.side == OrderSide.BUY,
+            reference = order.price.takeIf { it > 0 },
+            takeProfit = tp,
+            stopLoss = sl,
+        )?.let { notify(it); return }
+        viewModelScope.launch {
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
+            }
+            val ok = adapter.setOrderTpSl(order, tp, sl)
+            if (ok) {
+                _openOrders.value = _openOrders.value.map {
+                    if (it.orderId == order.orderId) {
+                        it.copy(takeProfitPrice = tp, stopLossPrice = sl)
+                    } else it
+                }
+            } else {
+                notify("TP/SL not supported for ${order.symbol}")
+            }
+        }
+    }
+
+    /**
+     * TP/SL позиции с графика: drag мини-бейджа. `null` снимает сторону.
+     */
+    fun setChartPositionTpSl(position: Position, takeProfitPrice: Double?, stopLossPrice: Double?) {
+        if (!_tradingEnabled.value) return
+        val formatter = _state.value.currentSymbolFormatter
+        val tp = takeProfitPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
+        val sl = stopLossPrice?.takeIf { it > 0 }?.let(formatter::roundPrice)
+        validateTpSl(
+            isLong = position.side == TradeSide.BUY,
+            reference = position.avgPrice.takeIf { it > 0 },
+            takeProfit = tp,
+            stopLoss = sl,
+        )?.let { notify(it); return }
+        viewModelScope.launch {
+            val adapter = activeTrading() ?: run {
+                notify("Trading adapter not available"); return@launch
+            }
+            val ok = adapter.setPositionTpSl(position, tp, sl)
+            if (ok) {
+                _positions.value = _positions.value.map {
+                    if (it.positionId == position.positionId) {
+                        it.copy(takeProfitPrice = tp, stopLossPrice = sl)
+                    } else it
+                }
+            } else {
+                notify("TP/SL not supported for ${position.symbol}")
+            }
+        }
+    }
+
+    private fun validateTpSl(
+        isLong: Boolean,
+        reference: Double?,
+        takeProfit: Double?,
+        stopLoss: Double?,
+    ): String? {
+        if (takeProfit == null && stopLoss == null) return null
+        if (reference == null || reference <= 0.0) return null
+        if (takeProfit != null) {
+            if (isLong && takeProfit <= reference) return "TP must be above entry"
+            if (!isLong && takeProfit >= reference) return "TP must be below entry"
+        }
+        if (stopLoss != null) {
+            if (isLong && stopLoss >= reference) return "SL must be below entry"
+            if (!isLong && stopLoss <= reference) return "SL must be above entry"
+        }
+        return null
     }
 
     /** Последняя цена для определения стороны chart-ордера. */
