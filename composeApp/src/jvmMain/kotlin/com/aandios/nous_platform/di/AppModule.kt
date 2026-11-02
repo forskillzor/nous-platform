@@ -26,6 +26,7 @@ import com.aandios.nous.feature.trading.ui.PaperModeState
 import com.aandios.nous.feature.trading.ui.TradingViewModel
 import com.aandios.nous.provider.binance.BinanceProviderFactory
 import com.aandios.nous.provider.bybit.BybitProviderFactory
+import com.aandios.nous.provider.hyperliquid.HyperliquidProviderFactory
 import com.aandios.nous.provider.mexc.MexcProviderFactory
 import com.aandios.nous.core.workspace.WorkspaceRepository
 import com.aandios.nous.core.workspace.AppStateRepository
@@ -60,6 +61,17 @@ val appModule = module {
     single<Provider>(named("bybit")) {
         BybitProviderFactory().createProvider(
             config = ProviderConfig(displayName = "Bybit"),
+            networkManager = get<NetworkManager>(),
+        )
+    }
+
+    single<Provider>(named("hyperliquid")) {
+        HyperliquidProviderFactory().createProvider(
+            config = ProviderConfig(
+                displayName = "Hyperliquid",
+                isTestnet = System.getenv("HYPERLIQUID_TESTNET")
+                    ?.equals("true", ignoreCase = true) == true,
+            ),
             networkManager = get<NetworkManager>(),
         )
     }

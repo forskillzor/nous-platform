@@ -46,6 +46,7 @@ SQLite state store.
 | `public-api/api-trading`, `public-api/api-ui` | Additional API surfaces. |
 | `providers/binance-provider` | Binance USDT-M. Market data is real; `trading` is a stub that returns fake success with `TEST-<timestamp>` ids and tracks nothing — never use it to validate real order behaviour. |
 | `providers/bybit-provider` | Bybit V5 USDT linear perpetual market data and trading: public candles, order book, trades, best bid/ask, symbol info, live liquidations, signed private REST, and private account WebSocket. Credentials are `ProviderConfig.apiKey/secretKey` or `BYBIT_API_KEY` / `BYBIT_SECRET_KEY`; historical liquidations are not exposed by the documented public API. Margin mode is account-wide on UTA and must match the order's requested mode; the adapter never switches it implicitly. |
+| `providers/hyperliquid-provider` | Hyperliquid USDC-margined perps, including all HIP-3 builder-deployed DEXes: REST `/info`, multiplexed public/private WebSocket, chart/trades/DOM/book-ticker/symbol-info adapters, and EIP-712 signed L1 actions (order/cancel/leverage/margin/TP-SL). Trading uses `HYPERLIQUID_ACCOUNT_ADDRESS` + `HYPERLIQUID_PRIVATE_KEY` (agent or master EVM key); no FOK, no public liquidations, L2 depth max 20 levels. |
 | `providers/mexc-provider` | MEXC USDT-M Futures Contract API v1: signed REST client, rate gate, WS hub (public + personal), adapters, contract-size aware trading adapter. |
 | `features/chart` | Chart panel: rendering (candles/footprint), `ChartViewModel`, panel-scoped persistence (`ChartStatePersistor`), chart trading (order/position badges, TP/SL, drag = cancel+replace), indicators (off-main compute, feed source, TABS/STACKED panes, per-line colors, global favorites/presets). JVM UI: `ChartWindow`, `ChartTradingPanel`. |
 | `features/dom` | DOM depth ladder: `DomViewModel` (order book, click-to-place, order chips with resize/drag/cancel, position plates, margin chip), `DomWindow` (jvm), `content/LevelRow` + `DomSection`, `footer/OrderPlacementPanel`. |
@@ -458,7 +459,7 @@ Repo root: `C:\Users\skillzor\IdeaProjects\nous\nous-platform`
 - Standard test set:
   `:platform-core:jvmTest :public-api:api-market:jvmTest :features:chart:jvmTest :features:trading:jvmTest :features:dom:jvmTest`
 - Research indicator tests: `:features:research:jvmTest` (TA4J 0.27 requires Java 25).
-- Provider tests: `:providers:mexc-provider:jvmTest`, `:providers:binance-provider:jvmTest`, `:providers:bybit-provider:jvmTest`
+- Provider tests: `:providers:mexc-provider:jvmTest`, `:providers:binance-provider:jvmTest`, `:providers:bybit-provider:jvmTest`, `:providers:hyperliquid-provider:jvmTest`
 - JVM toolchain is **25** for every module (`jvmToolchain(25)` in
   `build-logic` conventions and `composeApp`; the root `Test` launcher also
   pins JDK 25). TA4J 0.27 is compiled for class-file 69, so JDK 22 tests fail
@@ -568,6 +569,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `IndicatorOutputBuilderTest`, `CandlesExtTest`; chart feed source lives in
   `features/chart/src/jvmTest` (`ChartIndicatorInputSourceTest`).
 - `providers/mexc-provider/src/jvmTest`, `providers/binance-provider/src/jvmTest`.
+- `providers/hyperliquid-provider/src/jvmTest` — market mapping, `allPerpMetas`/HIP-3 asset IDs, stream routing, orders/positions/TP-SL/balances, and EIP-712 signing against the official Python SDK vectors.
 - `features/trading`, `features/trades`, `features/settings` have no tests
   (`:features:trading:jvmTest` exists but is empty).
 
@@ -875,6 +877,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
 
 - Binance `trading` is a stub (fake ids) — use paper or MEXC for order flows.
 - MEXC keys are env-only (`MEXC_API_KEY` / `MEXC_SECRET_KEY`); no settings UI.
+- Hyperliquid keys are env-only (`HYPERLIQUID_ACCOUNT_ADDRESS` + `HYPERLIQUID_PRIVATE_KEY`, agent or master EVM key); `HYPERLIQUID_TESTNET=true` switches to testnet. HIP-3 DEX funding is per-DEX (no cross-DEX transfer in the adapter); `xyz:SP500` is the HIP-3 S&P 500 perp, while `SPX` is the default-DEX variant.
+- Hyperliquid has no public all-liquidations stream (`liquidation = null`), L2 book maxes out at 20 levels, FOK is rejected explicitly, hedge mode is unavailable (one-way only), and per-order TP/SL rewrites cancel+replace the parent (order id changes).
 - Market-data-server 15m footprint aggregates can be empty while the
   `trade-collector` deployment is pending (separate repo, out of scope here).
 - `share-files/` holds user-provided reference screenshots; it is gitignored —

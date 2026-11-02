@@ -275,7 +275,7 @@ class TradingViewModel(
     }
 
     /** Стейбл-валюты маржи (USDT-M / USDC-M). */
-    private val stableCurrencies = setOf("USDT", "USDC", "USD1", "DAI", "USD")
+    private val stableCurrencies = setOf("USDT", "USDC", "USD1", "DAI", "USD", "USDH", "USDE", "USDT0")
 
     /** Подходит ли валюта баланса выбранному типу контрактов. */
     fun balanceMatchesContractType(currency: String, type: ContractType): Boolean =

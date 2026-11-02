@@ -52,6 +52,6 @@ data class SymbolInfo(
         }
 
     companion object {
-        private val STABLE_MARGIN_ASSETS = setOf("USDT", "USDC", "USD1", "DAI", "USD")
+        private val STABLE_MARGIN_ASSETS = setOf("USDT", "USDC", "USD1", "DAI", "USD", "USDH", "USDE", "USDT0")
     }
 }

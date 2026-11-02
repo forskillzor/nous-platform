@@ -49,6 +49,7 @@ kotlin {
             implementation(project(":public-api:api-market"))
             implementation(project(":providers:binance-provider"))
             implementation(project(":providers:bybit-provider"))
+            implementation(project(":providers:hyperliquid-provider"))
             implementation(project(":providers:mexc-provider"))
 
             // Koin

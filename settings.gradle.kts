@@ -36,6 +36,7 @@ include(":platform-core")
 include("providers")
 include("providers:binance-provider")
 include("providers:bybit-provider")
+include("providers:hyperliquid-provider")
 
 include("providers:mexc-provider")
 include("features:research")
