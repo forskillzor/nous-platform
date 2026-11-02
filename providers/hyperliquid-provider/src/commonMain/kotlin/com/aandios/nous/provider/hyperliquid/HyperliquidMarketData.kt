@@ -106,6 +106,14 @@ internal class HyperliquidMarketData(
 
     suspend fun canonicalCoinOrNull(symbol: String): String? = canonicalCoin(symbol, snapshot())
 
+    /** Single-symbol lookup used by DOM/Trades/chart restores; context is fetched before tickSize is derived. */
+    suspend fun symbolInfo(symbol: String): SymbolInfo? {
+        val snapshot = snapshot()
+        val asset = canonicalCoin(symbol, snapshot)?.let { snapshot.byCoin[it.lowercase()] } ?: return null
+        contextsForDexes(snapshot, listOf(asset.dex), CATALOG_CONTEXT_TTL_MS)
+        return symbolInfoFor(asset)
+    }
+
     suspend fun symbols(): List<SymbolInfo> {
         val snapshot = snapshot()
         contextsForDexes(snapshot, snapshot.dexNames, CATALOG_CONTEXT_TTL_MS)

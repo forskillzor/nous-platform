@@ -148,6 +148,11 @@ class HyperliquidMarketDataTest {
         })
         val marketData = HyperliquidMarketData(info, ProviderConfig(), clock = { 1_000_000_000L })
 
+        val direct = marketData.symbolInfo("xyz:SP500")
+        assertNotNull(direct)
+        assertEquals(0.1, direct.tickSize, 1e-12)
+        assertEquals(1, contextCalls)
+
         val symbols = marketData.symbols()
         assertEquals(4, symbols.size)
         val btc = symbols.first { it.symbol == "BTC" }

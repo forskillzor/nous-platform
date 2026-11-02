@@ -12,8 +12,7 @@ import com.aandios.nous.provider.hyperliquid.HyperliquidMarketData
 class HyperliquidSymbolInfoAdapter internal constructor(
     private val marketData: HyperliquidMarketData,
 ) : SymbolInfoAdapter {
-    override suspend fun getSymbolInfo(symbol: String): SymbolInfo? =
-        marketData.assetFor(symbol)?.let(marketData::symbolInfoFor)
+    override suspend fun getSymbolInfo(symbol: String): SymbolInfo? = marketData.symbolInfo(symbol)
 
     override suspend fun getAllSymbolsInfo(): List<SymbolInfo> = marketData.symbols()
 }
