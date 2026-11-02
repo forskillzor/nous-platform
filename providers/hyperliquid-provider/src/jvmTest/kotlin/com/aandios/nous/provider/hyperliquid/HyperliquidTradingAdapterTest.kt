@@ -22,6 +22,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HyperliquidTradingAdapterTest {
@@ -89,11 +90,11 @@ class HyperliquidTradingAdapterTest {
         """
         [
           {"coin":"BTC","oid":10,"side":"A","sz":"0.5","origSz":"0.5","limitPx":"80000",
-           "timestamp":1,"triggerPx":"80000","isTrigger":true,"isPositionTpsl":true,
-           "reduceOnly":true,"orderType":"Trigger","triggerCondition":"Take Profit"},
+           "timestamp":1,"triggerPx":"80000","isTrigger":true,"isPositionTpsl":false,
+           "reduceOnly":true,"orderType":"Take Profit Limit","triggerCondition":"Price above 80000"},
           {"coin":"BTC","oid":11,"side":"A","sz":"0.5","origSz":"0.5","limitPx":"65000",
-           "timestamp":2,"triggerPx":"65000","isTrigger":true,"isPositionTpsl":true,
-           "reduceOnly":true,"orderType":"Trigger","triggerCondition":"Stop Loss"}
+           "timestamp":2,"triggerPx":"65000","isTrigger":true,"isPositionTpsl":false,
+           "reduceOnly":true,"orderType":"Stop Loss Market","triggerCondition":"Price below 65000"}
         ]
         """.trimIndent(),
     )
@@ -261,7 +262,7 @@ class HyperliquidTradingAdapterTest {
         assertEquals(
             linkedMapOf<String, Any?>(
                 "trigger" to linkedMapOf<String, Any?>(
-                    "isMarket" to true,
+                    "isMarket" to false,
                     "triggerPx" to "80000",
                     "tpsl" to "tp",
                 ),
@@ -371,6 +372,34 @@ class HyperliquidTradingAdapterTest {
     }
 
     @Test
+    fun `oco child tp is not treated as position tp`() = runTest {
+        val parentOrders = jsonElement(
+            """
+            [{"coin":"BTC","oid":20,"side":"B","sz":"0.001","origSz":"0.001","limitPx":"78000",
+              "timestamp":1,"reduceOnly":false,"orderType":"Limit","children":[
+                {"coin":"BTC","oid":21,"side":"A","sz":"0.001","origSz":"0.001","limitPx":"80000",
+                 "timestamp":2,"triggerPx":"80000","isTrigger":true,"reduceOnly":true,
+                 "triggerCondition":"Price above 80000"}
+              ]}]
+            """.trimIndent(),
+        )
+        val info = fakeInfo(
+            infoHandler = defaultInfoHandler(
+                clearinghouse = { body ->
+                    if (body.string("dex").isNullOrEmpty()) positionState() else emptyState()
+                },
+                openOrders = { body ->
+                    if (body.string("dex").isNullOrEmpty()) parentOrders else jsonElement("[]")
+                },
+            ),
+        )
+        val (adapter, _) = adapter(info)
+
+        val position = adapter.getPositions().single()
+        assertNull(position.takeProfitPrice)
+    }
+
+    @Test
     fun `position tp sl clears only the changed side`() = runTest {
         val info = fakeInfo(
             infoHandler = defaultInfoHandler(
@@ -406,8 +435,8 @@ class HyperliquidTradingAdapterTest {
                         jsonElement(
                             """
                             [{"coin":"BTC","oid":11,"side":"A","sz":"0.5","origSz":"0.5","limitPx":"65000",
-                              "timestamp":2,"triggerPx":"65000","isTrigger":true,"isPositionTpsl":true,
-                              "reduceOnly":true,"orderType":"Trigger","triggerCondition":"Stop Loss"}]
+                              "timestamp":2,"triggerPx":"65000","isTrigger":true,"isPositionTpsl":false,
+                              "reduceOnly":true,"orderType":"Stop Loss Market","triggerCondition":"Price below 65000"}]
                             """.trimIndent(),
                         )
                     } else {
@@ -429,7 +458,7 @@ class HyperliquidTradingAdapterTest {
         assertEquals(
             linkedMapOf<String, Any?>(
                 "trigger" to linkedMapOf<String, Any?>(
-                    "isMarket" to true,
+                    "isMarket" to false,
                     "triggerPx" to "81000",
                     "tpsl" to "tp",
                 ),

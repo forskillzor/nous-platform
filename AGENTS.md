@@ -892,6 +892,7 @@ from the IDE and tests visually; agents verify via compilation and tests.
 - MEXC keys are env-only (`MEXC_API_KEY` / `MEXC_SECRET_KEY`); no settings UI.
 - Hyperliquid keys are env-only (`HYPERLIQUID_ACCOUNT_ADDRESS` + `HYPERLIQUID_PRIVATE_KEY`, agent or master EVM key); `HYPERLIQUID_TESTNET=true` switches to testnet. HIP-3 DEX funding is per-DEX (no cross-DEX transfer in the adapter); `xyz:SP500` is the HIP-3 S&P 500 perp, while `SPX` is the default-DEX variant.
 - Hyperliquid has no public all-liquidations stream (`liquidation = null`), L2 book maxes out at 20 levels, FOK is rejected explicitly, hedge mode is unavailable (one-way only), and per-order TP/SL rewrites cancel+replace the parent (order id changes).
+- Hyperliquid TP children are trigger limits (`isMarket=false`, limit price = trigger) while SL stays market; the exchange can report `isPositionTpsl=false` for top-level position stops, so the order registry associates top-level reduce-only triggers with the one-way position and excludes nested OCO children. A trigger limit can still cross as taker; the API has no ALO trigger, so strict maker is not guaranteed.
 - Market-data-server 15m footprint aggregates can be empty while the
   `trade-collector` deployment is pending (separate repo, out of scope here).
 - `share-files/` holds user-provided reference screenshots; it is gitignored —

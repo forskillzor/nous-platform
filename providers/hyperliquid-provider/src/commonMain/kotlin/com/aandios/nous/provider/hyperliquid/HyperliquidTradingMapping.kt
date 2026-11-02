@@ -105,11 +105,17 @@ internal fun hyperliquidOrder(
     )
 }
 
+internal data class HyperliquidFlattenedOrders(
+    val orders: List<Order>,
+    val childOrderIds: Set<String>,
+)
+
 internal fun hyperliquidFlattenOpenOrders(
     rows: List<JsonObject>,
     positionsByCoin: Map<String, Position>,
-): List<Order> {
+): HyperliquidFlattenedOrders {
     val result = LinkedHashMap<String, Order>()
+    val childOrderIds = LinkedHashSet<String>()
     rows.forEach { row ->
         val coin = row.string("coin")
         val position = coin?.let { positionsByCoin[it.lowercase()] }
@@ -118,7 +124,11 @@ internal fun hyperliquidFlattenOpenOrders(
             positionEntryPrice = position?.avgPrice,
             positionSide = position?.side,
         )
-        val children = row["children"]?.let { it.asArray() }.orEmpty().mapNotNull { child ->
+        val childRows = row["children"]?.let { it.asArray() }.orEmpty()
+        childRows.forEach { child ->
+            child.asObject()?.long("oid")?.toString()?.let { childOrderIds += it }
+        }
+        val children = childRows.mapNotNull { child ->
             child.asObject()?.let {
                 hyperliquidOrder(
                     row = it,
@@ -156,7 +166,10 @@ internal fun hyperliquidFlattenOpenOrders(
             result[child.orderId] = if (current != null && current.isTakeProfit != null) current else child
         }
     }
-    return result.values.toList()
+    return HyperliquidFlattenedOrders(
+        orders = result.values.toList(),
+        childOrderIds = childOrderIds,
+    )
 }
 
 internal fun hyperliquidPositionFromState(

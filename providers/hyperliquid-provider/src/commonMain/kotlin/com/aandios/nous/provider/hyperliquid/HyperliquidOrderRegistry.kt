@@ -42,6 +42,7 @@ internal class HyperliquidOrderRegistry(
     private val dexRefreshAt = mutableMapOf<String, Long>()
     private val removedAt = mutableMapOf<String, Long>()
     private val positions = mutableMapOf<String, Position>()
+    private val childOrderIdsByDex = mutableMapOf<String, Set<String>>()
     private val _updates = MutableSharedFlow<Order>(
         extraBufferCapacity = 256,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
@@ -104,11 +105,13 @@ internal class HyperliquidOrderRegistry(
         return mutex.withLock {
             positions.mapNotNull { position ->
                 val positionId = position.positionId ?: return@mapNotNull null
+                val childIds = childOrderIdsByDex[hyperliquidDexOf(position.symbol)].orEmpty()
                 val related = orders.values.filter { order ->
                     order.isTpSl &&
                         order.symbol.equals(position.symbol, ignoreCase = true) &&
-                        order.parentPositionId == positionId &&
-                        order.status == OrderStatus.OPEN
+                        order.status == OrderStatus.OPEN &&
+                        (order.parentPositionId == positionId ||
+                            (order.parentPositionId == null && order.orderId !in childIds))
                 }
                 val takeProfit = related
                     .filter { it.isTakeProfit ?: inferTakeProfit(it, position) }
@@ -124,11 +127,13 @@ internal class HyperliquidOrderRegistry(
     }
 
     suspend fun positionStopOrders(position: Position): List<Order> = mutex.withLock {
+        val childIds = childOrderIdsByDex[hyperliquidDexOf(position.symbol)].orEmpty()
         orders.values.filter { order ->
             order.isTpSl &&
                 order.status == OrderStatus.OPEN &&
-                order.parentPositionId == position.positionId &&
-                order.symbol.equals(position.symbol, ignoreCase = true)
+                order.symbol.equals(position.symbol, ignoreCase = true) &&
+                (order.parentPositionId == position.positionId ||
+                    (order.parentPositionId == null && order.orderId !in childIds))
         }
     }
 
@@ -158,10 +163,14 @@ internal class HyperliquidOrderRegistry(
             positionEntryPrice = position?.avgPrice,
             positionSide = position?.side,
         ) ?: return null
-        if (mapped.status == OrderStatus.OPEN) {
-            mutex.withLock { orders[mapped.orderId] = mapped }
+        val childIds = mutex.withLock {
+            childOrderIdsByDex[hyperliquidDexOf(mapped.symbol)].orEmpty()
         }
-        return mapped
+        val associated = associateTopLevelTpSl(mapped, childIds)
+        if (associated.status == OrderStatus.OPEN) {
+            mutex.withLock { orders[associated.orderId] = associated }
+        }
+        return associated
     }
 
     suspend fun applyLocal(order: Order) = mutex.withLock {
@@ -219,12 +228,19 @@ internal class HyperliquidOrderRegistry(
         val rows = info.info(body).asArray().orEmpty()
             .mapNotNull { it.asObject() }
         val positionSnapshot = mutex.withLock { positions.toMap() }
-        val mapped = hyperliquidFlattenOpenOrders(rows, positionSnapshot)
-        mutateDex(dex, mapped, startedAt)
+        val flattened = hyperliquidFlattenOpenOrders(rows, positionSnapshot)
+        val mapped = flattened.orders.map { associateTopLevelTpSl(it, flattened.childOrderIds) }
+        mutateDex(dex, mapped, startedAt, flattened.childOrderIds)
         true
     }.getOrDefault(false)
 
-    private suspend fun mutateDex(dex: String, fetched: List<Order>, startedAt: Long) = mutex.withLock {
+    private suspend fun mutateDex(
+        dex: String,
+        fetched: List<Order>,
+        startedAt: Long,
+        childOrderIds: Set<String>,
+    ) = mutex.withLock {
+        childOrderIdsByDex[dex] = childOrderIds
         val now = clock()
         removedAt.entries.removeAll { now - it.value > 60_000L }
         val fetchedIds = fetched.map { it.orderId }.toSet()
@@ -271,16 +287,20 @@ internal class HyperliquidOrderRegistry(
                 positionSide = position?.side,
                 existing = existing,
             ) ?: return@forEach
+            val childIds = mutex.withLock {
+                childOrderIdsByDex[hyperliquidDexOf(mapped.symbol)].orEmpty()
+            }
+            val associated = associateTopLevelTpSl(mapped, childIds)
             mutex.withLock {
-                if (mapped.status == OrderStatus.OPEN) {
-                    orders[mapped.orderId] = mapped
-                    removedAt.remove(mapped.orderId)
+                if (associated.status == OrderStatus.OPEN) {
+                    orders[associated.orderId] = associated
+                    removedAt.remove(associated.orderId)
                 } else {
-                    orders.remove(mapped.orderId)
-                    removedAt[mapped.orderId] = clock()
+                    orders.remove(associated.orderId)
+                    removedAt[associated.orderId] = clock()
                 }
             }
-            _updates.tryEmit(mapped)
+            _updates.tryEmit(associated)
             if (mapped.status == OrderStatus.OPEN && existing == null && coin != null) {
                 val dex = hyperliquidDexOf(coin)
                 scope.launch {
@@ -291,6 +311,18 @@ internal class HyperliquidOrderRegistry(
             }
         }
     }
+
+    /**
+     * Hyperliquid does not always set isPositionTpsl for position TP/SL orders.
+     * Treat top-level reduce-only triggers as position stops; nested OCO children
+     * stay order-level until they become top-level after the parent fills.
+     */
+    private fun associateTopLevelTpSl(order: Order, childOrderIds: Set<String>): Order =
+        if (order.isTpSl && order.parentPositionId == null && order.orderId !in childOrderIds) {
+            order.copy(parentPositionId = hyperliquidPositionId(order.symbol))
+        } else {
+            order
+        }
 
     private fun inferTakeProfit(order: Order, position: Position): Boolean {
         val trigger = order.triggerPrice ?: return false

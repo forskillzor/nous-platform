@@ -183,7 +183,7 @@ internal class HyperliquidTradingAdapter internal constructor(
             val children = mutableListOf<HlAction>()
             if (!request.reduceOnly && type != OrderType.STOP) {
                 request.takeProfitPrice?.takeIf { it > 0.0 }?.let {
-                    children += triggerOrder(asset, !isBuy, it, size, "tp")
+                    children += triggerOrder(asset, !isBuy, it, size, "tp", isMarket = false)
                 }
                 request.stopLossPrice?.takeIf { it > 0.0 }?.let {
                     children += triggerOrder(asset, !isBuy, it, size, "sl")
@@ -418,7 +418,7 @@ internal class HyperliquidTradingAdapter internal constructor(
                 limitTif = tif,
             )
             val children = mutableListOf<HlAction>()
-            finalTp?.let { children += triggerOrder(asset, !isBuy, it, size, "tp") }
+            finalTp?.let { children += triggerOrder(asset, !isBuy, it, size, "tp", isMarket = false) }
             finalSl?.let { children += triggerOrder(asset, !isBuy, it, size, "sl") }
             val grouping = if (children.isEmpty()) "na" else "normalTpsl"
             val response = postAction(HyperliquidActions.orderAction(listOf(parent) + children, grouping))
@@ -493,8 +493,12 @@ internal class HyperliquidTradingAdapter internal constructor(
             val size = normalizeHyperliquidSize(position.quantity, asset.szDecimals)
             val closeBuy = position.side != TradeSide.BUY
             val orders = mutableListOf<HlAction>()
-            if (tpChanged && finalTp != null) orders += triggerOrder(asset, closeBuy, finalTp, size, "tp")
-            if (slChanged && finalSl != null) orders += triggerOrder(asset, closeBuy, finalSl, size, "sl")
+            if (tpChanged && finalTp != null) {
+                orders += triggerOrder(asset, closeBuy, finalTp, size, "tp", isMarket = false)
+            }
+            if (slChanged && finalSl != null) {
+                orders += triggerOrder(asset, closeBuy, finalSl, size, "sl")
+            }
             if (orders.isNotEmpty()) {
                 val response = runCatching {
                     postAction(HyperliquidActions.orderAction(orders, "positionTpsl"))
@@ -745,17 +749,20 @@ internal class HyperliquidTradingAdapter internal constructor(
         triggerPrice: Double,
         size: String,
         tpsl: String,
+        isMarket: Boolean = true,
+        limitPrice: Double? = null,
     ): HlAction {
-        val price = normalizeHyperliquidPrice(triggerPrice, asset.szDecimals)
+        val trigger = normalizeHyperliquidPrice(triggerPrice, asset.szDecimals)
+        val limit = normalizeHyperliquidPrice(limitPrice ?: triggerPrice, asset.szDecimals)
         return HyperliquidActions.order(
             asset = asset.assetId,
             isBuy = isBuy,
-            price = price,
+            price = limit,
             size = size,
             reduceOnly = true,
             trigger = HyperliquidActions.TriggerType(
-                isMarket = true,
-                triggerPrice = price,
+                isMarket = isMarket,
+                triggerPrice = trigger,
                 tpsl = tpsl,
             ),
         )
