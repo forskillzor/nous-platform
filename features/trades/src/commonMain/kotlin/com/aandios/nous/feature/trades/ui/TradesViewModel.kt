@@ -116,7 +116,9 @@ class TradesViewModel(
     private val _measuredMinWidthDp = MutableStateFlow(120f)
     val measuredMinWidthDp: StateFlow<Float> = _measuredMinWidthDp.asStateFlow()
 
+    private var workspaceKey: String? = null
     private var panelKey: String? = null
+    private var subscriptionGeneration = 0
 
     private val _providerRestored = MutableStateFlow(false)
     val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
@@ -167,7 +169,12 @@ class TradesViewModel(
     }
 
     /** Привязка панели: своя биржа/контракты и персист ширины. */
-    fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
+    fun attachPanel(
+        workspaceId: String?,
+        panelId: String?,
+        preferredProviderId: String? = null,
+    ) {
+        workspaceKey = workspaceId
         panelKey = panelId
         val store = stateStore
         if (store == null) {
@@ -175,14 +182,16 @@ class TradesViewModel(
             return
         }
         viewModelScope.launch {
-            store.getString(widthStoreKey())?.toFloatOrNull()?.takeIf { it > 0f }?.let {
-                _panelWidthDp.value = it
-            }
-            store.getString(contractTypeStoreKey())?.let { raw ->
+            readMigrated(store, widthStoreKey(), legacyWidthStoreKey())
+                ?.toFloatOrNull()
+                ?.takeIf { it > 0f }
+                ?.let { _panelWidthDp.value = it }
+            readMigrated(store, contractTypeStoreKey(), legacyContractTypeStoreKey())?.let { raw ->
                 runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
             }
+            val stored = readMigrated(store, providerStoreKey(), legacyProviderStoreKey())
             val saved = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
-                ?: store.getString(providerStoreKey())?.takeIf { providerRegistry.get(it) != null }
+                ?: stored?.takeIf { providerRegistry.get(it) != null }
             if (!saved.isNullOrBlank() && saved != _currentProviderId.value) {
                 selectProvider(saved)
             }
@@ -190,9 +199,22 @@ class TradesViewModel(
         }
     }
 
-    private fun providerStoreKey(): String = "trades_provider_${panelKey ?: "default"}"
+    private suspend fun readMigrated(store: StateStore, key: String, legacyKey: String): String? {
+        store.getString(key)?.takeIf { it.isNotBlank() }?.let { return it }
+        val legacy = store.getString(legacyKey)?.takeIf { it.isNotBlank() } ?: return null
+        store.putString(key, legacy)
+        return legacy
+    }
 
-    private fun contractTypeStoreKey(): String = "trades_contract_${panelKey ?: "default"}"
+    private fun scopeSuffix(): String = "${workspaceKey ?: "default"}_${panelKey ?: "default"}"
+
+    private fun providerStoreKey(): String = "trades_provider_${scopeSuffix()}"
+
+    private fun legacyProviderStoreKey(): String = "trades_provider_${panelKey ?: "default"}"
+
+    private fun contractTypeStoreKey(): String = "trades_contract_${scopeSuffix()}"
+
+    private fun legacyContractTypeStoreKey(): String = "trades_contract_${panelKey ?: "default"}"
 
     /** Установить ширину панели (dp) — превью в UI без записи в стор. */
     fun setPanelWidth(widthDp: Float) {
@@ -211,7 +233,9 @@ class TradesViewModel(
         if (widthDp > 0f) _measuredMinWidthDp.value = widthDp
     }
 
-    private fun widthStoreKey(): String = "trades_width_${panelKey ?: "default"}"
+    private fun widthStoreKey(): String = "trades_width_${scopeSuffix()}"
+
+    private fun legacyWidthStoreKey(): String = "trades_width_${panelKey ?: "default"}"
 
     /**
      * Проверяет, проходит ли сделка текущий/заданный фильтр размера.
@@ -301,6 +325,8 @@ class TradesViewModel(
         if (_currentProviderId.value == providerId) return
         _currentProviderId.value = providerId
         viewModelScope.launch { stateStore?.putString(providerStoreKey(), providerId) }
+        subscriptionGeneration++
+        subscriptionJob?.cancel()
         history.clear()
         _filteredBuffer.value = emptyList()
         subscribedSymbol = ""
@@ -346,6 +372,7 @@ class TradesViewModel(
         if (symbol == subscribedSymbol && _state.value is TradesState.Connected) return
         subscribedSymbol = symbol
         _currentSymbol.value = symbol
+        val generation = ++subscriptionGeneration
 
         subscriptionJob?.cancel()
         _state.value = TradesState.Loading
@@ -367,10 +394,12 @@ class TradesViewModel(
         subscriptionJob = viewModelScope.launch {
             repository.getTradesStream(symbol)
                 .catch { e ->
+                    if (generation != subscriptionGeneration) return@catch
                     println("❌ Trades subscription error: ${e.message}")
                     _state.value = TradesState.Error("Ошибка: ${e.message}")
                 }
                 .collect { trade ->
+                    if (generation != subscriptionGeneration) return@collect
                     val filter = _selectedSizeFilter.value
                     val active = filter !is SizeFilter.All
                     val filteredChanged = history.add(trade, active) {

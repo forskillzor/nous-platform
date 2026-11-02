@@ -16,9 +16,11 @@ import com.aandios.nous.api.market.adapters.LiquidationAdapter
 import com.aandios.nous.api.market.adapters.SymbolInfoAdapter
 import com.aandios.nous.api.market.adapters.TradesAdapter
 import com.aandios.nous.api.market.adapters.TradingAdapter
+import com.aandios.nous.api.market.model.ContractType
 import com.aandios.nous.api.market.model.SymbolInfo
 import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.api.market.model.trading.TradeSide
+import com.aandios.nous.core.storage.StateStore
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -53,8 +55,9 @@ class TradesViewModelTest {
         side = TradeSide.BUY,
     )
 
-    private fun newViewModel() = TradesViewModel(
+    private fun newViewModel(store: StateStore? = null) = TradesViewModel(
         providerRegistry = ProviderRegistry(listOf(provider)),
+        stateStore = store,
         coroutineDispatcher = testDispatcher,
     )
 
@@ -94,6 +97,35 @@ class TradesViewModelTest {
     }
 
     @Test
+    fun `duplicate streamed trade id appears once in the feed`() = testScope.runTest {
+        val vm = newViewModel()
+        vm.subscribeToTrades("BTCUSDT")
+        advanceUntilIdle()
+
+        val trade = trade(1.0)
+        tradesAdapter.trades.emit(trade)
+        tradesAdapter.trades.emit(trade)
+        advanceUntilIdle()
+
+        assertEquals(1, (vm.state.value as TradesState.Connected).trades.size)
+    }
+
+    @Test
+    fun `attachPanel migrates legacy panel keys into workspace scope`() = testScope.runTest {
+        val store = MemoryStateStore()
+        store.putString("trades_provider_panel-1", provider.providerId)
+        store.putString("trades_contract_panel-1", ContractType.COIN_M.name)
+
+        val vm = newViewModel(store)
+        vm.attachPanel("ws-1", "panel-1")
+        advanceUntilIdle()
+
+        assertEquals(provider.providerId, store.getString("trades_provider_ws-1_panel-1"))
+        assertEquals(ContractType.COIN_M.name, store.getString("trades_contract_ws-1_panel-1"))
+        assertEquals(ContractType.COIN_M, vm.contractType.value)
+    }
+
+    @Test
     fun `symbol change clears raw and filtered history`() = testScope.runTest {
         val vm = newViewModel()
         vm.subscribeToTrades("BTCUSDT")
@@ -121,6 +153,16 @@ private class FakeTradesAdapter : TradesAdapter {
     override fun subscribeToTrades(symbol: String): Flow<Trade> = trades
 
     override suspend fun getRecentTrades(symbol: String, limit: Int): List<Trade> = emptyList()
+}
+
+private class MemoryStateStore : StateStore {
+    private val values = mutableMapOf<String, String>()
+
+    override suspend fun getString(key: String): String? = values[key]
+
+    override suspend fun putString(key: String, value: String) {
+        values[key] = value
+    }
 }
 
 private class FakeSymbolInfoAdapter : SymbolInfoAdapter {

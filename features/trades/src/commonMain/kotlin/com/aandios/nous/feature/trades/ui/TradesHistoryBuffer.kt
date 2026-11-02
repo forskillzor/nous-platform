@@ -25,6 +25,7 @@ internal class TradesHistoryBuffer(
     private val maxFiltered: Int = 5_000,
 ) {
     private val raw = ArrayDeque<Trade>()
+    private val rawIds = HashSet<Long>()
     private val feed = ArrayDeque<Trade>()
     private val filtered = ArrayDeque<Trade>()
 
@@ -33,7 +34,13 @@ internal class TradesHistoryBuffer(
      * @return true, если изменился filtered-список (нужно опубликовать в UI).
      */
     fun add(trade: Trade, filterActive: Boolean, matches: (Trade) -> Boolean): Boolean {
-        push(raw, maxRaw, trade)
+        // Provider reconnects/resubscribes replay recent trades; keep the LazyColumn keys unique.
+        if (maxRaw <= 0 || !rawIds.add(trade.id)) return false
+        if (raw.size >= maxRaw) {
+            val evicted = raw.removeLast()
+            rawIds.remove(evicted.id)
+        }
+        raw.addFirst(trade)
         push(feed, maxFeed, trade)
         if (!filterActive || !matches(trade)) return false
         push(filtered, maxFiltered, trade)
@@ -52,6 +59,7 @@ internal class TradesHistoryBuffer(
 
     fun clear() {
         raw.clear()
+        rawIds.clear()
         feed.clear()
         filtered.clear()
     }

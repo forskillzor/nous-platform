@@ -130,13 +130,19 @@ class TradingViewModel(
     private fun tradingAdapter() =
         providerRegistry.get(_providerId.value)?.effectiveTrading(_paperEnabled.value)
 
+    private var workspaceKey: String? = null
     private var panelKey: String? = null
 
     private val _providerRestored = MutableStateFlow(false)
     val providerRestored: StateFlow<Boolean> = _providerRestored.asStateFlow()
 
-    /** Привязка панели: своя биржа и тип контрактов (per-panel). */
-    fun attachPanel(panelId: String?, preferredProviderId: String? = null) {
+    /** Привязка панели: своя биржа и тип контрактов (workspace + panel). */
+    fun attachPanel(
+        workspaceId: String?,
+        panelId: String?,
+        preferredProviderId: String? = null,
+    ) {
+        workspaceKey = workspaceId
         panelKey = panelId
         val store = stateStore
         if (store == null) {
@@ -144,11 +150,12 @@ class TradingViewModel(
             return
         }
         scope.launch {
-            store.getString(contractTypeStoreKey())?.let { raw ->
+            readMigrated(store, contractTypeStoreKey(), legacyContractTypeStoreKey())?.let { raw ->
                 runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
             }
+            val stored = readMigrated(store, providerStoreKey(), legacyProviderStoreKey())
             val saved = preferredProviderId?.takeIf { providerRegistry.get(it) != null }
-                ?: store.getString(providerStoreKey())?.takeIf { providerRegistry.get(it) != null }
+                ?: stored?.takeIf { providerRegistry.get(it) != null }
             if (!saved.isNullOrBlank() && saved != _providerId.value) {
                 selectProvider(saved)
             }
@@ -156,9 +163,22 @@ class TradingViewModel(
         }
     }
 
-    private fun providerStoreKey(): String = "trading_provider_${panelKey ?: "default"}"
+    private suspend fun readMigrated(store: StateStore, key: String, legacyKey: String): String? {
+        store.getString(key)?.takeIf { it.isNotBlank() }?.let { return it }
+        val legacy = store.getString(legacyKey)?.takeIf { it.isNotBlank() } ?: return null
+        store.putString(key, legacy)
+        return legacy
+    }
 
-    private fun contractTypeStoreKey(): String = "trading_contract_${panelKey ?: "default"}"
+    private fun scopeSuffix(): String = "${workspaceKey ?: "default"}_${panelKey ?: "default"}"
+
+    private fun providerStoreKey(): String = "trading_provider_${scopeSuffix()}"
+
+    private fun legacyProviderStoreKey(): String = "trading_provider_${panelKey ?: "default"}"
+
+    private fun contractTypeStoreKey(): String = "trading_contract_${scopeSuffix()}"
+
+    private fun legacyContractTypeStoreKey(): String = "trading_contract_${panelKey ?: "default"}"
 
     init {
         scope.launch {
@@ -166,13 +186,13 @@ class TradingViewModel(
             // при наличии общего PaperModeState — берём значение оттуда
             _paperEnabled.value = paperModeState?.enabled?.value
                 ?: (stateStore?.getString(PaperTrading.STORE_KEY) == "1")
-            // Биржа панели тоже переживает перезапуск (как paper-режим)
-            stateStore?.getString(providerStoreKey())?.takeIf { it.isNotBlank() }?.let { saved ->
-                if (providerRegistry.get(saved) != null) _providerId.value = saved
-            }
-            // Тип контрактов панели (USDT-M / COIN-M)
-            stateStore?.getString(contractTypeStoreKey())?.let { raw ->
-                runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
+            stateStore?.let { store ->
+                readMigrated(store, providerStoreKey(), legacyProviderStoreKey())?.let { saved ->
+                    if (providerRegistry.get(saved) != null) _providerId.value = saved
+                }
+                readMigrated(store, contractTypeStoreKey(), legacyContractTypeStoreKey())?.let { raw ->
+                    runCatching { ContractType.valueOf(raw) }.getOrNull()?.let { _contractType.value = it }
+                }
             }
             restart()
         }

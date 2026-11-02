@@ -139,7 +139,8 @@ Mind this when writing paths.
   capped at 1000 raw levels (20×100 shows ~10 aggregated levels), MEXC can serve
   the full requested window.
 - Docked trading panel: `paper_enabled` (`PaperTrading.STORE_KEY`, shared),
-  `trading_provider_{panelId}`, `trading_contract_{panelId}` (per panel). The window top bar
+  `trading_provider_{workspace}_{panel}`, `trading_contract_{workspace}_{panel}`
+  (workspace + panel; legacy panel-only keys are migrated once on attach). The window top bar
   Paper switch writes the same `paper_enabled` flag through the shared
   `PaperModeState` singleton (`features/trading`), so header and docked panel
   stay in sync; `TradingViewModel` observes it for external changes. The header
@@ -150,7 +151,9 @@ Mind this when writing paths.
   core-call failures in `refreshAll`, stream on `subscribeTo*` availability
   and collector failures; paper mode reports local CONNECTED ("Paper engine").
   ERROR rows open `TerminalContextPopup` with the error detail.
-- Trades panel: `trades_provider_{panelId}`, `trades_contract_{panelId}` (per panel).
+- Trades panel: `trades_provider_{workspace}_{panel}`,
+  `trades_contract_{workspace}_{panel}`, `trades_width_{workspace}_{panel}`
+  (workspace + panel; legacy panel-only keys are migrated once on attach).
 - Sidebar (tool panel) width: `tool_panel_width` (plain float dp, restore clamped
   to `workspaceToolPanelMin/MaxWidth`, save debounced 400 ms) via
   `ToolPanelPrefsRepository` (platform-core, `core/ui/panel`).
@@ -402,7 +405,10 @@ Mind this when writing paths.
   measures the width-slider minimum only when sample string lengths change.
 - Trades retention has three levels in `TradesHistoryBuffer`: 20k raw trades
   (never rendered) used to reseed filtering, 500 feed trades for ALL, and 5k
-  filtered trades (retention applied AFTER filtering). Changing the size filter
+  filtered trades (retention applied AFTER filtering). Trades are deduplicated
+  by exchange id across all three levels because Hyperliquid replays a recent
+  trade snapshot on every (re)subscribe; without it the `trade.id` LazyColumn
+  key collides. Changing the size filter
   reseeds `filtered` from raw instead of the 500-trade feed, so high filters do
   not lose older matches; symbol/provider change clears all three. Adapters have
   no retention and remain WS-only.

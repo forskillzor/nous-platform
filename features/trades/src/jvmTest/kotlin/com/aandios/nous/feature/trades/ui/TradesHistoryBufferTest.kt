@@ -9,6 +9,7 @@ import com.aandios.nous.api.market.model.trades.Trade
 import com.aandios.nous.api.market.model.trading.TradeSide
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TradesHistoryBufferTest {
@@ -70,6 +71,31 @@ class TradesHistoryBufferTest {
 
         assertTrue(buffer.filteredSnapshot().isEmpty())
         assertEquals(3, buffer.rawSize)
+    }
+
+    @Test
+    fun `duplicate trade ids are ignored across raw feed and filtered`() {
+        val buffer = TradesHistoryBuffer(maxRaw = 10, maxFeed = 3, maxFiltered = 5)
+        val trade = trade(10.0)
+
+        assertTrue(buffer.add(trade, filterActive = true) { true })
+        assertFalse(buffer.add(trade, filterActive = true) { true })
+
+        assertEquals(1, buffer.rawSize)
+        assertEquals(1, buffer.feedSnapshot().size)
+        assertEquals(1, buffer.filteredSnapshot().size)
+    }
+
+    @Test
+    fun `cleared ids can be accepted again`() {
+        val buffer = TradesHistoryBuffer(maxRaw = 10, maxFeed = 3, maxFiltered = 5)
+        val trade = trade(10.0)
+        buffer.add(trade, filterActive = true) { true }
+
+        buffer.clear()
+
+        assertTrue(buffer.add(trade, filterActive = true) { true })
+        assertEquals(1, buffer.rawSize)
     }
 
     @Test

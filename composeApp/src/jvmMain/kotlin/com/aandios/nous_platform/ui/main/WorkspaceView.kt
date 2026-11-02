@@ -559,7 +559,7 @@ private fun TradesPanel(
 
     // Своя биржа/контракты + персист ширины этой панели
     LaunchedEffect(pc.id, pc.symbol, providerId) {
-        vm.attachPanel(pc.id, providerId)
+        vm.attachPanel(ws.workspaceId, pc.id, providerId)
         if (vm.currentSymbol.value != pc.symbol) vm.subscribeToTrades(pc.symbol)
     }
     LaunchedEffect(Unit) {
@@ -657,7 +657,7 @@ private fun TradingPanel(
         ws.liveViewModels.getOrPut(vmKey) { koinInject<TradingViewModel>() } as TradingViewModel
 
     // Биржа/контракты — свои у этой панели
-    LaunchedEffect(pc.id, providerId) { vm.attachPanel(pc.id, providerId) }
+    LaunchedEffect(pc.id, providerId) { vm.attachPanel(ws.workspaceId, pc.id, providerId) }
 
     // Активная вкладка сохраняется в PanelState
     val tradingPc by rememberUpdatedState(pc)
