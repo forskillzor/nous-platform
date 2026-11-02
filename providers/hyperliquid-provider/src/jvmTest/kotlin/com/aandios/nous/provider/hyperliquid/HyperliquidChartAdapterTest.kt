@@ -84,4 +84,30 @@ class HyperliquidChartAdapterTest {
             streams.subscription("candle|BTC|15m"),
         )
     }
+
+    @Test
+    fun `streams a single candle object from the live websocket`() = runTest {
+        val info = HyperliquidFixtures.fakeInfo()
+        val marketData = HyperliquidFixtures.marketData(info)
+        val streams = FakeHyperliquidStreams()
+        val adapter = HyperliquidChartAdapter(info, streams, marketData)
+        val flow = adapter.subscribeToCandles("BTC", "15m")
+        val next = async { flow.first() }
+
+        streams.emit(
+            "candle|BTC|15m",
+            jsonObject(
+                """
+                {"channel":"candle","data":{
+                  "t":3000,"T":3099,"s":"BTC","i":"15m",
+                  "o":"2","c":"2.5","h":"3","l":"1","v":"6","n":2
+                }}
+                """.trimIndent(),
+            ),
+        )
+
+        val candle = next.await()
+        assertEquals(3000L, candle.timestamp)
+        assertEquals(2.5f, candle.close)
+    }
 }

@@ -61,9 +61,11 @@ class HyperliquidChartAdapter internal constructor(
         return flow {
             var lastTimestamp = 0L
             streams.subscribe(key, subscription).collect { root ->
-                val candle = root["data"]?.asArray()
-                    ?.mapNotNull { it.asObject()?.let(::hyperliquidCandle) }
-                    ?.maxByOrNull { it.timestamp }
+                val data = root["data"]
+                val rows = data?.asArray()?.mapNotNull { it.asObject() }
+                    ?: listOfNotNull(data?.asObject())
+                val candle = rows.mapNotNull(::hyperliquidCandle)
+                    .maxByOrNull { it.timestamp }
                     ?: return@collect
                 if (candle.timestamp < lastTimestamp) return@collect
                 lastTimestamp = candle.timestamp

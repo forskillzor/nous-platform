@@ -143,6 +143,7 @@ fun TradingPanel(
     val primaryBalance = remember(balances, contractType) {
         viewModel.primaryBalance(balances, contractType)
     }
+    val displayBalance = remember(primaryBalance) { balanceDisplayValue(primaryBalance) }
 
     val tabCounts = mapOf(
         TradingTab.POSITIONS to visiblePositions.size,
@@ -225,7 +226,7 @@ fun TradingPanel(
                 verticalArrangement = Arrangement.spacedBy(1.dp),
             ) {
                 Text(
-                    text = "Balance  ${primaryBalance?.let { "${fmtAmount(it.amount)} ${it.currency}" } ?: "-"}",
+                    text = "Balance  ${primaryBalance?.let { "${fmtAmount(displayBalance)} ${it.currency}" } ?: "-"}",
                     color = MaterialTheme.colorScheme.onSurface,
                     fontSize = tokens.typography.compactSize,
                     fontFamily = TerminalFontFamily,
@@ -233,7 +234,7 @@ fun TradingPanel(
                     maxLines = 1,
                 )
                 Text(
-                    text = "Day PnL  ${dailyPnl?.let { "${fmtSigned(it)} USDT" } ?: "-"}",
+                    text = "Day PnL  ${dailyPnl?.let { "${fmtSigned(it)} ${dailyPnlCurrency(primaryBalance)}" } ?: "-"}",
                     color = when {
                         dailyPnl == null -> MaterialTheme.colorScheme.onSurfaceVariant
                         dailyPnl!! >= 0 -> tokens.colors.profit
@@ -246,14 +247,14 @@ fun TradingPanel(
                 )
                 primaryBalance?.let { b ->
                     Text(
-                        text = "Equity ${fmtAmount(b.equity)} · Available ${fmtAmount(b.amount)}",
+                        text = "Available ${fmtAmount(b.amount)} · In Position ${fmtAmount(b.margin)}",
                         color = tokens.colors.label,
                         fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
                         maxLines = 1,
                     )
                     Text(
-                        text = "In Position ${fmtAmount(b.margin)} · Frozen ${fmtAmount(b.frozen)} · Unrealized ${fmtSigned(b.unrealizedPnl.toDoubleOrNull() ?: 0.0)}",
+                        text = "Frozen ${fmtAmount(b.frozen)} · Unrealized ${fmtSigned(b.unrealizedPnl.toDoubleOrNull() ?: 0.0)}",
                         color = tokens.colors.label,
                         fontSize = tokens.typography.microSize,
                         fontFamily = TerminalFontFamily,
@@ -437,6 +438,19 @@ private fun fmtSigned(v: Double): String {
     return sign + plainDecimalFixed(v, 4)
 }
 
+/** Position PnL is unrealized; realized is a fallback for adapters without unrealized. */
+internal fun positionDisplayPnl(position: Position): Double =
+    position.unrealizedPnl.takeIf { it != 0.0 } ?: position.pnl
+
+/** Header balance is account equity; available margin stays on the detail line. */
+internal fun balanceDisplayValue(balance: Balance?): String =
+    balance?.let { b ->
+        b.equity.toDoubleOrNull()?.takeIf { it != 0.0 }?.let { b.equity } ?: b.amount
+    } ?: "-"
+
+/** Daily PnL and balance currency follow the selected account's margin currency. */
+internal fun dailyPnlCurrency(balance: Balance?): String = balance?.currency ?: "USDT"
+
 // ── Таблицы (колонки заголовка и строк выровнены) ──
 
 @Composable
@@ -468,7 +482,8 @@ private fun PositionsTable(
                 Cell(formatter.formatVolume(p.quantity), PositionsWindow.QTY)
                 Cell(formatter.formatPrice(p.avgPrice), PositionsWindow.ENTRY)
                 Cell(p.liquidatePrice?.let { formatter.formatPrice(it) } ?: "-", PositionsWindow.LIQ)
-                Cell(formatSigned(p.pnl, formatter), PositionsWindow.PNL, color = pnlColor(p.pnl))
+                val positionPnl = positionDisplayPnl(p)
+                Cell(fmtSigned(positionPnl), PositionsWindow.PNL, color = pnlColor(positionPnl))
                 ActionCell("Close", PositionsWindow.ACTION) { onClose(p) }
             }
             HorizontalDivider(

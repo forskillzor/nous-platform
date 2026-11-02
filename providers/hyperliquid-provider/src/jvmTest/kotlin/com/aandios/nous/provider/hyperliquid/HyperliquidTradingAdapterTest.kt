@@ -364,6 +364,8 @@ class HyperliquidTradingAdapterTest {
         assertEquals(78_065.0, position.markPrice)
         assertEquals(10, position.leverage)
         assertEquals(2, position.marginMode)
+        assertEquals(0.0, position.pnl)
+        assertEquals(50.0, position.unrealizedPnl)
         assertEquals(80_000.0, position.takeProfitPrice)
         assertEquals(65_000.0, position.stopLossPrice)
     }
