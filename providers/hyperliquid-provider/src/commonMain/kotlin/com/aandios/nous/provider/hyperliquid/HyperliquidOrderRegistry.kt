@@ -196,6 +196,17 @@ internal class HyperliquidOrderRegistry(
         Unit
     }
 
+    /** Force-refresh every DEX open-order snapshot, bypassing the per-DEX TTL. */
+    suspend fun refreshOpenOrders(user: String): Boolean {
+        val dexes = runCatching { marketData.snapshot().dexNames }.getOrDefault(listOf(""))
+        var allSucceeded = true
+        dexes.forEach { dex ->
+            if (!refreshDex(user, dex)) allSucceeded = false
+        }
+        mutex.withLock { lastFullRefreshAtValue = clock() }
+        return allSucceeded
+    }
+
     private suspend fun refreshAllIfStale(user: String): Boolean {
         val now = clock()
         if (mutex.withLock { now - lastFullRefreshAt() < FULL_TTL_MS }) return true

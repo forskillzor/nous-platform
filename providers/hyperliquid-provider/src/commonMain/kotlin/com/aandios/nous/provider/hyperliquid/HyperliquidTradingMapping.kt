@@ -42,17 +42,26 @@ internal fun hyperliquidOrder(
     val originalSize = row.double("origSz")
         ?: existing?.let { it.quantity + it.filledQuantity }
         ?: size
-    val triggerPrice = row.double("triggerPx")?.takeIf { it > 0.0 } ?: existing?.triggerPrice
+    val rawTriggerPrice = row.double("triggerPx")?.takeIf { it > 0.0 }
     val limitPrice = row.double("limitPx")?.takeIf { it > 0.0 } ?: existing?.price ?: 0.0
     val reduceOnly = row.bool("reduceOnly") ?: existing?.reduceOnly ?: false
     val isPositionTpsl = row.bool("isPositionTpsl")
         ?: (existing?.isTpSl == true && existing.parentPositionId != null)
-    val isTrigger = row.bool("isTrigger") ?: (triggerPrice != null)
-    val isTpSl = isTrigger && reduceOnly
+    val isTrigger = row.bool("isTrigger") ?: (rawTriggerPrice != null || existing?.triggerPrice != null)
     val tif = row.string("tif")
     val orderTypeText = row.string("orderType")
+    // Once a trigger fires it becomes a resting reduce-only limit (isTrigger=false,
+    // triggerPx=0). Keep it associated with the position so TP/SL edits can cancel it.
+    val triggeredStop = !isTrigger && reduceOnly && orderTypeText != null &&
+        (orderTypeText.contains("Take Profit", ignoreCase = true) ||
+            orderTypeText.contains("Stop", ignoreCase = true))
+    val triggerPrice = rawTriggerPrice
+        ?: existing?.triggerPrice
+        ?: limitPrice.takeIf { triggeredStop }
+    val isTpSl = reduceOnly && (isTrigger || triggeredStop)
     val orderType = when {
         isTrigger -> OrderType.STOP
+        triggeredStop -> OrderType.LIMIT
         tif == "Alo" -> OrderType.POST_ONLY
         tif == "Ioc" -> OrderType.IOC
         tif == "Gtc" -> OrderType.LIMIT
@@ -65,6 +74,7 @@ internal fun hyperliquidOrder(
             row.string("tpsl") == "sl" -> false
             row.string("triggerCondition")?.contains("Take Profit", ignoreCase = true) == true -> true
             row.string("triggerCondition")?.contains("Stop Loss", ignoreCase = true) == true -> false
+            triggeredStop -> orderTypeText.contains("Take Profit", ignoreCase = true)
             existing?.isTakeProfit != null -> existing.isTakeProfit
             triggerPrice != null && positionEntryPrice != null && positionSide != null ->
                 if (positionSide == TradeSide.BUY) {

@@ -99,17 +99,40 @@ class HyperliquidTradingAdapterTest {
         """.trimIndent(),
     )
 
+    private fun triggeredTpSlOrders(): JsonElement = jsonElement(
+        """
+        [
+          {"coin":"BTC","oid":10,"side":"A","sz":"0.5","origSz":"0.5","limitPx":"80000",
+           "timestamp":1,"triggerCondition":"Triggered","isTrigger":false,"triggerPx":"0.0",
+           "isPositionTpsl":false,"reduceOnly":true,"orderType":"Take Profit Limit","tif":"Gtc"},
+          {"coin":"BTC","oid":11,"side":"A","sz":"0.5","origSz":"0.5","limitPx":"65000",
+           "timestamp":2,"triggerPx":"65000","isTrigger":true,"isPositionTpsl":false,
+           "reduceOnly":true,"orderType":"Stop Loss Market","triggerCondition":"Price below 65000"}
+        ]
+        """.trimIndent(),
+    )
+
     private fun defaultInfoHandler(
         clearinghouse: suspend (JsonObject) -> JsonObject = { emptyState() },
         openOrders: suspend (JsonObject) -> JsonElement = { jsonElement("[]") },
+        abstraction: suspend (JsonObject) -> JsonElement = { JsonPrimitive("default") },
+        spot: suspend (JsonObject) -> JsonElement = {
+            jsonElement("""{"balances":[],"tokenToAvailableAfterMaintenance":[]}""")
+        },
+        portfolio: suspend (JsonObject) -> JsonElement = { jsonElement("[]") },
+        orderStatus: suspend (JsonObject) -> JsonElement = { jsonElement("""{"status":"order","order":null}""") },
     ): suspend (JsonObject) -> JsonElement = { body ->
         when (body.string("type")) {
             "perpDexs" -> HyperliquidFixtures.perpDexs
             "allPerpMetas" -> HyperliquidFixtures.allPerpMetas
             "spotMeta" -> HyperliquidFixtures.spotMeta
             "userRole" -> jsonElement("""{"role":"user"}""")
+            "userAbstraction" -> abstraction(body)
+            "spotClearinghouseState" -> spot(body)
+            "portfolio" -> portfolio(body)
             "clearinghouseState" -> clearinghouse(body)
             "frontendOpenOrders" -> openOrders(body)
+            "orderStatus" -> orderStatus(body)
             "activeAssetData" -> jsonElement(
                 """{"leverage":{"type":"cross","value":10},"markPx":"78065"}""",
             )
@@ -369,6 +392,93 @@ class HyperliquidTradingAdapterTest {
         assertEquals(50.0, position.unrealizedPnl)
         assertEquals(80_000.0, position.takeProfitPrice)
         assertEquals(65_000.0, position.stopLossPrice)
+    }
+
+    @Test
+    fun `triggered tp limit remains position tp`() = runTest {
+        val info = fakeInfo(
+            infoHandler = defaultInfoHandler(
+                clearinghouse = { body ->
+                    if (body.string("dex").isNullOrEmpty()) positionState() else emptyState()
+                },
+                openOrders = { body ->
+                    if (body.string("dex").isNullOrEmpty()) triggeredTpSlOrders() else jsonElement("[]")
+                },
+            ),
+        )
+        val (adapter, signer) = adapter(info)
+
+        val position = adapter.getPositions().single()
+        assertEquals(80_000.0, position.takeProfitPrice)
+        assertEquals(65_000.0, position.stopLossPrice)
+
+        val tp = adapter.getOpenOrders("BTC").single { it.orderId == "10" }
+        assertTrue(tp.isTpSl)
+        assertEquals(true, tp.isTakeProfit)
+        assertEquals(OrderType.LIMIT, tp.orderType)
+        assertEquals(80_000.0, tp.triggerPrice)
+
+        assertTrue(adapter.setPositionTpSl(position, takeProfitPrice = 0.0, stopLossPrice = null))
+        val cancel = signer.actions.single { it["type"] == "cancel" }
+        val cancels = cancel["cancels"] as List<*>
+        assertEquals(1, cancels.size)
+        assertEquals(10L, (cancels.single() as Map<*, *>)["o"])
+    }
+
+    @Test
+    fun `cancel triggered tp retries transient failure`() = runTest {
+        val defaultExchange = defaultExchangeHandler()
+        var cancelAttempts = 0
+        val info = fakeInfo(
+            infoHandler = defaultInfoHandler(
+                clearinghouse = { body ->
+                    if (body.string("dex").isNullOrEmpty()) positionState() else emptyState()
+                },
+                openOrders = { body ->
+                    if (body.string("dex").isNullOrEmpty()) triggeredTpSlOrders() else jsonElement("[]")
+                },
+            ),
+            exchangeHandler = { payload ->
+                val action = payload["action"]?.asObject()
+                if (action?.string("type") == "cancel") {
+                    cancelAttempts += 1
+                    if (cancelAttempts == 1) {
+                        jsonObject(
+                            """{"status":"ok","response":{"type":"cancel","data":{"statuses":[{"error":"temporary failure"}]}}}""",
+                        )
+                    } else {
+                        defaultExchange(payload)
+                    }
+                } else {
+                    defaultExchange(payload)
+                }
+            },
+        )
+        val (adapter, signer) = adapter(info)
+        adapter.getOpenOrders("BTC")
+
+        assertTrue(adapter.cancelOrder("10"))
+        assertEquals(2, cancelAttempts)
+        val cancel = signer.actions.last { it["type"] == "cancel" }
+        val cancels = cancel["cancels"] as List<*>
+        assertEquals(10L, (cancels.single() as Map<*, *>)["o"])
+    }
+
+    @Test
+    fun `cancel order refreshes open orders when cache misses`() = runTest {
+        val info = fakeInfo(
+            infoHandler = defaultInfoHandler(
+                clearinghouse = { body ->
+                    if (body.string("dex").isNullOrEmpty()) positionState() else emptyState()
+                },
+                openOrders = { body ->
+                    if (body.string("dex").isNullOrEmpty()) triggeredTpSlOrders() else jsonElement("[]")
+                },
+            ),
+        )
+        val (adapter, _) = adapter(info)
+
+        assertTrue(adapter.cancelOrder("10"))
     }
 
     @Test

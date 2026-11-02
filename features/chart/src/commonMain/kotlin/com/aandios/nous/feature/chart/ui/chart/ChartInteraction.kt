@@ -1039,7 +1039,7 @@ fun CandleStickChartInteraction(
          */
         if (tradingOrders.isNotEmpty()) {
             tradingOrders.forEach { order ->
-                if (order.isTpSl) return@forEach
+                if (order.isTpSl && order.orderType == OrderType.STOP) return@forEach
                 val displayPrice = if (draggingOrderId == order.orderId) {
                     draggingOrderPrice ?: order.price
                 } else {
@@ -1546,6 +1546,7 @@ private fun TradingOrderBadge(
         BasicTextField(
             value = qtyText,
             onValueChange = { qtyText = it },
+            enabled = !order.isTpSl,
             singleLine = true,
             textStyle = TextStyle(
                 color = Color.White,

@@ -52,6 +52,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -216,24 +217,65 @@ internal class HyperliquidTradingAdapter internal constructor(
 
     override suspend fun cancelOrder(orderId: String): Boolean {
         if (!signer.canSign) return false
-        val order = orderRegistry.findOrder(orderId) ?: return false
-        val asset = marketData.assetFor(order.symbol) ?: return false
-        val oid = order.orderId.toLongOrNull() ?: return false
-        return runCatching {
-            val response = postAction(
-                HyperliquidActions.cancelAction(
-                    listOf(HyperliquidActions.cancel(asset.assetId, oid)),
-                ),
-            )
-            val error = actionError(response)
-            if (error != null) {
-                notify(error)
-                return@runCatching false
+        val user = accountOrNull() ?: return false
+        var order = orderRegistry.findOrder(orderId)
+        if (order == null) {
+            orderRegistry.refreshOpenOrders(user)
+            order = orderRegistry.findOrder(orderId)
+        }
+        if (order == null) {
+            notify("Order $orderId was not found")
+            return false
+        }
+        val asset = runCatching { marketData.assetFor(order.symbol) }.getOrNull()
+        if (asset == null) {
+            notify("Unknown Hyperliquid symbol ${order.symbol}")
+            return false
+        }
+        val oid = order.orderId.toLongOrNull()
+        if (oid == null) {
+            notify("Invalid Hyperliquid order id $orderId")
+            return false
+        }
+        var lastError: String? = null
+        repeat(CANCEL_ATTEMPTS) { attempt ->
+            val response = try {
+                postAction(
+                    HyperliquidActions.cancelAction(
+                        listOf(HyperliquidActions.cancel(asset.assetId, oid)),
+                    ),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                lastError = e.message ?: "network error"
+                null
             }
-            orderRegistry.removeLocal(orderId)
-            orderRegistry.invalidateDex(asset.dex)
-            true
-        }.getOrDefault(false)
+            if (response != null) {
+                val error = actionError(response)
+                if (error == null) {
+                    orderRegistry.removeLocal(orderId)
+                    orderRegistry.invalidateDex(asset.dex)
+                    return true
+                }
+                lastError = error
+                if (isOrderGoneError(error)) {
+                    orderRegistry.invalidateDex(asset.dex)
+                    orderRegistry.refreshOpenOrders(user)
+                    if (orderRegistry.findOrder(orderId)?.status != OrderStatus.OPEN) {
+                        orderRegistry.removeLocal(orderId)
+                        return true
+                    }
+                }
+            }
+            if (attempt < CANCEL_ATTEMPTS - 1) {
+                delay(CANCEL_RETRY_MS)
+                orderRegistry.invalidateDex(asset.dex)
+                orderRegistry.refreshOpenOrders(user)
+            }
+        }
+        notify(lastError ?: "Failed to cancel order $orderId")
+        return false
     }
 
     override suspend fun cancelAllOrders(symbol: String?): Boolean {
@@ -743,6 +785,13 @@ internal class HyperliquidTradingAdapter internal constructor(
         return first.string("error")
     }
 
+    private fun isOrderGoneError(error: String): Boolean {
+        val text = error.lowercase()
+        return "already canceled" in text ||
+            "already cancelled" in text ||
+            "never placed" in text
+    }
+
     private fun triggerOrder(
         asset: HyperliquidAsset,
         isBuy: Boolean,
@@ -889,8 +938,14 @@ internal class HyperliquidTradingAdapter internal constructor(
     private companion object {
         const val ONE_WAY_MODE = 2
         const val USDC = "USDC"
+        const val UNIFIED_ACCOUNT = "unifiedAccount"
         const val DAY_MS = 86_400_000L
         const val CLEARINGHOUSE_TTL_MS = 2_000L
+        const val ABSTRACTION_TTL_MS = 60_000L
+        const val UNIFIED_BALANCE_TTL_MS = 10_000L
+        const val UNIFIED_REFRESH_MS = 10_000L
+        const val CANCEL_ATTEMPTS = 2
+        const val CANCEL_RETRY_MS = 300L
         const val FEE_TTL_MS = 10 * 60_000L
         const val PNL_TTL_MS = 60_000L
     }
