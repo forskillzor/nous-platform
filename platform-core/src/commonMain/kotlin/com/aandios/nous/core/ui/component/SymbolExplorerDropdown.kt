@@ -113,6 +113,12 @@ fun explorerQuoteOptions(rows: List<SymbolExplorerRow>): List<String> =
         .distinct()
         .sortedWith(compareBy({ it != "USDT" }, { it }))
 
+/** Quote options available for one exchange (or all exchanges when [exchangeId] is null). */
+fun explorerQuoteOptionsForExchange(rows: List<SymbolExplorerRow>, exchangeId: String?): List<String> =
+    explorerQuoteOptions(
+        if (exchangeId == null) rows else rows.filter { it.exchangeId == exchangeId },
+    )
+
 /** Биржи в списке: id + label, отсортированы по label. */
 fun explorerExchangeOptions(rows: List<SymbolExplorerRow>): List<Pair<String, String>> =
     rows.map { it.exchangeId to it.exchangeLabel }
@@ -255,7 +261,7 @@ fun SymbolExplorerDropdown(
     var activeListId by remember { mutableStateOf<String?>(null) }
     var footprintOnly by remember { mutableStateOf(false) }
     var perpetualsOnly by remember { mutableStateOf(true) }
-    var quoteFilter by remember { mutableStateOf<String?>("USDT") }
+    var quoteFilter by remember { mutableStateOf<String?>(null) }
     var exchangeFilter by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(SymbolExplorerSort.VOLUME) }
     var descending by remember { mutableStateOf(true) }
@@ -495,10 +501,12 @@ fun SymbolExplorerContent(
             rows
         }
     }
-    val quoteOptions = remember(scopedRows) { explorerQuoteOptions(scopedRows) }
     val exchangeOptions = remember(scopedRows) { explorerExchangeOptions(scopedRows) }
-    val effectiveQuote = quoteFilter?.takeIf { it in quoteOptions }
     val effectiveExchange = exchangeFilter?.takeIf { id -> exchangeOptions.any { it.first == id } }
+    val quoteOptions = remember(scopedRows, effectiveExchange) {
+        explorerQuoteOptionsForExchange(scopedRows, effectiveExchange)
+    }
+    val effectiveQuote = quoteFilter?.takeIf { it in quoteOptions }
 
     val result = remember(
         rows, activeListId, watchlists, footprintOnly, footprintSymbols, perpetualsOnly,
@@ -548,8 +556,8 @@ fun SymbolExplorerContent(
                 onClick = { onPerpetualsOnlyChange(!perpetualsOnly) },
             )
             ExplorerChipDropdown(
-                label = quoteFilter?.takeIf { it in quoteOptions } ?: "ALL",
-                selectedValue = quoteFilter?.takeIf { it in quoteOptions },
+                label = effectiveQuote ?: "ALL",
+                selectedValue = effectiveQuote,
                 options = buildList {
                     add("ALL" to (null as String?))
                     quoteOptions.forEach { add(it to it) }
@@ -564,7 +572,17 @@ fun SymbolExplorerContent(
                     add("ALL EXCHANGES" to (null as String?))
                     exchangeOptions.forEach { (id, text) -> add(text to id) }
                 },
-                onSelect = { onExchangeFilterChange(it) },
+                onSelect = { id ->
+                    onExchangeFilterChange(id)
+                    val scoped = if (id == null) {
+                        scopedRows
+                    } else {
+                        scopedRows.filter { it.exchangeId == id }
+                    }
+                    if (quoteFilter != null && scoped.none { it.quoteAsset == quoteFilter }) {
+                        onQuoteFilterChange(null)
+                    }
+                },
             )
             Spacer(Modifier.weight(1f))
             ExplorerSortButton(

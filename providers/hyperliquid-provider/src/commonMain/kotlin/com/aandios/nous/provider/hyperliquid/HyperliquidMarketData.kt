@@ -12,8 +12,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -30,9 +28,6 @@ internal data class HyperliquidAsset(
     val marginMode: String?,
     val isDelisted: Boolean,
     val collateral: String,
-    val markPrice: Double?,
-    val prevDayPrice: Double?,
-    val dayNotionalVolume: Double?,
 ) {
     val requiresIsolatedMargin: Boolean
         get() = onlyIsolated || marginMode == "noCross" || marginMode == "strictIsolated"
@@ -40,12 +35,20 @@ internal data class HyperliquidAsset(
     val baseAsset: String get() = coin.substringAfter(':')
 }
 
+internal data class HyperliquidMarketContext(
+    val markPrice: Double?,
+    val prevDayPrice: Double?,
+    val dayNotionalVolume: Double?,
+)
+
 internal data class HyperliquidMarketSnapshot(
     val assets: List<HyperliquidAsset>,
     val byCoin: Map<String, HyperliquidAsset>,
     val dexNames: List<String>,
     val assetsByDex: Map<String, List<HyperliquidAsset>>,
     val dexCollateral: Map<String, String>,
+    /** Contexts embedded in the legacy `[meta, ctxs]` shape of allPerpMetas. */
+    val embeddedContexts: Map<String, List<JsonObject>> = emptyMap(),
 )
 
 internal class HyperliquidMarketData(
@@ -55,10 +58,14 @@ internal class HyperliquidMarketData(
 ) {
     private val mutex = Mutex()
     private val spotMutex = Mutex()
+    private val contextMutex = Mutex()
     private var cached: HyperliquidMarketSnapshot? = null
     private var cachedAt = 0L
     private var cachedSpotTokens: Map<Int, String>? = null
     private var cachedSpotAt = 0L
+    private var contextByCoin: Map<String, HyperliquidMarketContext> = emptyMap()
+    private var contextRowsByDex: Map<String, List<JsonObject>> = emptyMap()
+    private var contextAt: Map<String, Long> = emptyMap()
     private val allowedDexes: Set<String>? = parseDexFilter(config)
 
     suspend fun snapshot(force: Boolean = false): HyperliquidMarketSnapshot = mutex.withLock {
@@ -70,6 +77,19 @@ internal class HyperliquidMarketData(
             val fresh = fetchSnapshot()
             cached = fresh
             cachedAt = now
+            if (fresh.embeddedContexts.isNotEmpty()) {
+                contextMutex.withLock {
+                    val rows = contextRowsByDex.toMutableMap()
+                    val at = contextAt.toMutableMap()
+                    fresh.embeddedContexts.forEach { (dex, ctxs) ->
+                        rows[dex] = ctxs
+                        at[dex] = now
+                    }
+                    contextRowsByDex = rows
+                    contextAt = at
+                    rebuildContextsLocked(fresh)
+                }
+            }
             fresh
         } catch (e: Exception) {
             cached ?: throw e
@@ -88,6 +108,7 @@ internal class HyperliquidMarketData(
 
     suspend fun symbols(): List<SymbolInfo> {
         val snapshot = snapshot()
+        contextsForDexes(snapshot, snapshot.dexNames, CATALOG_CONTEXT_TTL_MS)
         return snapshot.assets
             .asSequence()
             .filter { !it.isDelisted }
@@ -99,6 +120,7 @@ internal class HyperliquidMarketData(
 
     suspend fun marketOverview(): List<MarketTickerStats> {
         val snapshot = snapshot()
+        contextsForDexes(snapshot, snapshot.dexNames, CATALOG_CONTEXT_TTL_MS)
         return snapshot.assets
             .asSequence()
             .filter { !it.isDelisted }
@@ -110,18 +132,27 @@ internal class HyperliquidMarketData(
 
     suspend fun markPrice(coin: String): Double? {
         val snapshot = snapshot()
-        return canonicalCoin(coin, snapshot)?.let { snapshot.byCoin[it.lowercase()]?.markPrice }
+        val asset = canonicalCoin(coin, snapshot)?.let { snapshot.byCoin[it.lowercase()] } ?: return null
+        contextsForDexes(snapshot, listOf(asset.dex), MARK_CONTEXT_TTL_MS)
+        return contextByCoin[asset.coin.lowercase()]?.markPrice
     }
 
-    suspend fun markPrices(): Map<String, Double> {
+    suspend fun markPrices(): Map<String, Double> = markPrices(snapshot().dexNames)
+
+    suspend fun markPrices(dexes: Collection<String>): Map<String, Double> {
         val snapshot = snapshot()
-        return snapshot.assets.mapNotNull { asset ->
-            asset.markPrice?.let { asset.coin to it }
-        }.toMap()
+        val requested = dexes.toSet()
+        contextsForDexes(snapshot, requested, MARK_CONTEXT_TTL_MS)
+        return buildMap {
+            snapshot.assets.forEach { asset ->
+                if (asset.dex !in requested) return@forEach
+                contextByCoin[asset.coin.lowercase()]?.markPrice?.let { put(asset.coin, it) }
+            }
+        }
     }
 
     fun symbolInfoFor(asset: HyperliquidAsset): SymbolInfo {
-        val mark = asset.markPrice ?: 0.0
+        val mark = contextByCoin[asset.coin.lowercase()]?.markPrice ?: 0.0
         val step = hyperliquidStepSize(asset.szDecimals)
         return SymbolInfo(
             symbol = asset.coin,
@@ -139,8 +170,9 @@ internal class HyperliquidMarketData(
     }
 
     fun statsFor(asset: HyperliquidAsset): MarketTickerStats? {
-        val last = asset.markPrice ?: return null
-        val previous = asset.prevDayPrice
+        val context = contextByCoin[asset.coin.lowercase()] ?: return null
+        val last = context.markPrice ?: return null
+        val previous = context.prevDayPrice
         val change = if (previous != null && previous > 0.0) {
             (last - previous) / previous * 100.0
         } else {
@@ -150,10 +182,14 @@ internal class HyperliquidMarketData(
             symbol = asset.coin,
             lastPrice = last,
             changePercent24h = change,
-            quoteVolume24h = asset.dayNotionalVolume ?: 0.0,
+            quoteVolume24h = context.dayNotionalVolume ?: 0.0,
         )
     }
 
+    /**
+     * Hyperliquid currently returns allPerpMetas as a flat array of meta objects,
+     * while older deployments/docs return `[meta, ctxs]` pairs. Support both.
+     */
     private suspend fun fetchSnapshot(): HyperliquidMarketSnapshot = coroutineScope {
         val perpDexsDeferred = async {
             info.info(buildJsonObject { put("type", "perpDexs") })
@@ -170,18 +206,21 @@ internal class HyperliquidMarketData(
         val metas = allPerpMetasDeferred.await().asArray()
             ?: error("Hyperliquid allPerpMetas response is not an array")
         val assets = ArrayList<HyperliquidAsset>()
+        val embeddedContexts = LinkedHashMap<String, List<JsonObject>>()
         metas.forEachIndexed { dexIndex, element ->
-            val pair = element.asArray() ?: return@forEachIndexed
-            val meta = pair.getOrNull(0)?.asObject() ?: return@forEachIndexed
-            val ctxs = pair.getOrNull(1)?.asArray()
+            val pair = element.asArray()
+            val meta = element.asObject() ?: pair?.getOrNull(0)?.asObject() ?: return@forEachIndexed
+            val embeddedCtxs = pair?.getOrNull(1)?.asArray()
+                ?.mapNotNull { it.asObject() }
+                .orEmpty()
             val dexName = dexNames.getOrNull(dexIndex).orEmpty()
+            if (embeddedCtxs.isNotEmpty()) embeddedContexts[dexName] = embeddedCtxs
             val collateralToken = meta.int("collateralToken") ?: 0
             val collateral = spotTokens[collateralToken] ?: fallbackCollateralName(collateralToken)
             val universe = meta["universe"]?.asArray() ?: return@forEachIndexed
             universe.forEachIndexed { indexInMeta, assetElement ->
                 val asset = assetElement.asObject() ?: return@forEachIndexed
                 val coin = asset.string("name") ?: return@forEachIndexed
-                val ctx = ctxs?.getOrNull(indexInMeta)?.asObject()
                 assets += HyperliquidAsset(
                     coin = coin,
                     assetId = hyperliquidAssetId(dexIndex, indexInMeta),
@@ -194,9 +233,6 @@ internal class HyperliquidMarketData(
                     marginMode = asset.string("marginMode"),
                     isDelisted = asset.bool("isDelisted") == true,
                     collateral = collateral,
-                    markPrice = ctx?.markPrice(),
-                    prevDayPrice = ctx?.double("prevDayPx"),
-                    dayNotionalVolume = ctx?.double("dayNtlVlm"),
                 )
             }
         }
@@ -209,7 +245,51 @@ internal class HyperliquidMarketData(
             dexCollateral = assetsByDex.mapValues { (_, dexAssets) ->
                 dexAssets.firstOrNull()?.collateral ?: "USDC"
             },
+            embeddedContexts = embeddedContexts,
         )
+    }
+
+    private suspend fun contextsForDexes(
+        snapshot: HyperliquidMarketSnapshot,
+        dexes: Collection<String>,
+        ttlMs: Long,
+    ): Map<String, List<JsonObject>> = contextMutex.withLock {
+        val now = clock()
+        val requested = dexes.toSet()
+        val rows = contextRowsByDex.toMutableMap()
+        val at = contextAt.toMutableMap()
+        requested.forEach { dex ->
+            if (now - (at[dex] ?: 0L) < ttlMs && rows.containsKey(dex)) return@forEach
+            val body = buildJsonObject {
+                put("type", "metaAndAssetCtxs")
+                if (dex.isNotEmpty()) put("dex", dex)
+            }
+            val response = runCatching { info.info(body) }.getOrNull() ?: return@forEach
+            val pair = response.asArray()?.getOrNull(1)?.asArray()
+                ?: return@forEach
+            rows[dex] = pair.mapNotNull { it.asObject() }
+            at[dex] = clock()
+        }
+        contextRowsByDex = rows
+        contextAt = at
+        rebuildContextsLocked(snapshot)
+        requested.mapNotNull { dex -> rows[dex]?.let { dex to it } }.toMap()
+    }
+
+    private fun rebuildContextsLocked(snapshot: HyperliquidMarketSnapshot) {
+        val contexts = HashMap<String, HyperliquidMarketContext>()
+        contextRowsByDex.forEach { (dex, rows) ->
+            val assets = snapshot.assetsByDex[dex].orEmpty()
+            rows.forEachIndexed { index, row ->
+                val asset = assets.getOrNull(index) ?: return@forEachIndexed
+                contexts[asset.coin.lowercase()] = HyperliquidMarketContext(
+                    markPrice = row.markPrice(),
+                    prevDayPrice = row.double("prevDayPx"),
+                    dayNotionalVolume = row.double("dayNtlVlm"),
+                )
+            }
+        }
+        contextByCoin = contexts
     }
 
     private suspend fun spotTokens(): Map<Int, String> {
@@ -231,7 +311,7 @@ internal class HyperliquidMarketData(
         }
     }
 
-    private fun parsePerpDexs(element: JsonElement): List<String> {
+    private fun parsePerpDexs(element: kotlinx.serialization.json.JsonElement): List<String> {
         val array = element.asArray() ?: return emptyList()
         return array.map { item ->
             if (item is JsonObject) item.string("name").orEmpty() else ""
@@ -269,8 +349,10 @@ internal class HyperliquidMarketData(
         double("markPx") ?: double("midPx") ?: double("oraclePx")
 
     private companion object {
-        const val META_TTL_MS = 10_000L
+        const val META_TTL_MS = 10 * 60_000L
         const val SPOT_TTL_MS = 10 * 60_000L
+        const val CATALOG_CONTEXT_TTL_MS = 30_000L
+        const val MARK_CONTEXT_TTL_MS = 10_000L
 
         fun fallbackCollateralTokens(): Map<Int, String> = mapOf(
             0 to "USDC",

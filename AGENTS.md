@@ -46,7 +46,7 @@ SQLite state store.
 | `public-api/api-trading`, `public-api/api-ui` | Additional API surfaces. |
 | `providers/binance-provider` | Binance USDT-M. Market data is real; `trading` is a stub that returns fake success with `TEST-<timestamp>` ids and tracks nothing — never use it to validate real order behaviour. |
 | `providers/bybit-provider` | Bybit V5 USDT linear perpetual market data and trading: public candles, order book, trades, best bid/ask, symbol info, live liquidations, signed private REST, and private account WebSocket. Credentials are `ProviderConfig.apiKey/secretKey` or `BYBIT_API_KEY` / `BYBIT_SECRET_KEY`; historical liquidations are not exposed by the documented public API. Margin mode is account-wide on UTA and must match the order's requested mode; the adapter never switches it implicitly. |
-| `providers/hyperliquid-provider` | Hyperliquid USDC-margined perps, including all HIP-3 builder-deployed DEXes: REST `/info`, multiplexed public/private WebSocket, chart/trades/DOM/book-ticker/symbol-info adapters, and EIP-712 signed L1 actions (order/cancel/leverage/margin/TP-SL). Trading uses `HYPERLIQUID_ACCOUNT_ADDRESS` + `HYPERLIQUID_PRIVATE_KEY` (agent or master EVM key); no FOK, no public liquidations, L2 depth max 20 levels. |
+| `providers/hyperliquid-provider` | Hyperliquid USDC-margined perps, including all HIP-3 builder-deployed DEXes: REST `/info`, multiplexed public/private WebSocket, chart/trades/DOM/book-ticker/symbol-info adapters, and EIP-712 signed L1 actions (order/cancel/leverage/margin/TP-SL). Trading uses `HYPERLIQUID_ACCOUNT_ADDRESS` + `HYPERLIQUID_PRIVATE_KEY` (agent or master EVM key); no FOK, no public liquidations, L2 depth max 20 levels. `allPerpMetas` is a flat meta array on the live API (the documented `[meta, ctxs]` shape is accepted too); per-DEX contexts come from `metaAndAssetCtxs`. |
 | `providers/mexc-provider` | MEXC USDT-M Futures Contract API v1: signed REST client, rate gate, WS hub (public + personal), adapters, contract-size aware trading adapter. |
 | `features/chart` | Chart panel: rendering (candles/footprint), `ChartViewModel`, panel-scoped persistence (`ChartStatePersistor`), chart trading (order/position badges, TP/SL, drag = cancel+replace), indicators (off-main compute, feed source, TABS/STACKED panes, per-line colors, global favorites/presets). JVM UI: `ChartWindow`, `ChartTradingPanel`. |
 | `features/dom` | DOM depth ladder: `DomViewModel` (order book, click-to-place, order chips with resize/drag/cancel, position plates, margin chip), `DomWindow` (jvm), `content/LevelRow` + `DomSection`, `footer/OrderPlacementPanel`. |
@@ -167,7 +167,10 @@ Mind this when writing paths.
   and a ⚙ menu (New/Rename/Delete list, Close panel). The scroll-to-top FAB
   lives in the shared content (so the popup has it too). Catalog failures are
   never printed in the body: a red exclamation badge in the panel title opens
-  `TerminalContextPopup` with `MarketOverviewStore.state.error`.
+  `TerminalContextPopup` with `MarketOverviewStore.state.error`. The quote
+  filter defaults to ALL (not USDT) and its options are scoped to the selected
+  exchange, so USDC/USDH HIP-3 markets stay discoverable; switching to an
+  exchange resets a quote that the exchange does not offer.
 - Chart: provider/contract-type state is panel-scoped
   (`chart_{workspace}_{panel}_chart_provider_id`, `..._chart_contract_type`).
 - Theme selection is global (`terminal_theme`) and is managed by

@@ -262,6 +262,46 @@ class SymbolExplorerDropdownTest {
     }
 
     @Test
+    fun `quote options follow the selected exchange`() {
+        val rows = listOf(
+            row("BTCUSDT", exchange = "binance", label = "BINANCE"),
+            row("SOL", exchange = "hyperliquid", label = "HYPERLIQUID", quote = "USDC"),
+            row("xyz:SP500", exchange = "hyperliquid", label = "HYPERLIQUID", quote = "USDC"),
+            row("flx:TSLA", exchange = "hyperliquid-flx", label = "HYPERLIQUID", quote = "USDH"),
+        )
+
+        assertEquals(listOf("USDT"), explorerQuoteOptionsForExchange(rows, "binance"))
+        assertEquals(listOf("USDC"), explorerQuoteOptionsForExchange(rows, "hyperliquid"))
+        assertEquals(listOf("USDH"), explorerQuoteOptionsForExchange(rows, "hyperliquid-flx"))
+        assertEquals(
+            listOf("USDT", "USDC", "USDH"),
+            explorerQuoteOptionsForExchange(rows, null),
+        )
+    }
+
+    @Test
+    fun `hyperliquid usdc instruments are visible without a quote filter`() {
+        val rows = listOf(
+            row("BTCUSDT", exchange = "binance", label = "BINANCE"),
+            row("SOL", exchange = "hyperliquid", label = "HYPERLIQUID", quote = "USDC"),
+            row("xyz:SP500", exchange = "hyperliquid", label = "HYPERLIQUID", quote = "USDC"),
+        )
+
+        val result = computeExplorerRows(
+            rows = rows,
+            activeListSymbols = null,
+            perpetualsOnly = true,
+            quote = null,
+            exchangeId = "hyperliquid",
+            query = "",
+            sort = SymbolExplorerSort.VOLUME,
+            descending = true,
+        )
+
+        assertEquals(listOf("SOL", "xyz:SP500"), result.matches.map { it.row.symbol })
+    }
+
+    @Test
     fun `footer text reflects count and active sort`() {
         assertEquals("48 CONTRACTS · SORTED BY VOLUME", explorerFooterText(48, SymbolExplorerSort.VOLUME))
         assertEquals("12 CONTRACTS · SORTED BY 24H %", explorerFooterText(12, SymbolExplorerSort.CHANGE))

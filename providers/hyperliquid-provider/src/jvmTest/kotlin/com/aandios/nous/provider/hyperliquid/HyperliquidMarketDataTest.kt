@@ -103,6 +103,94 @@ class HyperliquidMarketDataTest {
     }
 
     @Test
+    fun `parses the flat live allPerpMetas response and fetches per-dex contexts`() = runTest {
+        var contextCalls = 0
+        val info = FakeHyperliquidInfo(handler = { body ->
+            when (body.string("type")) {
+                "perpDexs" -> jsonElement("""[null,{"name":"xyz"}]""")
+                "allPerpMetas" -> jsonElement(
+                    """
+                    [
+                      {"universe":[
+                        {"name":"BTC","szDecimals":5,"maxLeverage":40},
+                        {"name":"SOL","szDecimals":2,"maxLeverage":20}
+                      ],"collateralToken":0},
+                      {"universe":[
+                        {"name":"xyz:XYZ100","szDecimals":4,"maxLeverage":30},
+                        {"name":"xyz:SP500","szDecimals":3,"maxLeverage":50,"onlyIsolated":true,"marginMode":"noCross"}
+                      ],"collateralToken":0}
+                    ]
+                    """.trimIndent(),
+                )
+                "spotMeta" -> HyperliquidFixtures.spotMeta
+                "metaAndAssetCtxs" -> {
+                    contextCalls++
+                    when (body.string("dex")) {
+                        null, "" -> jsonElement(
+                            """
+                            [{"universe":[{"name":"BTC","szDecimals":5},{"name":"SOL","szDecimals":2}],"collateralToken":0},
+                             [{"markPx":"78065.0","prevDayPx":"77000.0","dayNtlVlm":"1000000.0"},
+                              {"markPx":"200.0","prevDayPx":"190.0","dayNtlVlm":"50000.0"}]]
+                            """.trimIndent(),
+                        )
+                        "xyz" -> jsonElement(
+                            """
+                            [{"universe":[{"name":"xyz:XYZ100","szDecimals":4},{"name":"xyz:SP500","szDecimals":3}],"collateralToken":0},
+                             [{"markPx":"28647.0","prevDayPx":"28544.0","dayNtlVlm":"168468819.87"},
+                              {"markPx":"7619.7","prevDayPx":"7593.5","dayNtlVlm":"106713671.74"}]]
+                            """.trimIndent(),
+                        )
+                        else -> error("Unexpected dex ${body.string("dex")}")
+                    }
+                }
+                else -> error("Unexpected info ${body.string("type")}")
+            }
+        })
+        val marketData = HyperliquidMarketData(info, ProviderConfig(), clock = { 1_000_000_000L })
+
+        val symbols = marketData.symbols()
+        assertEquals(4, symbols.size)
+        val btc = symbols.first { it.symbol == "BTC" }
+        val sp500 = symbols.first { it.symbol == "xyz:SP500" }
+        assertEquals(1.0, btc.tickSize, 1e-12)
+        assertEquals("USDC", sp500.quoteAsset)
+        assertEquals(0.1, sp500.tickSize, 1e-12)
+        assertEquals(110_001, marketData.assetFor("xyz:SP500")?.assetId)
+        assertEquals(2, contextCalls)
+
+        val overview = marketData.marketOverview().first { it.symbol == "xyz:SP500" }
+        assertEquals(7619.7, overview.lastPrice, 1e-12)
+        assertEquals(106_713_671.74, overview.quoteVolume24h, 1e-6)
+        assertEquals(2, contextCalls)
+        assertEquals(78_065.0, marketData.markPrices(listOf(""))["BTC"])
+    }
+
+    @Test
+    fun `flat allPerpMetas still yields symbols when contexts are unavailable`() = runTest {
+        val info = FakeHyperliquidInfo(handler = { body ->
+            when (body.string("type")) {
+                "perpDexs" -> jsonElement("""[null,{"name":"xyz"}]""")
+                "allPerpMetas" -> jsonElement(
+                    """
+                    [
+                      {"universe":[{"name":"BTC","szDecimals":5,"maxLeverage":40}],"collateralToken":0},
+                      {"universe":[{"name":"xyz:SP500","szDecimals":3,"maxLeverage":50}],"collateralToken":0}
+                    ]
+                    """.trimIndent(),
+                )
+                "spotMeta" -> HyperliquidFixtures.spotMeta
+                "metaAndAssetCtxs" -> error("contexts unavailable")
+                else -> error("Unexpected info ${body.string("type")}")
+            }
+        })
+        val marketData = HyperliquidMarketData(info, ProviderConfig(), clock = { 1_000_000_000L })
+
+        val symbols = marketData.symbols()
+        assertEquals(2, symbols.size)
+        assertTrue(marketData.marketOverview().isEmpty())
+    }
+
+    @Test
     fun `honours the dex allow list while keeping the default dex`() = runTest {
         val marketData = HyperliquidFixtures.marketData(
             info = HyperliquidFixtures.fakeInfo(),

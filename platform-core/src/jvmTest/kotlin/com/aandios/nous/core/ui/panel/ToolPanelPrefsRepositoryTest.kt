@@ -70,7 +70,7 @@ class ToolPanelPrefsRepositoryTest {
         assertEquals(7, prefs.scrollIndex)
         assertEquals(3, prefs.scrollOffset)
         assertEquals(true, prefs.perpetualsOnly)
-        assertEquals("USDT", prefs.quoteAsset)
+        assertEquals(null, prefs.quoteAsset)
     }
 
     @Test

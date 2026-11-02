@@ -137,7 +137,7 @@ internal class HyperliquidTradingAdapter internal constructor(
             when (type) {
                 OrderType.MARKET -> {
                     val reference = bestPrice(asset.coin, isBuy)
-                        ?: asset.markPrice
+                        ?: marketData.markPrice(asset.coin)
                         ?: return failure("No Hyperliquid price for ${asset.coin}")
                     priceString = normalizeHyperliquidPrice(
                         hyperliquidAggressivePrice(reference, isBuy, marketSlippage),
@@ -287,7 +287,7 @@ internal class HyperliquidTradingAdapter internal constructor(
     override suspend fun getPositions(): List<Position> {
         val user = accountOrNull() ?: return emptyList()
         val states = fetchClearinghouses(user) ?: return emptyList()
-        val marks = runCatching { marketData.markPrices() }.getOrDefault(emptyMap())
+        val marks = runCatching { marketData.markPrices(states.keys) }.getOrDefault(emptyMap())
         val preliminary = positionsFromStates(states, marks)
         orderRegistry.setPositionContext(preliminary)
         val extra = orderRegistry.positionTpSl(preliminary)
@@ -535,7 +535,7 @@ internal class HyperliquidTradingAdapter internal constructor(
             streams.subscribe("allDexsClearinghouseState|$user", subscription).collect { root ->
                 val data = root["data"]?.asObject() ?: return@collect
                 val states = hyperliquidClearinghouseStates(data)
-                val marks = runCatching { marketData.markPrices() }.getOrDefault(emptyMap())
+                val marks = runCatching { marketData.markPrices(states.keys) }.getOrDefault(emptyMap())
                 val preliminary = positionsFromStates(states, marks)
                 orderRegistry.setPositionContext(preliminary)
                 val extra = orderRegistry.positionTpSl(preliminary)

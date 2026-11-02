@@ -23,7 +23,7 @@ data class MarketWatchPrefs(
     val sort: String = "VOLUME",
     val descending: Boolean = true,
     val perpetualsOnly: Boolean = true,
-    val quoteAsset: String? = "USDT",
+    val quoteAsset: String? = null,
     val scrollIndex: Int = 0,
     val scrollOffset: Int = 0,
 )

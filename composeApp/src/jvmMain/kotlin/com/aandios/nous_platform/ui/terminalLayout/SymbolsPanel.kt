@@ -91,7 +91,7 @@ fun SymbolsPanel(
     // Список панели — общий explorer-контент: фильтры/сортировка/поиск как в дропдауне.
     var activeListId by remember { mutableStateOf<String?>(null) }
     var perpetualsOnly by remember { mutableStateOf(true) }
-    var quoteFilter by remember { mutableStateOf<String?>("USDT") }
+    var quoteFilter by remember { mutableStateOf<String?>(null) }
     var exchangeFilter by remember { mutableStateOf<String?>(null) }
     var sort by remember { mutableStateOf(SymbolExplorerSort.VOLUME) }
     var descending by remember { mutableStateOf(true) }

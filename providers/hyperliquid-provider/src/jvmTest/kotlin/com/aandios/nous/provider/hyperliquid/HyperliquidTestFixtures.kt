@@ -23,12 +23,14 @@ internal fun jsonElement(text: String): JsonElement =
     testJson.parseToJsonElement(text)
 
 internal class FakeHyperliquidInfo(
-    private val responses: Map<String, JsonElement>,
+    private val responses: Map<String, JsonElement> = emptyMap(),
+    private val handler: (suspend (JsonObject) -> JsonElement)? = null,
 ) : HyperliquidInfoApi {
     val requests = mutableListOf<JsonObject>()
 
     override suspend fun info(body: JsonObject): JsonElement {
         requests += body
+        handler?.let { return it(body) }
         val type = body.string("type") ?: error("Fake request is missing type")
         return responses[type] ?: error("No fake response for $type")
     }
