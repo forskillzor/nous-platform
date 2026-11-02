@@ -39,7 +39,9 @@ import com.aandios.nous.provider.hyperliquid.hyperliquidDexOf
 import com.aandios.nous.provider.hyperliquid.hyperliquidEnvironmentVariable
 import com.aandios.nous.provider.hyperliquid.hyperliquidFill
 import com.aandios.nous.provider.hyperliquid.hyperliquidOidFromStatus
+import com.aandios.nous.provider.hyperliquid.hyperliquidPortfolioValue
 import com.aandios.nous.provider.hyperliquid.hyperliquidPositionFromState
+import com.aandios.nous.provider.hyperliquid.hyperliquidUnifiedBalance
 import com.aandios.nous.provider.hyperliquid.int
 import com.aandios.nous.provider.hyperliquid.long
 import com.aandios.nous.provider.hyperliquid.normalizeHyperliquidPrice
@@ -101,6 +103,11 @@ internal class HyperliquidTradingAdapter internal constructor(
     private val clearinghouseMutex = Mutex()
     private var clearinghouseCache: Map<String, JsonObject>? = null
     private var clearinghouseCacheAt = 0L
+    private var unifiedAccountCache: Boolean? = null
+    private var unifiedAccountCacheAt = 0L
+    private val unifiedBalanceMutex = Mutex()
+    private var unifiedBalanceCache: Balance? = null
+    private var unifiedBalanceCacheAt = 0L
     private val posTpSlCache = mutableMapOf<Long, Pair<Double?, Double?>>()
     private var feeRatesCache: FeeRates? = null
     private var feeRatesAt = 0L
@@ -323,6 +330,9 @@ internal class HyperliquidTradingAdapter internal constructor(
     override suspend fun getBalances(): List<Balance> {
         val user = accountOrNull() ?: return emptyList()
         val states = fetchClearinghouses(user) ?: return emptyList()
+        if (isUnifiedAccount(user)) {
+            fetchUnifiedBalance(user, states)?.let { return listOf(it) }
+        }
         return balancesFromStates(states)
     }
 
@@ -639,6 +649,12 @@ internal class HyperliquidTradingAdapter internal constructor(
         if (!canReadAccount()) return null
         return channelFlow {
             val user = accountOrNull() ?: return@channelFlow
+            if (isUnifiedAccount(user)) {
+                while (true) {
+                    getBalances().forEach { send(it) }
+                    delay(UNIFIED_REFRESH_MS)
+                }
+            }
             getBalances().forEach { send(it) }
             val subscription = buildJsonObject {
                 put("type", "allDexsClearinghouseState")
@@ -856,6 +872,58 @@ internal class HyperliquidTradingAdapter internal constructor(
             }
         }
         return result
+    }
+
+    private suspend fun isUnifiedAccount(user: String): Boolean {
+        val now = clock()
+        unifiedAccountCache?.takeIf { now - unifiedAccountCacheAt < ABSTRACTION_TTL_MS }?.let { return it }
+        val response = runCatching {
+            info.info(
+                buildJsonObject {
+                    put("type", "userAbstraction")
+                    put("user", user)
+                },
+            )
+        }.getOrNull() ?: return false
+        val abstraction = when (response) {
+            is JsonPrimitive -> response.contentOrNull
+            is JsonObject -> response.string("abstraction") ?: response.string("type")
+            else -> null
+        } ?: return false
+        val unified = abstraction == UNIFIED_ACCOUNT
+        unifiedAccountCache = unified
+        unifiedAccountCacheAt = now
+        return unified
+    }
+
+    private suspend fun fetchUnifiedBalance(
+        user: String,
+        states: Map<String, JsonObject>,
+    ): Balance? = unifiedBalanceMutex.withLock {
+        val now = clock()
+        unifiedBalanceCache?.takeIf { now - unifiedBalanceCacheAt < UNIFIED_BALANCE_TTL_MS }?.let {
+            return@withLock it
+        }
+        val spot = runCatching {
+            info.info(
+                buildJsonObject {
+                    put("type", "spotClearinghouseState")
+                    put("user", user)
+                },
+            )
+        }.getOrNull()?.asObject() ?: return@withLock null
+        val portfolio = runCatching {
+            info.info(
+                buildJsonObject {
+                    put("type", "portfolio")
+                    put("user", user)
+                },
+            )
+        }.getOrNull()
+        val balance = hyperliquidUnifiedBalance(spot, states, hyperliquidPortfolioValue(portfolio))
+        unifiedBalanceCache = balance
+        unifiedBalanceCacheAt = now
+        balance
     }
 
     private suspend fun balancesFromStates(states: Map<String, JsonObject>): List<Balance> {

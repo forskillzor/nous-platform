@@ -13,7 +13,9 @@ import com.aandios.nous.api.market.model.trading.OrderStatus
 import com.aandios.nous.api.market.model.trading.Position
 import com.aandios.nous.api.market.model.trading.TradeFill
 import com.aandios.nous.api.market.model.trading.TradeSide
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlin.math.abs
 
@@ -218,9 +220,7 @@ internal fun hyperliquidBalanceFromState(
     val accountValue = marginSummary.double("accountValue") ?: 0.0
     val marginUsed = marginSummary.double("totalMarginUsed") ?: 0.0
     val withdrawable = state.double("withdrawable") ?: 0.0
-    val unrealized = state["assetPositions"]?.let { it.asArray() }.orEmpty().sumOf { element ->
-        element.asObject()?.get("position")?.asObject()?.double("unrealizedPnl") ?: 0.0
-    }
+    val unrealized = hyperliquidUnrealizedPnl(state)
     if (accountValue == 0.0 && withdrawable == 0.0 && marginUsed == 0.0 && unrealized == 0.0) {
         return null
     }
@@ -233,6 +233,72 @@ internal fun hyperliquidBalanceFromState(
         unrealizedPnl = plainHyperliquidDecimal(unrealized),
     )
 }
+
+/**
+ * Unified-account balance as shown by Hyperliquid web: portfolio equity,
+ * available after maintenance and maintenance margin used by open positions.
+ */
+internal fun hyperliquidUnifiedBalance(
+    spotState: JsonObject,
+    clearinghouseStates: Map<String, JsonObject>,
+    portfolioValue: Double?,
+): Balance {
+    val rows = spotState["balances"]?.asArray().orEmpty()
+    val spot = rows.firstOrNull { it.asObject()?.string("coin") == "USDC" }?.asObject()
+        ?: rows.firstOrNull()?.asObject()
+    val total = spot?.double("total") ?: 0.0
+    val maintenance = hyperliquidMaintenanceMargin(clearinghouseStates)
+    val available = hyperliquidAvailableAfterMaintenance(spotState, spot?.int("token"))
+        ?: (total - maintenance).coerceAtLeast(0.0)
+    return Balance(
+        currency = spot?.string("coin") ?: "USDC",
+        amount = plainHyperliquidDecimal(available),
+        frozen = plainHyperliquidDecimal(spot?.double("hold") ?: 0.0),
+        margin = plainHyperliquidDecimal(maintenance),
+        equity = plainHyperliquidDecimal(portfolioValue ?: total),
+        unrealizedPnl = plainHyperliquidDecimal(hyperliquidUnrealizedPnlFromStates(clearinghouseStates)),
+    )
+}
+
+internal fun hyperliquidPortfolioValue(response: JsonElement?): Double? {
+    val periods = response?.asArray().orEmpty()
+    val day = periods.firstOrNull { period ->
+        val name = period.asArray()?.getOrNull(0)?.let { (it as? JsonPrimitive)?.contentOrNull }
+        name == "day"
+    } ?: periods.firstOrNull()
+    val history = day?.asArray()?.getOrNull(1)?.asObject()
+        ?.get("accountValueHistory")?.asArray()
+        ?: response?.asObject()?.get("accountValueHistory")?.asArray()
+    return history?.lastOrNull()?.asArray()?.getOrNull(1)
+        ?.let { (it as? JsonPrimitive)?.contentOrNull }
+        ?.toDoubleOrNull()
+}
+
+internal fun hyperliquidMaintenanceMargin(states: Map<String, JsonObject>): Double =
+    states.values.sumOf { state ->
+        state.double("crossMaintenanceMarginUsed")
+            ?: state["marginSummary"]?.asObject()?.double("totalMarginUsed")
+            ?: 0.0
+    }
+
+internal fun hyperliquidUnrealizedPnlFromStates(states: Map<String, JsonObject>): Double =
+    states.values.sumOf { hyperliquidUnrealizedPnl(it) }
+
+private fun hyperliquidAvailableAfterMaintenance(spotState: JsonObject, token: Int?): Double? {
+    val rows = spotState["tokenToAvailableAfterMaintenance"]?.asArray().orEmpty()
+    val row = rows.firstOrNull { entry ->
+        token != null && entry.asArray()?.getOrNull(0)
+            ?.let { (it as? JsonPrimitive)?.contentOrNull?.toIntOrNull() } == token
+    } ?: rows.firstOrNull()
+    return row?.asArray()?.getOrNull(1)
+        ?.let { (it as? JsonPrimitive)?.contentOrNull }
+        ?.toDoubleOrNull()
+}
+
+private fun hyperliquidUnrealizedPnl(state: JsonObject): Double =
+    state["assetPositions"]?.asArray().orEmpty().sumOf { element ->
+        element.asObject()?.get("position")?.asObject()?.double("unrealizedPnl") ?: 0.0
+    }
 
 internal fun hyperliquidFill(row: JsonObject): TradeFill? {
     val coin = row.string("coin") ?: return null

@@ -602,6 +602,56 @@ class HyperliquidTradingAdapterTest {
     }
 
     @Test
+    fun `unified account balance uses portfolio equity and maintenance margin`() = runTest {
+        val info = fakeInfo(
+            infoHandler = defaultInfoHandler(
+                clearinghouse = { body ->
+                    when (body.string("dex")) {
+                        "xyz" -> jsonObject(
+                            """
+                            {
+                              "marginSummary":{"accountValue":"3.660144","totalMarginUsed":"3.660144"},
+                              "crossMaintenanceMarginUsed":"1.830072",
+                              "assetPositions":[{"type":"oneWay","position":{
+                                "coin":"BTC","szi":"0.01","entryPx":"70000",
+                                "leverage":{"type":"cross","value":10},
+                                "unrealizedPnl":"0.3336","liquidationPx":"0"
+                              }}],
+                              "withdrawable":"0.032928"
+                            }
+                            """.trimIndent(),
+                        )
+                        else -> emptyState()
+                    }
+                },
+                abstraction = { JsonPrimitive("unifiedAccount") },
+                spot = {
+                    jsonObject(
+                        """
+                        {
+                          "balances":[{"coin":"USDC","token":0,"total":"39.386729","hold":"3.660816"}],
+                          "tokenToAvailableAfterMaintenance":[[0,"37.556321"]]
+                        }
+                        """.trimIndent(),
+                    )
+                },
+                portfolio = {
+                    jsonElement("""[["day",{"accountValueHistory":[[1,"39.393929"]]}]]""")
+                },
+            ),
+        )
+        val (adapter, _) = adapter(info)
+
+        val balance = adapter.getBalances().single()
+        assertEquals("USDC", balance.currency)
+        assertEquals("37.556321", balance.amount)
+        assertEquals("3.660816", balance.frozen)
+        assertEquals("1.830072", balance.margin)
+        assertEquals("39.393929", balance.equity)
+        assertEquals("0.3336", balance.unrealizedPnl)
+    }
+
+    @Test
     fun `trade history daily pnl and fees map from info endpoints`() = runTest {
         val info = fakeInfo()
         val (adapter, _) = adapter(info)
