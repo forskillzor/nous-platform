@@ -14,7 +14,7 @@ plugins {
 }
 
 // Единственный источник версии: packageVersion установщика и BuildConfig.VERSION.
-val appVersion = "0.1.5"
+val appVersion = "0.2.0"
 
 // Генерация BuildConfig.kt: Compose Desktop не публикует packageVersion в код.
 val buildConfigDir = layout.buildDirectory.dir("generated/buildConfig/kotlin")
