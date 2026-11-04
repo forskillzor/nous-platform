@@ -18,6 +18,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.isSpecified
@@ -48,6 +50,11 @@ import com.aandios.nous_platform.ui.terminalLayout.TerminalMode
 import com.aandios.nous_platform.ui.terminalLayout.TerminalModeBar
 import com.aandios.nous_platform.ui.terminalLayout.TerminalTopBar
 import org.koin.compose.koinInject
+import java.awt.AWTEvent
+import java.awt.Toolkit
+import java.awt.event.AWTEventListener
+import java.awt.event.MouseEvent
+import kotlin.math.roundToInt
 
 /**
  * Содержимое одного окна терминала: сессия вкладок, TabBar, активный workspace
@@ -75,7 +82,8 @@ fun TerminalWindowContent(
     val paperModeState: PaperModeState = koinInject()
     val paperEnabled by paperModeState.enabled.collectAsState()
 
-    // Публикуем границы окна (px) для hit-test переноса вкладок + персистим геометрию
+    // Геометрия состояния окна нужна только для персистенса; drag hit-test
+    // использует screen coordinates, измеренные непосредственно в Compose layout.
     LaunchedEffect(session.id, windowState) {
         snapshotFlow {
             // v2 WindowState бросает исключение при чтении size/position до
@@ -89,14 +97,36 @@ fun TerminalWindowContent(
             val y = if (pos.isSpecified) with(density) { pos.y.roundToPx() } else null
             val w = with(density) { size.width.roundToPx() }
             val h = with(density) { size.height.roundToPx() }
-            if (x != null && y != null) {
-                WindowBoundsRegistry.update(session.id, WindowBoundsRegistry.Bounds(x, y, w, h))
-            }
             windowManager.updateSessionGeometry(session.id, x, y, w, h)
         }
     }
     DisposableEffect(session.id) {
         onDispose { WindowBoundsRegistry.remove(session.id) }
+    }
+
+    DisposableEffect(session.id, windowManager, dragBus) {
+        val listener = AWTEventListener { event ->
+            if (event is MouseEvent && event.id == MouseEvent.MOUSE_RELEASED &&
+                event.button == MouseEvent.BUTTON1
+            ) {
+                val payload = dragBus.active.value?.takeIf { it.sourceWindowId == session.id }
+                val cursor = WindowBoundsRegistry.cursorLocation()
+                if (payload != null && cursor != null) {
+                    val targetWindow = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
+                    if (targetWindow == session.id && dragBus.wasCancelled(payload)) {
+                        dragBus.end(payload)
+                    } else if (targetWindow != session.id) {
+                        if (dragBus.end(payload)) {
+                            resolveTabDragDrop(payload, windowManager)
+                        }
+                    }
+                }
+            }
+        }
+        Toolkit.getDefaultToolkit().addAWTEventListener(listener, AWTEvent.MOUSE_EVENT_MASK)
+        onDispose {
+            Toolkit.getDefaultToolkit().removeAWTEventListener(listener)
+        }
     }
 
     val workspaces by tabManager.workspaces.collectAsState()
@@ -127,7 +157,6 @@ fun TerminalWindowContent(
     }
 
     // Перенос вкладки между окнами
-    var dragPayload by remember { mutableStateOf<TabDragBus.Payload?>(null) }
     val externalDrag by dragBus.active.collectAsState()
     val externalDragActive = externalDrag?.let { it.sourceWindowId != session.id } == true
     var themeSettingsOpen by remember { mutableStateOf(false) }
@@ -167,7 +196,23 @@ fun TerminalWindowContent(
     }
 
     CompositionLocalProvider(LocalSymbolWatchlistRepository provides symbolWatchlists) {
-        Box(Modifier.fillMaxSize()) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { coordinates ->
+                    val origin = coordinates.positionOnScreen()
+                    if (!origin.x.isFinite() || !origin.y.isFinite()) return@onGloballyPositioned
+                    WindowBoundsRegistry.update(
+                        session.id,
+                        WindowBoundsRegistry.Bounds(
+                            origin.x.roundToInt() - 8,
+                            origin.y.roundToInt() - 48,
+                            coordinates.size.width + 16,
+                            coordinates.size.height + 56,
+                        ),
+                    )
+                }
+        ) {
             Column(Modifier.fillMaxSize()) {
                 // ── TopBar с TabBar и кнопкой «+» ──
                 TerminalTopBar(
@@ -179,40 +224,18 @@ fun TerminalWindowContent(
                             onTabClose = { id -> windowManager.closeWorkspaceIn(session.id, id) },
                             onTabReorder = { from, to -> windowManager.reorderWorkspace(session.id, from, to) },
                             onDragStart = { wsId ->
-                                dragPayload = TabDragBus.Payload(session.id, wsId)
-                                dragBus.start(dragPayload!!)
+                                val payload = TabDragBus.Payload(session.id, wsId)
+                                dragBus.start(payload)
                             },
                             onDragEndResolve = {
-                                dragBus.end()
-                                val payload = dragPayload
-                                dragPayload = null
-                                if (payload != null) {
-                                    val cursor = WindowBoundsRegistry.cursorLocation()
-                                    if (cursor != null) {
-                                        val targetId = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
-                                        val sourceBounds = WindowBoundsRegistry.bounds.value[payload.sourceWindowId]
-                                        val outsideSource = sourceBounds == null ||
-                                                !sourceBounds.contains(cursor.first, cursor.second)
-                                        when {
-                                            targetId != null && targetId != payload.sourceWindowId ->
-                                                windowManager.moveWorkspace(
-                                                    payload.workspaceId,
-                                                    payload.sourceWindowId,
-                                                    targetId,
-                                                    Int.MAX_VALUE
-                                                )
-
-                                            targetId == null && outsideSource ->
-                                                // Отпустили вне всех окон — detach в новое окно у курсора
-                                                windowManager.detachWorkspace(
-                                                    payload.workspaceId,
-                                                    payload.sourceWindowId,
-                                                    cursor.first,
-                                                    cursor.second
-                                                )
-                                        }
-                                    }
-                                }
+                                val payload = dragBus.active.value?.takeIf { it.sourceWindowId == session.id }
+                                payload != null && dragBus.end(payload) &&
+                                    resolveTabDragDrop(payload, windowManager)
+                            },
+                            onDragCancel = {
+                                dragBus.active.value
+                                    ?.takeIf { it.sourceWindowId == session.id }
+                                    ?.let(dragBus::markCancelled)
                             },
                             onOpenInNewWindow = { wsId ->
                                 val cursor = WindowBoundsRegistry.cursorLocation()
@@ -221,6 +244,18 @@ fun TerminalWindowContent(
                             previewWorkspaceId = session.previewWorkspaceId,
                             onTabDoubleClick = { wsId -> windowManager.promotePreview(session.id, wsId) },
                             externalDragActive = externalDragActive,
+                            onTabBarBoundsChanged = { x, y, width, height ->
+                                WindowBoundsRegistry.updateTabBarBounds(
+                                    session.id,
+                                    WindowBoundsRegistry.Bounds(x, y, width, height),
+                                )
+                            },
+                            onTabWorkspaceIdsChanged = { ids ->
+                                WindowBoundsRegistry.updateTabWorkspaceIds(session.id, ids)
+                            },
+                            onTabCenterChanged = { workspaceId, centerX ->
+                                WindowBoundsRegistry.updateTabCenter(session.id, workspaceId, centerX)
+                            },
                             trailing = {
                                 Box {
                                     Text(
@@ -256,6 +291,7 @@ fun TerminalWindowContent(
                                         )
                                     }
                                 }
+
                             },
                         )
                     },
@@ -330,6 +366,7 @@ fun TerminalWindowContent(
                                 workspaceBus.workspaceChanged()
                             }
                         }
+
                         apply
                     },
                 ) {
@@ -424,4 +461,36 @@ fun TerminalWindowContent(
             }
         }
     }
+}
+
+private fun resolveTabDragDrop(
+    payload: TabDragBus.Payload,
+    windowManager: WindowManager,
+): Boolean {
+    val cursor = WindowBoundsRegistry.cursorLocation() ?: return true
+    val targetTabBar = WindowBoundsRegistry.tabBarAt(cursor.first, cursor.second)
+    if (targetTabBar == payload.sourceWindowId) return true
+    if (targetTabBar != null) {
+        windowManager.moveWorkspace(
+            workspaceId = payload.workspaceId,
+            fromSessionId = payload.sourceWindowId,
+            toSessionId = targetTabBar,
+            toIndex = WindowBoundsRegistry.tabInsertionIndex(targetTabBar, cursor.first),
+        )
+        return false
+    }
+
+    val targetWindow = WindowBoundsRegistry.boundsAt(cursor.first, cursor.second)
+    if (targetWindow != null) return false
+
+    val sourceBounds = WindowBoundsRegistry.bounds.value[payload.sourceWindowId] ?: return false
+    if (!sourceBounds.contains(cursor.first, cursor.second)) {
+        windowManager.detachWorkspace(
+            payload.workspaceId,
+            payload.sourceWindowId,
+            cursor.first,
+            cursor.second,
+        )
+    }
+    return false
 }

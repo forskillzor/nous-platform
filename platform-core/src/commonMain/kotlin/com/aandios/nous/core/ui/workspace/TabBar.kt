@@ -24,6 +24,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -41,8 +43,8 @@ import kotlin.math.roundToInt
 /**
  * Панель вкладок окна. Поддерживает:
  *  - reorder перетаскиванием внутри окна;
- *  - начало межоконного переноса ([onDragStart]/[onDragEndResolve] — резолвится
- *    в окне-источнике по глобальной позиции курсора);
+ *  - начало межоконного переноса ([onDragStart]/[onDragEndResolve] — завершает
+ *    drag bus и разрешает reorder только для сброса на исходную панель);
  *  - подсветку приёма при активном переносе из другого окна ([externalDragActive]);
  *  - меню вкладки «Open in new window»;
  *  - [trailing]-слот для действий после вкладок (кнопка «+»).
@@ -55,11 +57,15 @@ fun TabBar(
     onTabClose: (String) -> Unit,
     onTabReorder: ((Int, Int) -> Unit)? = null,
     onDragStart: ((String) -> Unit)? = null,
-    onDragEndResolve: (() -> Unit)? = null,
+    onDragEndResolve: (() -> Boolean)? = null,
+    onDragCancel: (() -> Unit)? = null,
     onOpenInNewWindow: ((String) -> Unit)? = null,
     previewWorkspaceId: String? = null,
     onTabDoubleClick: ((String) -> Unit)? = null,
     externalDragActive: Boolean = false,
+    onTabBarBoundsChanged: ((Int, Int, Int, Int) -> Unit)? = null,
+    onTabWorkspaceIdsChanged: ((List<String>) -> Unit)? = null,
+    onTabCenterChanged: ((String, Int) -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     var draggedIndex by remember { mutableStateOf<Int?>(null) }
@@ -80,10 +86,24 @@ fun TabBar(
         }
     }
 
+    SideEffect {
+        onTabWorkspaceIdsChanged?.invoke(workspaces.map { it.config.id })
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(tokens.dimensions.workspaceTabBarHeight)
+            .onGloballyPositioned { coordinates ->
+                val origin = coordinates.positionOnScreen()
+                if (!origin.x.isFinite() || !origin.y.isFinite()) return@onGloballyPositioned
+                onTabBarBoundsChanged?.invoke(
+                    origin.x.roundToInt(),
+                    origin.y.roundToInt(),
+                    coordinates.size.width,
+                    coordinates.size.height,
+                )
+            }
     ) {
         Row(
             modifier = Modifier
@@ -108,6 +128,14 @@ fun TabBar(
 
                 Box(
                     modifier = Modifier
+                        .onGloballyPositioned { coordinates ->
+                            val origin = coordinates.positionOnScreen()
+                            if (!origin.x.isFinite()) return@onGloballyPositioned
+                            onTabCenterChanged?.invoke(
+                                ws.config.id,
+                                (origin.x + coordinates.size.width / 2f).roundToInt(),
+                            )
+                        }
                         .then(if (isDragged) Modifier.zIndex(1f) else Modifier)
                         .offset {
                             if (isDragged) IntOffset(dragAccumulator.roundToInt(), 0) else IntOffset.Zero
@@ -132,16 +160,16 @@ fun TabBar(
                                         draggedIndex = null
                                         dragAccumulator = 0f
                                         targetIndex = null
-                                        if (from != null && to != null && from != to) {
+                                        val mayReorder = onDragEndResolve?.invoke() ?: true
+                                        if (mayReorder && from != null && to != null && from != to) {
                                             pendingReorder = Pair(from, to)
                                         }
-                                        onDragEndResolve?.invoke()
                                     },
                                     onDragCancel = {
                                         draggedIndex = null
                                         dragAccumulator = 0f
                                         targetIndex = null
-                                        onDragEndResolve?.invoke()
+                                        onDragCancel?.invoke()
                                     },
                                     onHorizontalDrag = { _, dragAmount ->
                                         dragAccumulator += dragAmount

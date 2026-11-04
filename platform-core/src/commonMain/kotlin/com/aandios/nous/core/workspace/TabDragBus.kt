@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 /**
  * Шина перетаскивания вкладки между окнами.
  * Пока активен перенос — все окна видят payload и подсвечивают таб-бары;
- * завершение происходит в окне-источнике (release ловится его жестом).
+ * release отслеживается на уровне AWT, чтобы drag не терялся за границей окна.
  */
 class TabDragBus {
     data class Payload(
@@ -21,12 +21,28 @@ class TabDragBus {
 
     private val _active = MutableStateFlow<Payload?>(null)
     val active: StateFlow<Payload?> = _active
+    private val _cancelled = MutableStateFlow<Payload?>(null)
 
     fun start(payload: Payload) {
+        _cancelled.value = null
         _active.value = payload
     }
 
     fun end() {
+        _cancelled.value = null
         _active.value = null
     }
+
+    fun end(payload: Payload): Boolean {
+        if (_active.value != payload) return false
+        _cancelled.value = null
+        _active.value = null
+        return true
+    }
+
+    fun markCancelled(payload: Payload) {
+        if (_active.value == payload) _cancelled.value = payload
+    }
+
+    fun wasCancelled(payload: Payload): Boolean = _cancelled.value == payload
 }

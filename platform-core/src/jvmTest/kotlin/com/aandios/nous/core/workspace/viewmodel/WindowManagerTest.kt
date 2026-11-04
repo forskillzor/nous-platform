@@ -161,6 +161,25 @@ class WindowManagerTest {
     }
 
     @Test
+    fun `move inserts a tab at the requested position in the target group`() = runTest {
+        val h = harness()
+        h.wm.restoreSessions()
+        val source = h.wm.sessions.value.single().id
+        h.wm.newEmptySession()
+        val target = h.wm.sessions.value.single { it.id != source }.id
+        h.wm.openWorkspaceIn(source, workspace("C"))
+        h.wm.openWorkspaceIn(target, workspace("A"))
+        h.wm.openWorkspaceIn(target, workspace("B"))
+        advanceUntilIdle()
+
+        h.wm.moveWorkspace("C", source, target, 1)
+
+        assertEquals(emptyList(), h.wm.sessionById(source)!!.workspaceIds)
+        assertEquals(listOf("A", "C", "B"), h.wm.sessionById(target)!!.workspaceIds)
+        assertEquals("C", h.wm.sessionById(target)!!.activeWorkspaceId)
+    }
+
+    @Test
     fun `restore deduplicates tabs and drops stale preview`() = runTest {
         val store = MemoryStateStore()
         val workspaceRepo = WorkspaceRepository(store)
