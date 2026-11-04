@@ -334,13 +334,27 @@ class BybitTradingAdapter internal constructor(
             }
         }
 
-        // 3. Мапим филлы, подставляя PnL по orderId
+        // 3. Мапим филлы, распределяя PnL закрытия по executed closedSize,
+        // иначе один и тот же closedPnl дублируется на каждый fill ордера.
+        val closedQtyByOrder = mutableMapOf<String, Double>()
+        executions.forEach { exec ->
+            val orderId = exec.string("orderId") ?: return@forEach
+            val hasClosePnl = orderId in orderIdToPnl
+            closedQtyByOrder[orderId] =
+                (closedQtyByOrder[orderId] ?: 0.0) + exec.closedQuantity(hasClosePnl)
+        }
         return executions.mapNotNull { exec ->
             val orderId = exec.string("orderId")
-            // Если нашли PnL для этого orderId, подставляем. Иначе 0.0 (или execPnl, если вдруг он там будет)
-            val actualPnl = orderId?.let { orderIdToPnl[it] } ?: 0.0
+            val hasClosePnl = orderId != null && orderId in orderIdToPnl
+            val closedQuantity = exec.closedQuantity(hasClosePnl)
+            val totalClosed = orderId?.let { closedQtyByOrder[it] } ?: 0.0
+            val pnl = if (hasClosePnl && closedQuantity > 0.0 && totalClosed > 0.0) {
+                (orderIdToPnl[orderId] ?: 0.0) * closedQuantity / totalClosed
+            } else {
+                0.0
+            }
 
-            exec.toTradeFill()?.copy(pnl = actualPnl)
+            exec.toTradeFill(closedQuantity, pnl)
         }
     }
     override suspend fun setLeverage(symbol: String, leverage: Int, positionId: Long?): Boolean {
@@ -837,11 +851,26 @@ class BybitTradingAdapter internal constructor(
         )
     }
 
-    private fun JsonObject.toTradeFill(): TradeFill? {
+    private fun JsonObject.closedQuantity(hasClosePnl: Boolean): Double {
+        val execQty = double("execQty") ?: 0.0
+        val closed = double("closedSize")?.takeIf { it > 0.0 }
+        return (closed ?: if (hasClosePnl) execQty else 0.0).coerceAtMost(execQty)
+    }
+
+    private fun JsonObject.toTradeFill(
+        closedQuantity: Double = 0.0,
+        pnlOverride: Double? = null,
+    ): TradeFill? {
         val side = when (string("side")) {
             "Buy" -> OrderSide.BUY
             "Sell" -> OrderSide.SELL
             else -> return null
+        }
+        val positionSide = when {
+            closedQuantity > 0.0 && side == OrderSide.BUY -> TradeSide.SELL
+            closedQuantity > 0.0 -> TradeSide.BUY
+            side == OrderSide.BUY -> TradeSide.BUY
+            else -> TradeSide.SELL
         }
         return TradeFill(
             id = string("execId") ?: return null,
@@ -852,8 +881,10 @@ class BybitTradingAdapter internal constructor(
             quantity = double("execQty") ?: return null,
             fee = double("execFee") ?: 0.0,
             feeCurrency = string("feeCurrency").orEmpty(),
-            pnl = double("execPnl") ?: 0.0,
+            pnl = pnlOverride ?: double("execPnl") ?: 0.0,
             timestamp = long("execTime") ?: 0L,
+            positionSide = positionSide,
+            closedQuantity = closedQuantity,
         )
     }
 

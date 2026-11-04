@@ -16,7 +16,10 @@ import com.aandios.nous.api.market.paper.PaperTrading
 import com.aandios.nous.api.market.paper.effectiveTrading
 import com.aandios.nous.core.Disposable
 import com.aandios.nous.core.data.repository.SymbolInfoRepositoryImpl
+import com.aandios.nous.core.market.MarketOverviewStore
 import com.aandios.nous.core.storage.StateStore
+import com.aandios.nous.core.ui.component.SymbolExplorerRow
+import com.aandios.nous.core.ui.component.toSymbolExplorerRow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,8 +28,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -54,6 +61,7 @@ class TradingViewModel(
     private val providerRegistry: ProviderRegistry,
     private val stateStore: StateStore? = null,
     private val paperModeState: PaperModeState? = null,
+    marketOverviewStore: MarketOverviewStore? = null,
 ) : Disposable {
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
@@ -74,6 +82,15 @@ class TradingViewModel(
 
     private val _tradeHistory = MutableStateFlow<List<TradeFill>>(emptyList())
     val tradeHistory: StateFlow<List<TradeFill>> = _tradeHistory.asStateFlow()
+
+    /** Инструмент панели: ордера/позиции/история фильтруются по нему. */
+    private val _symbol = MutableStateFlow<String?>(null)
+    val symbol: StateFlow<String?> = _symbol.asStateFlow()
+
+    val explorerRows: StateFlow<List<SymbolExplorerRow>> =
+        (marketOverviewStore?.state?.map { state -> state.rows.map { it.toSymbolExplorerRow() } }
+            ?: flowOf(emptyList()))
+            .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
     private val _positionMode = MutableStateFlow<Int?>(null)
     val positionMode: StateFlow<Int?> = _positionMode.asStateFlow()
@@ -124,7 +141,9 @@ class TradingViewModel(
     }
 
     fun restoreTab(tab: String) {
-        if (tab.isNotEmpty()) _activeTab.value = tab
+        if (tab.isNotEmpty()) {
+            _activeTab.value = if (tab == "HISTORY") "POSITION_HISTORY" else tab
+        }
     }
 
     private fun tradingAdapter() =
@@ -141,9 +160,11 @@ class TradingViewModel(
         workspaceId: String?,
         panelId: String?,
         preferredProviderId: String? = null,
+        symbol: String? = null,
     ) {
         workspaceKey = workspaceId
         panelKey = panelId
+        _symbol.value = symbol?.takeIf { it.isNotBlank() }
         val store = stateStore
         if (store == null) {
             _providerRestored.value = true
@@ -498,8 +519,10 @@ class TradingViewModel(
         }
     }
 
-    fun closeAllPositions() {
-        positions.value.forEach { closePosition(it) }
+    fun closeAllPositions(symbol: String? = null) {
+        positions.value
+            .filter { symbol.isNullOrBlank() || it.symbol.equals(symbol, ignoreCase = true) }
+            .forEach { closePosition(it) }
     }
 
     fun setMarginMode(mode: Int) {

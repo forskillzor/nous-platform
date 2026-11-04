@@ -9,6 +9,7 @@ import com.aandios.nous.api.market.ProviderConfig
 import com.aandios.nous.api.market.model.orderbook.OrderSide
 import com.aandios.nous.api.market.model.orderbook.OrderType
 import com.aandios.nous.api.market.model.trading.OrderRequest
+import com.aandios.nous.api.market.model.trading.TradeSide
 import com.aandios.nous.provider.bybit.adapter.BybitTradingAdapter
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -403,6 +404,41 @@ class BybitTradingAdapterTest {
             val orders = adapter(http).getOpenOrders("BTCUSDT")
             assertEquals(listOf("regular-1", "stop-1"), orders.map { it.orderId })
             assertEquals(true, orders.single { it.orderId == "stop-1" }.isTpSl)
+        } finally {
+            http.close()
+        }
+    }
+
+    @Test
+    fun `trade history marks closing fills and splits order pnl by closed size`() = runBlocking {
+        val (http, _) = client { request ->
+            when (request.path) {
+                "/v5/execution/list" ->
+                    """{"retCode":0,"retMsg":"OK","result":{"list":[
+                      {"symbol":"SOLUSDT","orderId":"open","side":"Buy","execType":"Trade","execId":"e1","execPrice":"100","execQty":"1","execFee":"0.1","execTime":"1","closedSize":""},
+                      {"symbol":"SOLUSDT","orderId":"close","side":"Sell","execType":"Trade","execId":"e2","execPrice":"110","execQty":"0.6","execFee":"0.06","execTime":"2","closedSize":"0.6"},
+                      {"symbol":"SOLUSDT","orderId":"close","side":"Sell","execType":"Trade","execId":"e3","execPrice":"110","execQty":"0.4","execFee":"0.04","execTime":"3","closedSize":"0.4"}
+                    ]}}"""
+                "/v5/position/closed-pnl" ->
+                    """{"retCode":0,"retMsg":"OK","result":{"list":[
+                      {"symbol":"SOLUSDT","orderId":"close","closedPnl":"10"}
+                    ]}}"""
+                else -> emptyListJson
+            }
+        }
+        try {
+            val fills = adapter(http).getTradeHistory("SOLUSDT", 10)
+            assertEquals(3, fills.size)
+
+            val entry = fills.single { it.id == "e1" }
+            assertEquals(TradeSide.BUY, entry.positionSide)
+            assertEquals(0.0, entry.closedQuantity)
+
+            val closes = fills.filter { it.id == "e2" || it.id == "e3" }
+            assertTrue(closes.all { it.positionSide == TradeSide.BUY && it.closedQuantity > 0.0 })
+            assertEquals(10.0, closes.sumOf { it.pnl }, 1e-12)
+            assertEquals(6.0, fills.single { it.id == "e2" }.pnl, 1e-12)
+            assertEquals(4.0, fills.single { it.id == "e3" }.pnl, 1e-12)
         } finally {
             http.close()
         }

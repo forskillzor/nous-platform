@@ -49,13 +49,16 @@ import com.aandios.nous.core.ui.component.TerminalSwitch
 import com.aandios.nous.core.ui.format.SymbolFormatter
 import com.aandios.nous.core.ui.format.plainDecimalFixed
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
+import com.aandios.nous.feature.trading.history.PositionHistoryEntry
+import com.aandios.nous.feature.trading.history.buildPositionHistory
 import org.koin.compose.koinInject
 
 enum class TradingTab(val label: String) {
     POSITIONS("Positions"),
     ORDERS("Orders"),
     BALANCES("Balance"),
-    HISTORY("History"),
+    POSITION_HISTORY("Position History"),
+    ORDER_HISTORY("Order History"),
 }
 
 // Веса колонок: заголовок и строки используют одни и те же —
@@ -88,7 +91,17 @@ private object BalancesWindow {
     const val EQUITY = 1f
 }
 
-private object HistoryWindow {
+private object PositionHistoryWindow {
+    const val SYMBOL = 1.2f
+    const val SIDE = 0.6f
+    const val QTY = 0.75f
+    const val ENTRY = 1f
+    const val EXIT = 1f
+    const val FEE = 0.75f
+    const val PNL = 0.9f
+}
+
+private object OrderHistoryWindow {
     const val SYMBOL = 1.2f
     const val SIDE = 0.7f
     const val PRICE = 1f
@@ -109,6 +122,7 @@ fun TradingPanel(
     modifier: Modifier = Modifier,
 ) {
     val providerId by viewModel.providerId.collectAsState()
+    val panelSymbol by viewModel.symbol.collectAsState()
     val positions by viewModel.positions.collectAsState()
     val orders by viewModel.openOrders.collectAsState()
     val balances by viewModel.balances.collectAsState()
@@ -116,7 +130,10 @@ fun TradingPanel(
     val positionMode by viewModel.positionMode.collectAsState()
     val lastMessage by viewModel.lastMessage.collectAsState()
     val activeTabRaw by viewModel.activeTab.collectAsState()
-    val tab = TradingTab.entries.firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
+    val tab = when (activeTabRaw) {
+        "HISTORY" -> TradingTab.POSITION_HISTORY
+        else -> TradingTab.entries.firstOrNull { it.name == activeTabRaw } ?: TradingTab.POSITIONS
+    }
 
     val paperEnabled by viewModel.paperEnabled.collectAsState()
     val contractType by viewModel.contractType.collectAsState()
@@ -127,16 +144,27 @@ fun TradingPanel(
     var connectionsExpanded by remember { mutableStateOf(false) }
     var connectionError by remember { mutableStateOf<TradingConnection?>(null) }
 
-    // Фильтр по типу контрактов: позиции/ордера/история/балансы
-    val visiblePositions = remember(positions, contractType, symbolTypes) {
-        positions.filter { viewModel.matchesContractType(it.symbol, contractType) }
+    fun matchesInstrument(symbol: String): Boolean =
+        panelSymbol.isNullOrBlank() || symbol.equals(panelSymbol, ignoreCase = true)
+
+    // Фильтр по выбранному инструменту и типу контрактов:
+    // позиции/ордера/история/балансы
+    val visiblePositions = remember(positions, panelSymbol, contractType, symbolTypes) {
+        positions.filter {
+            matchesInstrument(it.symbol) && viewModel.matchesContractType(it.symbol, contractType)
+        }
     }
-    val visibleOrders = remember(orders, contractType, symbolTypes) {
-        orders.filter { viewModel.matchesContractType(it.symbol, contractType) }
+    val visibleOrders = remember(orders, panelSymbol, contractType, symbolTypes) {
+        orders.filter {
+            matchesInstrument(it.symbol) && viewModel.matchesContractType(it.symbol, contractType)
+        }
     }
-    val visibleHistory = remember(history, contractType, symbolTypes) {
-        history.filter { viewModel.matchesContractType(it.symbol, contractType) }
+    val visibleHistory = remember(history, panelSymbol, contractType, symbolTypes) {
+        history.filter {
+            matchesInstrument(it.symbol) && viewModel.matchesContractType(it.symbol, contractType)
+        }
     }
+    val positionHistory = remember(visibleHistory) { buildPositionHistory(visibleHistory) }
     val visibleBalances = remember(balances, contractType) {
         balances.filter { viewModel.balanceMatchesContractType(it.currency, contractType) }
     }
@@ -149,7 +177,8 @@ fun TradingPanel(
         TradingTab.POSITIONS to visiblePositions.size,
         TradingTab.ORDERS to visibleOrders.size,
         TradingTab.BALANCES to visibleBalances.size,
-        TradingTab.HISTORY to visibleHistory.size,
+        TradingTab.POSITION_HISTORY to positionHistory.size,
+        TradingTab.ORDER_HISTORY to visibleHistory.size,
     )
 
     val formatter = remember { SymbolFormatter.DEFAULT }
@@ -266,8 +295,8 @@ fun TradingPanel(
                 verticalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
                 horizontalAlignment = Alignment.End,
             ) {
-                ActionButton("Cancel All", tokens.colors.warning) { viewModel.cancelAllOrders() }
-                ActionButton("Close All", tokens.colors.loss) { viewModel.closeAllPositions() }
+                ActionButton("Cancel All", tokens.colors.warning) { viewModel.cancelAllOrders(panelSymbol) }
+                ActionButton("Close All", tokens.colors.loss) { viewModel.closeAllPositions(panelSymbol) }
             }
         }
 
@@ -286,7 +315,7 @@ fun TradingPanel(
                     fontWeight = if (t == tab) FontWeight.Bold else FontWeight.Normal,
                     modifier = Modifier
                         .clickableNoIndication { viewModel.selectTab(t.name) }
-                        .padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xxs),
+                        .padding(horizontal = tokens.spacing.xs, vertical = tokens.spacing.xxs),
                 )
             }
         }
@@ -320,9 +349,13 @@ fun TradingPanel(
                     modifier = Modifier.fillMaxSize(),
                 )
                 TradingTab.BALANCES -> BalancesTable(visibleBalances, modifier = Modifier.fillMaxSize())
-                TradingTab.HISTORY -> {
+                TradingTab.POSITION_HISTORY -> {
                     LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
-                    HistoryTable(visibleHistory, formatter, modifier = Modifier.fillMaxSize())
+                    PositionHistoryTable(positionHistory, formatter, modifier = Modifier.fillMaxSize())
+                }
+                TradingTab.ORDER_HISTORY -> {
+                    LaunchedEffect(Unit) { viewModel.refreshTradeHistory() }
+                    OrderHistoryTable(visibleHistory, formatter, modifier = Modifier.fillMaxSize())
                 }
             }
         }
@@ -597,30 +630,45 @@ private fun BalancesTable(balances: List<Balance>, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, modifier: Modifier = Modifier) {
+private fun PositionHistoryTable(
+    history: List<PositionHistoryEntry>,
+    formatter: SymbolFormatter,
+    modifier: Modifier = Modifier,
+) {
     val tokens = LocalTerminalDesignTokens.current
     Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
         TableHeader(
             listOf(
-                "Symbol" to HistoryWindow.SYMBOL, "Side" to HistoryWindow.SIDE, "Price" to HistoryWindow.PRICE,
-                "Qty" to HistoryWindow.QTY, "Fee" to HistoryWindow.FEE, "PnL" to HistoryWindow.PNL,
+                "Symbol" to PositionHistoryWindow.SYMBOL,
+                "Side" to PositionHistoryWindow.SIDE,
+                "Qty" to PositionHistoryWindow.QTY,
+                "Entry" to PositionHistoryWindow.ENTRY,
+                "Exit" to PositionHistoryWindow.EXIT,
+                "Fee" to PositionHistoryWindow.FEE,
+                "PnL" to PositionHistoryWindow.PNL,
             )
         )
         if (history.isEmpty()) {
-            EmptyHint("No trade history")
+            EmptyHint("No closed positions")
             return@Column
         }
-        history.forEach { f ->
+        history.forEach { position ->
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs + tokens.dimensions.borderWidth),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Cell(f.symbol, HistoryWindow.SYMBOL, align = TextAlign.Start)
-                Cell(f.side.name, HistoryWindow.SIDE, color = sideColor(f.side), align = TextAlign.Start)
-                Cell(formatter.formatPrice(f.price), HistoryWindow.PRICE)
-                Cell(formatter.formatVolume(f.quantity), HistoryWindow.QTY)
-                Cell(formatter.formatPrice(f.fee), HistoryWindow.FEE)
-                Cell(formatSigned(f.pnl, formatter), HistoryWindow.PNL, color = pnlColor(f.pnl))
+                Cell(perpetualSymbolLabel(position.symbol), PositionHistoryWindow.SYMBOL, align = TextAlign.Start)
+                Cell(
+                    text = if (position.side == TradeSide.BUY) "LONG" else "SHORT",
+                    weight = PositionHistoryWindow.SIDE,
+                    color = sideColor(if (position.side == TradeSide.BUY) OrderSide.BUY else OrderSide.SELL),
+                    align = TextAlign.Start,
+                )
+                Cell(formatter.formatVolume(position.quantity), PositionHistoryWindow.QTY)
+                Cell(formatter.formatPrice(position.avgEntryPrice), PositionHistoryWindow.ENTRY)
+                Cell(formatter.formatPrice(position.avgExitPrice), PositionHistoryWindow.EXIT)
+                Cell(formatter.formatPrice(position.fee), PositionHistoryWindow.FEE)
+                Cell(formatSigned(position.pnl, formatter), PositionHistoryWindow.PNL, color = pnlColor(position.pnl))
             }
             HorizontalDivider(
                 color = tokens.colors.panelBorder,
@@ -630,6 +678,52 @@ private fun HistoryTable(history: List<TradeFill>, formatter: SymbolFormatter, m
         }
     }
 }
+
+@Composable
+private fun OrderHistoryTable(
+    history: List<TradeFill>,
+    formatter: SymbolFormatter,
+    modifier: Modifier = Modifier,
+) {
+    val tokens = LocalTerminalDesignTokens.current
+    Column(modifier = modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+        TableHeader(
+            listOf(
+                "Symbol" to OrderHistoryWindow.SYMBOL,
+                "Side" to OrderHistoryWindow.SIDE,
+                "Price" to OrderHistoryWindow.PRICE,
+                "Qty" to OrderHistoryWindow.QTY,
+                "Fee" to OrderHistoryWindow.FEE,
+                "PnL" to OrderHistoryWindow.PNL,
+            )
+        )
+        if (history.isEmpty()) {
+            EmptyHint("No order history")
+            return@Column
+        }
+        history.forEach { fill ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.md, vertical = tokens.spacing.xxs + tokens.dimensions.borderWidth),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Cell(perpetualSymbolLabel(fill.symbol), OrderHistoryWindow.SYMBOL, align = TextAlign.Start)
+                Cell(fill.side.name, OrderHistoryWindow.SIDE, color = sideColor(fill.side), align = TextAlign.Start)
+                Cell(formatter.formatPrice(fill.price), OrderHistoryWindow.PRICE)
+                Cell(formatter.formatVolume(fill.quantity), OrderHistoryWindow.QTY)
+                Cell(formatter.formatPrice(fill.fee), OrderHistoryWindow.FEE)
+                Cell(formatSigned(fill.pnl, formatter), OrderHistoryWindow.PNL, color = pnlColor(fill.pnl))
+            }
+            HorizontalDivider(
+                color = tokens.colors.panelBorder,
+                thickness = tokens.dimensions.dividerThickness,
+                modifier = Modifier.padding(horizontal = tokens.spacing.md),
+            )
+        }
+    }
+}
+
+private fun perpetualSymbolLabel(symbol: String): String =
+    if (symbol.isBlank() || symbol.endsWith(".P", ignoreCase = true)) symbol else "$symbol.P"
 
 // ── Вспомогательное ──
 

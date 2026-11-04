@@ -90,6 +90,23 @@ fun MarketOverviewRow.toSymbolExplorerRow(): SymbolExplorerRow = SymbolExplorerR
     exchangeName = exchangeName,
 )
 
+/**
+ * Resolve the row behind the closed explorer trigger. Prefer the perpetual
+ * row when the same raw symbol exists for both spot and perp; the trigger must
+ * keep the `.P` suffix so `SOL` is not mistaken for spot.
+ */
+internal fun currentExplorerRow(
+    rows: List<SymbolExplorerRow>,
+    currentSymbol: String,
+    currentExchangeId: String?,
+): SymbolExplorerRow? {
+    val matching = rows.filter { row ->
+        row.symbol == currentSymbol &&
+            (currentExchangeId == null || row.exchangeId == currentExchangeId)
+    }
+    return matching.firstOrNull { it.isPerpetual } ?: matching.firstOrNull()
+}
+
 enum class SymbolExplorerSort(val label: String) {
     VOLUME("VOLUME"),
     CHANGE("24H %"),
@@ -251,6 +268,8 @@ fun SymbolExplorerDropdown(
     rows: List<SymbolExplorerRow>,
     onSelect: (SymbolExplorerRow) -> Unit,
     modifier: Modifier = Modifier,
+    onSelectAll: (() -> Unit)? = null,
+    allSelected: Boolean = false,
     onManageWatchlist: (() -> Unit)? = null,
     footprintSymbols: Set<String>? = null,
     menuWidth: androidx.compose.ui.unit.Dp = 380.dp,
@@ -292,6 +311,8 @@ fun SymbolExplorerDropdown(
         if (!expanded) query = ""
     }
 
+    val currentRow = currentExplorerRow(rows, currentSymbol, currentExchangeId)
+    val triggerSymbol = currentRow?.displaySymbol ?: currentSymbol
     val currentExchangeLabel = currentExchangeId?.let { id ->
         rows.firstOrNull { it.exchangeId == id }?.exchangeLabel
     }?.takeIf { it.isNotEmpty() }
@@ -310,7 +331,7 @@ fun SymbolExplorerDropdown(
     }
 
     TerminalBoxDropdown(
-        text = currentSymbol,
+        text = if (allSelected) "ALL" else triggerSymbol,
         modifier = modifier,
         menuWidth = menuWidth,
         onExpandedChange = { expanded = it },
@@ -346,6 +367,13 @@ fun SymbolExplorerDropdown(
                 onSelect(row)
                 dismiss()
             },
+            onSelectAll = onSelectAll?.let { selectAll ->
+                {
+                    selectAll()
+                    dismiss()
+                }
+            },
+            allSelected = allSelected,
             listWidth = menuWidth,
             listHeight = cappedListHeight,
             searchFocusRequester = searchFocus,
@@ -432,6 +460,8 @@ fun SymbolExplorerContent(
     query: String,
     onQueryChange: (String) -> Unit,
     onSelect: (SymbolExplorerRow) -> Unit,
+    onSelectAll: (() -> Unit)? = null,
+    allSelected: Boolean = false,
     footprintOnly: Boolean = false,
     onFootprintOnlyChange: (Boolean) -> Unit = {},
     footprintSymbols: Set<String>? = null,
@@ -637,6 +667,15 @@ fun SymbolExplorerContent(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
             ) {
+                if (onSelectAll != null) {
+                    item(key = "__all_symbols__") {
+                        TerminalMenuItem(
+                            text = "ALL SYMBOLS",
+                            selected = allSelected,
+                            onClick = onSelectAll,
+                        )
+                    }
+                }
                 if (rows.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillMaxWidth(),

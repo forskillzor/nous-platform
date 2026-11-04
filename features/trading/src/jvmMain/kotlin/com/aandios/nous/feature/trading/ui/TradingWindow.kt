@@ -31,7 +31,7 @@ fun TradingWindow() {
 }
 
 /** Рекомендуемая ширина торговой панели в workspace (flex — ширину задаёт layout). */
-val TradingRecommendedWidth: Dp = 450.dp
+val TradingRecommendedWidth: Dp = 560.dp
 
 /**
  * Торговая панель для использования внутри workspace-панелей.
@@ -58,7 +58,7 @@ fun main() = application {
     Window(
         onCloseRequest = ::exitApplication,
         title = "Nous Platform • Trading Preview",
-        state = rememberWindowState(width = 520.dp, height = 700.dp)
+        state = rememberWindowState(width = 600.dp, height = 700.dp)
     ) {
         KoinContext {
             TradingTerminalTheme {

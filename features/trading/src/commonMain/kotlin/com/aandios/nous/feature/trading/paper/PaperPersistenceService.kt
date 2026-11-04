@@ -140,6 +140,8 @@ private data class FillDto(
     val feeCurrency: String = "",
     val pnl: Double = 0.0,
     val timestamp: Long = 0,
+    val positionSide: String? = null,
+    val closedQuantity: Double = 0.0,
 )
 
 @Serializable
@@ -211,6 +213,8 @@ private data class PaperStateDto(
                 feeCurrency = it.feeCurrency,
                 pnl = it.pnl,
                 timestamp = it.timestamp,
+                positionSide = it.positionSide?.let { name -> enumOr(name, TradeSide.BUY) },
+                closedQuantity = it.closedQuantity,
             )
         },
         plans = plans.map {
@@ -279,6 +283,8 @@ private data class PaperStateDto(
                     feeCurrency = it.feeCurrency,
                     pnl = it.pnl,
                     timestamp = it.timestamp,
+                    positionSide = it.positionSide?.name,
+                    closedQuantity = it.closedQuantity,
                 )
             },
             plans = state.plans.map {

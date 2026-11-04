@@ -199,5 +199,15 @@ class MexcMappingTest {
         assertEquals(OrderSide.SELL, MexcOrderDeal(side = 4).toTradeFill().side)
         assertEquals(OrderSide.SELL, MexcHistoryOrder(side = 3).toTradeFill().side)
         assertEquals(OrderSide.BUY, MexcHistoryOrder(side = 2).toTradeFill().side)
+
+        val closeLong = MexcOrderDeal(side = 4, vol = 2.0).toTradeFill()
+        assertEquals(TradeSide.BUY, closeLong.positionSide)
+        assertEquals(2.0, closeLong.closedQuantity)
+        val closeShort = MexcHistoryOrder(side = 2, dealVol = 3.0).toTradeFill()
+        assertEquals(TradeSide.SELL, closeShort.positionSide)
+        assertEquals(3.0, closeShort.closedQuantity)
+        val openLong = MexcOrderDeal(side = 1, vol = 4.0).toTradeFill()
+        assertEquals(TradeSide.BUY, openLong.positionSide)
+        assertEquals(0.0, openLong.closedQuantity)
     }
 }

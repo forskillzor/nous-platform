@@ -143,9 +143,9 @@ class HyperliquidTradingAdapterTest {
                 """
                 [
                   {"coin":"BTC","px":"78000","sz":"0.1","side":"B","time":10,"oid":5,"fee":"0.1",
-                   "feeToken":"USDC","closedPnl":"1.5","tid":100},
+                   "feeToken":"USDC","closedPnl":"1.5","tid":100,"dir":"Open Long"},
                   {"coin":"BTC","px":"79000","sz":"0.1","side":"A","time":11,"oid":6,"fee":"0.2",
-                   "feeToken":"USDC","closedPnl":"-0.5","tid":101}
+                   "feeToken":"USDC","closedPnl":"-0.5","tid":101,"dir":"Close Long"}
                 ]
                 """.trimIndent(),
             )
@@ -660,7 +660,11 @@ class HyperliquidTradingAdapterTest {
         assertEquals(2, fills.size)
         assertEquals("101", fills.first().id)
         assertEquals(-0.5, fills.first().pnl)
+        assertEquals(TradeSide.BUY, fills.first().positionSide)
+        assertEquals(0.1, fills.first().closedQuantity)
         assertEquals(1.5, fills.last().pnl)
+        assertEquals(TradeSide.BUY, fills.last().positionSide)
+        assertEquals(0.0, fills.last().closedQuantity)
 
         val pnl = adapter.getDailyRealizedPnl()
         assertNotNull(pnl)

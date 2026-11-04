@@ -140,7 +140,12 @@ val appModule = module {
     }
 
     factory {
-        TradingViewModel(providerRegistry = get(), stateStore = get(), paperModeState = get())
+        TradingViewModel(
+            providerRegistry = get(),
+            stateStore = get(),
+            paperModeState = get(),
+            marketOverviewStore = get(),
+        )
     }
 
     // Paper: общий флаг (TopBar + docked trading panel) + окно настроек

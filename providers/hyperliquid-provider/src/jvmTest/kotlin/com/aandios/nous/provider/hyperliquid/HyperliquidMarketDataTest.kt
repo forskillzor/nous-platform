@@ -83,6 +83,7 @@ class HyperliquidMarketDataTest {
         val marketData = HyperliquidFixtures.marketData(HyperliquidFixtures.fakeInfo())
 
         assertEquals("SOL", marketData.assetFor("SOLUSDT")?.coin)
+        assertEquals(1, marketData.assetFor("SOL")?.assetId)
         assertEquals("BTC", marketData.assetFor("btcusdc")?.coin)
         assertNull(marketData.assetFor("NOT_A_COIN"))
     }

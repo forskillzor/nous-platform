@@ -37,6 +37,17 @@ class SymbolExplorerDropdownTest {
     )
 
     @Test
+    fun `closed trigger keeps perpetual suffix for perp rows`() {
+        val rows = listOf(
+            row("SOL", perpetual = false),
+            row("SOL", perpetual = true),
+        )
+
+        val selected = currentExplorerRow(rows, "SOL", "binance")
+        assertEquals("SOL.P", selected?.displaySymbol)
+    }
+
+    @Test
     fun `filters by watchlist perpetuals quote and exchange`() {
         val rows = listOf(
             row("BTCUSDT", volume = 1.0e9),

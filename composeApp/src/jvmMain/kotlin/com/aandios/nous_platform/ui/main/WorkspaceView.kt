@@ -8,17 +8,9 @@ package com.aandios.nous_platform.ui.main
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.key.Key
@@ -28,12 +20,10 @@ import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.text.font.FontWeight
 import com.aandios.nous.api.market.ProviderRegistry
 import com.aandios.nous.core.ui.component.SymbolExplorerDropdown
 import com.aandios.nous.core.ui.component.TerminalMenuItem
 import com.aandios.nous.core.ui.theme.LocalTerminalDesignTokens
-import com.aandios.nous.core.ui.theme.TerminalFontFamily
 import com.aandios.nous.core.ui.workspace.LayoutRenderer
 import com.aandios.nous.core.workspace.*
 import com.aandios.nous.core.workspace.viewmodel.WorkspaceViewModel
@@ -43,7 +33,6 @@ import com.aandios.nous.feature.chart.ui.ChartSettingsMenu
 import com.aandios.nous.feature.chart.ui.ChartTitleToolbar
 import com.aandios.nous.feature.chart.ui.ChartViewModel
 import com.aandios.nous.feature.chart.ui.ChartWindow
-import com.aandios.nous.feature.chart.ui.IndicatorPresetRepository
 import com.aandios.nous.feature.dom.domain.TradingSymbol
 import com.aandios.nous.feature.dom.domain.model.AggregationLevel
 import com.aandios.nous.feature.dom.ui.DomViewModel
@@ -287,7 +276,17 @@ fun WorkspaceView(
                             )
                         }
 
-                        PanelType.TRADING -> PanelTitleLabel(text = pc.symbol)
+                        PanelType.TRADING -> {
+                            val vm = ws.liveViewModels.getOrPut(panelVmKey(pc)) {
+                                koinInject<TradingViewModel>()
+                            } as TradingViewModel
+                            TradingTitleDropdown(
+                                vm = vm,
+                                pc = pc,
+                                onPanelConfigChange = ::updatePanelConfig,
+                                onManageWatchlist = onManageWatchlist,
+                            )
+                        }
                     }
                 }
             },
@@ -346,46 +345,37 @@ fun WorkspaceView(
     }
 }
 
-/** Имя панели в тайтле (DOM/Trades/Trading): глиф + текст + live-индикатор. */
 @Composable
-private fun PanelTitleLabel(text: String, glyph: String? = null, stream: Boolean = false) {
-    val tokens = LocalTerminalDesignTokens.current
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
-    ) {
-        glyph?.let {
-            Text(
-                text = it,
-                color = tokens.colors.accent,
-                fontSize = tokens.typography.controlSize,
-                fontFamily = TerminalFontFamily,
+private fun TradingTitleDropdown(
+    vm: TradingViewModel,
+    pc: PanelConfig,
+    onPanelConfigChange: (PanelConfig) -> Unit,
+    onManageWatchlist: (() -> Unit)?,
+) {
+    val rows by vm.explorerRows.collectAsState()
+    val accountProviderId by vm.providerId.collectAsState()
+    val state = pc.state as? PanelState.Trading ?: PanelState.Trading()
+    val currentProviderId = pc.providerId ?: accountProviderId
+    SymbolExplorerDropdown(
+        currentSymbol = pc.symbol,
+        currentExchangeId = currentProviderId,
+        rows = rows,
+        onSelect = { row ->
+            onPanelConfigChange(
+                pc.copy(
+                    symbol = row.symbol,
+                    providerId = row.exchangeId,
+                    providerName = row.exchangeName,
+                    state = state.copy(showAll = false),
+                )
             )
-        }
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = tokens.typography.controlSize,
-            fontWeight = FontWeight.Medium,
-            fontFamily = TerminalFontFamily,
-            maxLines = 1,
-        )
-        if (stream) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(tokens.colors.bullish),
-            )
-            Text(
-                text = "STREAM",
-                color = tokens.colors.bullish,
-                fontSize = tokens.typography.smallSize,
-                fontFamily = TerminalFontFamily,
-                letterSpacing = tokens.typography.compactLetterSpacing,
-            )
-        }
-    }
+        },
+        onSelectAll = {
+            onPanelConfigChange(pc.copy(state = state.copy(showAll = true)))
+        },
+        allSelected = state.showAll,
+        onManageWatchlist = onManageWatchlist,
+    )
 }
 
 @Composable
@@ -656,8 +646,12 @@ private fun TradingPanel(
     val vm: TradingViewModel =
         ws.liveViewModels.getOrPut(vmKey) { koinInject<TradingViewModel>() } as TradingViewModel
 
-    // Биржа/контракты — свои у этой панели
-    LaunchedEffect(pc.id, providerId) { vm.attachPanel(ws.workspaceId, pc.id, providerId) }
+    // Биржа/контракты/инструмент — свои у этой панели; ALL отключает фильтр
+    val showAll = (pc.state as? PanelState.Trading)?.showAll == true
+    val filterSymbol = if (showAll) null else pc.symbol
+    LaunchedEffect(pc.id, pc.symbol, providerId, showAll) {
+        vm.attachPanel(ws.workspaceId, pc.id, providerId, filterSymbol)
+    }
 
     // Активная вкладка сохраняется в PanelState
     val tradingPc by rememberUpdatedState(pc)

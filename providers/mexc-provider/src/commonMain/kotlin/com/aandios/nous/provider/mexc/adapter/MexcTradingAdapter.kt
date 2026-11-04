@@ -128,7 +128,14 @@ class MexcTradingAdapter(
         if (spec.inverse) this else copy(quantity = quantity * spec.contractSize)
 
     private fun TradeFill.scaled(spec: ContractSpec): TradeFill =
-        if (spec.inverse) this else copy(quantity = quantity * spec.contractSize)
+        if (spec.inverse) {
+            this
+        } else {
+            copy(
+                quantity = quantity * spec.contractSize,
+                closedQuantity = closedQuantity * spec.contractSize,
+            )
+        }
 
     // ── Ордера ──
 

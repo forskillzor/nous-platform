@@ -672,6 +672,7 @@ class PaperTradingAdapter(
             feeCurrency = "USDT",
             pnl = realizedPnl,
             timestamp = now(),
+            positionSide = openSide,
         )
         val order = filledOrder(request, symbol, execPrice, qty)
         if (emit) _orderUpdates.tryEmit(order)
@@ -717,6 +718,8 @@ class PaperTradingAdapter(
             feeCurrency = "USDT",
             pnl = pnl,
             timestamp = now(),
+            positionSide = pos.side,
+            closedQuantity = closeQty,
         )
         return pnl
     }

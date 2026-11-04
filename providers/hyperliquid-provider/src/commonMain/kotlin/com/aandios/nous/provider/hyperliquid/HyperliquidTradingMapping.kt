@@ -312,6 +312,21 @@ internal fun hyperliquidFill(row: JsonObject): TradeFill? {
     val timestamp = row.long("time") ?: 0L
     val id = row.long("tid")?.toString()
         ?: "${row.string("hash").orEmpty()}:$timestamp:$coin:$price:$size"
+    val dir = row.string("dir")
+    val positionSide = when {
+        dir == null -> null
+        dir.contains("Long", ignoreCase = true) -> TradeSide.BUY
+        dir.contains("Short", ignoreCase = true) -> TradeSide.SELL
+        else -> null
+    }
+    val isFlip = dir?.contains(">") == true
+    val isClose = dir?.contains("Close", ignoreCase = true) == true ||
+        dir?.contains("Liquidat", ignoreCase = true) == true
+    val closedQuantity = when {
+        isFlip -> minOf(size, abs(row.double("startPosition") ?: 0.0))
+        isClose -> size
+        else -> 0.0
+    }
     return TradeFill(
         id = id,
         orderId = row.long("oid")?.toString(),
@@ -323,6 +338,8 @@ internal fun hyperliquidFill(row: JsonObject): TradeFill? {
         feeCurrency = row.string("feeToken").orEmpty(),
         pnl = row.double("closedPnl") ?: 0.0,
         timestamp = timestamp,
+        positionSide = positionSide,
+        closedQuantity = closedQuantity,
     )
 }
 

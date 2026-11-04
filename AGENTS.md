@@ -50,7 +50,7 @@ SQLite state store.
 | `providers/mexc-provider` | MEXC USDT-M Futures Contract API v1: signed REST client, rate gate, WS hub (public + personal), adapters, contract-size aware trading adapter. |
 | `features/chart` | Chart panel: rendering (candles/footprint), `ChartViewModel`, panel-scoped persistence (`ChartStatePersistor`), chart trading (order/position badges, TP/SL, drag = cancel+replace), indicators (off-main compute, feed source, TABS/STACKED panes, per-line colors, global favorites/presets). JVM UI: `ChartWindow`, `ChartTradingPanel`. |
 | `features/dom` | DOM depth ladder: `DomViewModel` (order book, click-to-place, order chips with resize/drag/cancel, position plates, margin chip), `DomWindow` (jvm), `content/LevelRow` + `DomSection`, `footer/OrderPlacementPanel`. |
-| `features/trading` | Docked trading panel (tabs Positions/Orders/Balance/History), `TradingViewModel`, `PaperSettingsController`, `PaperPersistenceService` (persists the shared paper account). |
+| `features/trading` | Docked trading panel (tabs Positions/Orders/Balance/Position History/Order History), `TradingViewModel`, `history/PositionHistory.kt` (closed-position aggregation), `PaperSettingsController`, `PaperPersistenceService` (persists the shared paper account). |
 | `features/trades` | Time & sales panel. |
 | `features/localstorage` | SQLite-backed `StateStore` — key-value per-panel persistence. |
 | `features/settings` | App settings surfaces. |
@@ -70,6 +70,20 @@ Mind this when writing paths.
   panel each keep their own flag (the docked panel uses `PaperTrading.STORE_KEY`).
 - Real adapters return `null` from `subscribeTo*` when credentials are missing;
   the UI treats `null` as “no live updates”.
+
+### Trade fills and closed positions
+- `TradeFill.positionSide` (BUY=LONG / SELL=SHORT) and `closedQuantity`
+  identify which part of an execution closed a position. Hyperliquid maps
+  `dir` (`Open/Close Long/Short`, liquidation and flip cases), MEXC maps side
+  codes `1..4`, Bybit maps `closedSize` (fallback `execQty` when the order has
+  a closed-pnl row), and the paper engine marks open/close fills directly.
+  Bybit `closedPnl` is allocated across an order's executions by closed size,
+  never duplicated on every fill.
+- `features/trading/history/PositionHistory.kt` reconstructs flat-to-flat
+  positions from those fills: entry/exit VWAP, summed entry+exit fees,
+  provider realized PnL, one row per fully closed position; open/incomplete
+  positions and closes without an in-window entry are omitted. The trading panel
+  renders this as Position History and keeps the raw fills as Order History.
 
 ### Shared market catalog (explorer + Market Watch)
 - `MarketOverviewStore` (platform-core, `core/market`) is the **single source**
@@ -113,7 +127,7 @@ Mind this when writing paths.
   Market Watch "Apply to current workspace" is the only action that writes the
   provider into every panel at once. `navigatorExchangeLabel` prefers the first
   chart panel's `providerName` and falls back to `providers.first().name` for
-  legacy configs.
+  legacy configs. Symbol picks stay local to the panel that made them.
 - DOM: all panel settings are **workspace-scoped** like chart:
   `dom_paper_{workspaceId}_{panelId}`, `dom_trading_...`, `dom_provider_...`,
   `dom_contract_...` (USDT_M / COIN_M), `dom_confirm_`, `dom_reduce_`,
@@ -151,6 +165,17 @@ Mind this when writing paths.
   core-call failures in `refreshAll`, stream on `subscribeTo*` availability
   and collector failures; paper mode reports local CONNECTED ("Paper engine").
   ERROR rows open `TerminalContextPopup` with the error detail.
+  `attachPanel(..., symbol)` filters Positions/Orders/History by the panel
+  instrument; `Cancel All` / `Close All` act on that instrument, not the whole
+  account. The title hosts the shared symbol explorer with an `ALL SYMBOLS`
+  option (`PanelState.Trading.showAll`): a symbol pick updates only this panel's
+  instrument and provider, ALL shows account-wide orders/positions/history for
+  the current provider. Tabs are Positions/Orders/Balance/Position History/Order
+  History: Position History aggregates closed positions from fills
+  (`TradeFill.positionSide/closedQuantity`) into one row with entry/exit VWAP,
+  summed fees and realized PnL; Order History is the raw execution list. The
+  panel title and history symbols show `.P` for perpetual instruments; the
+  recommended width is 560dp.
 - Trades panel: `trades_provider_{workspace}_{panel}`,
   `trades_contract_{workspace}_{panel}`, `trades_width_{workspace}_{panel}`
   (workspace + panel; legacy panel-only keys are migrated once on attach).
@@ -579,8 +604,9 @@ from the IDE and tests visually; agents verify via compilation and tests.
   `features/chart/src/jvmTest` (`ChartIndicatorInputSourceTest`).
 - `providers/mexc-provider/src/jvmTest`, `providers/binance-provider/src/jvmTest`.
 - `providers/hyperliquid-provider/src/jvmTest` — market mapping, `allPerpMetas`/HIP-3 asset IDs, stream routing, orders/positions/TP-SL/balances, and EIP-712 signing against the official Python SDK vectors.
-- `features/trading`, `features/trades`, `features/settings` have no tests
-  (`:features:trading:jvmTest` exists but is empty).
+- `features/trading/src/jvmTest` — display helpers and closed-position
+  aggregation (`PositionHistoryTest`), plus the connections view-model test.
+  `features/trades` and `features/settings` have no tests.
 
 ### Frameworks and patterns
 - `kotlin.test` (JUnit4 on JVM) + `kotlinx-coroutines-test`:
@@ -643,8 +669,10 @@ from the IDE and tests visually; agents verify via compilation and tests.
   glyph close matching the plus button. The
   chart title hosts `ChartTitleToolbar`: symbol explorer box (see below; its
   closed trigger shows the exchange label in small accent text before the
-  symbol — provider switching happens by picking a row of another exchange,
-  there is no separate exchange dropdown in the chart title), then the
+  symbol and preserves the matched row's `.P` perpetual suffix, even though
+  the raw symbol is stored without it — provider switching happens by picking
+  a row of another exchange, there is no separate exchange dropdown in the
+  chart title), then the
   solid-accent timeframe chip (`TerminalBoxStyle.SELECTED`, dark text, no
   chevron) immediately after it, mode rounded box dropdown
   (`TerminalBoxStyle.ACCENT`; the closed trigger is a 14dp Canvas glyph for
@@ -774,7 +802,13 @@ from the IDE and tests visually; agents verify via compilation and tests.
   same folder; the Duplicate menu item opens it pinned. Pure tab transitions
   live in `PreviewTabs.kt` (`openPreview`/`openPinned`/`promotePreview`/
   `withoutWorkspace`) and are covered by `PreviewTabsTest` +
-  `WindowManagerTest` (inject `StandardTestDispatcher`).
+  `WindowManagerTest` (inject `StandardTestDispatcher`). Tab dragging keeps
+  reorder within the source tab bar; an inter-window drop is accepted only
+  over the destination tab bar, while a release outside all windows detaches.
+  Hit-testing uses actual screen coordinates measured by Compose for the
+  window and each tab, rather than combining window-state position with
+  window-relative layout coordinates. The AWT release listener handles drops
+  that leave the source window.
 - The shared rounded dropdown shell is `TerminalBoxDropdown` (platform-core,
   compact MW-LIST style: 11sp mono text, smallCard radius, 2dp/6dp padding,
   12dp chevron; styles `NORMAL` (45% `panelHeaderSurface` fill, white text),
@@ -879,8 +913,8 @@ from the IDE and tests visually; agents verify via compilation and tests.
   values spread evenly across the panel width, `-/-` placeholders when flat.
 - Docked trading panel `Cancel All` / `Close All` are borderless compact text
   actions (no outlined frame, tight padding) with a `selection` hover fill
-  (same as the active Market Watch row); DOM keeps outlined `SideButton`
-  actions. The header Balance is account equity (fallback to available when
+  (same as the active Market Watch row) and are scoped to the panel instrument;
+  DOM keeps outlined `SideButton` actions. The header Balance is account equity (fallback to available when
   equity is missing) while Available margin stays on the detail line; the
   Positions PnL column shows unrealized PnL (fallback to realized for adapters
   that do not populate it), and Day PnL uses the primary balance currency

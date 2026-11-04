@@ -171,6 +171,8 @@ data class MexcOrderDeal(
         feeCurrency = feeCurrency,
         pnl = profit,
         timestamp = timestamp,
+        positionSide = mexcPositionSide(side),
+        closedQuantity = if (mexcClosesPosition(side)) vol else 0.0,
     )
 }
 
@@ -201,20 +203,33 @@ data class MexcHistoryOrder(
     /** Реализованный PnL ордера за вычетом комиссий (для дневного итога). */
     val netProfit: Double get() = profit - takerFee - makerFee
 
-    fun toTradeFill(): TradeFill = TradeFill(
-        id = orderId.toString(),
-        orderId = orderId.toString(),
-        symbol = fromMexcSymbol(symbol),
-        // 1 open long / 2 close short — BUY, 3 open short / 4 close long — SELL
-        side = if (side == 1 || side == 2) OrderSide.BUY else OrderSide.SELL,
-        price = if (dealAvgPrice > 0.0) dealAvgPrice else price,
-        quantity = if (dealVol > 0.0) dealVol else vol,
-        fee = takerFee + makerFee,
-        feeCurrency = feeCurrency,
-        pnl = profit,
-        timestamp = createTime,
-    )
+    fun toTradeFill(): TradeFill {
+        val quantity = if (dealVol > 0.0) dealVol else vol
+        return TradeFill(
+            id = orderId.toString(),
+            orderId = orderId.toString(),
+            symbol = fromMexcSymbol(symbol),
+            // 1 open long / 2 close short — BUY, 3 open short / 4 close long — SELL
+            side = if (side == 1 || side == 2) OrderSide.BUY else OrderSide.SELL,
+            price = if (dealAvgPrice > 0.0) dealAvgPrice else price,
+            quantity = quantity,
+            fee = takerFee + makerFee,
+            feeCurrency = feeCurrency,
+            pnl = profit,
+            timestamp = createTime,
+            positionSide = mexcPositionSide(side),
+            closedQuantity = if (mexcClosesPosition(side)) quantity else 0.0,
+        )
+    }
 }
+
+private fun mexcPositionSide(side: Int): TradeSide? = when (side) {
+    1, 4 -> TradeSide.BUY
+    2, 3 -> TradeSide.SELL
+    else -> null
+}
+
+private fun mexcClosesPosition(side: Int): Boolean = side == 2 || side == 4
 
 // ── Плечо ────────────────────────────────────────────────────────────────────
 

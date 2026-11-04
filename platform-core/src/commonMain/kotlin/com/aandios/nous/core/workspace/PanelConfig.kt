@@ -54,7 +54,9 @@ sealed class PanelState {
 
     @Serializable @SerialName("trading")
     data class Trading(
-        val activeTab: String = "POSITIONS"
+        val activeTab: String = "POSITIONS",
+        /** Показывать ордера/позиции/историю по всем инструментам панели. */
+        val showAll: Boolean = false,
     ) : PanelState()
 
     companion object {

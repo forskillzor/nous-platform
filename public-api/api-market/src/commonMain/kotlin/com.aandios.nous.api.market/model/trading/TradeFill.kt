@@ -22,4 +22,8 @@ data class TradeFill(
     /** Реализованный PnL по сделке. */
     val pnl: Double = 0.0,
     val timestamp: Long = 0,
+    /** Сторона позиции, к которой относится fill: LONG (BUY) / SHORT (SELL). */
+    val positionSide: TradeSide? = null,
+    /** Сколько из этого fill закрыло позицию (0 — только открытие/увеличение). */
+    val closedQuantity: Double = 0.0,
 )
